@@ -1,0 +1,29 @@
+<div class="join flex items-center justify-center">
+    <button
+        class="btn border-base-300 btn-outline join-item btn-square"
+        data-spinner-control="fractional-spinner-demo"
+        aria-label="Decrement"
+        data-steps="-0.1">
+        <iconify-icon icon="lucide:minus" class="size-4"></iconify-icon>
+    </button>
+    <label class="input join-item input-bordered max-w-48">
+        <iconify-icon icon="lucide:dollar-sign" class="text-base-content/80 size-4"></iconify-icon>
+        <input
+            data-spinner
+            id="fractional-spinner-demo"
+            step="0.1"
+            value="9.9"
+            min="0"
+            max="100"
+            type="number"
+            class="no-spinner"
+            aria-label="Decrement" />
+    </label>
+    <button
+        class="btn border-base-300 btn-outline join-item btn-square"
+        data-steps="0.1"
+        aria-label="Increment"
+        data-spinner-control="fractional-spinner-demo">
+        <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+    </button>
+</div>

@@ -1,0 +1,27 @@
+<div class="flex flex-wrap gap-2 justify-end items-center" id="ai-settings" hx-target="this" hx-swap="outerHTML">
+  <select name="provider"
+          class="select select-bordered select-xs"
+          hx-post="{{ ai_settings_url }}"
+          hx-include="[name='model']"
+          hx-indicator="#ai-settings-indicator">
+    {% for provider in ai_provider_options %}
+      <option value="{{ provider.id }}" {% if provider.id == current_ai_provider %}selected{% endif %}>{{ provider.title }}</option>
+    {% endfor %}
+  </select>
+  <select name="model"
+          class="select select-bordered select-xs"
+          hx-post="{{ ai_settings_url }}"
+          hx-include="[name='provider']"
+          hx-indicator="#ai-settings-indicator">
+    {% for provider in ai_provider_options %}
+      {% if provider.id == current_ai_provider %}
+        {% for model in provider.models %}
+          <option value="{{ model.id }}" {% if model.id == current_ai_model %}selected{% endif %}>{{ model.label }}</option>
+        {% endfor %}
+      {% endif %}
+    {% endfor %}
+  </select>
+  <span id="ai-settings-indicator" class="text-[10px] opacity-60 htmx-indicator">
+      {{ _('Saving…') }}
+  </span>
+</div>

@@ -1,0 +1,14 @@
+<h1>{{ _('New Support Ticket') }}</h1>
+
+<p><strong>{{ _('From:') }}</strong> {{ ticket.user.name or ticket.user.email }} ({{ ticket.user.email }})</p>
+<p><strong>{{ _('Subject:') }}</strong> {{ ticket.subject }}</p>
+<p><strong>{{ _('Ticket ID:') }}</strong> #{{ ticket.short_id }}</p>
+
+<p>
+  <a href="{{ url('admin_ticket_detail', ticket_id=ticket.id, _external=True) }}">{{ _('View Ticket in Admin Panel') }}</a>
+</p>
+
+<p>{{ _('Initial Message:') }}</p>
+<blockquote>
+    {{ comment.body }}
+</blockquote>

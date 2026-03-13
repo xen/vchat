@@ -1,0 +1,55 @@
+{% extends "admin.html" %}
+
+{% if item.id and item.id != '+new' %}
+  {% set page_title = item.title + " - " +_("Edit Category") %}
+{% else %}
+  {% set page_title = _("New Category") %}
+{% endif %}
+
+{% block sidebar %}
+  {% include "include/admin/user_sidebar.html" with context %}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold">
+      {{ page_title }}
+    </h1>
+    <a href="{{ url('edit_category_list') }}" class="btn btn-ghost">
+      <iconify-icon icon="lucide:arrow-left" class="mr-2"></iconify-icon>
+      {{ _('Back to List') }}
+    </a>
+  </div>
+
+  <div class="bg-base-100 rounded-lg shadow p-6 max-w-2xl mx-auto">
+    <form action="{{ url('edit_category_edit', category_id=item.id) }}" method="post" enctype="multipart/form-data">
+      {{ form.csrf_token }}
+
+      {% from "macros.html" import render_field, checkbox with context %}
+
+      {{ render_field(form.title) }}
+      {{ render_field(form.slug) }}
+
+      <div class="form-control mb-5">
+        <label class="label">
+          <span class="label-text">{{ form.description.label.text }}</span>
+        </label>
+        {{ form.description(class="textarea textarea-bordered h-24") }}
+         {% if form.description.errors %}
+          <label class="label">
+            <span class="label-text-alt text-error">{{ form.description.errors[0] }}</span>
+          </label>
+        {% endif %}
+      </div>
+
+      {{ checkbox(form.is_tag) }}
+      {{ checkbox(form.is_term) }}
+
+      <div class="mt-6 flex justify-end">
+        <button type="submit" class="btn btn-primary">{{ _('Save Category') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

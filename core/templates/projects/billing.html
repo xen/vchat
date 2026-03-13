@@ -1,0 +1,125 @@
+{% extends "admin.html" %}
+{% block content %}
+
+{% from 'macros.html' import navbar_tabs with context %}
+
+<div class="flex items-center justify-between mb-6">
+    <p class="text-lg font-medium">{{ _('Billing & Subscription') }}</p>
+</div>
+
+<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+    <!-- Current Plan & Usage -->
+    <div class="card bg-base-100 shadow lg:col-span-2">
+        <div class="card-body">
+            <h3 class="card-title text-base font-medium mb-4">{{ _('Current Plan') }}</h3>
+
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <span class="badge badge-lg badge-primary uppercase">{{ user_data.plan }}</span>
+                    {% if has_active_payment %}
+                        <span class="badge badge-success badge-outline ml-2">{{ _('Active') }}</span>
+                    {% endif %}
+                </div>
+                {% if has_active_payment and active_payment.stripe_subscription_id %}
+                <form action="{{ app.router['billing_downgrade'].url_for(short_id=project.short_id) }}" method="POST" onsubmit="return confirm('{{ _('Are you sure you want to cancel your subscription?') }}');">
+                    <input type="hidden" name="payment_id" value="{{ active_payment.id }}">
+                    <button type="submit" class="btn btn-sm btn-error btn-outline">{{ _('Cancel Subscription') }}</button>
+                </form>
+                {% endif %}
+            </div>
+
+            <div class="divider"></div>
+
+            <h4 class="text-sm font-medium mb-2">{{ _('Token Usage') }}</h4>
+            <div class="flex items-center justify-between text-sm mb-1">
+                <span>{{ user_data.tokens_used }} / {{ user_data.token_limit }}</span>
+                <span>{{ (user_data.tokens_used / user_data.token_limit * 100)|round(1) if user_data.token_limit > 0 else 0 }}%</span>
+            </div>
+            <progress class="progress progress-primary w-full" value="{{ user_data.tokens_used }}" max="{{ user_data.token_limit }}"></progress>
+            <p class="text-xs text-base-content/70 mt-2">
+                {{ _('Tokens reset at the beginning of each billing cycle.') }}
+            </p>
+        </div>
+    </div>
+
+    <!-- Available Plans -->
+    <div class="card bg-base-100 shadow lg:col-span-3">
+        <div class="card-body">
+            <h3 class="card-title text-base font-medium mb-4">{{ _('Available Plans') }}</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {% for plan in plans %}
+                <div class="card bg-base-200 border border-base-300">
+                    <div class="card-body items-center text-center">
+                        <h4 class="card-title">{{ plan.name }}</h4>
+                        <p class="text-3xl font-bold my-2">${{ plan.price }}<span class="text-sm font-normal text-base-content/70">/{{ plan.interval }}</span></p>
+                        <ul class="text-sm text-left w-full my-4 space-y-2">
+                            <li class="flex items-center">
+                                <iconify-icon icon="lucide:check" class="text-success mr-2"></iconify-icon>
+                                {{ plan.tokens }} {{ _('tokens/month') }}
+                            </li>
+                            <!-- Add more features here -->
+                        </ul>
+                        <div class="card-actions">
+                            <form action="{{ app.router['billing_upgrade'].url_for(short_id=project.short_id) }}" method="POST">
+                                <input type="hidden" name="plan_id" value="{{ plan.id }}">
+                                <button type="submit" class="btn btn-primary btn-wide" {% if user_data.plan|lower in plan.id %}disabled{% endif %}>
+                                    {% if user_data.plan|lower in plan.id %}
+                                        {{ _('Current Plan') }}
+                                    {% else %}
+                                        {{ _('Upgrade') }}
+                                    {% endif %}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment History -->
+    <div class="card bg-base-100 shadow lg:col-span-3">
+        <div class="card-body">
+            <h3 class="card-title text-base font-medium mb-4">{{ _('Payment History') }}</h3>
+            <div class="overflow-x-auto">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>{{ _('Date') }}</th>
+                            <th>{{ _('Description') }}</th>
+                            <th>{{ _('Amount') }}</th>
+                            <th>{{ _('Status') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                        <tr>
+                            <td>{{ payment.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ payment.description }}</td>
+                            <td>{{ payment.amount }} {{ payment.currency|upper }}</td>
+                            <td>
+                                {% if payment.status == 'succeeded' %}
+                                    <span class="badge badge-success badge-sm">{{ _('Succeeded') }}</span>
+                                {% elif payment.status == 'pending' %}
+                                    <span class="badge badge-warning badge-sm">{{ _('Pending') }}</span>
+                                {% elif payment.status == 'canceled' %}
+                                    <span class="badge badge-ghost badge-sm">{{ _('Canceled') }}</span>
+                                {% else %}
+                                    <span class="badge badge-error badge-sm">{{ payment.status }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-base-content/70">{{ _('No payments found.') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

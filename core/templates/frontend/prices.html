@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing - core{% endblock %}
+
+{% block fullbody %}
+    <div class="bg-base-100 text-base-content">
+        <div>
+            {% include 'include/navbar.html' with context %}
+
+            <div class="relative">
+                <div
+                    class="absolute inset-0 -top-2 h-[1000px] bg-[url(/static/images/landing/hero-bg-gradient.png)] [background-size:200%_60%] bg-no-repeat opacity-20 [background-position-x:center] sm:[background-size:100%_100%] dark:opacity-15"></div>
+
+                <div class="relative z-10 container py-28 xl:py-40">
+                    <div class="text-center max-w-3xl mx-auto">
+                        <h1 class="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl mb-6">
+                            {{ _('Simple, transparent pricing') }}
+                        </h1>
+                        <p class="text-lg text-base-content/80 mb-12">
+                            {{ _('Choose the perfect plan for your needs. Whether you\'re just starting out or scaling up, we have a solution for you.') }}
+                        </p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto px-4">
+                        <!-- Personal Plan -->
+                        <div class="card bg-base-100 shadow-xl border border-base-200 hover:border-primary/50 transition-all duration-300">
+                            <div class="card-body">
+                                <h2 class="card-title text-2xl mb-2">{{ _('Personal') }}</h2>
+                                <p class="text-base-content/70 mb-4">{{ _('Best for personal use and freelancers.') }}</p>
+                                <div class="flex items-baseline mb-8">
+                                    <span class="text-4xl font-bold">$29</span>
+                                    <span class="text-base-content/70 ml-2">/month</span>
+                                </div>
+                                <ul class="space-y-4 mb-8 flex-1">
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>{{ _('Monitor up to') }} <strong>20 {{ _('channels') }}</strong></span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>{{ _('Up to') }} <strong>20 {{ _('active') }}</strong> {{ _('search terms') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>{{ _('Up to') }} <strong>100</strong> {{ _('signals per day') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>1 {{ _('Notification pipeline') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>1 {{ _('User') }}</span>
+                                    </li>
+                                </ul>
+                                <div class="card-actions justify-center mt-auto">
+                                    <a href="/auth/register/?plan=personal" class="btn btn-outline btn-primary w-full">{{ _('Get Started') }}</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Startup Plan -->
+                        <div class="card bg-base-100 shadow-xl border-2 border-primary relative transform hover:scale-105 transition-all duration-300">
+                            <div class="absolute top-0 right-0 -mt-4 -mr-4">
+                                <span class="badge badge-primary badge-lg">{{ _('Most Popular') }}</span>
+                            </div>
+                            <div class="card-body">
+                                <h2 class="card-title text-2xl mb-2 text-primary">{{ _('Startup') }}</h2>
+                                <p class="text-base-content/70 mb-4">{{ _('For growing startups and small teams.') }}</p>
+                                <div class="flex items-baseline mb-8">
+                                    <span class="text-4xl font-bold">$99</span>
+                                    <span class="text-base-content/70 ml-2">/{{ _('month') }}</span>
+                                </div>
+                                <ul class="space-y-4 mb-8 flex-1">
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>{{ _('Monitor up to') }} <strong>50 {{ _('channels') }}</strong></span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span><strong>{{ _('Unlimited') }}</strong> {{ _('search terms') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span><strong>{{ _('Unlimited') }}</strong> {{ _('signals per day') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>3 {{ _('Notification pipelines') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>3 {{ _('Users') }}</span>
+                                    </li>
+                                </ul>
+                                <div class="card-actions justify-center mt-auto">
+                                    <a href="/auth/register/?plan=startup" class="btn btn-primary w-full">{{ _('Get Started') }}</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Company Plan -->
+                        <div class="card bg-base-100 shadow-xl border border-base-200 hover:border-primary/50 transition-all duration-300">
+                            <div class="card-body">
+                                <h2 class="card-title text-2xl mb-2">{{ _('Company') }}</h2>
+                                <p class="text-base-content/70 mb-4">{{ _('For larger organizations and scaling needs.') }}</p>
+                                <div class="flex items-baseline mb-8">
+                                    <span class="text-4xl font-bold">$249</span>
+                                    <span class="text-base-content/70 ml-2">/{{ _('month') }}</span>
+                                </div>
+                                <ul class="space-y-4 mb-8 flex-1">
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>{{ _('Monitor up to') }} <strong>200 {{ _('channels') }}</strong></span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span><strong>{{ _('Unlimited') }}</strong> {{ _('search terms') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span><strong>{{ _('Unlimited') }}</strong> {{ _('signals per day') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>5 {{ _('Notification pipelines') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>5 {{ _('Users') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>{{ _('API & CRM Integration') }}</span>
+                                    </li>
+                                    <li class="flex items-center gap-3">
+                                        <iconify-icon icon="lucide:check" class="text-green-500 size-5"></iconify-icon>
+                                        <span>{{ _('Personal Manager') }}</span>
+                                    </li>
+                                </ul>
+                                <div class="card-actions justify-center mt-auto">
+                                    <a href="/auth/register/?plan=company" class="btn btn-outline btn-primary w-full">{{ _('Get Started') }}</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-center mt-16">
+                        <p class="text-lg text-base-content/80">
+                            {{ _('Looking for an enterprise solution?') }}
+                            <a href="/about/contact" class="link link-primary font-semibold">{{ _('Contact our sales team') }}</a>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {% include 'include/footer.html' with context %}
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // Inline simple JS for navbar scroll effect
+        document.addEventListener('scroll', () => {
+            const topbar = document.getElementById('landing-topbar');
+            if (window.scrollY > 50) {
+                // topbar.setAttribute('data-scrolling', 'down'); // Disabled hiding
+                topbar.setAttribute('data-at-top', 'false');
+            } else {
+                topbar.removeAttribute('data-scrolling');
+                topbar.setAttribute('data-at-top', 'true');
+            }
+        });
+    </script>
+{% endblock %}

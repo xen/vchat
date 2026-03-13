@@ -1,0 +1,75 @@
+<div class="sidebar-menu relative flex h-full w-full flex-col py-3">
+    <label
+        for="layout-sidebar-hover-trigger"
+        title="Toggle sidebar hover"
+        class="btn btn-circle btn-ghost btn-sm text-base-content/50 absolute end-2 top-3.5 max-lg:hidden">
+        <iconify-icon icon="lucide:panel-left-close" class="absolute size-4.5 opacity-100 transition-all duration-300 group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:opacity-0"></iconify-icon>
+        <iconify-icon icon="lucide:panel-left-dashed" class="absolute size-4.5 opacity-0 transition-all duration-300 group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:opacity-100"></iconify-icon>
+    </label>
+    <div class="flex min-h-10 items-center gap-3 px-5">
+        <span class="text-xl font-semibold">ACME Inc</span>
+        <hr class="border-base-300 h-5 border-e" />
+        <p class="text-base-content/50 font-medium">Basic</p>
+    </div>
+    <div class="custom-scrollbar grow overflow-auto">
+        <div class="mt-3 space-y-0.5 px-2.5">
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:home" class="size-4"></iconify-icon>
+                <p>Home</p>
+            </a>
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:bar-chart-2" class="size-4"></iconify-icon>
+                <p>Overview</p>
+            </a>
+        </div>
+        <p class="menu-label mt-4 px-5">Transactions</p>
+        <div class="mt-1 space-y-0.5 px-2.5">
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:credit-card" class="size-4"></iconify-icon>
+                <p>Payment History</p>
+            </a>
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:dollar-sign" class="size-4"></iconify-icon>
+                <p>Send Payment</p>
+            </a>
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:repeat" class="size-4"></iconify-icon>
+                <p>Recurring Payments</p>
+            </a>
+        </div>
+        <p class="menu-label mt-4 px-5">Account</p>
+        <div class="mt-1 space-y-0.5 px-2.5">
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:user" class="size-4"></iconify-icon>
+                <p>Profile</p>
+            </a>
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:lock" class="size-4"></iconify-icon>
+                <p>Security</p>
+            </a>
+            <a class="menu-item" href="#">
+                <iconify-icon icon="lucide:wallet" class="size-4"></iconify-icon>
+                <p>Wallet</p>
+            </a>
+        </div>
+    </div>
+    <div class="px-2.5 pt-4">
+        <a class="menu-item" href="#">
+            <iconify-icon icon="lucide:settings" class="size-4"></iconify-icon>
+            <p>Settings</p>
+        </a>
+        <label class="menu-item menu-item-link">
+            <iconify-icon icon="lucide:flask-conical" class="size-4"></iconify-icon>
+            <p class="grow">Test Mode</p>
+            <input
+                id="basic-test-mode"
+                class="toggle toggle-xs toggle-primary"
+                type="checkbox"
+                checked="" />
+        </label>
+        <a class="menu-item" href="#">
+            <iconify-icon icon="lucide:log-out" class="size-4"></iconify-icon>
+            <p>Logout</p>
+        </a>
+    </div>
+</div>

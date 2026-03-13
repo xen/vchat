@@ -1,0 +1,52 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+/* Minimal overrides for Markdown content inside chat bubbles */
+.markdown-body {
+    font-size: 0.95em;
+}
+
+.markdown-body p {
+    margin-bottom: 0.5em;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+    margin-bottom: 0.5em;
+    padding-left: 1.5em;
+}
+
+.markdown-body ul {
+    list-style-type: disc;
+}
+
+.markdown-body ol {
+    list-style-type: decimal;
+}
+
+.markdown-body pre {
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+    padding: 0.75em;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 0.5em 0;
+}
+
+.markdown-body code {
+    font-family: monospace;
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+}
+
+.markdown-body pre code {
+    background-color: transparent;
+    padding: 0;
+    color: inherit;
+}
+
+.markdown-body a {
+    text-decoration: underline;
+    opacity: 0.9;
+}

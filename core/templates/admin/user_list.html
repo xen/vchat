@@ -1,0 +1,75 @@
+{% extends "admin.html" %}
+{% set page_title = _("User List") %}
+
+{% block sidebar %}
+  {% include "include/admin/user_sidebar.html" with context %}
+{% endblock %}
+
+{% block content %}
+{% from 'macros.html' import search, render_field, indicator_success, indicator_warning, show_from_to with context %}
+
+<div class="px-4 py-6">
+  <div class="mb-6">
+    <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold">{{ _('Users') }}</h1>
+        <p class="text-base-content/70 text-sm">
+          {{ _('"Login as user" links have only 300 seconds to use. If code expired then refresh page.') }}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div class="w-full sm:w-auto">
+      {{ search(request, _('name, email')) }}
+    </div>
+  </div>
+
+  <div class="overflow-x-auto rounded-box border border-base-200 bg-base-100 shadow-sm">
+    <table class="table w-full">
+      <thead>
+        <tr>
+          <th>{{ _('Id') }}</th>
+          <th>{{ _('Name') }}</th>
+          <th>{{ _('Email') }}</th>
+          <th>{{ _('Role') }}</th>
+          <th>{{ _('Action') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr class="hover">
+          <td>
+            <div class="font-bold">{{ user.id }}</div>
+          </td>
+          <td>
+            <div class="font-medium">{{ user.name }}</div>
+          </td>
+          <td>
+            <div class="text-base-content/70">{{ user.email }}</div>
+          </td>
+          <td>
+            <div class="badge badge-ghost">{{ user.role.value }}</div>
+          </td>
+          <td>
+            {% if user.is_active %}
+              {% set user_id = user.id|protect_timed %}
+              <a href="{{ url('admin_login_as', query_={'user_id': user_id}) }}" class="btn btn-sm btn-ghost text-primary">
+                {{ _('Login as user') }}
+              </a>
+            {% else %}
+              <span class="badge badge-warning">{{ _('Not active') }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4">
+    {{ show_from_to(request, 100) }}
+  </div>
+</div>
+{% endblock %}

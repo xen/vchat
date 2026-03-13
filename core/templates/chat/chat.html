@@ -1,0 +1,324 @@
+<html lang="{{ lang }}" data-theme="light">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ _('Chat') }} - {{ project.title }}</title>
+  <link rel="stylesheet" href="/static/chat/chat.css" />
+  <script type="module" src="/static/chat/chat.js"></script>
+  <style>
+    .chat-bubble.markdown-body {
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+  </style>
+</head>
+
+<body class="flex flex-col h-[100dvh] bg-base-100 text-base-content antialiased overflow-hidden"
+  hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+
+  <!-- Navbar -->
+  <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
+    <div class="flex-1 gap-2 items-center">
+      <div class="flex flex-col">
+        <span class="font-bold text-sm leading-tight">{{ project.title }}</span>
+        <span class="text-xs opacity-60 leading-tight">{{ agent_name if agent_name else _('Virtual Assistant') }}</span>
+      </div>
+    </div>
+    <div class="flex-none flex flex-col items-end gap-1 text-xs">
+      {% if allow_ai_switch %}
+      <span class="font-semibold uppercase tracking-wide opacity-60">{{ _('Model') }}</span>
+      {% include 'chat/includes/ai_settings.html' %}
+      {% endif %}
+    </div>
+    <div class="flex-none">
+      {# <!-- Close button if needed, or back link -->
+      <a href="/project/{{ project.short_id }}" class="btn btn-sm btn-square btn-ghost" aria-label="Close chat">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </a> #}
+    </div>
+  </header>
+
+  <!-- Chat Log -->
+  <main id="log" class="flex-1 overflow-y-auto w-full p-4 space-y-4 scroll-smooth">
+    <!-- Messages will appear here -->
+  </main>
+
+  <!-- Footer Input -->
+  <div class="flex-none w-full bg-base-100 p-4 border-t border-base-200">
+    <form id="composer" class="relative w-full">
+      <textarea id="prompt"
+        class="textarea textarea-bordered textarea-md w-full pr-12 resize-none bg-base-100 focus:outline-none" rows="2"
+        placeholder="{{ _('Type a message…') }}"></textarea>
+      <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm absolute bottom-3 right-3"
+        aria-label="{{ _('Send') }}">
+        {{ _('Send') }}
+      </button>
+    </form>
+    <div id="status" class="text-xs text-left mt-2 opacity-50">
+      <span class="badge badge-xs badge-warning mr-1"></span> {{ _('connecting…') }}
+    </div>
+  </div>
+
+  <script type="module">
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const formEl = document.getElementById('composer');
+    const promptEl = document.getElementById('prompt');
+    const sendBtn = document.getElementById('send');
+    const aiSettingsUrl = {{ ai_settings_url| tojson | safe }};
+    const aiOptions = {{ ai_provider_options| tojson | safe }};
+    const allowAiSwitch = {{ allow_ai_switch| tojson }};
+    const csrfToken = {{ csrf_token() | tojson | safe }};
+    const aiProviderSelect = document.getElementById('chat-provider-select');
+    const aiModelSelect = document.getElementById('chat-model-select');
+    const aiStatusEl = document.getElementById('ai-settings-status');
+
+    let ws;
+    let currentBotBubble = null; // Should point to the .chat-bubble element
+
+    function wsUrl() {
+      const payload = '{{ payload }}';
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      return `${proto}://${location.host}/ws/chat/${payload}`;
+    }
+
+    function updateStatus(text, type) {
+      let badgeClass = 'badge-warning';
+      if (type === 'connected') badgeClass = 'badge-success';
+      if (type === 'error') badgeClass = 'badge-error';
+
+      statusEl.innerHTML = `<span class="badge badge-xs ${badgeClass} mr-1"></span> ${text}`;
+    }
+
+    function appendMsg(text, type = 'bot', isPartial = false, msgId = null, signedMsgId = null, vote = 0) {
+      // If it's a bot message and we are streaming (partial) and have a current bubble
+      if (type === 'bot' && isPartial && currentBotBubble) {
+        const rawText = (currentBotBubble.dataset.raw || '') + text;
+        currentBotBubble.dataset.raw = rawText;
+        // Wrap content in markdown-body for consistent styling
+        currentBotBubble.querySelector('.markdown-body').innerHTML = marked.parse(rawText);
+      } else {
+        // Create new message block
+        const chatDiv = document.createElement('div');
+        chatDiv.className = type === 'bot' ? 'chat chat-start' : 'chat chat-end';
+
+        // Add header for bot
+        if (type === 'bot') {
+          const header = document.createElement('div');
+          header.className = 'chat-header text-xs opacity-50 mb-1';
+          header.textContent = '{{ agent_name if agent_name else "Assistant" }}';
+          chatDiv.appendChild(header);
+        }
+
+        // Create bubble
+        const bubble = document.createElement('div');
+        bubble.className = type === 'bot'
+          ? 'chat-bubble chat-bubble-base-200 w-full max-w-sm sm:max-w-md md:max-w-lg'
+          : 'chat-bubble chat-bubble-primary text-primary-content';
+
+        if (type === 'bot') {
+          bubble.dataset.raw = text;
+          bubble.innerHTML = `<div class="markdown-body">${marked.parse(text)}</div>`;
+          if (isPartial) {
+            currentBotBubble = bubble;
+          } else {
+            currentBotBubble = null;
+          }
+          chatDiv.appendChild(bubble);
+
+          // Add HTMX voting buttons if we have a msgId (completed message)
+          if (!isPartial && signedMsgId) {
+            const footer = document.createElement('div');
+            footer.className = 'chat-footer opacity-50 flex gap-2 items-center mt-1';
+            footer.id = `vote-area-${msgId}`;
+            // Initial render of buttons
+            footer.innerHTML = `
+                         <button class="btn btn-ghost btn-xs btn-square ${vote === 1 ? 'text-primary' : ''}"
+                                 aria-label="Upvote"
+                                 hx-post="/api/chat/actions/vote/${signedMsgId}?vote=${vote === 1 ? 0 : 1}"
+                                 hx-swap="outerHTML"
+                                 hx-target="#vote-area-${msgId}">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
+                         </button>
+                         <button class="btn btn-ghost btn-xs btn-square ${vote === -1 ? 'text-primary' : ''}"
+                                 aria-label="Downvote"
+                                 hx-post="/api/chat/actions/vote/${signedMsgId}?vote=${vote === -1 ? 0 : -1}"
+                                 hx-swap="outerHTML"
+                                 hx-target="#vote-area-${msgId}">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" /></svg>
+                         </button>
+                     `;
+            chatDiv.appendChild(footer);
+            // Process HTMX on the new content
+            htmx.process(footer);
+          }
+
+        } else {
+          if (type === 'error') {
+            bubble.className = 'chat-bubble chat-bubble-error text-error-content';
+            bubble.textContent = text;
+          } else {
+            bubble.textContent = text;
+          }
+          currentBotBubble = null;
+          chatDiv.appendChild(bubble);
+        }
+
+        logEl.appendChild(chatDiv);
+      }
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setSending(sending) {
+      sendBtn.disabled = sending;
+      promptEl.disabled = sending;
+      if (!sending) {
+        promptEl.focus();
+      }
+    }
+
+    function connect() {
+      ws = new WebSocket(wsUrl());
+      ws.onopen = () => {
+        updateStatus('{{ _("connected") }}', 'connected');
+      };
+      ws.onclose = () => {
+        updateStatus('{{ _("disconnected") }}', 'warning');
+        setSending(false);
+        currentBotBubble = null;
+      };
+      ws.onerror = () => {
+        updateStatus('{{ _("error") }}', 'error');
+        setSending(false);
+        currentBotBubble = null;
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === 'transcription') {
+            appendMsg(data.content, 'user');
+            updateStatus('{{ _("processing...") }}', 'connected');
+          } else if (data.type === 'audio_response') {
+            const audio = new Audio("data:audio/mp3;base64," + data.audio);
+            audio.play();
+          } else if (data.type === 'suggested_actions') {
+            if (data.actions && data.actions.length > 0) {
+              const actionsDiv = document.createElement('div');
+              actionsDiv.className = 'pl-12 flex flex-wrap gap-2 mb-4'; // Added margin-bottom for spacing
+              data.actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-xs btn-outline bg-base-100';
+                btn.textContent = action;
+                btn.onclick = () => {
+                  promptEl.value = action;
+                  submitMessage();
+                  actionsDiv.remove();
+                };
+                actionsDiv.appendChild(btn);
+              });
+              logEl.appendChild(actionsDiv);
+              logEl.scrollTop = logEl.scrollHeight;
+            }
+          } else if (data.ok) {
+            if (data.content) {
+              // Pass signed_msg_id if available (usually at end of stream)
+              appendMsg(data.content, 'bot', data.partial, data.msg_id, data.signed_msg_id);
+            } else if (data.signed_msg_id && !data.partial) {
+              // Case where content was empty (maybe just sources?) or we just want to ensure ID is attached
+              // But usually we call appendMsg with content.
+              // If this is the final message with no content but has ID, we might need to update the last bubble?
+              // appendMsg handles finding currentBotBubble.
+              // Let's call it with empty content to trigger the ID attachment logic if needed?
+              // Or better, modify appendMsg to handle empty content update?
+              // appendMsg(text, ...) -> if text is empty string, it appends empty string.
+              // Let's passed it.
+              appendMsg("", 'bot', data.partial, data.msg_id, data.signed_msg_id);
+            }
+
+            if (data.sources && data.sources.length > 0) {
+              const sourcesHtml = data.sources.map(s => `
+                    <a href="${s.uri}" target="_blank" class="link link-hover link-primary inline-flex items-center gap-1 bg-base-100/50 p-1 rounded border border-base-content/10">
+                        <span class="opacity-70">📄</span> ${s.title || '{{ _("Source") }}'}
+                    </a>
+                  `).join('');
+
+              const sourcesContainer = document.createElement('div');
+              sourcesContainer.innerHTML = `
+                      <div class="divider my-1 opacity-50"></div>
+                      <div class="flex flex-col gap-1 text-xs">
+                        <div class="font-bold opacity-70">{{ _('Sources') }}</div>
+                        <div class="flex flex-wrap gap-2">${sourcesHtml}</div>
+                      </div>
+                  `;
+
+              if (currentBotBubble) {
+                currentBotBubble.appendChild(sourcesContainer);
+              } else {
+                const div = document.createElement('div');
+                div.className = 'chat chat-start';
+                const bubble = document.createElement('div');
+                bubble.className = 'chat-bubble chat-bubble-base-200';
+                bubble.appendChild(sourcesContainer);
+                div.appendChild(bubble);
+                logEl.appendChild(div);
+              }
+            }
+            if (!data.partial) {
+              setSending(false);
+              currentBotBubble = null;
+            }
+          } else {
+            appendMsg(`Error: ${data.error} ${data.status ? '(' + data.status + ')' : ''}\n${typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)}`, 'error');
+            setSending(false);
+          }
+        } catch (e) {
+          console.error(e);
+          appendMsg(ev.data, 'bot');
+        }
+      };
+    }
+
+
+    const submitMessage = () => {
+      const text = promptEl.value.trim();
+      if (!text) return;
+
+      appendMsg(text, 'user');
+      setSending(true);
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        connect();
+        setTimeout(() => ws && ws.send(text), 100);
+      } else {
+        ws.send(text);
+      }
+      promptEl.value = '';
+    };
+
+    formEl.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submitMessage();
+    });
+
+    promptEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submitMessage();
+      }
+    });
+
+    // initial connect
+    connect();
+
+    const welcomeMessage = {{ welcome_message| tojson | safe }};
+    if (welcomeMessage) {
+      appendMsg(welcomeMessage, 'bot');
+    }
+
+  </script>
+</body>
+
+</html>

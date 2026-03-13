@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block meta %}
+<link rel="canonical" href="{{ external('blog_index') }}" />
+<meta name="description" content="{{ _('Articles and news') }} • {{ config.project_name }}">
+{% endblock meta %}
+
+{% block title %}{{ _('Blog & News') }}{% endblock title %}
+
+{% block content %}
+{% from 'blog/macros.html' import post_card, blog_paginate with context %}
+
+
+<div class="relative z-10 container py-28 xl:py-40">
+  <div class="flex flex-col items-center">
+    <p class="mt-6 max-w-2xl text-center text-lg text-base-content/70">
+      <h1 class="text-4xl font-bold mb-4">{{ _('Blog & News') }}</h1>
+      <p class="text-lg text-base-content/70">{{ _('Latest updates, articles, and insights.') }}</p>
+
+      {{ _('Discover the latest articles, updates, and insights from our blog. Stay informed with news on technology, trends, and more.') }}
+    </p>
+  </div>
+</div>
+
+
+
+<div class="bg-base-200 py-12">
+  <div class="container mx-auto px-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      {% for post in posts %}
+        {{ post_card(post) }}
+      {% else %}
+        <p class="mt-6 max-w-2xl text-center text-lg text-base-content/70">{{ _('No blog posts found yet.') }}</p>
+      {% endfor %}
+    </div>
+
+    {{ blog_paginate(total) }}
+  </div>
+</div>
+{% endblock content %}

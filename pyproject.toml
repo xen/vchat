@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=67.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "core"
+version = "0.1.0"
+description = "Backend services and workers for the core platform."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "Proprietary" }
+authors = [{ name = "core Team" }]
+urls = { Homepage = "https://www.core.com" }
+
+[tool.setuptools.packages.find]
+include = ["core*", "jobs*"]
+
+[tool.ruff.lint]
+ignore = ["E712", "E402"]

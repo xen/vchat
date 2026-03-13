@@ -1,0 +1,392 @@
+{% extends "admin.html" %}
+{% block content %}
+
+{% from 'macros.html' import navbar_tabs with context %}
+
+<div class="flex items-center justify-between">
+    <p class="text-lg font-medium">{{ _('Project Statistics') }}</p>
+</div>
+
+<div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+    <!-- Card 1: Total Chats -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-5">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <iconify-icon icon="lucide:message-square" class="text-primary size-8"></iconify-icon>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                    <dl>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Total Chats') }}</dt>
+                        <dd>
+                            <div class="text-lg font-medium text-base-content">{{ total_chats }}</div>
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 2: Unique Users -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-5">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <iconify-icon icon="lucide:users" class="text-secondary size-8"></iconify-icon>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                    <dl>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Unique Users') }}</dt>
+                        <dd>
+                            <div class="text-lg font-medium text-base-content">{{ total_users }}</div>
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Total Messages -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-5">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <iconify-icon icon="lucide:message-circle" class="text-accent size-8"></iconify-icon>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                    <dl>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Total Messages') }}</dt>
+                        <dd>
+                            <div class="text-lg font-medium text-base-content">{{ total_msgs }}</div>
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 4: Document Hits -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-5">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <iconify-icon icon="lucide:file-text" class="text-info size-8"></iconify-icon>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                    <dl>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Document Hits') }}</dt>
+                        <dd>
+                            <div class="text-lg font-medium text-base-content">{{ total_hits }}</div>
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+    <!-- Card 5: Total Tokens -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-5">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <iconify-icon icon="lucide:coins" class="text-warning size-8"></iconify-icon>
+                </div>
+                <div class="ml-5 w-0 flex-1">
+                    <dl>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Total Tokens') }}</dt>
+                        <dd>
+                            <div class="text-lg font-medium text-base-content">{{ total_tokens }}</div>
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if token_breakdown %}
+<div class="mt-6 card bg-base-100 shadow">
+    <div class="card-body">
+        <h3 class="card-title text-base font-medium mb-4">{{ _('Tokens by Provider and Model') }}</h3>
+        <div class="overflow-x-auto">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>{{ _('Provider') }}</th>
+                        <th>{{ _('Model') }}</th>
+                        <th class="text-right">{{ _('Tokens') }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in token_breakdown %}
+                        <tr>
+                            <td>{{ row.provider_label }}</td>
+                            <td>{{ row.model_label }}</td>
+                            <td class="text-right">{{ row.tokens }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Source Data Statistics Panel -->
+<div class="mt-8">
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <h3 class="card-title text-base font-medium mb-4">{{ _('Indexed Data by Source') }}</h3>
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>{{ _('Source') }}</th>
+                            <th class="text-right">{{ _('Documents') }}</th>
+                            <th class="text-right">{{ _('Data Volume') }}</th>
+                            <th class="text-right">{{ _('Chunks') }}</th>
+                            <th class="text-right">{{ _('Chunk Storage') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for source in source_stats %}
+                        <tr>
+                            <td class="font-medium">{{ source.title }}</td>
+                            <td class="text-right">{{ source.doc_count }}</td>
+                            <td class="text-right">
+                                {% if source.data_volume < 1024 %}
+                                    {{ source.data_volume }} B
+                                {% elif source.data_volume < 1024 * 1024 %}
+                                    {{ "%.2f"|format(source.data_volume / 1024) }} KB
+                                {% elif source.data_volume < 1024 * 1024 * 1024 %}
+                                    {{ "%.2f"|format(source.data_volume / (1024 * 1024)) }} MB
+                                {% else %}
+                                    {{ "%.2f"|format(source.data_volume / (1024 * 1024 * 1024)) }} GB
+                                {% endif %}
+                            </td>
+                            <td class="text-right">{{ source.chunk_count }}</td>
+                            <td class="text-right">
+                                {% if source.chunk_storage < 1024 %}
+                                    {{ source.chunk_storage }} B
+                                {% elif source.chunk_storage < 1024 * 1024 %}
+                                    {{ "%.2f"|format(source.chunk_storage / 1024) }} KB
+                                {% elif source.chunk_storage < 1024 * 1024 * 1024 %}
+                                    {{ "%.2f"|format(source.chunk_storage / (1024 * 1024)) }} MB
+                                {% else %}
+                                    {{ "%.2f"|format(source.chunk_storage / (1024 * 1024 * 1024)) }} GB
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="font-bold border-t-2">
+                            <td>{{ _('Total') }}</td>
+                            <td class="text-right">{{ total_docs }}</td>
+                            <td class="text-right">
+                                {% if total_data_volume < 1024 %}
+                                    {{ total_data_volume }} B
+                                {% elif total_data_volume < 1024 * 1024 %}
+                                    {{ "%.2f"|format(total_data_volume / 1024) }} KB
+                                {% elif total_data_volume < 1024 * 1024 * 1024 %}
+                                    {{ "%.2f"|format(total_data_volume / (1024 * 1024)) }} MB
+                                {% else %}
+                                    {{ "%.2f"|format(total_data_volume / (1024 * 1024 * 1024)) }} GB
+                                {% endif %}
+                            </td>
+                            <td class="text-right">{{ total_chunks }}</td>
+                            <td class="text-right">
+                                {% if total_chunk_storage < 1024 %}
+                                    {{ total_chunk_storage }} B
+                                {% elif total_chunk_storage < 1024 * 1024 %}
+                                    {{ "%.2f"|format(total_chunk_storage / 1024) }} KB
+                                {% elif total_chunk_storage < 1024 * 1024 * 1024 %}
+                                    {{ "%.2f"|format(total_chunk_storage / (1024 * 1024)) }} MB
+                                {% else %}
+                                    {{ "%.2f"|format(total_chunk_storage / (1024 * 1024 * 1024)) }} GB
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
+    <!-- Chart: Chats & Users -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <h3 class="card-title text-base font-medium mb-4">{{ _('Chats & Users (Last 30 Days)') }}</h3>
+            <div class="relative h-72 w-full">
+                <canvas id="chatsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart: Messages & Hits -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <h3 class="card-title text-base font-medium mb-4">{{ _('Messages & Hits (Last 30 Days)') }}</h3>
+            <div class="relative h-72 w-full">
+                <canvas id="msgsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart: Token Usage -->
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <h3 class="card-title text-base font-medium mb-4">{{ _('Token Usage (Last 30 Days)') }}</h3>
+            <div class="relative h-72 w-full">
+                <canvas id="tokensChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const labels = {{ labels|tojson }};
+
+        // Chats & Users Chart
+        const ctxChats = document.getElementById('chatsChart').getContext('2d');
+        new Chart(ctxChats, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '{{ _("Chats") }}',
+                        data: {{ data_chats|tojson }},
+                        borderColor: 'rgb(59, 130, 246)', // primary
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: '{{ _("Users") }}',
+                        data: {{ data_users|tojson }},
+                        borderColor: 'rgb(16, 185, 129)', // secondary
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+
+        // Messages & Hits Chart
+        const ctxMsgs = document.getElementById('msgsChart').getContext('2d');
+        new Chart(ctxMsgs, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '{{ _("Messages") }}',
+                        data: {{ data_msgs|tojson }},
+                        backgroundColor: 'rgba(139, 92, 246, 0.7)', // accent
+                        borderColor: 'rgb(139, 92, 246)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: '{{ _("Document Hits") }}',
+                        data: {{ data_hits|tojson }},
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)', // info
+                        borderColor: 'rgb(59, 130, 246)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+
+        // Token Usage Chart
+        const ctxTokens = document.getElementById('tokensChart').getContext('2d');
+        new Chart(ctxTokens, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: '{{ _("Tokens") }}',
+                        data: {{ data_tokens|tojson }},
+                        borderColor: 'rgb(245, 158, 11)', // warning
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            precision: 0
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+{% endblock %}

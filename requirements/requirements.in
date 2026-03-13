@@ -1,0 +1,88 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1
+torchvision==0.19.1
+torchaudio==2.4.1
+celery
+
+aiohttp
+aiohttp-jinja2==1.6
+gunicorn
+coloredlogs
+expandvars
+itsdangerous
+Jinja2==3.1.6
+passlib
+psycopg[binary,pool]
+redis
+python-dotenv
+PyYAML
+msgspec
+sentry-sdk
+WTForms
+email-validator
+greenlet
+aiohttp_session
+
+# DB
+alembic
+async_timeout
+asyncpg
+SQLAlchemy
+sqlparse
+
+# ai
+tiktoken
+openai
+spacy
+pycld2
+transformers
+sentence-transformers
+pgvector
+nemoguardrails[all]==0.18.0
+annoy==1.17.3; sys_platform == "linux"
+pypdf
+python-docx
+
+# text processing
+# for text processing
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+https://github.com/explosion/spacy-models/releases/download/ru_core_news_sm-3.8.0/ru_core_news_sm-3.8.0-py3-none-any.whl
+
+
+# fast aiohttp
+aiodns
+faust-cchardet
+uvloop
+aiohttp_tus
+
+# markdown
+Markdown==3.4.3
+Pygments==2.14.0
+pymdown-extensions==9.11
+
+# web parsing
+scrapy
+docling[rapidocr]
+# selenium
+# selenium-wire
+# news-please==1.5.35
+beautifulsoup4
+requests
+html2text
+boto3  # For S3 document crawling
+
+
+# i18n
+Babel
+
+# voice
+aiortc
+av
+faster-whisper
+
+# payments
+stripe
+
+# support
+anyascii
+python-slugify

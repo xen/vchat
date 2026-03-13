@@ -1,0 +1,93 @@
+<div
+    id="landing-topbar"
+    class="group fixed inset-x-0 z-[60] flex justify-center transition-[top] duration-500 sm:container top-0 sm:top-4">
+    <div
+        class="group-data-[at-top=false]:bg-base-100 group-data-[at-top=false]:dark:bg-base-200 flex w-full items-center justify-between px-3 py-3 transition-all duration-500 group-data-[at-top=false]:w-[800px] group-data-[at-top=false]:shadow sm:rounded-full sm:px-6 lg:py-1.5">
+        <div class="flex items-center gap-2">
+            <div class="flex-none lg:hidden">
+                <div class="drawer">
+                    <input
+                        id="landing-menu-drawer"
+                        type="checkbox"
+                        class="drawer-toggle" />
+                    <div class="drawer-content">
+                <label
+                    for="landing-menu-drawer"
+                    class="btn drawer-button btn-ghost btn-square btn-sm">
+                    <iconify-icon icon="lucide:menu" class="size-4.5"></iconify-icon>
+                </label>
+                    </div>
+                    <div class="drawer-side z-[50]">
+                        <label
+                            for="landing-menu-drawer"
+                            aria-label="{{ _('Close sidebar') }}"
+                            class="drawer-overlay"></label>
+                        <ul
+                            class="menu bg-base-100 text-base-content min-h-full w-80 p-4">
+                            <li>
+                                <a href="{{ url('index') }}">{{ _('Home') }}</a>
+                            </li>
+                            <li>
+                                <a href="{{ url('prices') }}">{{ _('Pricing') }}</a>
+                            </li>
+                            <li>
+                                <a href="/about/contact">{{ _('Contact') }}</a>
+                            </li>
+                            <li class="mt-4 border-t border-base-200 pt-4">
+                                {% if request.user %}
+                                <a href="{{ url('dashboard') }}">{{ _('Dashboard') }}</a>
+                                {% else %}
+                                <a href="{{ url('login') }}">{{ _('Login') }}</a>
+                                <a href="{{ url('register') }}">{{ _('Register') }}</a>
+                                {% endif %}
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <a href="{{ url('index') }}">
+              {% include "include/logo.html" with context%}
+            </a>
+        </div>
+        <ul class="menu menu-horizontal hidden gap-2 px-0 lg:inline-flex">
+            <li>
+                <a href="{{ url('index') }}">{{ _('Home') }}</a>
+            </li>
+            <li>
+                <a href="{{ url('prices') }}">{{ _('Pricing') }}</a>
+            </li>
+            <li>
+                <a href="/about/contact">{{ _('Contact') }}</a>
+            </li>
+        </ul>
+        <div class="inline-flex items-center gap-3">
+            {% from "macros.html" import theme_switcher, lang_switcher with context %}
+            {{ theme_switcher() }}
+            {{ lang_switcher() }}
+
+            {% if request.user %}
+            <a
+                href="{{ url('dashboard') }}"
+                class="btn from-primary to-secondary group/purchase text-primary-content btn-sm max-sm:btn-square relative gap-2 border-0 bg-linear-to-r text-sm">
+                <iconify-icon icon="lucide:layout-dashboard" class="size-4"></iconify-icon>
+                <span class="max-sm:hidden">{{ _('Dashboard') }}</span>
+            </a>
+            {% else %}
+            <a
+                href="{{ url('login') }}"
+                class="btn btn-ghost btn-sm">
+                {{ _('Login') }}
+            </a>
+            <a
+                href="{{ url('register') }}"
+                class="btn from-primary to-secondary group/purchase text-primary-content btn-sm max-sm:btn-square relative gap-2 border-0 bg-linear-to-r text-sm">
+                <iconify-icon icon="lucide:user-plus" class="size-4"></iconify-icon>
+                <span class="max-sm:hidden">{{ _('Get Started') }}</span>
+                <div
+                    class="from-primary to-secondary absolute inset-x-0 top-1 -z-1 h-8 bg-linear-to-r opacity-40 blur-md transition-all duration-500 group-hover/purchase:opacity-60 group-hover/purchase:blur-lg"></div>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>

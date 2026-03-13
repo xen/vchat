@@ -1,0 +1,147 @@
+{% extends "admin.html" %}
+{% block content %}
+
+{% from 'macros.html' import navbar_tabs with context %}
+
+<div class="flex items-center justify-between">
+    <p class="text-lg font-medium">{{ _('Project Data') }}</p>
+</div>
+
+<div class="mt-6" x-data="useProjectDataTable('{{ project.short_id }}')">
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-0">
+            <!-- Toolbar -->
+            <div class="border-base-200 flex items-center justify-between border-b border-dashed px-5 py-5">
+                <label class="input input-sm w-56">
+                    <iconify-icon icon="lucide:search" class="text-base-content/70 size-4.5"></iconify-icon>
+                    <input
+                        class="text-base placeholder:text-sm"
+                        type="search"
+                        x-model="search"
+                        @input="updateSearch"
+                        placeholder="{{ _('Search documents...') }}" />
+                </label>
+                <div class="flex items-center gap-2">
+                  <div class="join">
+                    <button hx-post="{{ url('project_actions', action='refresh_project_index', item_id=project.short_id) }}"
+                            hx-swap="none"
+                            class="btn btn-secondary btn-sm max-sm:btn-square">
+                        <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
+                        <span class="hidden sm:inline">{{ _('Update AI') }}</span>
+                    </button>
+                    <div class="dropdown dropdown-end">
+                        <button tabindex="0"
+                                type="button"
+                                class="btn btn-secondary btn-outline btn-sm max-sm:btn-square">
+                            <iconify-icon icon="lucide:ellipsis-vertical" class="size-4"></iconify-icon>
+                            <span class="sr-only">{{ _('Open menu') }}</span>
+                        </button>
+                        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box shadow z-[1] w-56 p-2">
+                            {% for source in sources %}
+                                <li>
+                                    <button type="button" class="btn btn-ghost btn-outline btn-sm max-sm:btn-square"
+                                            hx-post="{{ url('project_actions', action='refresh_source_index', item_id=source.short_id) }}"
+                                            hx-swap="none">
+                                        {{ _('Update %(title)s') % {'title': (source.title or source.uri)} }}
+                                    </button>
+                                </li>
+                            {% endfor %}
+                            <li>
+                                <button type="button" class="btn btn-secondary btn-outline btn-sm max-sm:btn-square"
+                                        hx-post="{{ url('project_actions', action='index_project', item_id=project.short_id) }}"
+                                        hx-swap="none">
+                                    {{ _('Full rebuild') }}
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                  </div>
+                     <!-- Pagination info -->
+                    <p class="text-base-content/70 text-sm" x-show="!loading">
+                        {{ _('Showing') }}
+                        <span class="text-base-content font-medium" x-text="rangeStart"></span>
+                        -
+                        <span class="text-base-content font-medium" x-text="rangeEnd"></span>
+                        {{ _('of') }}
+                        <span class="text-base-content font-medium" x-text="filteredRowCount"></span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-x-auto min-h-[300px]">
+                <div x-show="loading" class="flex justify-center items-center h-40">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                </div>
+                <table class="table" x-show="!loading">
+                    <thead x-ref="documentsHead">
+                        <template x-for="headerGroup in headerGroups" :key="headerGroup.id">
+                            <tr>
+                                <template x-for="header in headerGroup.headers" :key="header.id">
+                                    <th x-html="flexRender(header.column.columnDef.header, header.getContext())"></th>
+                                </template>
+                            </tr>
+                        </template>
+                    </thead>
+                    <tbody x-ref="documentsBody">
+                        <template x-if="visibleRows.length === 0">
+                            <tr>
+                                <td colspan="9" class="text-center text-base-content/60 py-8">
+                                    {{ _('No documents found.') }}
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="row in visibleRows" :key="row.id">
+                            <tr :class="row.original?.is_ignored ? 'bg-base-200/50 opacity-60' : ''">
+                                <template x-for="cell in row.getVisibleCells()" :key="cell.id">
+                                    <td x-html="flexRender(cell.column.columnDef.cell, cell.getContext())"></td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="border-base-200 flex items-center justify-end gap-2 border-t border-dashed p-5" x-show="!loading && pageCount > 1">
+                <div class="join">
+                    <button
+                        class="btn btn-square btn-sm btn-outline border-base-300 join-item"
+                        :disabled="!canPreviousPage"
+                        @click="prevPage()">
+                        <iconify-icon icon="lucide:arrow-left"></iconify-icon>
+                    </button>
+                    <span class="join-item btn btn-sm btn-ghost no-animation cursor-default">
+                        <span x-text="pageIndex + 1"></span> / <span x-text="pageCount"></span>
+                    </span>
+                    <button
+                        class="btn btn-square btn-sm btn-outline border-base-300 join-item"
+                        :disabled="!canNextPage"
+                        @click="nextPage()">
+                        <iconify-icon icon="lucide:arrow-right"></iconify-icon>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Document Content Modal -->
+<dialog id="document_modal" class="modal">
+    <div class="modal-box w-11/12 max-w-5xl h-[80vh] p-0 flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="font-bold text-lg">{{ _('Document Content') }}</h3>
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost">✕</button>
+            </form>
+        </div>
+        <div id="document-content" class="p-6 overflow-y-auto flex-1 prose max-w-none">
+            <!-- Content will be loaded here via HTMX -->
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>{{ _('Close') }}</button>
+    </form>
+</dialog>
+
+{% endblock %}

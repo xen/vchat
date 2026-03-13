@@ -1,0 +1,72 @@
+/* Root Styling */
+@import "./typography.css";
+@import "./tailwind.css";
+@import "./daisyui.css";
+@import "./plugins/highlight.css";
+
+/* Custom Declarations */
+@import "./core/animation.css";
+@import "./core/components.css";
+
+/* Page wise */
+@import "./pages/landing.css";
+@import "./pages/layout.css";
+@import "./pages/components.css";
+
+/* Plugin Overriding */
+/* @import "./plugins/apexcharts.css";
+@import "./plugins/carousel.css";
+@import "./plugins/filepond.css";
+@import "./plugins/flatpickr.css";
+@import "./plugins/scrollbar.css";
+@import "./plugins/select.css";
+@import "./plugins/text-editor.css"; */
+
+@import '@uppy/core/css/style.min.css';
+@import '@uppy/drag-drop/css/style.min.css';
+@import "@uppy/dashboard/css/style.css";
+
+@import "./styles.css";
+
+/****  Plugins  ****/
+/* Animations */
+@plugin "tailwindcss-motion";
+
+/* Iconify (Lucide icons) */
+/* @plugin "@iconify/tailwind4" {
+    prefixes: lucide, hugeicons, ri;
+} */
+
+@plugin "@iconify/tailwind4" {
+  prefixes: lucide;
+}
+
+/* Logo */
+
+.logo-svg {
+  /* Ensure the SVG itself is interactive to trigger hover */
+  cursor: pointer;
+}
+
+/* The blue cursor part */
+.cursor-part {
+  opacity: 1;
+}
+
+/* Define the blinking animation */
+@keyframes blink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Apply animation to the cursor part when the parent SVG is hovered */
+.logo-svg:hover .cursor-part {
+  animation: blink 1.1s step-end infinite;
+}

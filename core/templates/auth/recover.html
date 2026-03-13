@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "auth/_macros.html" import auth_page, auth_input with context %}
+
+{% block fullbody %}
+  {% if done %}
+    {% call auth_page(_('Check your email'), _('We sent you a link to reset your password. The link expires in four hours.')) %}
+      <div class="space-y-6 text-center">
+        <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <iconify-icon icon="lucide:mail-check" class="size-8"></iconify-icon>
+        </div>
+        <p class="text-base-content/70 text-sm md:text-base">
+          {{ _('If the email does not arrive shortly, check your Spam folder or request a new link.') }}
+        </p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <a href="{{ url('login') }}" class="btn btn-primary gap-2">
+            <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
+            {{ _('Back to login') }}
+          </a>
+          <a href="{{ url('resend_code') }}" class="btn btn-ghost border-base-300 gap-2">
+            <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
+            {{ _('Resend code') }}
+          </a>
+        </div>
+      </div>
+    {% endcall %}
+  {% else %}
+    {% call auth_page(_('Recover password'), _('Enter the email address associated with <br>your account to receive a reset link.')) %}
+      <form action="{{ url('recover') }}" method="POST" class="space-y-2">
+        {{ form.csrf_token }}
+
+        {% if form.csrf_token.errors %}
+          <div class="alert alert-warning">
+            {{ _('Form validation error') }}
+          </div>
+        {% endif %}
+
+        {{ auth_input(form.email, "mail", _('Email address'), 'email', 'email') }}
+
+        {% if turnstile %}
+        <div class="mt-6">
+          <div class="cf-turnstile" data-sitekey="{{ turnstile }}"></div>
+        </div>
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary mt-6 w-full gap-3">
+          <iconify-icon icon="lucide:link" class="size-4"></iconify-icon>
+          {{ _('Get recover link') }}
+        </button>
+
+        <p class="text-base-content/70 mt-6 text-center text-sm">
+          {{ _('Not yet registered?') }}
+          <a href="{{ url('register') }}" class="text-primary hover:underline">
+            {{ _('Create account') }}
+          </a>
+          <br>
+          {{ _('Already have an account?') }}
+          <a href="{{ url('login') }}" class="text-primary hover:underline">
+            {{ _('Login here') }}
+          </a>
+        </p>
+      </form>
+    {% endcall %}
+  {% endif %}
+{% endblock %}

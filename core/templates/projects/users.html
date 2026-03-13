@@ -1,0 +1,131 @@
+{% extends "admin.html" %}
+
+{% block title %}{{ _('User access') }}{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between">
+    <p class="text-lg font-medium">{{ _('Project Users') }}</p>
+</div>
+
+<div class="mt-6">
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-0">
+            <div class="flex items-center justify-between px-5 pt-5">
+                <form method="get" class="inline-flex items-center gap-3">
+                    <label class="input input-sm">
+                        <iconify-icon icon="lucide:search" class="text-base-content/80 size-3.5"></iconify-icon>
+                        <input name="q" value="{{ q or '' }}" class="w-24 sm:w-36" placeholder="{{ _('Search users') }}" aria-label="{{ _('Search users') }}" type="search" />
+                    </label>
+                    <button type="submit" class="btn btn-sm btn-ghost">{{ _('Search') }}</button>
+                </form>
+                <div class="inline-flex items-center gap-3">
+                    {% if current_user_role == 'owner' %}
+                    <button onclick="invite_user_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
+                        <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+                        <span class="hidden sm:inline">{{ _('Invite User') }}</span>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mt-4 overflow-auto">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>{{ _('User') }}</th>
+                            <th>{{ _('Email') }}</th>
+                            <th>{{ _('Role') }}</th>
+                            <th>{{ _('Action') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in users %}
+                        <tr class="hover:bg-base-200/40 cursor-pointer *:text-nowrap">
+                            <td>
+                                <div class="flex items-center space-x-3 truncate">
+                                    <img alt="{{ row.User.name }}" class="mask mask-squircle bg-base-200 size-10" src="{{ gravatar_url(row.User.email) }}" />
+                                    <div>
+                                        <p class="font-medium">{{ row.User.name }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>{{ row.User.email }}</td>
+                            <td>
+                                <span class="badge badge-sm {{ 'badge-primary' if row.ProjectUser.role == 'owner' else 'badge-ghost' }}">
+                                    {{ row.ProjectUser.role }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if current_user_role == 'owner' %}
+                                <div class="inline-flex w-fit">
+                                    <button onclick="edit_user_{{ row.ProjectUser.id }}.showModal()" class="btn btn-square btn-ghost btn-sm" aria-label="{{ _('Edit role') }}">
+                                        <iconify-icon icon="lucide:pencil" class="text-base-content/80 size-4"></iconify-icon>
+                                    </button>
+                                    <button class="btn btn-square btn-error btn-outline btn-sm border-transparent"
+                                            hx-post="{{ url('project_actions', action='delete_user', item_id=row.ProjectUser.id) }}"
+                                            hx-confirm="{{ _('Are you sure you want to remove this user?') }}"
+                                            hx-target="closest tr"
+                                            hx-swap="outerHTML">
+                                        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+                                    </button>
+                                </div>
+
+                                <!-- Edit User Modal -->
+                                <dialog id="edit_user_{{ row.ProjectUser.id }}" class="modal">
+                                    <div class="modal-box">
+                                        <h3 class="font-bold text-lg">{{ _('Edit User Role') }}</h3>
+                                        <form hx-post="{{ url('project_actions', action='edit_user', item_id=row.ProjectUser.id) }}" hx-swap="none" class="py-4">
+                                            <div class="form-control w-full">
+                                                <label class="label">
+                                                    <span class="label-text">{{ _('Role') }}</span>
+                                                </label>
+                                                <select name="role" class="select select-bordered">
+                                                    <option value="member" {% if row.ProjectUser.role == 'member' %}selected{% endif %}>{{ _('Member') }}</option>
+                                                    <option value="owner" {% if row.ProjectUser.role == 'owner' %}selected{% endif %}>{{ _('Owner') }}</option>
+                                                </select>
+                                            </div>
+                                            <div class="modal-action">
+                                                <button type="submit" class="btn btn-primary">{{ _('Save') }}</button>
+                                                <button type="button" onclick="edit_user_{{ row.ProjectUser.id }}.close()" class="btn">{{ _('Cancel') }}</button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                    <form method="dialog" class="modal-backdrop">
+                                        <button>{{ _('Close') }}</button>
+                                    </form>
+                                </dialog>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Invite User Modal -->
+<dialog id="invite_user_modal" class="modal">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg">{{ _('Invite User') }}</h3>
+        <form hx-post="{{ url('project_actions', action='invite_user', item_id=project.short_id) }}" hx-swap="none" class="py-4">
+            {{ form.csrf_token }}
+            <div class="form-control w-full mb-4">
+                <label class="label">
+                    <span class="label-text">{{ _('Email') }}</span>
+                </label>
+                <input type="email" name="email" placeholder="user@example.com" class="input input-bordered w-full" required />
+            </div>
+            <div class="modal-action">
+                <button type="submit" class="btn btn-primary">{{ _('Invite') }}</button>
+                <button type="button" onclick="invite_user_modal.close()" class="btn">{{ _('Cancel') }}</button>
+            </div>
+        </form>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>{{ _('Close') }}</button>
+    </form>
+</dialog>
+
+{% endblock %}

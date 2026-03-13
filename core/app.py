@@ -1,0 +1,153 @@
+import logging
+from datetime import datetime
+from pathlib import Path
+
+import aiohttp_jinja2
+import jinja2
+import sqlalchemy as sa
+from aiohttp import web
+from aiohttp.helpers import DEBUG
+from aiohttp.web_app import Application
+from aiohttp_tus import setup_tus
+from itsdangerous import URLSafeTimedSerializer
+from jinja2 import Environment
+from redis.asyncio import from_url as redis_from_url
+
+from core.app_keys import CONFIG_KEY, LOGGER_KEY, REDIS_KEY, SIGNER_KEY
+from core.i18n import jinja_context_processor
+from core.models import Project, ProjectUser
+from core.utils import (
+    gravatar_url,
+    login_required,
+    make_full_url,
+    paginator,
+    protect,
+    protect_timed,
+)
+from .middlewares import get_middlewares
+
+__all__ = ("create_app",)
+
+logger = logging.getLogger(__name__)
+
+
+async def create_app() -> Application:
+    from .routes import setup_routes
+    from .settings import config
+
+    redis = redis_from_url(config["redis_uri"])
+    # 5 MB should be enough for everyone // Bill Gates
+    app = web.Application(
+        client_max_size=config["max_upload_size"], middlewares=get_middlewares(config)
+    )
+    domain = None
+    if not DEBUG:
+        domain = config.get("cookie_domain")
+        if not domain:
+            logger.warning("cookie_domain must be set in production")
+
+    app[CONFIG_KEY] = config
+    app[LOGGER_KEY] = logger
+    app[REDIS_KEY] = redis
+    app[SIGNER_KEY] = URLSafeTimedSerializer(config["secret_key"])
+
+    # Setup aiotus
+    # Ensure upload directory exists
+    # We need a place to store uploads. Let's use 'media/uploads'
+    upload_dir = Path("media/uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    from core.views.projects import on_upload
+
+    setup_tus(
+        app,
+        upload_path=upload_dir,
+        upload_url=r"/uploads/{project_id:[a-zA-Z0-9]+}/",
+        upload_resource_name="tus_upload",
+        decorator=login_required(),
+        on_upload_done=on_upload,
+    )
+
+    # Setup base Jinja2
+    aiohttp_jinja2.setup(
+        app,
+        context_processors=[
+            init_jinja,
+            aiohttp_jinja2.request_processor,
+            jinja_context_processor,
+        ],
+        loader=jinja2.PackageLoader("core", "templates"),
+    )
+    app[aiohttp_jinja2.static_root_key] = "/static/"
+    try:
+        assets_dir = Path("frontend/dist/assets")
+        if assets_dir.exists():
+            latest_mtime = max(
+                (p.stat().st_mtime for p in assets_dir.glob("*") if p.is_file()),
+                default=datetime.now().timestamp(),
+            )
+            app["static_version"] = str(int(latest_mtime))
+        else:
+            app["static_version"] = str(int(datetime.now().timestamp()))
+    except Exception:
+        app["static_version"] = str(int(datetime.now().timestamp()))
+    # Add the custom filter
+    jinja_env: Environment = aiohttp_jinja2.get_env(app)
+    jinja_env.filters["protect"] = protect
+    jinja_env.filters["protect_timed"] = protect_timed
+
+    # Setup routes
+    setup_routes(app)
+
+    async def close_redis(app):
+        await app[REDIS_KEY].aclose()
+
+    async def dispose_db(app):
+        from core.db import engine
+
+        await engine.dispose()
+
+    app.on_cleanup.append(close_redis)
+    app.on_cleanup.append(dispose_db)
+
+    return app
+
+
+async def init_jinja(request):
+    def csrf_token() -> str:
+        if request.get("user"):
+            return request.app[SIGNER_KEY].dumps(request.get("user").id)
+        return ""
+
+    return {
+        "config": request.app[CONFIG_KEY],
+        "len": len,
+        "debug": DEBUG,
+        "meta": request.get("meta"),
+        "user": request.get("user"),
+        "paginate": lambda total: paginator(total, request),
+        "current_year": datetime.now().year,
+        "pretty_date": lambda date: date.strftime("%Y-%m-%d") if date else "",
+        "pretty_datetime": lambda date: (
+            date.strftime("%Y-%m-%d %H:%M:%S") if date else ""
+        ),
+        "get_flash_messages": lambda: request.get("flash_messages", []),
+        "external": lambda x, **kwargs: make_full_url(request, x, **kwargs),
+        "turnstile": request.app[CONFIG_KEY].get("turnstile_site_key", ""),
+        "projects": await get_projects(request),
+        "url_for": lambda x, **kwargs: request.app.router[x].url_for(**kwargs),
+        "csrf_token": csrf_token,
+        "gravatar_url": gravatar_url,
+        "core_chat": request.app[CONFIG_KEY].get("core_chat", ""),
+        "static_version": request.app.get("static_version", ""),
+    }
+
+
+async def get_projects(request):
+    if request.get("user"):
+        result = await request["db"].execute(
+            sa.select(Project)
+            .join(ProjectUser)
+            .where(ProjectUser.user_id == request["user"].id)
+        )
+        return result.scalars().all()
+    return []

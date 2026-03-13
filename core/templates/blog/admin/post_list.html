@@ -1,0 +1,127 @@
+{% extends "admin.html" %}
+
+{% set page_title = _("Blog Posts") %}
+
+{% block sidebar %}
+  {% include "include/admin/user_sidebar.html" with context %}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold">{{ _('Blog Posts') }}</h1>
+    <a href="{{ url('edit_post_edit', post_id='+new') }}" class="btn btn-primary">
+      <iconify-icon icon="lucide:plus" class="mr-2"></iconify-icon>
+      {{ _('Add Post') }}
+    </a>
+  </div>
+
+  <div class="bg-base-100 rounded-lg shadow p-4 mb-6">
+    <form id='post_search' method="GET" action="{{ url('edit_post_list') }}" class="flex gap-4">
+      <div class="form-control flex-1">
+        <div class="input-group">
+          {{ form.q(class="input input-bordered w-full", placeholder=_("Search posts...")) }}
+          <button type="submit" class="btn btn-square">
+            <iconify-icon icon="lucide:search" class="size-5"></iconify-icon>
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class="overflow-x-auto bg-base-100 rounded-lg shadow">
+    <table class="table w-full">
+      <thead>
+        <tr>
+          <th>{{ _('ID') }}</th>
+          <th>{{ _('Image') }}</th>
+          <th>{{ _('Title') }}</th>
+          <th>{{ _('Category') }}</th>
+          <th>{{ _('Status') }}</th>
+          <th>{{ _('Author') }}</th>
+          <th>{{ _('Created') }}</th>
+          <th>{{ _('Actions') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for post in posts %}
+        <tr class="hover">
+          <td>{{ post.id }}</td>
+          <td>
+            {% if post.picture %}
+              <div class="avatar">
+                <div class="w-10 rounded">
+                  <img src="{{ post.picture }}" alt="{{ post.title }}" />
+                </div>
+              </div>
+            {% else %}
+              <div class="avatar placeholder">
+                <div class="bg-neutral-focus text-neutral-content rounded w-10">
+                  <span class="text-xs">{{ _('No img') }}</span>
+                </div>
+              </div>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url('edit_post_edit', post_id=post.id) }}" class="link link-hover font-bold block max-w-xs truncate">
+              {{ post.title }}
+            </a>
+          </td>
+          <td>
+            {% if post.category_title %}
+              <span class="badge badge-ghost">{{ post.category_title }}</span>
+            {% else %}
+              <span class="text-base-content/50">-</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if post.is_published %}
+              <span class="badge badge-success gap-1">
+                <iconify-icon icon="lucide:check" class="size-3"></iconify-icon>
+                {{ _('Published') }}
+              </span>
+            {% elif not post.picture %}
+               <span class="badge badge-warning gap-1">
+                <iconify-icon icon="lucide:image-off" class="size-3"></iconify-icon>
+                {{ _('No Image') }}
+              </span>
+            {% else %}
+              <span class="badge badge-neutral gap-1">
+                <iconify-icon icon="lucide:clock" class="size-3"></iconify-icon>
+                {{ _('Draft') }}
+              </span>
+            {% endif %}
+          </td>
+          <td>{{ post.author_name }}</td>
+          <td>
+            <div class="flex flex-col text-xs">
+              <span>{{ pretty_datetime(post.created_at) }}</span>
+            </div>
+          </td>
+          <td>
+            <div class="flex gap-2">
+              <a href="{{ url('edit_post_edit', post_id=post.id) }}" class="btn btn-square btn-sm btn-ghost" title="{{ _('Edit') }}">
+                <iconify-icon icon="lucide:pencil" class="size-4"></iconify-icon>
+              </a>
+              <button
+                class="btn btn-square btn-sm btn-ghost text-error"
+                title="{{ _('Delete') }}"
+                hx-delete="/api/blog/actions/delete_post/{{ post.id }}"
+                hx-confirm="{{ _('Are you sure you want to delete this post?') }}"
+                hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'
+              >
+                <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mt-4">
+    {{ paginate(total) }}
+  </div>
+</div>
+{% endblock %}

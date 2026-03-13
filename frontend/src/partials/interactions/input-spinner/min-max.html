@@ -1,0 +1,27 @@
+<div class="join flex items-start justify-center">
+    <button
+        class="btn border-base-300 btn-outline join-item btn-square"
+        data-spinner-control="min-max-spinner-demo"
+        data-steps="-1"
+        aria-label="Decrement">
+        <iconify-icon icon="lucide:minus" class="size-4"></iconify-icon>
+    </button>
+    <label class="input join-item input-bordered max-w-48">
+        <input
+            data-spinner
+            id="min-max-spinner-demo"
+            value="15"
+            min="0"
+            max="100"
+            type="number"
+            class="no-spinner"
+            aria-label="Decrement" />
+        <iconify-icon icon="lucide:percent" class="text-base-content/80 size-4"></iconify-icon>
+    </label>
+    <button
+        class="btn border-base-300 btn-outline join-item btn-square"
+        aria-label="Increment"
+        data-spinner-control="min-max-spinner-demo">
+        <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+    </button>
+</div>

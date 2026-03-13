@@ -1,0 +1,24 @@
+repos:
+  - repo: "https://github.com/pre-commit/pre-commit-hooks"
+    rev: "v6.0.0"
+    hooks:
+      - id: "end-of-file-fixer"
+        exclude: static/.*
+      - id: "trailing-whitespace"
+        exclude: static/.*
+      - id: "check-merge-conflict"
+        exclude: static/.*
+      - id: "debug-statements"
+        exclude: static/.*
+      - id: "destroyed-symlinks"
+      - id: "check-symlinks"
+        exclude: static/.*
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.14.9
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format

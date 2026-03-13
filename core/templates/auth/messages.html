@@ -1,0 +1,49 @@
+{% extends "admin.html" %}
+{% set page_title = _("Notifications") %}
+
+{% block sidebar %}
+{% include "include/admin/user_sidebar.html" with context %}
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-6">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-semibold">{{ _('Notifications') }}</h1>
+      <p class="text-base-content/70 text-sm">
+        {{ _('View your notifications.') }}
+      </p>
+    </div>
+    <form action="/api/user/actions/mark_all_read" method="POST">
+      <button type="submit" class="btn btn-outline btn-sm">
+        <iconify-icon icon="lucide:check-check"></iconify-icon>
+        {{ _('Mark all as read') }}
+      </button>
+    </form>
+  </div>
+
+  <div class="mt-6 flex flex-col gap-2">
+    {% if notifications %}
+    {% for notify in notifications %}
+    <div class="card bg-base-100 shadow-sm border border-base-200">
+      <div class="card-body p-4 flex flex-row items-center gap-4">
+        <div class="grow">
+          <div class="flex items-center gap-2 mb-1">
+            {% if not notify.is_read_status %}
+            <div class="badge badge-sm badge-error badge-outline">{{ _('New') }}</div>
+            {% endif %}
+            <span class="text-xs text-base-content/60">{{ notify.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          </div>
+          <p class="text-sm">{{ notify.body }}</p>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="alert alert-info">
+      {{ _('No notifications found.') }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

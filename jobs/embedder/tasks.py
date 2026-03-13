@@ -1,0 +1,517 @@
+import logging
+import time
+from collections import namedtuple
+from typing import List
+
+import sqlalchemy as sa
+from sentence_transformers import SentenceTransformer
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
+
+from jobs.celery import app
+from jobs.db import create_sync_engine
+from jobs.utils import send_flash_background
+from core.models import ChatMsg, Chunk, Document, Project, Source
+
+# Lazy, per-process singleton
+_embed_model = None
+
+
+def get_embed_model() -> SentenceTransformer:
+    global _embed_model
+    if _embed_model is None:
+        logging.info("Loading embedding model.")
+        _embed_model = SentenceTransformer(
+            "Qwen/Qwen3-Embedding-0.6B",
+            device="cpu",
+            tokenizer_kwargs={"padding_side": "left"},
+            trust_remote_code=True,
+        )
+        logging.info("Embedding model loaded.")
+    return _embed_model
+
+
+def make_embed_vector(text: str) -> List[float]:
+    if not text:
+        return []
+    emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
+    return emb[0].tolist()
+
+
+ChunkData = namedtuple("ChunkData", ["index", "start", "end", "text"])
+MAX_CHARS_PER_CHUNK = 4096
+
+
+def chunk_text_word_window(
+    text: str,
+    max_tokens: int = 1000,
+    overlap: int = 150,
+    max_chars: int = MAX_CHARS_PER_CHUNK,
+) -> List[ChunkData]:
+    """
+    Split text into overlapping windows by whitespace tokens.
+    Returns list of tuples: (chunk_ix, start_offset, end_offset, chunk_text),
+    where offsets are token-based indices in the original token list.
+    """
+    tokens = text.split()
+    n = len(tokens)
+    chunks: List[ChunkData] = []
+    if n == 0:
+        return chunks
+
+    i = 0
+    ix = 0
+    while i < n:
+        token = tokens[i]
+        if len(token) > max_chars:
+            for start in range(0, len(token), max_chars):
+                piece = token[start : start + max_chars]
+                chunks.append(ChunkData(ix, i, i + 1, piece))
+                ix += 1
+            i += 1
+            continue
+
+        j = i
+        char_len = 0
+        chunk_tokens: List[str] = []
+        while j < n:
+            token = tokens[j]
+            token_chars = len(token) if not chunk_tokens else len(token) + 1
+            if chunk_tokens and (
+                len(chunk_tokens) >= max_tokens or char_len + token_chars > max_chars
+            ):
+                break
+
+            if not chunk_tokens and len(token) > max_chars:
+                break  # handled at loop start on next iteration
+
+            chunk_tokens.append(token)
+            char_len += token_chars
+            j += 1
+            if len(chunk_tokens) >= max_tokens:
+                break
+
+        if not chunk_tokens:
+            # token too large, handle next iteration
+            i += 1
+            continue
+
+        piece = " ".join(chunk_tokens)
+        chunks.append(ChunkData(ix, i, j, piece))
+        ix += 1
+        if j >= n:
+            break
+        i = max(0, j - overlap)
+    return chunks
+
+
+def _fetch_document_context(session: Session, document_id: int):
+    stmt = (
+        select(Document, Source.project_id, Project.user_id)
+        .join(Source, Document.source_id == Source.id)
+        .join(Project, Source.project_id == Project.id)
+        .where(Document.id == document_id)
+    )
+    row = session.execute(stmt).first()
+    if not row:
+        logging.warning("Document %s not found", document_id)
+        return None
+
+    doc, project_id, owner_id = row
+
+    if not doc.content:
+        logging.warning("Document %s has no content", document_id)
+        return None
+
+    if doc.is_ignored:
+        logging.info("Document %s is ignored, skipping", document_id)
+        return None
+
+    if project_id is None or owner_id is None:
+        logging.error(
+            "Document %s missing project or owner data, skipping indexing",
+            document_id,
+        )
+        return None
+
+    return doc, project_id, owner_id
+
+
+def _materialize_document_chunks(
+    session: Session, doc: Document, project_id: int, owner_id: int
+) -> int:
+    chunks = chunk_text_word_window(doc.content, max_tokens=1000, overlap=150)
+    logging.info("Materializing %s chunks for Document %s", len(chunks), doc.id)
+
+    session.execute(
+        delete(Chunk).where(Chunk.document_id == doc.id, Chunk.project_id == project_id)
+    )
+
+    if not chunks:
+        logging.info("No content to index for Document %s", doc.id)
+        doc.status = "indexed"
+        session.commit()
+        return 0
+
+    user_uid = str(owner_id)
+    for c in chunks:
+        chunk = Chunk(
+            chat_id=None,
+            user_uid=user_uid,
+            msg_id=None,
+            document_id=doc.id,
+            chunk_ix=c.index,
+            start_offset=c.start,
+            end_offset=c.end,
+            content=c.text,
+            embedding=None,
+            project_id=project_id,
+        )
+        session.add(chunk)
+
+    doc.status = "added"
+    session.commit()
+    return len(chunks)
+
+
+def _process_next_pending_chunk(session: Session) -> bool:
+    stmt = (
+        select(Chunk)
+        .where(Chunk.embedding.is_(None))
+        .order_by(Chunk.document_id.asc(), Chunk.chunk_ix.asc())
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+    chunk = session.execute(stmt).scalar_one_or_none()
+    if not chunk:
+        return False
+
+    if chunk.document_id is None:
+        logging.warning("Chunk %s has no document reference, deleting", chunk.id)
+        session.delete(chunk)
+        session.commit()
+        return True
+
+    doc = session.get(Document, chunk.document_id)
+    if doc is None:
+        logging.info(
+            "Chunk %s references missing document %s, deleting",
+            chunk.id,
+            chunk.document_id,
+        )
+        session.delete(chunk)
+        session.commit()
+        return True
+
+    chunk_size = len(chunk.content or "")
+    start_time = time.monotonic()
+    logging.info(
+        "Embedding chunk doc_id=%s ix=%s size=%s chars",
+        chunk.document_id,
+        chunk.chunk_ix,
+        chunk_size,
+    )
+
+    vec = make_embed_vector(chunk.content)
+    chunk.embedding = vec
+    session.flush()
+
+    remaining = session.execute(
+        sa.select(sa.func.count(Chunk.id)).where(
+            Chunk.document_id == chunk.document_id,
+            Chunk.project_id == chunk.project_id,
+            Chunk.embedding.is_(None),
+        )
+    ).scalar_one()
+
+    if remaining == 0:
+        doc.status = "indexed"
+
+    session.commit()
+    duration = time.monotonic() - start_time
+    logging.info(
+        "Embedded chunk %s (doc_id=%s ix=%s) in %.2fs; %s remaining",
+        chunk.id,
+        chunk.document_id,
+        chunk.chunk_ix,
+        duration,
+        remaining,
+    )
+    return True
+
+
+def _index_document_chunks(
+    session: Session, doc: Document, project_id: int, owner_id: int
+) -> bool:
+    chunk_count = _materialize_document_chunks(session, doc, project_id, owner_id)
+    if chunk_count == 0:
+        return False
+
+    pending_chunks.delay()
+    return True
+
+
+def _index_document_inner(session: Session, document_id: int) -> bool:
+    context = _fetch_document_context(session, document_id)
+    if not context:
+        return False
+
+    doc, project_id, owner_id = context
+    return _index_document_chunks(session, doc, project_id, owner_id)
+
+
+@app.task(name="jobs.embedder.tasks.index_chat_message", queue="embeddings")
+def index_chat_message(msg_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            stmt = select(ChatMsg).where(ChatMsg.id == msg_id)
+            msg = session.scalar(stmt)
+
+            if not msg:
+                logging.warning("ChatMsg %s not found", msg_id)
+                return
+
+            if not msg.project_id:
+                logging.info("ChatMsg %s has no project_id, skipping indexing", msg_id)
+                return
+
+            text = msg.text or ""
+            chunks = chunk_text_word_window(text)
+
+            session.execute(
+                delete(Chunk).where(
+                    Chunk.msg_id == msg_id, Chunk.project_id == msg.project_id
+                )
+            )
+
+            if not chunks:
+                logging.info("No content to index for ChatMsg %s", msg_id)
+                session.commit()
+                return
+
+            for c in chunks:
+                vec = make_embed_vector(c.text)
+                chunk = Chunk(
+                    chat_id=msg.chat_id,
+                    user_uid=msg.user_uid,
+                    msg_id=msg.id,
+                    document_id=None,
+                    chunk_ix=c.index,
+                    start_offset=c.start,
+                    end_offset=c.end,
+                    content=c.text,
+                    embedding=vec,
+                    project_id=msg.project_id,
+                )
+                session.add(chunk)
+
+            session.commit()
+            logging.info("Indexed ChatMsg %s into %d chunks", msg_id, len(chunks))
+    finally:
+        engine.dispose()
+
+
+@app.task(name="jobs.embedder.tasks.index_document", queue="embeddings")
+def index_document(document_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            _index_document_inner(session, document_id)
+    finally:
+        engine.dispose()
+
+
+@app.task(name="jobs.embedder.tasks.pending_chunks", queue="embeddings")
+def pending_chunks():
+    engine = create_sync_engine()
+    processed = 0
+    try:
+        with Session(bind=engine) as session:
+            while _process_next_pending_chunk(session):
+                processed += 1
+    finally:
+        engine.dispose()
+
+    logging.info("Processed %s pending chunks", processed)
+    return processed
+
+
+@app.task(name="jobs.embedder.tasks.index_project", queue="embeddings")
+def index_project(project_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            stmt = (
+                select(Document.id)
+                .join(Source, Document.source_id == Source.id)
+                .where(Source.project_id == project_id)
+                .where(Document.is_ignored == False)
+            )
+            doc_ids = session.execute(stmt).scalars().all()
+    finally:
+        engine.dispose()
+
+    logging.info(
+        "Scheduling indexing for %s documents in project %s",
+        len(doc_ids),
+        project_id,
+    )
+
+    for doc_id in doc_ids:
+        index_document.delay(doc_id)
+
+
+@app.task(name="jobs.embedder.tasks.refresh_project_index", queue="embeddings")
+def refresh_project_index(project_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            chunk_counts = (
+                sa.select(
+                    Chunk.document_id,
+                    sa.func.count(Chunk.id).label("chunk_count"),
+                )
+                .join(Document, Chunk.document_id == Document.id)
+                .join(Source, Document.source_id == Source.id)
+                .where(Source.project_id == project_id)
+                .group_by(Chunk.document_id)
+                .subquery()
+            )
+
+            docs_without_chunks = (
+                session.execute(
+                    sa.select(Document.id)
+                    .join(Source, Document.source_id == Source.id)
+                    .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
+                    .where(Source.project_id == project_id)
+                    .where(Document.is_ignored == False)
+                    .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
+                )
+                .scalars()
+                .all()
+            )
+
+            for doc_id in docs_without_chunks:
+                logging.info("Scheduling document %s for refresh indexing", doc_id)
+                index_document.delay(doc_id)
+
+            ignored_doc_ids = (
+                session.execute(
+                    sa.select(Document.id)
+                    .join(Source, Document.source_id == Source.id)
+                    .where(Source.project_id == project_id, Document.is_ignored == True)
+                )
+                .scalars()
+                .all()
+            )
+
+            if ignored_doc_ids:
+                logging.info(
+                    "Removing %s chunk sets for ignored documents",
+                    len(ignored_doc_ids),
+                )
+                session.execute(
+                    sa.delete(Chunk).where(Chunk.document_id.in_(ignored_doc_ids))
+                )
+
+            owner_id = (
+                session.execute(
+                    sa.select(Project.user_id).where(Project.id == project_id)
+                )
+            ).scalar_one_or_none()
+
+            if owner_id is not None:
+                dangling_chunk_ids = (
+                    session.execute(
+                        sa.select(Chunk.id)
+                        .outerjoin(Document, Chunk.document_id == Document.id)
+                        .where(Chunk.document_id.isnot(None))
+                        .where(Document.id.is_(None))
+                        .where(Chunk.user_uid == str(owner_id))
+                    )
+                    .scalars()
+                    .all()
+                )
+
+                if dangling_chunk_ids:
+                    logging.info(
+                        "Cleaning up %s chunk records for deleted documents",
+                        len(dangling_chunk_ids),
+                    )
+                    session.execute(
+                        sa.delete(Chunk).where(Chunk.id.in_(dangling_chunk_ids))
+                    )
+
+            session.commit()
+    finally:
+        engine.dispose()
+
+    if owner_id:
+        send_flash_background(owner_id, "Project index updated", "success")
+
+
+@app.task(name="jobs.embedder.tasks.refresh_source_index", queue="embeddings")
+def refresh_source_index(source_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            source = session.get(Source, source_id)
+            if not source:
+                logging.warning("Source %s not found", source_id)
+                return
+
+            chunk_counts = (
+                sa.select(
+                    Chunk.document_id,
+                    sa.func.count(Chunk.id).label("chunk_count"),
+                )
+                .join(Document, Chunk.document_id == Document.id)
+                .where(Document.source_id == source_id)
+                .group_by(Chunk.document_id)
+                .subquery()
+            )
+
+            docs_without_chunks = (
+                session.execute(
+                    sa.select(Document.id)
+                    .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
+                    .where(Document.source_id == source_id)
+                    .where(Document.is_ignored == False)
+                    .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
+                )
+                .scalars()
+                .all()
+            )
+
+            for doc_id in docs_without_chunks:
+                logging.info(
+                    "Scheduling document %s for refresh indexing (source %s)",
+                    doc_id,
+                    source_id,
+                )
+                index_document.delay(doc_id)
+
+            ignored_doc_ids = (
+                session.execute(
+                    sa.select(Document.id).where(
+                        Document.source_id == source_id, Document.is_ignored == True
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if ignored_doc_ids:
+                logging.info(
+                    "Removing %s chunk sets for ignored documents in source %s",
+                    len(ignored_doc_ids),
+                    source_id,
+                )
+                session.execute(
+                    sa.delete(Chunk).where(Chunk.document_id.in_(ignored_doc_ids))
+                )
+
+            session.commit()
+    finally:
+        engine.dispose()

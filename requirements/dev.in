@@ -1,0 +1,32 @@
+-r requirements.txt
+
+pip-tools
+setuptools
+wheel
+# translation and AI
+polib
+tqdm
+
+## QA
+pre-commit
+ruff
+import-linter[toml]
+bandit
+
+# test
+pytest
+pytest-cov
+pytest-env
+
+# from old file
+coloredlogs
+pre-commit
+coverage[toml]
+MonkeyType
+pytest-aiohttp
+pyquery
+pytest
+pytest-cov
+pytest-env
+rope
+watchdog[watchmedo]

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "auth/_macros.html" import auth_page, auth_input with context %}
+
+{% block fullbody %}
+  {% if done %}
+    {% call auth_page(_('Confirm your email'), _('We have sent another confirmation link to your inbox.')) %}
+      <div class="space-y-6 text-center">
+        <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-success/10 text-success">
+          <iconify-icon icon="lucide:mail-check" class="size-8"></iconify-icon>
+        </div>
+        <p class="text-base-content/70 text-sm md:text-base">
+          {{ _('If the message does not arrive within a minute, check your Spam folder or try again later.') }}
+        </p>
+        <div class="flex flex-wrap justify-center gap-3">
+          <a href="{{ url('login') }}" class="btn btn-primary gap-2">
+            <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
+            {{ _('Enter') }}
+          </a>
+          <a href="{{ url('register') }}" class="btn btn-ghost border-base-300 gap-2">
+            <iconify-icon icon="lucide:user-plus" class="size-4"></iconify-icon>
+            {{ _('Create account') }}
+          </a>
+        </div>
+      </div>
+    {% endcall %}
+  {% else %}
+    {% call auth_page(_('Reactivate user profile'), _('Enter your email address and we will send you a fresh confirmation link.')) %}
+      <form action="{{ url('resend_code') }}" method="POST" class="space-y-2">
+        {{ form.csrf_token }}
+
+        {% if form.csrf_token.errors %}
+          <div class="alert alert-warning">
+            {{ _('Form validation error') }}
+          </div>
+        {% endif %}
+
+        {{ auth_input(form.email, "mail", _('Email address'), 'email', 'email') }}
+
+        <button type="submit" class="btn btn-primary btn-wide mt-6 w-full gap-3">
+          <iconify-icon icon="lucide:refresh-ccw" class="size-4"></iconify-icon>
+          {{ _('Re-send activation link') }}
+        </button>
+
+        <p class="text-base-content/70 mt-6 text-center text-sm">
+          {{ _('Not yet registered?') }}
+          <a href="{{ url('register') }}" class="text-primary hover:underline">
+            {{ _('Create account') }}
+          </a>
+          <br>
+          {{ _('Already have an account?') }}
+          <a href="{{ url('login') }}" class="text-primary hover:underline">
+            {{ _('Login here') }}
+          </a>
+        </p>
+      </form>
+    {% endcall %}
+  {% endif %}
+{% endblock %}

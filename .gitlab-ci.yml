@@ -1,0 +1,73 @@
+.x-commit-cache: &commit_cache
+  key:
+    files:
+      - "requirements/requirements.txt"
+  paths:
+    - "${CI_PROJECT_DIR}/.cache"
+  policy: pull-push
+
+stages:
+  - test
+  - deploy
+
+before_script:
+  - make setup
+
+ruff lint:
+  stage: test
+  cache:
+    <<: *commit_cache
+  allow_failure: true
+  script:
+    - . venv/bin/activate && ruff check core/ --output-format=gitlab > code-quality-report.json
+  artifacts:
+    reports:
+      codequality: $CI_PROJECT_DIR/code-quality-report.json
+
+ruff format:
+  stage: test
+  cache:
+    <<: *commit_cache
+  script:
+    - . venv/bin/activate && ruff format --diff core/
+
+# mypy:
+#   stage: test
+#   cache:
+#     <<: *commit_cache
+#   allow_failure: true
+#   script:
+#     - . venv/bin/activate && mypy --explicit-package-bases core/
+
+bandit:
+  stage: test
+  cache:
+    <<: *commit_cache
+  allow_failure: true
+  script:
+    - . venv/bin/activate && bandit -r core/ --quiet
+
+.deploy_script: &deploy_script |
+  ssh "deploy@cdn.okumy.com" <<EOF
+    set -e
+    PROJ_DIR="/var/www/core"
+    echo "Deployment path: \$PROJ_DIR"
+    cd "\$PROJ_DIR"
+    if [ ! -d .git ]; then
+      git clone git@venv.dev:core/pusk.git .
+    else
+      git reset --hard
+      git pull origin master
+    fi
+    source ~/.profile
+    ./bin/deploy.sh
+  EOF
+
+# Additional deploy_new job
+deploy:
+  stage: deploy
+  script: *deploy_script
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      when: always
+    - when: never

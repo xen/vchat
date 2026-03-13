@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% from "auth/_macros.html" import auth_page, auth_input with context %}
+
+{% block fullbody %}
+{% call auth_page(_('Login'), _('To get access to your projects use this login form.')) %}
+<form action="{{ url('login') }}" method="POST" class="space-y-2">
+  {{ form.csrf_token }}
+
+  {% if form.csrf_token.errors %}
+  <div class="alert alert-error">
+    {{ form.csrf_token.errors[0] }}
+  </div>
+  {% endif %}
+
+  {{ auth_input(form.email, "mail", _('Email address'), 'email', 'email') }}
+  {{ auth_input(form.password, "key-round", _('Password'), 'password', 'current-password') }}
+
+  <div class="mt-3 text-end text-sm">
+    <a class="text-primary hover:underline" href="{{ url('recover') }}">
+      {{ _('Forgot password?') }}
+    </a>
+  </div>
+
+  {% if turnstile %}
+  <div class="mt-6">
+    <div class="cf-turnstile" data-sitekey="{{ turnstile }}"></div>
+  </div>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
+
+  <button type="submit" class="btn btn-primary mt-6 w-full gap-3">
+    <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
+    {{ _('Login to your account') }}
+  </button>
+
+  <p class="text-base-content/70 mt-6 text-center text-sm">
+    {{ _('Not yet registered?') }}
+    <a class="text-primary hover:underline" href="{{ url('register') }}">
+      {{ _('Create account') }}
+    </a>
+  </p>
+</form>
+{% endcall %}
+{% endblock %}

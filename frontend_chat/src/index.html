@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat</title>
+    <link rel="stylesheet" href="./chat.css" />
+  </head>
+  <body class="flex flex-col h-[100dvh] bg-base-100 text-base-content antialiased overflow-hidden">
+
+    <!-- Navbar -->
+    <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
+      <div class="flex-1 gap-2 items-center">
+        <div class="avatar placeholder">
+            <div class="bg-neutral text-neutral-content w-8 rounded-full">
+              <span class="text-xs">AI</span>
+            </div>
+        </div>
+        <div class="flex flex-col">
+            <span class="font-bold text-sm leading-tight">Virtual Assistant</span>
+            <span class="text-xs opacity-60 leading-tight">Project Helper</span>
+        </div>
+      </div>
+      <div class="flex-none">
+        <button class="btn btn-sm btn-square btn-ghost" aria-label="Close chat">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Chat Log -->
+    <main id="log" class="flex-1 overflow-y-auto w-full p-4 space-y-4 scroll-smooth">
+
+      <!-- Welcome -->
+      <div class="chat chat-start">
+        <div class="chat-header text-xs opacity-50 mb-1">
+          Assistant
+        </div>
+        <div class="chat-bubble chat-bubble-base-200">
+          Hello! How can I help you with your project today?
+        </div>
+      </div>
+
+      <!-- User Message -->
+      <div class="chat chat-end">
+        <div class="chat-bubble chat-bubble-primary text-primary-content">
+          I need to find the latest reports from the system.
+        </div>
+      </div>
+
+      <!-- Bot Message with Code/Markdown -->
+      <div class="chat chat-start">
+        <div class="chat-bubble chat-bubble-base-200 w-full max-w-sm sm:max-w-md md:max-w-lg">
+          <div class="markdown-body">
+            <p>You can find the reports in the <code>/reports</code> directory.</p>
+            <pre><code>cd /var/www/reports
+ls -la</code></pre>
+          </div>
+        </div>
+        <div class="chat-footer opacity-50 flex gap-2 items-center mt-1">
+             <button class="btn btn-ghost btn-xs btn-square text-success" aria-label="Upvote">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
+             </button>
+             <button class="btn btn-ghost btn-xs btn-square" aria-label="Downvote">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" /></svg>
+             </button>
+        </div>
+      </div>
+
+      <!-- User Follow up -->
+      <div class="chat chat-end">
+         <div class="chat-bubble chat-bubble-primary text-primary-content">
+          Can show me the sources?
+        </div>
+      </div>
+
+      <!-- Bot with Sources -->
+      <div class="chat chat-start">
+        <div class="chat-bubble chat-bubble-base-200">
+          <p>Sure, here is what I found based on the documentation.</p>
+          <div class="divider my-1"></div>
+          <div class="flex flex-col gap-1 text-xs">
+            <div class="font-bold opacity-70">Sources</div>
+            <a href="#" class="link link-hover link-primary inline-flex items-center gap-1 bg-base-100/50 p-1 rounded border border-base-content/10">
+                📄 user_guide.pdf
+            </a>
+            <a href="#" class="link link-hover link-primary inline-flex items-center gap-1 bg-base-100/50 p-1 rounded border border-base-content/10">
+                🔗 api_docs.html
+            </a>
+          </div>
+        </div>
+      </div>
+
+       <!-- Bot with Chips -->
+      <div class="chat chat-start">
+         <div class="chat-bubble chat-bubble-base-200">
+            What would you like to do next?
+        </div>
+      </div>
+      <div class="pl-12 flex flex-wrap gap-2">
+            <button class="btn btn-xs btn-outline bg-base-100">
+                Generate Summary
+            </button>
+            <button class="btn btn-xs btn-outline bg-base-100">
+                Export Data
+            </button>
+      </div>
+
+      <!-- Loading -->
+      <div class="chat chat-start">
+        <div class="chat-bubble chat-bubble-base-200">
+            <span class="loading loading-dots loading-sm"></span>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Footer Input -->
+    <div class="flex-none w-full bg-base-100 p-4 border-t border-base-200">
+        <form id="composer" class="relative w-full">
+            <textarea
+                id="prompt"
+                class="textarea textarea-bordered textarea-md w-full pr-12 resize-none bg-base-100 focus:outline-none"
+                rows="2"
+                placeholder="Type your message..."></textarea>
+            <button
+                type="submit"
+                class="btn btn-circle btn-sm btn-primary absolute bottom-3 right-3"
+                aria-label="Send">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 rotate-90 sm:translate-x-0.5">
+                  <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.89 28.89 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
+                </svg>
+            </button>
+        </form>
+        <div id="status" class="text-xs text-center mt-2 opacity-50">
+            <span class="badge badge-xs badge-success mr-1"></span> Connected
+        </div>
+    </div>
+
+    <script type="module" src="./chat.js"></script>
+  </body>
+</html>

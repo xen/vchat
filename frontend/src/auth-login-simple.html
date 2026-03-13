@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en" class="group/html">
+    <head>
+        <title>Nexus (HTML - DaisyUI)</title>
+
+        <load src="partials/head.html" />
+    </head>
+
+    <body>
+        <!--  Start: Layout - Main -->
+
+<div class="relative z-10 container py-28 xl:py-40">
+    <div class="flex flex-col items-center">
+
+        <div class="grid grid-cols-12 overflow-auto sm:h-screen">
+
+            <div class="col-span-12">
+                <div class="flex flex-col items-stretch p-6 md:p-8 lg:p-16">
+                    <div class="flex items-center justify-between">
+                        <a href="./dashboards-ecommerce.html">
+                            <load src="partials/logo.html" />
+                        </a>
+                        <load
+                            src="partials/theme-toggle.html"
+                            class="btn btn-circle btn-outline border-base-300 relative overflow-hidden" />
+                    </div>
+                    <h3 class="mt-8 text-center text-xl font-semibold md:mt-12 lg:mt-24">Login</h3>
+                    <h3 class="text-base-content/70 mt-2 text-center text-sm">
+                        Seamless Access, Secure Connection: Your Gateway to a Personalized
+                        Experience.
+                    </h3>
+                    <div class="mt-6 md:mt-10">
+                        <fieldset class="fieldset">
+                            <legend class="fieldset-legend">Email Address</legend>
+                            <label class="input w-full focus:outline-0">
+                                <iconify-icon icon="lucide:mail" class="text-base-content/80 size-5"></iconify-icon>
+                                <input
+                                    class="grow focus:outline-0"
+                                    placeholder="Email Address"
+                                    type="email" />
+                            </label>
+                        </fieldset>
+                        <fieldset class="fieldset" x-data="{ show: false }">
+                            <legend class="fieldset-legend">Password</legend>
+                            <label class="input w-full focus:outline-0">
+                                <iconify-icon icon="lucide:key-round" class="text-base-content/80 size-5"></iconify-icon>
+                                <input
+                                    class="grow focus:outline-0"
+                                    placeholder="Password"
+                                    id="password"
+                                    :type="show ? 'text' : 'password'" />
+                                <label
+                                    class="swap btn btn-xs btn-ghost btn-circle text-base-content/60">
+                                    <input
+                                        type="checkbox"
+                                        x-model="show"
+                                        aria-label="Show password" />
+                                    <iconify-icon icon="lucide:eye" class="swap-off size-4"></iconify-icon>
+                                    <iconify-icon icon="lucide:eye-off" class="swap-on size-4"></iconify-icon>
+                                </label>
+                            </label>
+                        </fieldset>
+                        <div class="text-end">
+                            <a
+                                class="label-text text-base-content/80 text-xs"
+                                href="./auth-forgot-password.html">
+                                Forgot Password?
+                            </a>
+                        </div>
+                        <div class="mt-4 flex items-center gap-3 md:mt-6">
+                            <input
+                                class="checkbox checkbox-sm checkbox-primary"
+                                aria-label="Checkbox example"
+                                id="agreement"
+                                type="checkbox" />
+                            <label for="agreement" class="text-sm">
+                                I agree with
+                                <span class="text-primary ms-1 cursor-pointer hover:underline">
+                                    terms and conditions
+                                </span>
+                            </label>
+                        </div>
+                        <a
+                            class="btn btn-primary btn-wide mt-4 max-w-full gap-3 md:mt-6"
+                            href="./dashboards-ecommerce.html">
+                            <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
+                            Login
+                        </a>
+                        <button
+                            class="btn btn-ghost btn-wide border-base-300 mt-4 max-w-full gap-3">
+                            <img class="size-6" alt="" src="/images/brand-logo/google-mini.svg" />
+                            Login with Google
+                        </button>
+                        <p class="text-base-content/80 mt-4 text-center text-sm md:mt-6">
+                            Haven't account
+                            <a
+                                class="text-primary ms-1 hover:underline"
+                                href="./auth-register.html">
+                                Create One
+                            </a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+</div>
+</div>
+        <!--  End: Layout - Main -->
+
+        <load src="partials/footer-scripts.html" />
+    </body>
+</html>

@@ -1,0 +1,157 @@
+<button
+    role="button"
+    class="btn btn-circle btn-soft"
+    aria-label="Notifications"
+    onclick="document.getElementById('search-modal-demo-2').showModal()">
+    <iconify-icon icon="lucide:search" class="size-5"></iconify-icon>
+</button>
+
+<dialog id="search-modal-demo-2" class="modal p-0">
+    <div class="modal-box bg-transparent p-0 shadow-none">
+        <div class="bg-base-100 rounded-box">
+            <div class="input w-full border-0 !outline-none">
+                <iconify-icon icon="lucide:search" class="text-base-content/60 size-4.5"></iconify-icon>
+                <input
+                    class="grow"
+                    placeholder="Search files, folders, or tags"
+                    aria-label="Search"
+                    type="search" />
+                <form method="dialog">
+                    <button class="btn btn-xs btn-circle btn-ghost" aria-label="Close">
+                        <iconify-icon icon="lucide:x" class="text-base-content/80 size-4"></iconify-icon>
+                    </button>
+                </form>
+            </div>
+        </div>
+        <div class="bg-base-100 rounded-box mt-4">
+            <div class="px-5 py-3">
+                <div class="mt-2 flex flex-wrap gap-2">
+                    <select class="select select-sm w-24">
+                        <option disabled="" value="-1" selected="">Sort by</option>
+                        <option>Name</option>
+                        <option>Last Modified</option>
+                        <option>Type</option>
+                    </select>
+                    <select class="select select-sm w-24">
+                        <option disabled="" value="-1" selected="">Type</option>
+                        <option>Documents</option>
+                        <option>Folders</option>
+                        <option>Shared</option>
+                    </select>
+                    <select class="select select-sm w-24">
+                        <option disabled="" value="-1" selected="">Owner</option>
+                        <option>Me</option>
+                        <option>Team</option>
+                        <option>External</option>
+                    </select>
+                </div>
+            </div>
+            <ul class="menu menu-sm w-full pt-0">
+                <li class="menu-title">Recent searches</li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:clock" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">Quarterly Report.pdf</p>
+                        <span class="text-xs opacity-60">2 hours ago</span>
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:clock" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">Brand Guidelines</p>
+                        <span class="text-xs opacity-60">Today, 9:12 AM</span>
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:clock" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">Invoices Folder</p>
+                        <span class="text-xs opacity-60">Yesterday</span>
+                    </div>
+                </li>
+            </ul>
+            <hr class="border-base-300 h-px border-dashed" />
+            <ul class="menu w-full pt-1">
+                <li class="menu-title">Files &amp; Folders</li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:file-text" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">Invoice_March2025.pdf</p>
+                        <div class="badge badge-sm gap-1.5">
+                            <iconify-icon icon="lucide:calendar" class="size-3"></iconify-icon>
+                            Finance
+                        </div>
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:folder" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">Marketing Assets</p>
+                        <div class="badge badge-sm gap-1.5">
+                            <iconify-icon icon="lucide:users" class="size-3"></iconify-icon>
+                            Shared
+                        </div>
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:file-spreadsheet" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">Q2_Expenses.xlsx</p>
+                        <div class="badge badge-sm gap-1.5">
+                            <iconify-icon icon="lucide:bar-chart" class="size-3"></iconify-icon>
+                            Reports
+                        </div>
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:folder" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">Archived Projects</p>
+                        <div class="badge badge-sm gap-1.5">
+                            <iconify-icon icon="lucide:archive" class="size-3"></iconify-icon>
+                            Internal
+                        </div>
+                    </div>
+                </li>
+                <li>
+                    <div>
+                        <iconify-icon icon="lucide:file-image" class="size-4 opacity-80"></iconify-icon>
+                        <p class="text-sm">UI_Screens_2025.png</p>
+                        <div class="badge badge-sm gap-1.5">
+                            <iconify-icon icon="lucide:brush" class="size-3"></iconify-icon>
+                            Design
+                        </div>
+                    </div>
+                </li>
+            </ul>
+            <div class="border-base-300 flex items-center gap-3 border-t p-3">
+                <div class="flex items-center gap-0.5">
+                    <div
+                        class="border-base-300 bg-base-200 flex size-5 items-center justify-center rounded-sm border shadow-xs">
+                        <iconify-icon icon="lucide:arrow-up" class="size-3.5"></iconify-icon>
+                    </div>
+                    <div
+                        class="border-base-300 bg-base-200 flex size-5 items-center justify-center rounded-sm border shadow-xs">
+                        <iconify-icon icon="lucide:arrow-down" class="size-3.5"></iconify-icon>
+                    </div>
+                    <p class="text-base-content/80 ms-1 text-sm">Navigate</p>
+                </div>
+                <div class="flex items-center gap-0.5">
+                    <div
+                        class="border-base-300 bg-base-200 flex size-5 items-center justify-center rounded-sm border shadow-xs">
+                        <iconify-icon icon="lucide:corner-down-left" class="size-3.5"></iconify-icon>
+                    </div>
+                    <p class="text-base-content/80 ms-1 text-sm">Open</p>
+                </div>
+                <div class="ms-auto flex items-center gap-0.5">
+                    <div
+                        class="border-base-300 bg-base-200 flex h-5 items-center justify-center rounded-sm border px-1 text-sm/none shadow-xs">
+                        esc
+                    </div>
+                    <p class="text-base-content/80 ms-1 text-sm">Close</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>

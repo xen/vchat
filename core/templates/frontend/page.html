@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.title }}{% endblock title %}
+
+{% block meta %}
+<link rel="canonical" href="{{ external('page', page=request.match_info.get('page', 'index')) }}" />
+{% endblock meta %}
+
+{% block content %}
+
+
+<div class="bg-base-100 text-base-content">
+  <!-- Main Content Container matching Scalo design -->
+  <div class="container relative z-10 px-4 pt-24 mx-auto md:pt-32 lg:px-0">
+    <!-- Article Header -->
+    <!-- Featured Image placeholder (optional, can be added if meta has image) -->
+    {% if meta.image %}
+      <div class="mb-10 overflow-hidden rounded-2xl">
+        <img src="{{ meta.image }}" alt="{{ meta.title }}" class="w-full object-cover" />
+      </div>
+    {% endif %}
+
+    <!-- Content -->
+    <article class="prose prose-lg mx-auto w-full max-w-none dark:prose-invert">
+        {{ content|safe }}
+    </article>
+
+    <hr class="my-12 border-t border-base-200" />
+  </div>
+
+  <div class="bg-base-100">
+    <div class="container mx-auto px-4 pb-24">
+      <div class="mx-auto max-w-2xl text-center">
+        <p class="text-lg font-normal text-base-content/70 sm:text-xl">
+          {{ _('If you have any questions or need help, please') }}
+          <a href="/about/contact" class="font-semibold text-base-content hover:text-primary decoration-2 underline-offset-2 hover:underline">
+              {{ _('contact') }}
+          </a>
+          {{ _('our team.') }}
+        </p>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+{% endblock %}

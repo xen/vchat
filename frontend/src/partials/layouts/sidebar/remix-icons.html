@@ -1,0 +1,74 @@
+<div class="sidebar-menu relative flex h-full w-full flex-col py-3">
+    <label
+        for="layout-sidebar-hover-trigger"
+        title="Toggle sidebar hover"
+        class="btn btn-circle btn-ghost btn-sm text-base-content/50 absolute end-2 top-3.5 max-lg:hidden">
+        <iconify-icon icon="lucide:panel-left-close" class="absolute size-4.5 opacity-100 transition-all duration-300 group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:opacity-0"></iconify-icon>
+        <iconify-icon icon="lucide:panel-left-dashed" class="absolute size-4.5 opacity-0 transition-all duration-300 group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:opacity-100"></iconify-icon>
+    </label>
+    <div class="flex min-h-10 items-center gap-3 px-5">
+        <span class="text-xl font-semibold">ACME Inc</span>
+        <hr class="border-base-300 h-5 border-e" />
+        <p class="text-base-content/50 text-sm font-medium">Open</p>
+    </div>
+    <div class="custom-scrollbar grow overflow-auto">
+        <div class="mt-3 space-y-0.5 px-2.5">
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:dashboard-line" class="size-4"></iconify-icon>
+                <p>Dashboard</p>
+            </a>
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:bar-chart-2-line" class="size-4"></iconify-icon>
+                <p>Analytics</p>
+            </a>
+        </div>
+        <p class="menu-label mt-4 px-5">E-commerce</p>
+        <div class="mt-1 space-y-0.5 px-2.5">
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:box-3-line" class="size-4"></iconify-icon>
+                <p>Products</p>
+            </a>
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:shopping-cart-line" class="size-4"></iconify-icon>
+                <p>Orders</p>
+            </a>
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:user-line" class="size-4"></iconify-icon>
+                <p>Customers</p>
+            </a>
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:price-tag-3-line" class="size-4"></iconify-icon>
+                <p>Discounts</p>
+            </a>
+        </div>
+        <p class="menu-label mt-4 px-5">Content &amp; Design</p>
+        <div class="mt-1 space-y-0.5 px-2.5">
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:file-text-line" class="size-4"></iconify-icon>
+                <p>Pages</p>
+            </a>
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:image-line" class="size-4"></iconify-icon>
+                <p>Media</p>
+            </a>
+            <a href="#" class="menu-item">
+                <iconify-icon icon="ri:palette-line" class="size-4"></iconify-icon>
+                <p>Themes</p>
+            </a>
+        </div>
+    </div>
+    <div class="mt-4 px-2.5">
+        <a href="#" class="menu-item">
+            <iconify-icon icon="ri:user-3-line" class="size-4"></iconify-icon>
+            <p>My Profile</p>
+        </a>
+        <a href="#" class="menu-item">
+            <iconify-icon icon="ri:settings-3-line" class="size-4"></iconify-icon>
+            <p>Settings</p>
+        </a>
+        <a href="#" class="menu-item">
+            <iconify-icon icon="ri:logout-box-line" class="size-4"></iconify-icon>
+            <p>Sign Out</p>
+        </a>
+    </div>
+</div>

@@ -1,0 +1,110 @@
+<div role="navigation" aria-label="{{ _('Navbar') }}" class="flex items-center justify-between px-3" id="layout-topbar">
+  <div class="inline-flex items-center gap-3">
+    <label class="btn btn-square btn-ghost btn-sm group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:hidden"
+      aria-label="{{ _('Toggle left menu') }}" for="layout-sidebar-toggle-trigger">
+      <iconify-icon icon="lucide:menu" class="size-5"></iconify-icon>
+    </label>
+    <label
+      class="btn btn-square btn-ghost btn-sm hidden group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:flex"
+      aria-label="{{ _('Toggle left menu') }}" for="layout-sidebar-hover-trigger">
+      <iconify-icon icon="lucide:menu" class="size-5"></iconify-icon>
+    </label>
+
+
+    {% if project %}
+    <div class="flex items-center justify-center p-6">
+      <div class="dropdown dropdown-bottom sm:dropdown-end max-sm:dropdown-center">
+        <div tabindex="0" class="flex cursor-pointer items-center gap-3 border border-base-200 p-2">
+          <div class="w-80">
+            <p><span class="font-medium">{{ _('Project:') }}</span> <span class="font-semibold">{{ project.title
+                }}</span></p>
+          </div>
+        </div>
+        <div tabindex="0" class="dropdown-content bg-base-100 rounded-box mt-2 w-80 gap-3 shadow">
+          <ul class="menu w-full p-2">
+            {% for p in projects %}
+            <li>
+              <a href="{{ url('project_view', project_id=p.short_id) }}">
+                {% if p.short_id == project.short_id %}
+                <iconify-icon icon="lucide:check" class="size-4"></iconify-icon>
+                {% endif %}
+                <span class="font-semibold">{{ p.title }}</span>
+              </a>
+            </li>
+            {% endfor %}
+
+          </ul>
+          <hr class="border-base-200">
+          <div
+            class="from-primary/3 hover:from-primary/5 flex cursor-pointer items-center gap-3 bg-linear-to-r to-transparent px-4 py-3 transition-all">
+            <iconify-icon icon="lucide:plus" class="size-6"></iconify-icon>
+            <a onclick="document.getElementById('add-new-project')?.showModal()">
+              {{ _('Add new project') }}
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{{ url('project_chat', project_id=project.short_id) }}" target="_blank" class="btn btn-sm btn-primary">
+        <iconify-icon icon="lucide:message-circle" class="size-4"></iconify-icon>
+        {{ _('Chat') }}
+      </a>
+      {# <a href="{{ url('project_call', project_id=project.short_id) }}" target="_blank"
+        class="btn btn-sm btn-success">
+        <iconify-icon icon="lucide:phone" class="size-4"></iconify-icon>
+        {{ _('Call') }}
+      </a> #}
+    </div>
+    {% endif %}
+
+    <dialog id="add-new-project" class="modal">
+      <div class="modal-box">
+        <h3 class="text-lg font-bold">{{ _('Add new project') }}</h3>
+        <form hx-post="{{ url('project_actions', action='create_project', item_id='new') }}" hx-swap="none"
+          class="form">
+          <div class="space-y-2">
+            <label class="fieldset-label" for="title">
+              {{ _('Project title') }}
+            </label>
+            <input class="input w-full" id="title" name="title" placeholder="" required>
+          </div>
+          <div class="mt-5 flex justify-end gap-3">
+            <button type="submit" class="btn">
+              <iconify-icon icon="lucide:wand-2" class="size-3.5"></iconify-icon>
+              {{ _('Create') }}
+            </button>
+          </div>
+        </form>
+        <div class="modal-action">
+          <form method="dialog">
+            <button class="btn">{{ _('Close') }}</button>
+          </form>
+        </div>
+      </div>
+    </dialog>
+  </div>
+
+
+
+  <div class="inline-flex items-center gap-0.5">
+    {% from "macros.html" import theme_switcher, lang_switcher with context %}
+    {{ theme_switcher() }}
+    {{ lang_switcher() }}
+    {% include "include/admin/notify.html" %}
+
+    <div class="dropdown dropdown-end">
+      <div tabindex="0" role="button" class="btn btn-ghost">
+        {{ _('Profile') }}
+      </div>
+      <ul tabindex="-1" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-1 mt-3 w-52 p-2 shadow">
+        <li><a href="{{ url('settings') }}">{{ _('Settings') }}</a></li>
+        <li><a href="{{ url('logout') }}">{{ _('Logout') }}</a></li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<!-- End of Topbar -->

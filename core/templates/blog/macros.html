@@ -1,0 +1,42 @@
+{% macro post_card(post) %}
+{%- set post_url = url('blog_page', post_id=post.short_id, post_slug=post.slug) %}
+<script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "{{ post.title }}",
+    "datePublished": "{{ post.created_at }}",
+    "dateModified": "{{ post.updated_at }}"
+  }
+</script>
+
+<div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow duration-300">
+  <figure>
+    <a href="{{ post_url }}" class="w-full aspect-video block overflow-hidden">
+      {% if post.picture %}
+      <img src="{{ post.picture }}" alt="{{ post.title }}" class="w-full h-full object-cover transition-transform duration-300 hover:scale-105" />
+      {% else %}
+      <div class="w-full h-full bg-base-200 flex items-center justify-center text-base-content/30">
+        <iconify-icon icon="lucide:image" class="size-12"></iconify-icon>
+      </div>
+      {% endif %}
+    </a>
+  </figure>
+  <div class="card-body">
+    <a href="{{ post_url }}" class="hover:text-primary transition-colors">
+      <h2 class="card-title text-lg font-bold line-clamp-2">{{ post.title }}</h2>
+    </a>
+    <div class="text-xs text-base-content/60 mb-2">{{ pretty_datetime(post.created_at) }}</div>
+    <p class="text-sm text-base-content/80 line-clamp-3">{{ post.lead }}</p>
+    <div class="card-actions justify-end mt-4">
+      <a href="{{ post_url }}" class="btn btn-primary btn-sm">{{ _('Read More') }}</a>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro blog_paginate(total) %}
+  <div class="flex justify-center mt-8">
+    {{ paginate(total) }}
+  </div>
+{% endmacro %}

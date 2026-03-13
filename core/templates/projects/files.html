@@ -1,0 +1,109 @@
+{% extends "admin.html" %}
+{% block content %}
+
+{% from 'macros.html' import navbar_tabs with context %}
+
+<div class="flex items-center justify-between">
+    <p class="text-lg font-medium">{{ _('Project Files') }}</p>
+</div>
+
+<div class="mt-6">
+    <div class="card bg-base-100 shadow mb-6">
+        <div class="card-body">
+            <div class="flex items-center justify-between">
+                <h3 class="card-title text-base">{{ _('Upload Files') }}</h3>
+                {% if documents %}
+                <button class="btn btn-sm btn-outline btn-secondary"
+                        hx-post="{{ url('project_actions', action='rebuild_uploads', item_id=project.short_id) }}"
+                        hx-swap="none">
+                    <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
+                    {{ _('Reindex All') }}
+                </button>
+                {% endif %}
+            </div>
+            <div id="uppy" class="min-h-[300px]"></div>
+        </div>
+    </div>
+
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-0">
+            <div class="overflow-x-auto">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>{{ _('Type') }}</th>
+                            <th>{{ _('Name') }}</th>
+                            <th>{{ _('Size/Chunks') }}</th>
+                            <th>{{ _('Added') }}</th>
+                            <th>{{ _('Actions') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents %}
+                        <tr class="hover:bg-base-200/40">
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <iconify-icon icon="lucide:file-text" class="size-4 opacity-70"></iconify-icon>
+                                    <span class="text-xs opacity-70">{{ doc.meta.get('doc_type', 'file') }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="font-medium">{{ doc.title or doc.meta.get('filename', 'Unknown') }}</div>
+                            </td>
+                            <td>
+                                <div class="flex flex-col gap-0.5 text-sm">
+                                    <span class="font-medium">{{ doc.meta.get('size_bytes', 0)|filesizeformat }}</span>
+                                    <span class="opacity-70">{{ doc.chunk_count }} chunks</span>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="text-sm opacity-70">{{ doc.created_at.strftime('%Y-%m-%d') }}</div>
+                            </td>
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <a href="{{ url('secure_download', project_id=project.short_id, file_id=doc.short_id) }}"
+                                       class="btn btn-square btn-ghost btn-sm"
+                                       title="{{ _('Download') }}"
+                                       target="_blank">
+                                        <iconify-icon icon="lucide:download" class="size-4"></iconify-icon>
+                                    </a>
+                                    <button class="btn btn-square btn-ghost btn-sm text-error"
+                                            hx-post="{{ url('delete_file', project_id=project.short_id, file_id=doc.short_id) }}"
+                                            hx-confirm="{{ _('Are you sure you want to delete this file?') }}"
+                                            hx-target="closest tr"
+                                            hx-swap="outerHTML"
+                                            title="{{ _('Delete') }}">
+                                        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-base-content/60 py-8">
+                                {{ _('No files uploaded yet.') }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.createUppy) {
+            window.createUppy("{{ external('tus_upload', project_id=project.short_id) }}", "#uppy");
+        } else {
+            setTimeout(() => {
+                 if (window.createUppy) {
+                    window.createUppy("{{ external('tus_upload', project_id=project.short_id) }}", "#uppy");
+                 }
+            }, 100);
+        }
+    });
+</script>
+
+{% endblock %}

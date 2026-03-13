@@ -1,0 +1,250 @@
+<html lang="{{ lang }}">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ _('Call') }} - {{ project.title }}</title>
+    <link href="/static/assets/app.css?v={{ static_version }}" rel="stylesheet" type="text/css" />
+    <script src="/static/assets/index.js?v={{ static_version }}" defer></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; color: white; font-family: system-ui, -apple-system, sans-serif; }
+        #visualizer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0.5; pointer-events: none; }
+        #histogram { position: absolute; bottom: 0; left: 0; width: 100%; height: 150px; pointer-events: none; }
+        .content { position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 2rem; }
+    </style>
+</head>
+<body>
+
+    <canvas id="visualizer"></canvas>
+
+    <div class="content">
+        <div class="avatar placeholder">
+            <div class="bg-neutral-focus text-neutral-content rounded-full w-48 h-48 ring ring-primary ring-offset-base-100 ring-offset-2 shadow-2xl flex items-center justify-center">
+                <span class="text-4xl font-bold" id="call-status-text">{{ _('Ready') }}</span>
+            </div>
+        </div>
+
+        <h1 class="text-3xl font-bold">{{ project.title }}</h1>
+
+        <div class="flex gap-6">
+            <button id="btn-call" class="btn btn-success btn-lg gap-2 rounded-full px-12 text-xl" onclick="startCall()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                {{ _('Call') }}
+            </button>
+            <button id="btn-hangup" class="btn btn-error btn-lg gap-2 rounded-full px-12 text-xl hidden" onclick="hangup()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.516l2.257-1.13a1 1 0 00.502-1.21L8.28 3.684A1 1 0 007.28 3H5z" /></svg>
+                {{ _('Hangup') }}
+            </button>
+        </div>
+    </div>
+
+    <div id="subtitles" class="absolute bottom-40 left-0 w-full text-center text-2xl font-semibold text-white drop-shadow-md px-10 transition-opacity duration-500" style="opacity: 0;"></div>
+
+    <canvas id="histogram"></canvas>
+
+<script>
+let pc = null;
+let ws = null;
+let audioContext = null;
+let analyser = null;
+let source = null;
+let animationId = null;
+let histogramId = null;
+const projectId = "{{ project.short_id }}";
+
+function initVisualizer() {
+    const canvas = document.getElementById('visualizer');
+    const ctx = canvas.getContext('2d');
+
+    const resize = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    const particles = [];
+    for(let i=0; i<100; i++) {
+        particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            r: Math.random() * 3 + 1,
+            d: Math.random() * Math.PI * 2,
+            s: Math.random() * 0.5 + 0.1
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'rgba(100, 200, 255, 0.5)';
+
+        particles.forEach(p => {
+            p.x += Math.cos(p.d) * p.s;
+            p.y += Math.sin(p.d) * p.s;
+
+            if(p.x < 0) p.x = canvas.width;
+            if(p.x > canvas.width) p.x = 0;
+            if(p.y < 0) p.y = canvas.height;
+            if(p.y > canvas.height) p.y = 0;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        animationId = requestAnimationFrame(draw);
+    }
+    draw();
+}
+
+async function startCall() {
+    document.getElementById('btn-call').classList.add('hidden');
+    document.getElementById('btn-hangup').classList.remove('hidden');
+    document.getElementById('call-status-text').innerText = "{{ _('Calling...') }}";
+
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        startHistogram();
+
+        pc = new RTCPeerConnection();
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+        pc.ontrack = function(event) {
+            const remoteAudio = new Audio();
+            remoteAudio.srcObject = event.streams[0];
+            remoteAudio.play();
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${window.location.host}/ws/call/${projectId}?chat_id={{ chat.short_id }}`);
+
+        ws.onopen = () => {
+            ws.send(JSON.stringify({
+                type: 'offer',
+                sdp: pc.localDescription.sdp
+            }));
+        };
+
+        ws.onmessage = async (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'answer') {
+                await pc.setRemoteDescription(new RTCSessionDescription({
+                    type: 'answer',
+                    sdp: msg.sdp
+                }));
+                document.getElementById('call-status-text').innerText = "{{ _('Connected') }}";
+            } else if (msg.type === 'transcription') {
+                const subtitles = document.getElementById('subtitles');
+                subtitles.innerText = msg.text;
+                subtitles.style.opacity = 1;
+
+                // Clear timeout if exists
+                if (subtitles.timeout) clearTimeout(subtitles.timeout);
+
+                // Fade out after 5 seconds
+                subtitles.timeout = setTimeout(() => {
+                    subtitles.style.opacity = 0;
+                }, 5000);
+            } else if (msg.type === 'audio_response') {
+                const audio = new Audio("data:audio/mp3;base64," + msg.audio);
+                audio.play();
+            } else if (msg.type === 'status') {
+                const statusText = document.getElementById('call-status-text');
+                if (msg.state === 'processing') {
+                    statusText.innerText = "{{ _('Thinking...') }}";
+                    statusText.classList.add('animate-pulse');
+                } else if (msg.state === 'ready') {
+                    statusText.innerText = "{{ _('Connected') }}";
+                    statusText.classList.remove('animate-pulse');
+                } else if (msg.state === 'error') {
+                    statusText.innerText = "{{ _('Error') }}";
+                    statusText.classList.remove('animate-pulse');
+                }
+            }
+
+        };
+
+        ws.onclose = () => {
+            hangup();
+        };
+
+    } catch (err) {
+        console.error("Error starting call:", err);
+        hangup();
+    }
+}
+
+function hangup() {
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+    if (pc) {
+        pc.close();
+        pc = null;
+    }
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+    }
+    if (histogramId) {
+        cancelAnimationFrame(histogramId);
+    }
+
+    document.getElementById('btn-call').classList.remove('hidden');
+    document.getElementById('btn-hangup').classList.add('hidden');
+    document.getElementById('call-status-text').innerText = "{{ _('Ready') }}";
+
+    const hCanvas = document.getElementById('histogram');
+    const hCtx = hCanvas.getContext('2d');
+    hCtx.clearRect(0, 0, hCanvas.width, hCanvas.height);
+}
+
+function startHistogram() {
+    const canvas = document.getElementById('histogram');
+    const ctx = canvas.getContext('2d');
+
+    const resize = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = 150;
+    };
+    window.addEventListener('resize', resize);
+    resize();
+
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    function draw() {
+        histogramId = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = (canvas.width / bufferLength) * 2.5;
+        let barHeight;
+        let x = 0;
+
+        for(let i = 0; i < bufferLength; i++) {
+            barHeight = dataArray[i] / 2;
+            ctx.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
+            ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+            x += barWidth + 1;
+        }
+    }
+    draw();
+}
+
+// Start visualizer on load
+initVisualizer();
+</script>
+</body>
+</html>
