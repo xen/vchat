@@ -1,40 +1,53 @@
-# Install the project
+# Проект vbudushee — Платформа ИИ Чат-ботов (RAG)
 
-apt install postgresql-18-pgvector postgresql-18 postgresql-client-18 build-essential python3-dev
+Добро пожаловать в документацию проекта **vbudushee**. Это современная платформа для создания и интеграции интеллектуальных помощников, использующая технологию RAG (Retrieval-Augmented Generation) для предоставления точных ответов на основе ваших документов и данных.
 
-# Create database
+---
 
-connect to postgres
-```
-sudo -u postgres psql
-```
+### 🚀 Основные возможности
+- **Умная индексация:** Автоматическая обработка PDF, Docx и краулинг веб-сайтов.
+- **Векторный поиск:** Быстрый поиск по базе знаний с использованием `PGVector`.
+- **Гибридные модели:** Поддержка OpenAI, Anthropic и возможность подключения локальных LLM.
+- **Real-time общение:** Использование WebSocket для мгновенных ответов в чате.
+- **Интегрируемый виджет:** Готовое решение для установки чат-бота на любой сайт.
 
-create empty db
-```
-CREATE DATABASE <my_db_name>;
-...
-\q
-```
+---
 
-install current db structure
-```
-make db
-```
+### 📚 Содержание документации (Core Specs)
 
-create .env and modify it by your creds
-```
-cp .env.example .env
-nano .env
-```
+Для детального изучения архитектуры и процессов обратитесь к следующим разделам:
 
-create file local.yaml in root folder of project
+1.  [**Архитектура и C4 Модель (core#1.md)**](./core%231.md)
+    *   Описание границ системы, контейнеров и архитектурной схемы (Mermaid). Пояснительная записка.
+2.  [**OpenAPI Спецификация (core#2.md)**](./core%232.md)
+    *   Документация API, методы работы с проектами, загрузкой файлов (TUS) и чатами.
+3.  [**Выбор Векторной БД (core#3.md)**](./core%233.md)
+    *   Сравнение технологий и обоснование выбора PostgreSQL + `pgvector`.
+4.  [**План Индексации и Цитирования (core#4.md)**](./core%234.md)
+    *   Алгоритмы обработки данных, дельта-обновления и правила ссылок на источники.
+5.  [**Политики Безопасности (core#5.md)**](./core%235.md)
+    *   Защита виджета, аутентификация, CSP и предотвращение Prompt Injection.
+6.  [**План Наблюдаемости (core#6.md)**](./core%236.md)
+    *   Метрики (Golden Signals), логирование (Sentry/Loki) и стратегия алертинга.
+7.  [**Календарный План и Приёмка (core#7.md)**](./core%237.md)
+    *   Этапы разработки, сроки и детальные критерии готовности модулей.
 
-```
-make run
-```
+---
 
-to run project
+### 🛠 Технологический стек
+- **Backend:** Python 3.x, Django (MPA/Hybrid)
+- **Frontend:** Jinja2 Templates, JavaScript (Tailwind/HTMX)
+- **Database:** PostgreSQL (с расширением `pgvector`)
+- **Queue/Cache:** Redis, Celery
+- **DevOps:** Docker, Sentry, Prometheus/Grafana (планируется)
 
-# Deploy
+---
 
-To deploy all parts of the project (including Telegram workers), the tag name must end with 't'. Otherwise, the Telegram component will remain unchanged.
+### 📂 Структура проекта
+- `core/` — Основное приложение на Django.
+- `core/jobs/` — Фоновые задачи (краулер, эмбеддер).
+- `core/frontend/` — Исходные коды фронтенда.
+- `docs/` — Проектная документация и контракты.
+
+---
+*Документация создана и поддерживается в рамках этапа проектирования системы.*
