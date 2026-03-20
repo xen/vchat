@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from core.models.data import Project, Source
+from vchat.models.data import Project, Source
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

@@ -1,0 +1,85 @@
+{% from "macros.html" import message with context %}
+
+{% macro auth_page(title, subtitle=None) -%}
+<main class="bg-base-200 min-h-screen">
+  <div class="relative z-10 container py-28 xl:py-40">
+    <div class="flex flex-col items-center">
+      <div class="w-400 max-w-3xl rounded-[32px] border border-base-200 bg-base-100/90 p-6 shadow-2xl md:p-10">
+        <div class="flex items-center justify-between gap-4">
+          <a href="{{ url('index') }}">
+            <img alt="{{ _('vchat Logo') }}" class="hidden h-8 dark:inline"
+              src="{{ url_for('static', filename='images/logo/logo-dark.svg') }}" />
+            <img alt="{{ _('vchat Logo') }}" class="h-8 dark:hidden"
+              src="{{ url_for('static', filename='images/logo/logo-light.svg') }}" />
+          </a>
+          {% from "macros.html" import theme_switcher with context %}
+          {{ theme_switcher() }}
+        </div>
+
+        {{ message() }}
+
+        <div class="mt-6 text-center md:mt-10">
+          <h1 class="text-2xl font-semibold">{{ title }}</h1>
+          {% if subtitle %}
+          <p class="text-base-content/70 mt-2 text-sm md:text-base">
+            {{ subtitle|safe }}
+          </p>
+          {% endif %}
+        </div>
+
+        <div class="mt-6 md:mt-10">
+          {{ caller() }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% include "include/admin/footer.html" with context %}
+</main>
+{%- endmacro %}
+
+{% macro auth_input(field, icon, placeholder=None, input_type="text", autocomplete=None) -%}
+{% set has_error = field.errors %}
+<fieldset class="fieldset mt-4">
+  <legend class="fieldset-legend">{{ field.label.text }}</legend>
+  <label class="input w-full gap-3 border {{ 'input-error border-error/60' if has_error else 'border-base-300' }}">
+    <iconify-icon icon="lucide:{{ icon }}" class="text-base-content/80 size-5"></iconify-icon>
+    {% if autocomplete %}
+    {{ field(class="grow bg-transparent focus:outline-0", placeholder=placeholder or field.label.text, type=input_type,
+    autocomplete=autocomplete) }}
+    {% else %}
+    {{ field(class="grow bg-transparent focus:outline-0", placeholder=placeholder or field.label.text, type=input_type)
+    }}
+    {% endif %}
+  </label>
+  {% if has_error %}
+  <p class="mt-2 text-xs text-error">
+    {% for error in field.errors %}
+    {{ error }}{% if not loop.last %}<br>{% endif %}
+    {% endfor %}
+  </p>
+  {% endif %}
+  {% if field.description %}
+  <p class="text-xs text-base-content/70 mt-1">
+    {{ field.description|safe }}
+  </p>
+  {% endif %}
+</fieldset>
+{%- endmacro %}
+
+{% macro auth_checkbox(field) -%}
+{% set has_error = field.errors %}
+<label class="mt-4 flex items-start gap-3 text-sm">
+  {{ field(class="checkbox checkbox-primary mt-1") }}
+  <span class="{% if has_error %}text-error{% else %}text-base-content{% endif %}">
+    {{ field.label.text|safe }}
+  </span>
+</label>
+{% if has_error %}
+<p class="mt-2 text-xs text-error">
+  {% for error in field.errors %}
+  {{ error }}{% if not loop.last %}<br>{% endif %}
+  {% endfor %}
+</p>
+{% endif %}
+{%- endmacro %}

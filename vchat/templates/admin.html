@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="{{ request.get('lang', 'en') }}">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <title>{% block title %}{%if page_title %}{{ page_title }}{%else%}{{ meta.title }}{%endif%}{% endblock %} — vchat</title>
+  {% block meta -%}
+    {% if meta.description %}<meta name="description" content="{{ meta.description }}">{% endif %}
+    {% if meta.author %}<meta name="author" content="{{ meta.author }}">{% endif %}
+  {% endblock -%}
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+  <link rel="icon" type="image/png" href="/static/favicon.ico">
+  <link href="/static/assets/app.css?v={{ static_version }}" rel="stylesheet" type="text/css">
+
+  {% include "include/counter.html" with context %}
+
+  {% block extramedia %}{% endblock %}
+  <script>
+    try {
+      const config = JSON.parse(localStorage.getItem("CONF"));
+      if (config && config.theme && config.theme !== "system") {
+        document.documentElement.setAttribute("data-theme", config.theme);
+      }
+    } catch (e) {}
+  </script>
+
+</head>
+<body {% block body_id %}{% endblock %} {% if csrf_token -%} hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}' {%- endif -%}>
+{% if not debug %}
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-K7593Q73"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+{% endif %}
+
+<div class="size-full">
+  <div class="flex">
+    <input type="checkbox" id="layout-sidebar-toggle-trigger" class="hidden" aria-label="{{ _('Toggle layout sidebar') }}" />
+    <input type="checkbox" id="layout-sidebar-hover-trigger" class="hidden" aria-label="{{ _('Dense layout sidebar') }}" />
+    <div id="layout-sidebar-hover" class="bg-base-300 h-screen w-1"></div>
+    {% block sidebar %}
+    {% include "include/admin/sidebar.html" with context %}
+    {% endblock %}
+
+    <label for="layout-sidebar-toggle-trigger" id="layout-sidebar-backdrop"></label>
+
+    <div class="flex h-screen min-w-0 grow flex-col overflow-auto">
+      {% include "include/admin/header.html" with context %}
+      <div id="layout-content">
+        {% block content %}{% endblock %}
+      </div>
+      {% include "include/admin/footer.html" with context %}
+    </div>
+  </div>
+</div>
+
+{% block extra_bottom %}{% endblock %}
+<script src="/static/assets/index.js?v={{ static_version }}"></script>
+
+</body>
+</html>

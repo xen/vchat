@@ -1,0 +1,785 @@
+import asyncio
+import base64
+import logging
+import os
+import re
+import tempfile
+import time
+from dataclasses import dataclass
+from typing import Any, List, Optional
+import aiohttp_jinja2
+
+import aiohttp
+import redis.asyncio as aioredis
+import sqlalchemy as sa
+from aiohttp import web
+from itsdangerous import (
+    BadSignature,
+    URLSafeSerializer,
+)
+
+from vchat.ai import get_whisper_model
+from vchat.ai_providers import (
+    BaseAIProvider,
+    ModelInfo,
+    get_default_provider_id,
+    resolve_ai_settings,
+)
+from vchat.db import async_session_factory
+from vchat.models import Chat, ChatMsg, Project
+from vchat.settings import config
+from vchat.utils import json, run_task
+
+from .ctx import chat_id_ctx, get_context, user_id_ctx
+
+# Regex for detecting trivial/greeting messages to skip RAG
+TRIVIAL_PATTERNS = [
+    r"^(hi|hello|hey|hola|bonjour|privet|test|ping)$",
+    r"^(hi|hello|hey)\s+(there|bot|ai|assistant)$",
+    r"^\?+$",
+]
+TRIVIAL_REGEX = re.compile(r"|".join(TRIVIAL_PATTERNS), re.IGNORECASE)
+
+
+def is_trivial_query(text: str) -> bool:
+    """Check if the query is a simple greeting or test compatible with skipping RAG."""
+    return bool(TRIVIAL_REGEX.match(text.strip()))
+
+
+@dataclass
+class GenerationContext:
+    project: Project | None
+    provider: BaseAIProvider
+    model: ModelInfo
+    system_prompt: str
+
+    @property
+    def provider_id(self) -> str:
+        return self.provider.id
+
+    @property
+    def model_id(self) -> str:
+        return self.model.id
+
+    def request_meta(self) -> dict[str, Any]:
+        return self.provider.request_meta()
+
+
+def build_generation_context(project: Project | None) -> GenerationContext:
+    provider_id = getattr(project, "provider", None) or get_default_provider_id()
+    model_id = getattr(project, "model", None)
+    provider, model = resolve_ai_settings(provider_id, model_id)
+    system_prompt = (
+        project.system_prompt if project and project.system_prompt else SYSTEM_PROMPT
+    )
+    return GenerationContext(project, provider, model, system_prompt)
+
+
+async def generate_suggestions(
+    messages: List[dict], ctx: GenerationContext
+) -> List[str]:
+    """
+    Generate 3 short, relevant follow-up actions/questions for the user.
+    Uses a lightweight call to a fast model.
+    """
+    provider_id = ctx.provider_id
+    if provider_id != "openai":
+        return []
+    request_meta = ctx.request_meta()
+    api_key = request_meta.get("api_key") or OPENAI_API_KEY
+    base_url = request_meta.get("base_url") or OPENAI_BASE_URL
+    model = ctx.model_id or OPENAI_MODEL
+    if not api_key:
+        return []
+
+    # Construct a prompt for suggestions
+    # We only need the last few messages to understand context
+    recent_messages = messages[-4:]
+
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "You are a helpful assistant. Based on the conversation history, "
+                "suggest 3 short, concise follow-up questions or actions the user might want to take next. "
+                'Return ONLY a raw JSON array of strings, e.g. ["Action 1", "Action 2"]. '
+                "Keep them relevant to the project context if clear. "
+                "Do not return markdown formatting."
+            ),
+        },
+    ]
+
+    # Inject project context if available
+    project = ctx.project
+    if project and project.meta:
+        topics = project.meta.get("topics", [])
+        intents = project.meta.get("intents", [])
+        if topics or intents:
+            context_str = "Project Context:\n"
+            if topics:
+                context_str += f"- Topics: {', '.join(topics)}\n"
+            if intents:
+                context_str += f"- Potential Intents: {', '.join(intents)}\n"
+
+            prompt[0]["content"] += (
+                "\n\n"
+                + context_str
+                + "Try to align suggestions with these topics/intents if relevant."
+            )
+
+    prompt.extend(recent_messages)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": prompt,
+                    "max_tokens": 200,
+                    "temperature": 0.5,
+                },
+                timeout=aiohttp.ClientTimeout(total=10.0),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                    # Clean up potential markdown code blocks
+                    content = content.strip()
+                    if content.startswith("```"):
+                        content = content.strip("`json \n")
+                    try:
+                        suggestions = json.loads(content)
+                        if isinstance(suggestions, list):
+                            return suggestions[:3]
+                    except json.JSONDecodeError:
+                        pass
+    except Exception as e:
+        logger.warning(f"Failed to generate suggestions: {e}")
+
+    return []
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("vchat.chat")
+
+# Configuration from settings
+OPENAI_API_KEY = config.get("openai_api_key")
+OPENAI_BASE_URL = config.get("openai_base_url", "https://api.openai.com/v1")
+OPENAI_MODEL = config.get("openai_model", "gpt-4o-mini")
+REDIS_URL = config.get("redis_uri", "redis://localhost:6379/3")
+SECRET_KEY = config.get("secret_key")
+CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "embeddings")
+
+# System prompt for chat
+SYSTEM_PROMPT = """## Role and Objective
+You are a friendly and helpful AI assistant.
+
+## Instructions
+- Always reply in the same language as the user's message.
+- Carefully review the entire chat history before responding; ensure replies are fully
+informed by previous context.
+- Deliver complete and accurate information and real code or data—never use placeholders
+or omit factual content.
+- If a response reaches the character limit, stop and wait for the user to prompt with
+"continue"; do not condense or leave information incomplete.
+- Accuracy is paramount—incorrect answers may result in penalties.
+- Never create or infer information not grounded in factual context.
+- Do not miss or omit any essential or critical context; prioritize contextual relevance
+in every response.
+- Follow all Answering Rules below for every reply.
+- Deliver thoughtful, well-considered responses; reason internally before replying. Do
+not reveal internal reasoning.
+- Use inline citations in the format [[citation:ID]] when referring to context.
+- Do not list sources at the end; explicit source blocks are handled by the UI.
+
+## Answering Rules (strict order):
+1. Integrate expert-level knowledge and clear, stepwise reasoning to deliver accurate,
+detailed answers with concrete examples and actionable details.
+2. Approach every response as if it could lead to a significant reward—aim for excellence.
+3. Treat every answer as critically important to the user's career or objectives.
+4. Ensure a conversational, natural, and human-like tone for all responses.
+"""
+
+# Tools configuration - empty for now (tools.py removed)
+TOOLS = []
+
+# --- Redis (optional) support for background tasks ---
+redis = aioredis.from_url(REDIS_URL, decode_responses=True)
+
+
+async def generate_tts_audio(text: str) -> Optional[bytes]:
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{OPENAI_BASE_URL}/audio/speech",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "tts-1",
+                "input": text,
+                "voice": "alloy",
+            },
+        ) as resp:
+            if resp.status != 200:
+                logger.error(f"TTS error: {await resp.text()}")
+                return None
+            return await resp.read()
+
+
+async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
+    provider_meta = ctx.request_meta()
+    provider_id = ctx.provider_id
+    if provider_id != "openai":
+        raise web.HTTPBadRequest(text=f"Provider '{provider_id}' is not supported yet")
+    api_key = provider_meta.get("api_key") or OPENAI_API_KEY
+    base_url = provider_meta.get("base_url") or OPENAI_BASE_URL
+    if not api_key:
+        raise web.HTTPBadRequest(text="Missing API key for selected provider")
+
+    model = ctx.model_id or OPENAI_MODEL
+    current_system_prompt = ctx.system_prompt or SYSTEM_PROMPT
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": current_system_prompt},
+                    *messages,
+                ],
+                "temperature": 0.2,
+                "stream": True,
+                "max_tokens": 2048,
+                "stream_options": {"include_usage": True},
+            },
+            timeout=aiohttp.ClientTimeout(total=60.0),
+        ) as resp:
+            if resp.status >= 400:
+                error_text = await resp.text()
+                raise aiohttp.ClientResponseError(
+                    request_info=resp.request_info,
+                    history=resp.history,
+                    status=resp.status,
+                    message=error_text,
+                    headers=resp.headers,
+                )
+
+            assistant_message = {"role": "assistant", "content": ""}
+            pending_tool_calls: dict[int, dict] = {}
+            async for line_bytes in resp.content:
+                line = line_bytes.decode("utf-8").strip()
+                if not line:
+                    continue
+                if line.startswith("data:"):
+                    data = line[len("data:") :].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+
+                        # Handle usage if present (usually in the last chunk)
+                        if "usage" in chunk and chunk["usage"]:
+                            yield {"event": "usage", "usage": chunk["usage"]}
+                            continue
+
+                        choices = chunk.get("choices", [])
+                        if not choices:
+                            continue
+                        choice = choices[0]
+                        delta = choice.get("delta", {})
+                        if "role" in delta and delta["role"]:
+                            assistant_message["role"] = delta["role"]
+
+                        content = delta.get("content")
+                        if content:
+                            assistant_message["content"] += content
+                            yield {"event": "content", "data": content}
+
+                        tool_calls_delta = delta.get("tool_calls") or []
+                        for tool_call in tool_calls_delta:
+                            idx = tool_call.get("index", 0)
+                            existing = pending_tool_calls.setdefault(
+                                idx,
+                                {
+                                    "id": None,
+                                    "type": tool_call.get("type", "function"),
+                                    "function": {"name": "", "arguments": ""},
+                                },
+                            )
+                            if tool_call.get("id"):
+                                existing["id"] = tool_call["id"]
+                            if tool_call.get("type"):
+                                existing["type"] = tool_call["type"]
+
+                            func = tool_call.get("function") or {}
+                            if func.get("name"):
+                                existing["function"]["name"] = func["name"]
+                            if func.get("arguments"):
+                                existing["function"]["arguments"] += func["arguments"]
+                    except Exception:
+                        continue
+
+            tool_call_events = []
+            if pending_tool_calls:
+                for idx in sorted(pending_tool_calls.keys()):
+                    call = pending_tool_calls[idx]
+                    raw_args = (call.get("function") or {}).get("arguments", "")
+                    parsed_args = {}
+                    if raw_args:
+                        try:
+                            parsed_args = json.loads(raw_args)
+                        except json.JSONDecodeError:
+                            try:
+                                parsed_args = json.loads(raw_args.strip())
+                            except json.JSONDecodeError:
+                                parsed_args = {}
+                    tool_call_events.append(
+                        {
+                            "event": "tool_call",
+                            "id": call.get("id"),
+                            "name": (call.get("function") or {}).get("name"),
+                            "arguments": parsed_args,
+                            "raw_arguments": raw_args,
+                        }
+                    )
+
+                assistant_message["tool_calls"] = [
+                    {
+                        "id": call.get("id"),
+                        "type": call.get("type") or "function",
+                        "function": {
+                            "name": (call.get("function") or {}).get("name"),
+                            "arguments": (call.get("function") or {}).get(
+                                "arguments", ""
+                            ),
+                        },
+                    }
+                    for idx, call in sorted(pending_tool_calls.items())
+                ]
+
+            for event in tool_call_events:
+                yield event
+
+            assistant_message["content"] = assistant_message["content"] or None
+            if not assistant_message.get("tool_calls"):
+                assistant_message.pop("tool_calls", None)
+
+            yield {"event": "assistant_message", "message": assistant_message}
+
+
+async def websocket(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    serializer = URLSafeSerializer(SECRET_KEY)
+    try:
+        payload = request.match_info.get("payload")
+        user_id, chat_short_id = serializer.loads(payload, salt="vchat", max_age=3600)
+
+        # Resolve short_id to id
+        db = async_session_factory()
+        async with db:
+            chat_id = await db.scalar(
+                sa.select(Chat.id).where(Chat.short_id == chat_short_id)
+            )
+            if not chat_id:
+                await ws.close(code=1008)
+                return ws
+
+        user_id_ctx.set(user_id)
+        chat_id_ctx.set(chat_id)
+    except BadSignature:
+        # Policy Violation https://www.rfc-editor.org/rfc/rfc6455#section-7.4.1
+        await ws.close(code=1008)
+        return ws
+
+    project = None
+    project_id = None
+    try:
+        # Get database session from app context
+        db = async_session_factory()
+        async with db:
+            # Get project_id for tracking
+            res = await db.execute(
+                sa.select(Chat.project_id).where(Chat.id == chat_id_ctx.get())
+            )
+            project_id = res.scalar_one_or_none()
+            res = await db.execute(sa.select(Project).where(Project.id == project_id))
+            project = res.scalar_one_or_none()
+
+        gen_context = build_generation_context(project)
+
+        if project_id:
+            await redis.sadd(f"project:{project_id}:active_chats", chat_id_ctx.get())
+
+        while True:
+            msg = await ws.receive()
+            if msg.type == web.WSMsgType.ERROR:
+                print("ws connection closed with exception %s" % ws.exception())
+                break
+
+            user_text = ""
+            request_tts = False
+
+            if msg.type == web.WSMsgType.BINARY:
+                # Handle audio message
+                audio_data = msg.data
+                model = get_whisper_model()
+                if not model:
+                    await ws.send_json(
+                        {"ok": False, "error": "STT model not available"}
+                    )
+                    continue
+
+                def transcribe_audio(data):
+                    with tempfile.NamedTemporaryFile(
+                        suffix=".webm", delete=False
+                    ) as tmp:
+                        tmp.write(data)
+                        tmp_path = tmp.name
+                    try:
+                        segments, _ = model.transcribe(
+                            tmp_path, language="ru", beam_size=5
+                        )
+                        return " ".join([s.text for s in segments]).strip()
+                    except Exception as e:
+                        logger.error(f"Transcription error: {e}")
+                        return ""
+                    finally:
+                        if os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+
+                user_text = await asyncio.get_event_loop().run_in_executor(
+                    None, transcribe_audio, audio_data
+                )
+
+                if not user_text:
+                    await ws.send_json({"ok": False, "error": "No speech detected"})
+                    continue
+
+                # Notify frontend of the transcribed text
+                await ws.send_json({"type": "transcription", "content": user_text})
+                request_tts = True
+
+            elif msg.type == web.WSMsgType.TEXT:
+                if msg.data.strip().lower() == "ping":
+                    await ws.send_str("pong")
+                    continue
+                user_text = msg.data
+
+            if not user_text:
+                continue
+
+            try:
+                assistant_message: Optional[dict] = None
+                pending_tool_results: List[dict] = []
+                used_chunks: List[dict] = []
+                messages: List[dict] = []
+
+                if project_id:
+                    await redis.publish(
+                        f"chat_monitor:{chat_id_ctx.get()}",
+                        json.dumps(
+                            {
+                                "role": "user",
+                                "content": user_text,
+                                "timestamp": time.time(),
+                            }
+                        ),
+                    )
+
+                    skip_rag = is_trivial_query(user_text)
+
+                    async with async_session_factory() as ctx_db:
+                        refreshed = await ctx_db.get(Project, project_id)
+                        if refreshed:
+                            project = refreshed
+                        gen_context = build_generation_context(project)
+                        history, used_chunks = await get_context(
+                            db=ctx_db,
+                            chat_id=chat_id_ctx.get(),
+                            prompt=user_text,
+                            project_id=project_id,
+                            vector_top_k=0 if skip_rag else 10,
+                            ft_top_m=0 if skip_rag else 10,
+                        )
+
+                    messages = [dict(m._asdict()) for m in history]
+                else:
+                    gen_context = build_generation_context(None)
+
+                messages.append({"role": "user", "content": user_text})
+
+                total_content = ""
+                total_tokens = 0
+                assistant_provider = gen_context.provider_id
+                assistant_model = gen_context.model_id
+
+                while True:
+                    async for event in ai_chat_stream(messages, gen_context):
+                        event_type = event.get("event")
+                        if event_type == "content":
+                            delta = event.get("data", "")
+                            if delta:
+                                total_content += delta
+                                await ws.send_json(
+                                    {"ok": True, "content": delta, "partial": True}
+                                )
+                                # Publish assistant partial message
+                                if project_id:
+                                    await redis.publish(
+                                        f"chat_monitor:{chat_id_ctx.get()}",
+                                        json.dumps(
+                                            {
+                                                "role": "assistant",
+                                                "content": delta,
+                                                "partial": True,
+                                                "timestamp": time.time(),
+                                            }
+                                        ),
+                                    )
+
+                        elif event_type == "usage":
+                            usage_data = event.get("usage", {})
+                            # We can track total tokens for the whole interaction
+                            # For now, let's just store what OpenAI returns
+                            total_tokens = usage_data.get("total_tokens", 0)
+
+                        elif event_type == "assistant_message":
+                            assistant_message = event.get("message")
+                        # Tool calls are disabled for now
+                        # Skip tool_call events since TOOLS list is empty
+
+                    if assistant_message is None:
+                        raise RuntimeError("Assistant response missing from stream")
+
+                    messages.append(assistant_message)
+
+                    if not pending_tool_results:
+                        break
+
+                    for tool_call in pending_tool_results:
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.get("id"),
+                                "name": tool_call.get("name"),
+                                "content": tool_call.get("result"),
+                            }
+                        )
+
+                # Generate and send TTS if requested
+                if request_tts and total_content:
+                    audio_bytes = await generate_tts_audio(total_content)
+                    if audio_bytes:
+                        # Send as base64 or binary?
+                        # Sending as base64 in JSON is easier for the existing protocol
+                        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+                        await ws.send_json(
+                            {"type": "audio_response", "audio": audio_b64}
+                        )
+
+                # Generate suggestions if not a trivial query (or even if it is, maybe?)
+                # Let's generate suggestions generally, but maybe meaningful ones.
+                # If we skipped RAG, maybe we don't need deep suggestions, but "How does X work?" might be good.
+                suggestions = await generate_suggestions(
+                    messages + [assistant_message], gen_context
+                )
+                if suggestions:
+                    await ws.send_json(
+                        {
+                            "type": "suggested_actions",
+                            "actions": suggestions,
+                        }
+                    )
+
+                # Save both messages after stream completes
+                async with async_session_factory() as db:
+                    res_user = await db.execute(
+                        sa.insert(ChatMsg)
+                        .values(
+                            text=user_text,
+                            role="user",
+                            full_context="",
+                            chat_id=chat_id_ctx.get(),
+                            user_uid=str(user_id_ctx.get()),
+                            created_at=sa.func.now(),
+                        )
+                        .returning(ChatMsg.id)
+                    )
+                    user_msg_id = res_user.scalar_one()
+
+                    res_ai = await db.execute(
+                        sa.insert(ChatMsg)
+                        .values(
+                            text=total_content,
+                            role="assistant",
+                            full_context="",
+                            chat_id=chat_id_ctx.get(),
+                            user_uid=str(user_id_ctx.get()),
+                            created_at=sa.func.now(),
+                            used_chunks=used_chunks,
+                            tokens=total_tokens,
+                            provider=assistant_provider,
+                            model=assistant_model,
+                        )
+                        .returning(ChatMsg.id)
+                    )
+                    assistant_msg_id = res_ai.scalar_one()
+
+                    await db.commit()
+
+                # Send completion signal with sources AND message ID
+                # We need to send this AFTER commit to ensure ID exists
+                serializer = URLSafeSerializer(SECRET_KEY)
+                signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
+
+                # Send sources logic here or reuse?
+                # The previous `ws.send_json` at line 511 was sent BEFORE DB insert.
+                # We should move it here OR send a separate "saved" event?
+                # The frontend expects "ok": True to finish streaming state.
+                # If we move it here, latency is slightly higher (DB insert).
+                # But we need the ID.
+
+                # Re-constructing sources logic briefly
+                sources = []
+                if used_chunks:
+                    seen_urls = set()
+                    for chunk in used_chunks:
+                        uri = chunk.get("uri")
+                        title = chunk.get("title")
+                        if uri and uri not in seen_urls:
+                            sources.append({"uri": uri, "title": title or uri})
+                            seen_urls.add(uri)
+
+                await ws.send_json(
+                    {
+                        "ok": True,
+                        "content": "",
+                        "partial": False,
+                        "sources": sources,
+                        "msg_id": assistant_msg_id,  # Plain ID (maybe useful for JS internal, but less secure for public actions)
+                        "signed_msg_id": signed_msg_id,
+                    }
+                )
+
+                # Enqueue Celery-compatible background tasks (shared Redis queue)
+                try:
+                    await run_task(
+                        task="jobs.embedder.tasks.index_chat_message",
+                        msg_id=user_msg_id,
+                    )
+                    await run_task(
+                        task="jobs.embedder.tasks.index_chat_message",
+                        msg_id=assistant_msg_id,
+                    )
+                except Exception as enq_exc:
+                    logger.warning("run_task failed: %s", enq_exc)
+            except aiohttp.ClientResponseError as e:
+                await ws.send_json(
+                    {
+                        "ok": False,
+                        "error": "openai_http_error",
+                        "status": e.status,
+                        "detail": e.message,
+                    }
+                )
+            except Exception as e:
+                await ws.send_json(
+                    {"ok": False, "error": type(e).__name__, "detail": str(e)}
+                )
+    except Exception as e:
+        logger.error(f"Websocket exception: {e}")
+    finally:
+        await ws.close()
+        if project_id:
+            try:
+                await redis.srem(
+                    f"project:{project_id}:active_chats", chat_id_ctx.get()
+                )
+            except Exception as e:
+                logger.error("Failed to remove chat from active_chats in Redis: %s", e)
+    return ws
+
+
+async def chat_actions(request):
+    action = request.match_info.get("action")
+    item_id = request.match_info.get("item_id")
+
+    # CSRF Check for HTMX
+    token = request.headers.get("X-CSRFToken")
+    if not token:
+        raise web.HTTPForbidden(text="Missing CSRF Token")
+
+    # Verify secure ID
+    try:
+        serializer = URLSafeSerializer(SECRET_KEY)
+        # item_id should be signed
+        real_id = serializer.loads(item_id, salt="chat_msg", max_age=86400)
+    except BadSignature:
+        raise web.HTTPForbidden(text="Invalid Item ID")
+
+    db = request["db"]
+
+    if action == "vote":
+        data = await request.post()
+        # HTMX might send form data, checking keys
+        # If using hx-vars or hx-vals, it might be in post.
+        # But we want to support both json and form?
+        # HTMX typically sends form data.
+        # Let's assume simplest case: button sends vote value
+        # But wait, HTMX buttons usually don't send value unless put in hidden input or hx-vals.
+        # We can use hx-vals='{"vote": 1}'
+
+        # Check if vote is in query or post
+        vote = data.get("vote") or request.query.get("vote")
+        vote_comment = data.get("vote_comment")
+
+        if vote is not None:
+            vote = int(vote)
+
+        msg = await db.scalar(sa.select(ChatMsg).where(ChatMsg.id == int(real_id)))
+        if not msg:
+            raise web.HTTPNotFound(text="Message not found")
+
+        if msg.role != "assistant":
+            raise web.HTTPBadRequest(text="Can only vote on assistant messages")
+
+        if vote is not None:
+            msg.vote = vote
+
+        if vote_comment is not None:
+            msg.vote_comment = vote_comment
+
+        await db.commit()
+
+        # Return the updated partial HTML for the buttons
+        # We need to construct the HTML to swap.
+        # Ideally this should be a template snippet.
+        # For simplicity, inline string or render a small template?
+        # Inline string for now to match the JS version's simplicity,
+        # but better to use a macro in the template.
+        # Let's try to render a partial template or just return the HTML string.
+        # Given we are in aiohttp_jinja2 env, we can render context.
+
+        return aiohttp_jinja2.render_template(
+            "chat/includes/vote_buttons.html",
+            request,
+            {
+                "msg_id": item_id,  # Keep signed ID
+                "vote": msg.vote,
+                "vote_comment": msg.vote_comment,
+            },
+        )
+
+    return web.HTTPBadRequest(text=f"Unknown action: {action}")

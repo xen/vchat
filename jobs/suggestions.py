@@ -10,9 +10,9 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from core.models import Project, Chunk
-from core.ai_providers import resolve_ai_settings
-from core.utils import json
+from vchat.models import Project, Chunk
+from vchat.ai_providers import resolve_ai_settings
+from vchat.utils import json
 
 logger = logging.getLogger(__name__)
 

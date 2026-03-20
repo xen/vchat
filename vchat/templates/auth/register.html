@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% from "macros.html" import message with context %}
+{% from "auth/_macros.html" import auth_input, auth_checkbox %}
+
+{% block fullbody %}
+<main class="bg-base-200 min-h-screen">
+  <div class="relative z-10 container py-16 md:py-24">
+    <div class="flex flex-col items-center">
+      <div class="w-400 max-w-3xl rounded-[32px] border border-base-200 bg-base-100/90 p-6 shadow-2xl md:p-10">
+        <div class="flex items-center justify-between gap-4">
+          <a href="{{ url('index') }}">
+            <img alt="{{ _('vchat Logo') }}" class="hidden h-8 dark:inline"
+              src="{{ url_for('static', filename='images/logo/logo-dark.svg') }}" />
+            <img alt="{{ _('vchat Logo') }}" class="h-8 dark:hidden"
+              src="{{ url_for('static', filename='images/logo/logo-light.svg') }}" />
+          </a>
+          {% from "macros.html" import theme_switcher with context %}
+          {{ theme_switcher() }}
+        </div>
+
+        {{ message() }}
+
+        {% if done %}
+        <div class="mt-10 space-y-6 text-center">
+          <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-success/10 text-success">
+            <iconify-icon icon="lucide:check" class="size-8"></iconify-icon>
+          </div>
+          <h1 class="text-2xl font-semibold">
+            {{ _('Confirm your email') }}
+          </h1>
+          <p class="text-base-content/70 text-sm md:text-base">
+            {{ _('An email has been sent to you confirming the email address you provided. Click on the link in the email and complete registration. The letter should arrive instantly. If it doesn\'t appear in your inbox within a minute, check your Spam folder.') }}
+          </p>
+          <a href="{{ url('index') }}" class="btn btn-primary btn-wide mx-auto gap-3">
+            <iconify-icon icon="lucide:arrow-right" class="size-4"></iconify-icon>
+            {{ _('Continue') }}
+          </a>
+        </div>
+        {% else %}
+        <h1 class="mt-6 text-center text-2xl font-semibold md:mt-10">
+          {{ _('Create a new account') }}
+        </h1>
+        <p class="text-base-content/70 mt-2 text-center text-sm md:text-base">
+          {{ _('Fill the form to make a new account.') }}
+        </p>
+        <form class="mt-8" action="{{ url('register') }}" method="POST">
+          {{ form.csrf_token }}
+
+          {{ auth_input(form.email, "mail", _('Email address'), 'email', 'email') }}
+          {{ auth_input(form.name, "user", _('Full name'), 'text', 'name') }}
+          {{ auth_input(form.password, "lock", _('Password'), 'password', 'new-password') }}
+          {{ auth_input(form.confirm, "lock", _('Confirm password'), 'password', 'new-password') }}
+
+          {{ auth_checkbox(form.accept_rules) }}
+
+          {% if turnstile %}
+          <div class="mt-6">
+            <div class="cf-turnstile" data-sitekey="{{ turnstile }}"></div>
+          </div>
+          <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+          {% endif %}
+
+          <button type="submit" class="btn btn-primary mt-6 w-full gap-3">
+            <iconify-icon icon="lucide:user-plus" class="size-4"></iconify-icon>
+            {{ _('Create account') }}
+          </button>
+
+          <p class="text-base-content/70 mt-6 text-center text-sm">
+            {{ _('Already have an account?') }}
+            <a class="text-primary hover:underline" href="{{ url('login') }}">
+              {{ _('Login here') }}
+            </a>
+            <br>
+            {{ _('Forgot password?') }}
+            <a class="text-primary hover:underline" href="{{ url('recover') }}">
+              {{ _('Recover password') }}
+            </a>
+          </p>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% include "include/admin/footer.html" with context %}
+</main>
+{% endblock %}

@@ -9,9 +9,9 @@ from yarl import URL
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from core.models import Post, PostCategory
-from core.models.support import Page
-from core.settings import config
+from vchat.models import Post, PostCategory
+from vchat.models.support import Page
+from vchat.settings import config
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def get_static_pages_urls() -> List[Dict]:
     Route: /about/{page}
     """
     urls = []
-    # core/docs is at project_root/docs, currently we are in jobs/sitemap.py
+    # vchat/docs is at project_root/docs, currently we are in jobs/sitemap.py
     # jobs/sitemap.py -> project_root/jobs/sitemap.py
     # docs is at project_root/docs
     docs_path = Path(__file__).parent.parent / "docs"

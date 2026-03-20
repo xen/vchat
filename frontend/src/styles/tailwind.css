@@ -1,5 +1,5 @@
 /*** Tailwind CSS Presets ***/
-@source "../../../core/templates/**/*.html";
+@source "../../../vchat/templates/**/*.html";
 @import "tailwindcss";
 
 /** Dark Variant with theme & system mode **/

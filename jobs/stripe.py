@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from core.models.billing import Payment, PaymentStatus
-from core.models.data import Chat, ChatMsg, Project
-from core.models.plan import Plan, plan_from_identifier
-from core.settings import config
+from vchat.models.billing import Payment, PaymentStatus
+from vchat.models.data import Chat, ChatMsg, Project
+from vchat.models.plan import Plan, plan_from_identifier
+from vchat.settings import config
 
 logger = logging.getLogger(__name__)
 stripe.api_key = config.get("stripe_api_key")

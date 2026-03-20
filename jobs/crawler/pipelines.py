@@ -3,9 +3,9 @@ import logging
 from docling.document_converter import DocumentConverter
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-from core.models.data import Document
-from core.document_types import guess_document_type, has_html_form
-from core.settings import config
+from vchat.models.data import Document
+from vchat.document_types import guess_document_type, has_html_form
+from vchat.settings import config
 import html
 
 

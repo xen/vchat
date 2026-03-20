@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from jobs.db import create_sync_engine
-from core.models import Document, Source
-from core.settings import config
-from core.utils import get_file_hash
+from vchat.models import Document, Source
+from vchat.settings import config
+from vchat.utils import get_file_hash
 
 logger = logging.getLogger(__name__)
 

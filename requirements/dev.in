@@ -30,3 +30,7 @@ pytest-cov
 pytest-env
 rope
 watchdog[watchmedo]
+
+
+# word generation
+pandoc-mermaid-selenium-filter

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from jobs.utils import send_flash_background
-from core.models import ChatMsg, Chunk, Document, Project, Source
+from vchat.models import ChatMsg, Chunk, Document, Project, Source
 
 # Lazy, per-process singleton
 _embed_model = None

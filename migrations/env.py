@@ -9,17 +9,17 @@ import sqlalchemy as sa
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
-if not importlib.util.find_spec("core"):
+if not importlib.util.find_spec("vchat"):
     import sys
     from pathlib import Path
 
     sys.path.append(str(Path(__file__).parent.parent.absolute()))
 
 
-from core.models.base import DateTime_, Base
+from vchat.models.base import DateTime_, Base
 
 target_metadata = Base.metadata
-from core.settings import config as core_conf
+from vchat.settings import config as core_conf
 
 sa.DateTime_ = DateTime_
 

@@ -1,4 +1,4 @@
--- pg_dump -d core_prod --file=schema.sql --schema-only --schema=public --no-owner --no-acl
+-- pg_dump -d vchat_prod --file=schema.sql --schema-only --schema=public --no-owner --no-acl
 --
 -- PostgreSQL database dump
 --

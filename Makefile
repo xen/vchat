@@ -13,8 +13,8 @@ init: ## prepare project
 	@echo "Updating pre-commit hooks..."
 	$(SH) pre-commit autoupdate
 
-run: venv/bin/activate requirements/dev.txt ## run core
-	@$(SH) watchmedo auto-restart -d core -R --patterns="*.py;*.txt" make devrun
+run: venv/bin/activate requirements/dev.txt ## run vchat
+	@$(SH) watchmedo auto-restart -d vchat -R --patterns="*.py;*.txt" make devrun
 
 devrun:
 	@$(SH) python -X dev entry.py
@@ -51,7 +51,7 @@ autoupgrade: ensure-pip ## upgrade dependencies
 	$(SH) pip-compile --upgrade --generate-hashes -v --allow-unsafe requirements/dev.in -o requirements/dev.txt
 
 # Celery and tasks
-celery: venv/bin/activate ## start celery (core + crawler queues)
+celery: venv/bin/activate ## start celery (vchat + crawler queues)
 	$(SH) celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery,crawler
 
 embedder: venv/bin/activate ## start dedicated embedder worker
@@ -64,28 +64,28 @@ task: venv/bin/activate  ## run a task
 	$(SH) celery -A jobs.celery call ${@: 1}
 
 lint: venv/bin/activate ## run linter
-	$(SH) pre-commit run --hook-stage manual --files core jobs entry.py
-	$(SH) ruff check --fix core jobs entry.py
-# 	$(SH) mypy core jobs entry.py
+	$(SH) pre-commit run --hook-stage manual --files vchat jobs entry.py
+	$(SH) ruff check --fix vchat jobs entry.py
+# 	$(SH) mypy vchat jobs entry.py
 
 frontend: venv/bin/activate ## build frontend
 	$(SH) cd frontend && make deploy
 	$(SH) cd frontend_chat && make deploy
 
 add-lang: venv/bin/activate requirements/dev.txt ## add new lang: make add-lang LANG=ru
-	$(SH) pybabel init -i core/translations/messages.pot -d core/translations -l $(LANG)
+	$(SH) pybabel init -i vchat/translations/messages.pot -d vchat/translations -l $(LANG)
 
 lang: venv/bin/activate requirements/dev.txt ## update lang
-	$(SH) pybabel extract -F babel.cfg -o core/translations/messages.pot .
-	$(SH) pybabel update -i core/translations/messages.pot -d core/translations
-	$(SH) pybabel compile -d core/translations
+	$(SH) pybabel extract -F babel.cfg -o vchat/translations/messages.pot .
+	$(SH) pybabel update -i vchat/translations/messages.pot -d vchat/translations
+	$(SH) pybabel compile -d vchat/translations
 
 translate: venv/bin/activate requirements/dev.txt ## translate using AI
-	$(SH) pybabel extract -F babel.cfg -o core/translations/messages.pot .
-	$(SH) pybabel update -i core/translations/messages.pot -d core/translations
-	$(SH) python bin/translate.py core/translations
-	$(SH) pybabel update -i core/translations/messages.pot -d core/translations
-	$(SH) pybabel compile -d core/translations
+	$(SH) pybabel extract -F babel.cfg -o vchat/translations/messages.pot .
+	$(SH) pybabel update -i vchat/translations/messages.pot -d vchat/translations
+	$(SH) python bin/translate.py vchat/translations
+	$(SH) pybabel update -i vchat/translations/messages.pot -d vchat/translations
+	$(SH) pybabel compile -d vchat/translations
 
 deploy: venv/bin/activate  ## deploy on server project
 	$(SH) uv pip sync requirements/requirements.txt --link-mode=copy
@@ -94,9 +94,9 @@ deploy: venv/bin/activate  ## deploy on server project
 	  $(SH) uv pip install -r requirements/req_linux.txt --link-mode=copy; \
 	fi
 	$(SH) alembic upgrade head
-	$(SH) pybabel compile -d core/translations
+	$(SH) pybabel compile -d vchat/translations
 
-tunnel:  ## make tunnel to prod database, use `psql postgresql://localhost:54327 -d core` to connect
+tunnel:  ## make tunnel to prod database, use `psql postgresql://localhost:54327 -d vchat` to connect
 	@echo "Start tunnel, keep this running...";
 	@while true; do \
 	  AUTOSSH_GATETIME=0 autossh -M 0 -N -o "ServerAliveInterval=10" -o "ServerAliveCountMax=3" \
@@ -105,12 +105,12 @@ tunnel:  ## make tunnel to prod database, use `psql postgresql://localhost:54327
 	  -o "ServerAliveInterval=10" \
 	  -o "ServerAliveCountMax=3" \
 	  -o "ConnectTimeout=10" \
-	  -L 54327:localhost:5432 deploy@core.com; \
+	  -L 54327:localhost:5432 deploy@vchat.com; \
 	  echo "SSH tunnel dropped, reconnecting in 5 seconds..."; \
 	  sleep 5; \
 	done
 
-ssl:  ## listen for core.me on localhost:443
+ssl:  ## listen for vchat.me on localhost:443
 	@echo "Starting Caddy server..."
 	-@caddy stop
 	caddy run --config Caddyfile

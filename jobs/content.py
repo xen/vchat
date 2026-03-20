@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from core.models.support import Chapter, Page
-from core.settings import config
+from vchat.models.support import Chapter, Page
+from vchat.settings import config
 
 logger = logging.getLogger(__name__)
 

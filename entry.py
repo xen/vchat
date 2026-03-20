@@ -7,7 +7,7 @@ import aiohttp
 import sentry_sdk
 from aiohttp.helpers import DEBUG
 
-from core.app import create_app
+from vchat.app import create_app
 
 if not DEBUG:
     sentry_sdk.init(
@@ -70,9 +70,9 @@ if args.downgrade:
 app = create_app()
 
 # checks
-from core import routes  # noqa
-from core import views  # noqa
-from core.models import *  # noqa
+from vchat import routes  # noqa
+from vchat import views  # noqa
+from vchat.models import *  # noqa
 
 if __name__ == "__main__":
     aiohttp.web.run_app(app, host=args.host, port=args.port, access_log=logger)

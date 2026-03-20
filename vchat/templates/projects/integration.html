@@ -1,0 +1,153 @@
+{% extends "admin.html" %}
+
+{% block title %}{{ _('Integration') }}{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between">
+    <p class="text-lg font-medium">{{ _('Integration') }}</p>
+</div>
+
+<div class="mt-6">
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-0">
+    <p class="mb-4">
+      {{ _('To integrate the chat widget on your site, copy and paste the following code snippet before the closing </body> tag.') }}
+    </p>
+
+    {% set widget_script_src = external('widget_js') ~ '?id=' ~ project.short_id %}
+    {% set basic_snippet -%}
+<script src="{{ widget_script_src }}" defer></script>
+<div id="vchat-chat"></div>
+    {%- endset %}
+
+    <div class="relative mb-6" data-code-block>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm absolute right-3 top-3 z-10"
+        data-copy-target="integration-snippet-basic"
+        data-copied-label="{{ _('Copied!') }}"
+        aria-label="{{ _('Copy code') }}"
+      >
+        <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+        <span class="ml-2 copy-label">{{ _('Copy') }}</span>
+      </button>
+      <pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code id="integration-snippet-basic" class="language-html">{{ basic_snippet | trim }}</code></pre>
+    </div>
+
+    <p>
+      {{ _(
+        'If your site allow users to log in, it is highly recommended to implement user '
+        'attribution to enhance the chat experience. This allows the chat widget to recognize '
+        'returning users and provide a more personalized interaction. This case you need to '
+        'include additional data attributes in the chat widget div as shown below. And you '
+        'also need to implement HMAC-SHA256 signature generation on your server side to '
+        'securely identify your users.'
+        ) }}
+    </p>
+
+
+    {% set attribution_snippet -%}
+<script src="{{ widget_script_src }}" defer></script>
+<div id="vchat-chat"
+  data-user-uid="USER_UNIQUE_ID"
+  data-user-name="USER_NAME"
+  data-user-email="USER_EMAIL"
+  data-xsign="{sign}"></div>
+    {%- endset %}
+
+    <div class="relative mb-6" data-code-block>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm absolute right-3 top-3 z-10"
+        data-copy-target="integration-snippet-attribution"
+        data-copied-label="{{ _('Copied!') }}"
+        aria-label="{{ _('Copy code') }}"
+      >
+        <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+        <span class="ml-2 copy-label">{{ _('Copy') }}</span>
+      </button>
+      <pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code id="integration-snippet-attribution" class="language-html">{{ attribution_snippet | trim }}</code></pre>
+    </div>
+
+    <h3 class="text-lg font-bold mb-2">{{ _('User Attribution') }}</h3>
+    <p class="mb-4">
+      {{ _('To securely identify your users, you can generate an HMAC-SHA256 signature using your project secret.') }}
+    </p>
+
+    {% include "projects/_integration_secret_field.html" %}
+
+    <div class="alert alert-info mb-6">
+      <iconify-icon icon="lucide:info" class="size-6"></iconify-icon>
+      <span>{{ _('Replace USER_UNIQUE_ID, USER_NAME, and USER_EMAIL with the actual user data from your system. The {sign} should be the HMAC-SHA256 hash of the user_uid signed with your project secret.') }}</span>
+    </div>
+
+    <h3 class="text-lg font-bold mb-2">{{ _('Signature Generation Examples') }}</h3>
+
+    <p><strong>{{ _('Node.js') }}</strong></p>
+    {% set node_example -%}
+const crypto = require('crypto');
+
+const secret = 'vchat_SECRET'; // Replace with your actual project secret
+const user_id = 'USER_UNIQUE_ID'; // User unique identifier from database
+const user_name = 'USER_NAME';
+const user_email = 'USER_EMAIL';
+const user_string = user_id + user_name + user_email;
+
+const sign = crypto
+  .createHmac('sha256', secret)
+  .update(user_string)
+  .digest('hex');
+
+console.log(sign);
+    {%- endset %}
+    <div class="relative mb-6" data-code-block>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm absolute right-3 top-3 z-10"
+        data-copy-target="integration-snippet-node"
+        data-copied-label="{{ _('Copied!') }}"
+        aria-label="{{ _('Copy code') }}"
+      >
+        <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+        <span class="ml-2 copy-label">{{ _('Copy') }}</span>
+      </button>
+      <pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code id="integration-snippet-node" class="language-javascript">{{ node_example | trim }}</code></pre>
+    </div>
+
+    <p><strong>{{ _('PHP') }}</strong></p>
+    {% set php_example -%}
+<?php
+$secret = 'vchat_SECRET'; // Replace with your actual project secret
+$user_id = 'USER_UNIQUE_ID'; // User unique identifier from database
+$user_name = 'USER_NAME';
+$user_email = 'USER_EMAIL';
+
+// Concatenate user data, no delimiters, order matters
+
+$userString = $user_id . $user_name . $user_email;
+
+$sign = hash_hmac('sha256', $userString, $secret);
+
+echo $sign;
+?>
+    {%- endset %}
+    <div class="relative mb-6" data-code-block>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm absolute right-3 top-3 z-10"
+        data-copy-target="integration-snippet-php"
+        data-copied-label="{{ _('Copied!') }}"
+        aria-label="{{ _('Copy code') }}"
+      >
+        <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+        <span class="ml-2 copy-label">{{ _('Copy') }}</span>
+      </button>
+      <pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code id="integration-snippet-php" class="language-php">{{ php_example | trim }}</code></pre>
+    </div>
+  </div>
+</div>
+</div>
+
+{% endblock %}

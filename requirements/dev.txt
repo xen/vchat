@@ -213,7 +213,7 @@ annotated-types==0.7.0 \
     # via
     #   -r requirements/requirements.txt
     #   pydantic
-annoy==1.17.3 ; sys_platform == "linux" \
+annoy==1.17.3 \
     --hash=sha256:9cbfebefe0a5f843eba29c6be4c84d601f4f41ad4ded0486f1b88c3b07739c15 \
     --hash=sha256:c33a5d4d344c136c84976bfb2825760142a8bb25335165e24e11c9afbfa8c2e9
     # via
@@ -307,8 +307,10 @@ attrs==25.4.0 \
     #   aiohttp
     #   jsonlines
     #   jsonschema
+    #   outcome
     #   referencing
     #   service-identity
+    #   trio
     #   twisted
 automat==25.4.16 \
     --hash=sha256:0017591a5477066e90d26b0e696ddc143baafd87b588cfac8100bc6be9634de0 \
@@ -480,6 +482,7 @@ certifi==2025.11.12 \
     #   httpcore
     #   httpx
     #   requests
+    #   selenium
     #   sentry-sdk
 cffi==2.0.0 \
     --hash=sha256:00bdf7acc5f795150faa6957054fbbca2439db2f775ce831222b66f192f03beb \
@@ -702,6 +705,7 @@ click==8.3.1 \
     #   click-plugins
     #   click-repl
     #   import-linter
+    #   ocrmac
     #   pip-tools
     #   streamlit
     #   typer
@@ -1530,9 +1534,7 @@ greenlet==3.3.0 \
     --hash=sha256:dcd2bdbd444ff340e8d6bdf54d2f206ccddbb3ccfdcd3c25bf4afaa7b8f0cf45 \
     --hash=sha256:e29f3018580e8412d6aaf5641bb7745d38c85228dacf51a73bd4e26ddf2a6a8e \
     --hash=sha256:e8e18ed6995e9e2c0b4ed264d2cf89260ab3ac7e13555b8032b25a74c6d18655
-    # via
-    #   -r requirements/requirements.txt
-    #   sqlalchemy
+    # via -r requirements/requirements.txt
 grimp==3.14 \
     --hash=sha256:0233a35a5bbb23688d63e1736b54415fa9994ace8dfeb7de8514ed9dee212968 \
     --hash=sha256:0332963cd63a45863775d4237e59dedf95455e0a1ea50c356be23100c5fc1d7c \
@@ -1724,6 +1726,7 @@ h11==0.16.0 \
     #   -r requirements/requirements.txt
     #   httpcore
     #   uvicorn
+    #   wsproto
 hf-xet==1.2.0 \
     --hash=sha256:10bfab528b968c70e062607f663e21e34e2bba349e8038db546646875495179e \
     --hash=sha256:210d577732b519ac6ede149d2f2f34049d44e8622bf14eb3d63bbcd2d4b332dc \
@@ -1814,6 +1817,7 @@ idna==3.11 \
     #   hyperlink
     #   requests
     #   tldextract
+    #   trio
     #   yarl
 ifaddr==0.2.0 \
     --hash=sha256:085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748 \
@@ -3005,6 +3009,12 @@ numpy==2.2.6 \
     #   thinc
     #   torchvision
     #   transformers
+ocrmac==1.0.1 \
+    --hash=sha256:1cef25426f7ae6bbd57fe3dc5553b25461ae8ad0d2b428a9bbadbf5907349024 \
+    --hash=sha256:507fe5e4cbd67b2d03f6729a52bbc11f9d0b58241134eb958a5daafd4b9d93d9
+    # via
+    #   -r requirements/requirements.txt
+    #   docling
 omegaconf==2.3.0 \
     --hash=sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b \
     --hash=sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7
@@ -3159,6 +3169,12 @@ orjson==3.11.5 \
     # via
     #   -r requirements/requirements.txt
     #   langsmith
+outcome==1.3.0.post0 \
+    --hash=sha256:9dcf02e65f2971b80047b377468e72a268e15c0af3cf1238e6ff14f7f91143b8 \
+    --hash=sha256:e771c5ce06d1415e356078d3bdd68523f284b4ce5419828922b6871e65eda82b
+    # via
+    #   trio
+    #   trio-websocket
 packaging==25.0 \
     --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
     --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
@@ -3185,6 +3201,7 @@ packaging==25.0 \
     #   thinc
     #   transformers
     #   weasel
+    #   webdriver-manager
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
     --hash=sha256:1611aedd912e1ff81ff41c745822980c49ce4a7907537be8692c8dbc31924593 \
@@ -3247,6 +3264,14 @@ pandas==2.3.3 \
     #   docling-core
     #   nemoguardrails
     #   streamlit
+pandoc-mermaid-selenium-filter==1.0.1 \
+    --hash=sha256:1423491d364de75ce33f136f425241260e7d28ae5db7739a279c5bce7b125fef \
+    --hash=sha256:7c5947c2b1dace5c85e1d2cd95f704223514f7bcfe115501315f3f2c63f88c4f
+    # via -r requirements/dev.in
+pandocfilters==1.5.1 \
+    --hash=sha256:002b4a555ee4ebc03f8b66307e287fa492e4a77b4ea14d3f934328297bb4939e \
+    --hash=sha256:93be382804a9cdb0a7267585f157e5d1731bbe5545a85b268d6f5fe6232de2bc
+    # via pandoc-mermaid-selenium-filter
 parsel==1.10.0 \
     --hash=sha256:14f17db9559f51b43357b9dfe43cec870a8efb5ea4857abb624ec6ff80d8a080 \
     --hash=sha256:6a0c28bd81f9df34ba665884c88efa0b18b8d2c44c81f64e27f2f0cb37d46169
@@ -3382,6 +3407,7 @@ pillow==11.3.0 \
     #   docling-ibm-models
     #   docling-parse
     #   fastembed
+    #   ocrmac
     #   python-pptx
     #   rapidocr
     #   streamlit
@@ -4302,6 +4328,71 @@ pymorphy3-dicts-ru==2.4.417150.4580142 \
     # via
     #   -r requirements/requirements.txt
     #   pymorphy3
+pyobjc-core==12.1 \
+    --hash=sha256:01c0cf500596f03e21c23aef9b5f326b9fb1f8f118cf0d8b66749b6cf4cbb37a \
+    --hash=sha256:177aaca84bb369a483e4961186704f64b2697708046745f8167e818d968c88fc \
+    --hash=sha256:2bb3903f5387f72422145e1466b3ac3f7f0ef2e9960afa9bcd8961c5cbf8bd21 \
+    --hash=sha256:453b191df1a4b80e756445b935491b974714456ae2cbae816840bd96f86db882 \
+    --hash=sha256:818bcc6723561f207e5b5453efe9703f34bc8781d11ce9b8be286bb415eb4962 \
+    --hash=sha256:844515f5d86395b979d02152576e7dee9cc679acc0b32dc626ef5bda315eaa43 \
+    --hash=sha256:93418e79c1655f66b4352168f8c85c942707cb1d3ea13a1da3e6f6a143bacda7 \
+    --hash=sha256:c918ebca280925e7fcb14c5c43ce12dcb9574a33cccb889be7c8c17f3bcce8b6
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-cocoa
+    #   pyobjc-framework-coreml
+    #   pyobjc-framework-quartz
+    #   pyobjc-framework-vision
+pyobjc-framework-cocoa==12.1 \
+    --hash=sha256:03342a60fc0015bcdf9b93ac0b4f457d3938e9ef761b28df9564c91a14f0129a \
+    --hash=sha256:547c182837214b7ec4796dac5aee3aa25abc665757b75d7f44f83c994bcb0858 \
+    --hash=sha256:5556c87db95711b985d5efdaaf01c917ddd41d148b1e52a0c66b1a2e2c5c1640 \
+    --hash=sha256:5a3dcd491cacc2f5a197142b3c556d8aafa3963011110102a093349017705118 \
+    --hash=sha256:6ba1dc1bfa4da42d04e93d2363491275fb2e2be5c20790e561c8a9e09b8cf2cc \
+    --hash=sha256:914b74328c22d8ca261d78c23ef2befc29776e0b85555973927b338c5734ca44 \
+    --hash=sha256:9b880d3bdcd102809d704b6d8e14e31611443aa892d9f60e8491e457182fdd48 \
+    --hash=sha256:f52228bcf38da64b77328787967d464e28b981492b33a7675585141e1b0a01e6
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-coreml
+    #   pyobjc-framework-quartz
+    #   pyobjc-framework-vision
+pyobjc-framework-coreml==12.1 \
+    --hash=sha256:0d1a4216891a18775c9e0170d908714c18e4f53f9dc79fb0f5263b2aa81609ba \
+    --hash=sha256:10dc8e8db53d7631ebc712cad146e3a9a9a443f4e1a037e844149a24c3c42669 \
+    --hash=sha256:16dafcfb123f022e62f47a590a7eccf7d0cb5957a77fd5f062b5ee751cb5a423 \
+    --hash=sha256:48fa3bb4a03fa23e0e36c93936dca2969598e4102f4b441e1663f535fc99cd31 \
+    --hash=sha256:71de5b37e6a017e3ed16645c5d6533138f24708da5b56c35c818ae49d0253ee1 \
+    --hash=sha256:7762b3dd2de01565b7cf3049ce1e4c27341ba179d97016b0b7607448e1c39865 \
+    --hash=sha256:a04a96e512ecf6999aa9e1f60ad5635cb9d1cd839be470341d8d1541797baef6 \
+    --hash=sha256:df4e9b4f97063148cc481f72e2fbe3cc53b9464d722752aa658d7c0aec9f02fd
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-vision
+pyobjc-framework-quartz==12.1 \
+    --hash=sha256:0cc08fddb339b2760df60dea1057453557588908e42bdc62184b6396ce2d6e9a \
+    --hash=sha256:19f99ac49a0b15dd892e155644fe80242d741411a9ed9c119b18b7466048625a \
+    --hash=sha256:27f782f3513ac88ec9b6c82d9767eef95a5cf4175ce88a1e5a65875fee799608 \
+    --hash=sha256:42d306b07f05ae7d155984503e0fb1b701fecd31dcc5c79fe8ab9790ff7e0de0 \
+    --hash=sha256:53b84e880c358ba1ddcd7e8d5ea0407d760eca58b96f0d344829162cda5f37b3 \
+    --hash=sha256:629b7971b1b43a11617f1460cd218bd308dfea247cd4ee3842eb40ca6f588860 \
+    --hash=sha256:7730cdce46c7e985535b5a42c31381af4aa6556e5642dc55b5e6597595e57a16 \
+    --hash=sha256:c6f312ae79ef8b3019dcf4b3374c52035c7c7bc4a09a1748b61b041bb685a0ed
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-vision
+pyobjc-framework-vision==12.1 \
+    --hash=sha256:04296f0848cc8cdead66c76df6063720885cbdf24fdfd1900749a6e2297313db \
+    --hash=sha256:1edbf2fc18ce3b31108f845901a88f2236783ae6bf0bc68438d7ece572dc2a29 \
+    --hash=sha256:631add775ed1dafb221a6116137cdcd78432addc16200ca434571c2a039c0e03 \
+    --hash=sha256:6b3211d84f3a12aad0cde752cfd43a80d0218960ac9e6b46b141c730e7d655bd \
+    --hash=sha256:7273e2508db4c2e88523b4b7ff38ac54808756e7ba01d78e6c08ea68f32577d2 \
+    --hash=sha256:a30959100e85dcede3a786c544e621ad6eb65ff6abf85721f805822b8c5fe9b0 \
+    --hash=sha256:a30c3fff926348baecc3ce1f6da8ed327d0cbd55ca1c376d018e31023b79c0ab \
+    --hash=sha256:fe41a1a70cc91068aee7b5293fa09dc66d1c666a8da79fdf948900988b439df6
+    # via
+    #   -r requirements/requirements.txt
+    #   ocrmac
 pyopenssl==25.1.0 \
     --hash=sha256:2b11f239acc47ac2e5aca04fd7fa829800aeee22a2eb30d744572a157bd8a1ab \
     --hash=sha256:8d031884482e0c67ee92bf9a4d8cceb08d92aba7136432ffb0703c5280fc205b
@@ -4340,6 +4431,11 @@ pyquery==2.0.1 \
     --hash=sha256:0194bb2706b12d037db12c51928fe9ebb36b72d9e719565daba5a6c595322faf \
     --hash=sha256:aedfa0bd0eb9afc94b3ddbec8f375a6362b32bc9662f46e3e0d866483f4771b0
     # via -r requirements/dev.in
+pysocks==1.7.1 \
+    --hash=sha256:08e69f092cc6dbe92a0fdd16eeb9b9ffbc13cadfe5ca4c7bd92ffb078b293299 \
+    --hash=sha256:2725bd0a9925919b9b51739eea5f9e2bae91e83288108a9ad338b2e3a4435ee5 \
+    --hash=sha256:3f8804571ebe159c380ac6de37643bb4685970655d3bba243530d6558b799aa0
+    # via urllib3
 pytest==9.0.2 \
     --hash=sha256:711ffd45bf766d5264d487b917733b453d917afd2b0ad65223959f59089f875b \
     --hash=sha256:75186651a92bd89611d1d9fc20f0b4345fd827c41ccd5c299a868a05d70edf11
@@ -4385,6 +4481,7 @@ python-dotenv==1.2.1 \
     # via
     #   -r requirements/requirements.txt
     #   pydantic-settings
+    #   webdriver-manager
 python-pptx==1.0.2 \
     --hash=sha256:160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba \
     --hash=sha256:479a8af0eaf0f0d76b6f00b0887732874ad2e3188230315290cd1f9dd9cc7095
@@ -4663,6 +4760,7 @@ requests==2.32.5 \
     #   tldextract
     #   transformers
     #   weasel
+    #   webdriver-manager
 requests-file==3.0.1 \
     --hash=sha256:d0f5eb94353986d998f80ac63c7f146a307728be051d4d1cd390dbdb59c10fa2 \
     --hash=sha256:f14243d7796c588f3521bd423c5dea2ee4cc730e54a3cac9574d78aca1272576
@@ -4999,6 +5097,10 @@ scrapy==2.13.4 \
     --hash=sha256:9bf36700aefa4983cc48b2cb0e1564161a340e19f73862778e2ed44ec5bbde6a \
     --hash=sha256:e09bce40c56b56f9f86b0d078a0e5cdd08283c83076170ce7a8eec7189ac2493
     # via -r requirements/requirements.txt
+selenium==4.39.0 \
+    --hash=sha256:12f3325f02d43b6c24030fc9602b34a3c6865abbb1db9406641d13d108aa1889 \
+    --hash=sha256:c85f65d5610642ca0f47dae9d5cc117cd9e831f74038bc09fe1af126288200f9
+    # via pandoc-mermaid-selenium-filter
 semchunk==2.2.2 \
     --hash=sha256:940e89896e64eeb01de97ba60f51c8c7b96c6a3951dfcf574f25ce2146752f52 \
     --hash=sha256:94ca19020c013c073abdfd06d79a7c13637b91738335f3b8cdb5655ee7cc94d2
@@ -5127,6 +5229,11 @@ sniffio==1.3.1 \
     # via
     #   -r requirements/requirements.txt
     #   openai
+    #   trio
+sortedcontainers==2.4.0 \
+    --hash=sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88 \
+    --hash=sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0
+    # via trio
 soupsieve==2.8 \
     --hash=sha256:0cc76456a30e20f5d7f2e14a98a4ae2ee4e5abdc7c5ea0aafe795f344bc7984c \
     --hash=sha256:e2dd4a40a628cb5f28f6d4b0db8800b8f581b65bb380b97de22ba5ca8d72572f
@@ -5722,6 +5829,16 @@ tree-sitter-typescript==0.23.2 \
     # via
     #   -r requirements/requirements.txt
     #   docling-core
+trio==0.33.0 \
+    --hash=sha256:3bd5d87f781d9b0192d592aef28691f8951d6c2e41b7e1da4c25cde6c180ae9b \
+    --hash=sha256:a29b92b73f09d4b48ed249acd91073281a7f1063f09caba5dc70465b5c7aa970
+    # via
+    #   selenium
+    #   trio-websocket
+trio-websocket==0.12.2 \
+    --hash=sha256:22c72c436f3d1e264d0910a3951934798dcc5b00ae56fc4ee079d46c7cf20fae \
+    --hash=sha256:df605665f1db533f4a386c94525870851096a223adcb97f72a07e8b4beba45b6
+    # via selenium
 twisted==25.5.0 \
     --hash=sha256:1deb272358cb6be1e3e8fc6f9c8b36f78eb0fa7c2233d2dbe11ec6fee04ea316 \
     --hash=sha256:8559f654d01a54a8c3efe66d533d43f383531ebf8d81d9f9ab4769d91ca15df7
@@ -5774,6 +5891,7 @@ typing-extensions==4.15.0 \
     #   python-docx
     #   python-pptx
     #   referencing
+    #   selenium
     #   sentence-transformers
     #   sqlalchemy
     #   starlette
@@ -5812,13 +5930,14 @@ tzlocal==5.3.1 \
     # via
     #   -r requirements/requirements.txt
     #   celery
-urllib3==2.6.2 \
+urllib3[socks]==2.6.2 \
     --hash=sha256:016f9c98bb7e98085cb2b4b17b87d2c702975664e4f060c6532e64d1c1a5e797 \
     --hash=sha256:ec21cddfe7724fc7cb4ba4bea7aa8e2ef36f607a4bab81aa6ce42a13dc3f03dd
     # via
     #   -r requirements/requirements.txt
     #   botocore
     #   requests
+    #   selenium
     #   sentry-sdk
 uuid-utils==0.12.0 \
     --hash=sha256:1b8fce83ecb3b16af29c7809669056c4b6e7cc912cab8c6d07361645de12dd79 \
@@ -5965,7 +6084,6 @@ watchdog[watchmedo]==6.0.0 \
     #   -r requirements/dev.in
     #   -r requirements/requirements.txt
     #   nemoguardrails
-    #   streamlit
 wcwidth==0.2.14 \
     --hash=sha256:4d478375d31bc5395a3c55c40ccdf3354688364cd61c4f6adacaa9215d0b3605 \
     --hash=sha256:a7bb560c8aee30f9957e5f9895805edd20602f2d7f720186dfd906e82b4982e1
@@ -5978,6 +6096,14 @@ weasel==0.4.3 \
     # via
     #   -r requirements/requirements.txt
     #   spacy
+webdriver-manager==4.0.2 \
+    --hash=sha256:75908d92ecc45ff2b9953614459c633db8f9aa1ff30181cefe8696e312908129 \
+    --hash=sha256:efedf428f92fd6d5c924a0d054e6d1322dd77aab790e834ee767af392b35590f
+    # via pandoc-mermaid-selenium-filter
+websocket-client==1.9.0 \
+    --hash=sha256:9e813624b6eb619999a97dc7958469217c3176312b3a16a4bd1bc7e08a46ec98 \
+    --hash=sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef
+    # via selenium
 wheel==0.45.1 \
     --hash=sha256:661e1abd9198507b1409a20c02106d9670b2576e916d58f520316666abca6729 \
     --hash=sha256:708e7481cc80179af0e556bbf0cc00b8444c7321e2700b8d8580231d13017248
@@ -6095,6 +6221,10 @@ wrapt==2.0.1 \
     # via
     #   -r requirements/requirements.txt
     #   smart-open
+wsproto==1.3.2 \
+    --hash=sha256:61eea322cdf56e8cc904bd3ad7573359a242ba65688716b0710a5eb12beab584 \
+    --hash=sha256:b86885dcf294e15204919950f666e06ffc6c7c114ca900b060d6e16293528294
+    # via trio-websocket
 wtforms==3.2.1 \
     --hash=sha256:583bad77ba1dd7286463f21e11aa3043ca4869d03575921d1a1698d0715e0fd4 \
     --hash=sha256:df3e6b70f3192e92623128123ec8dca3067df9cfadd43d59681e210cfb8d4682

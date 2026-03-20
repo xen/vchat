@@ -1,12 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
-DEPLOY_HOST="core.com"
-DEPLOY_PATH="/var/www/core"
+DEPLOY_HOST="vchat.com"
+DEPLOY_PATH="/var/www/vchat"
 PORT="${PORT:-9000}"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
-NGINX_SITE="/etc/nginx/sites-available/core"
-NGINX_SITE_LINK="/etc/nginx/sites-enabled/core"
+NGINX_SITE="/etc/nginx/sites-available/vchat"
+NGINX_SITE_LINK="/etc/nginx/sites-enabled/vchat"
 LOCAL_CONFIG_FILE="$DEPLOY_PATH/local.yaml"
 
 if [ ! -d "$DEPLOY_PATH" ]; then
@@ -33,15 +33,15 @@ make deploy
 
 mkdir -p "$SYSTEMD_DIR"
 
-cat > "$SYSTEMD_DIR/core-backend.service" <<EOF
+cat > "$SYSTEMD_DIR/vchat-backend.service" <<EOF
 [Unit]
-Description=core Backend Service
+Description=vchat Backend Service
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=$DEPLOY_PATH
-ExecStart=$DEPLOY_PATH/venv/bin/gunicorn core.app:create_app -k aiohttp.worker.GunicornWebWorker --bind 0.0.0.0:$PORT
+ExecStart=$DEPLOY_PATH/venv/bin/gunicorn vchat.app:create_app -k aiohttp.worker.GunicornWebWorker --bind 0.0.0.0:$PORT
 Restart=always
 Environment=PYTHONUNBUFFERED=1
 
@@ -49,9 +49,9 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=default.target
 EOF
 
-cat > "$SYSTEMD_DIR/core-celery.service" <<EOF
+cat > "$SYSTEMD_DIR/vchat-celery.service" <<EOF
 [Unit]
-Description=core Celery Worker
+Description=vchat Celery Worker
 After=network.target
 
 [Service]
@@ -64,9 +64,9 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=default.target
 EOF
 
-cat > "$SYSTEMD_DIR/core-embedder.service" <<EOF
+cat > "$SYSTEMD_DIR/vchat-embedder.service" <<EOF
 [Unit]
-Description=core Embedder Worker
+Description=vchat Embedder Worker
 After=network.target
 
 [Service]
@@ -140,24 +140,24 @@ EOF
 
 echo "Reloading systemd user units..."
 systemctl --user daemon-reload
-systemctl --user enable  "core-backend.service"
-systemctl --user restart "core-backend.service"
-systemctl --user enable  "core-celery.service"
-systemctl --user restart "core-celery.service"
-systemctl --user enable  "core-embedder.service"
-systemctl --user restart "core-embedder.service"
+systemctl --user enable  "vchat-backend.service"
+systemctl --user restart "vchat-backend.service"
+systemctl --user enable  "vchat-celery.service"
+systemctl --user restart "vchat-celery.service"
+systemctl --user enable  "vchat-embedder.service"
+systemctl --user restart "vchat-embedder.service"
 
 if [ ! -L "$NGINX_SITE_LINK" ]; then
-  echo "Enabling nginx site for core"
+  echo "Enabling nginx site for vchat"
   sudo ln -s "$NGINX_SITE" "$NGINX_SITE_LINK"
 fi
 
 sudo systemctl reload nginx
 
 echo "To check services jourals, use:"
-echo "journalctl --user -u core-backend.service -f"
-echo "journalctl --user -u core-celery.service -f"
-echo "journalctl --user -u core-embedder.service -f"
+echo "journalctl --user -u vchat-backend.service -f"
+echo "journalctl --user -u vchat-celery.service -f"
+echo "journalctl --user -u vchat-embedder.service -f"
 
-echo "Deployment of core completed."
-echo "Application is available at https://www.core.com/"
+echo "Deployment of vchat completed."
+echo "Application is available at https://www.vchat.com/"

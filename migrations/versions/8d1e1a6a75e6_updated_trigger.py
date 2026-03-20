@@ -7,7 +7,7 @@ Create Date: 2025-04-26 23:13:05.784481
 """
 
 from alembic import op
-from core.models import Base
+from vchat.models import Base
 
 # revision identifiers, used by Alembic.
 revision = "8d1e1a6a75e6"

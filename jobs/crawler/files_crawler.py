@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from core.models import Chunk, Document, Source
-from core.models.data import Project
+from vchat.models import Chunk, Document, Source
+from vchat.models.data import Project
 
 logger = logging.getLogger(__name__)
 

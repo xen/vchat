@@ -14,9 +14,9 @@ from docling.document_converter import DocumentConverter
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from core.document_types import guess_document_type, has_html_form
-from core.models.data import Document, Source
-from core.settings import config
+from vchat.document_types import guess_document_type, has_html_form
+from vchat.models.data import Document, Source
+from vchat.settings import config
 
 logger = logging.getLogger(__name__)
 

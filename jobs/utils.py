@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 
 import redis
-from core.settings import config
+from vchat.settings import config
 
 logger = logging.getLogger(__name__)
 

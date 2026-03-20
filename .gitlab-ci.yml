@@ -19,7 +19,7 @@ ruff lint:
     <<: *commit_cache
   allow_failure: true
   script:
-    - . venv/bin/activate && ruff check core/ --output-format=gitlab > code-quality-report.json
+    - . venv/bin/activate && ruff check vchat/ --output-format=gitlab > code-quality-report.json
   artifacts:
     reports:
       codequality: $CI_PROJECT_DIR/code-quality-report.json
@@ -29,7 +29,7 @@ ruff format:
   cache:
     <<: *commit_cache
   script:
-    - . venv/bin/activate && ruff format --diff core/
+    - . venv/bin/activate && ruff format --diff vchat/
 
 # mypy:
 #   stage: test
@@ -37,7 +37,7 @@ ruff format:
 #     <<: *commit_cache
 #   allow_failure: true
 #   script:
-#     - . venv/bin/activate && mypy --explicit-package-bases core/
+#     - . venv/bin/activate && mypy --explicit-package-bases vchat/
 
 bandit:
   stage: test
@@ -45,16 +45,16 @@ bandit:
     <<: *commit_cache
   allow_failure: true
   script:
-    - . venv/bin/activate && bandit -r core/ --quiet
+    - . venv/bin/activate && bandit -r vchat/ --quiet
 
 .deploy_script: &deploy_script |
   ssh "deploy@cdn.okumy.com" <<EOF
     set -e
-    PROJ_DIR="/var/www/core"
+    PROJ_DIR="/var/www/vchat"
     echo "Deployment path: \$PROJ_DIR"
     cd "\$PROJ_DIR"
     if [ ! -d .git ]; then
-      git clone git@venv.dev:core/pusk.git .
+      git clone git@venv.dev:vchat/pusk.git .
     else
       git reset --hard
       git pull origin master

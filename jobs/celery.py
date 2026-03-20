@@ -10,7 +10,7 @@ from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
-from core.settings import config
+from vchat.settings import config
 
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 

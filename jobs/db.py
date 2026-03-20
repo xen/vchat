@@ -7,7 +7,7 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-from core.settings import config
+from vchat.settings import config
 
 
 def sync_db_uri(uri: str | None = None) -> str:
