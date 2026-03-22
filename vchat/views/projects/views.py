@@ -43,7 +43,6 @@ from vchat.models import (
     Chunk,
     Document,
     Project,
-    ProjectUser,
     Source,
     User,
 )

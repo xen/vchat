@@ -117,29 +117,10 @@ class GigaChatProvider(BaseAIProvider):
         return config.get("gigachat_api_key")
 
 
-class GoogleGeminiProvider(BaseAIProvider):
-    id = "google"
-    title = "Google Gemini"
-    supports_chat = False
-
-    _models: ClassVar[list[ModelInfo]] = [
-        ModelInfo("gemini-1.5-pro", "Gemini 1.5 Pro"),
-        ModelInfo("gemini-1.5-flash", "Gemini 1.5 Flash"),
-    ]
-
-    @property
-    def models(self) -> list[ModelInfo]:
-        return list(self._models)
-
-    def _load_api_key(self) -> str | None:
-        return config.get("google_api_key")
-
-
 PROVIDER_CLASSES: tuple[type[BaseAIProvider], ...] = (
     OpenAIProvider,
     YandexGPTProvider,
     GigaChatProvider,
-    GoogleGeminiProvider,
 )
 
 

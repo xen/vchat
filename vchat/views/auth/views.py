@@ -15,7 +15,7 @@ from passlib.hash import pbkdf2_sha512
 
 from vchat.app_keys import CONFIG_KEY
 from vchat.i18n import lazy_gettext as _
-from vchat.models import ProjectUser, User
+from vchat.models import User
 from vchat.settings import config
 from vchat.utils import (
     DELAY_PROTECTION,
@@ -93,14 +93,8 @@ async def login(request):
         session["staff_id"] = user.id
         session["role"] = user.role.value
 
-        has_project = await request["db"].scalar(
-            sa.select(sa.exists().where(ProjectUser.user_id == user.id))
-        )
-
         target = "dashboard"
-        if not has_project:
-            target = "project_onboarding"
-        elif request.rel_url.query.get("next"):
+        if request.rel_url.query.get("next"):
             target = request.rel_url.query["next"]
         return web.HTTPFound(location=request.app.router[target].url_for())
 

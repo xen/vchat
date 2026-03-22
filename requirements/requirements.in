@@ -86,3 +86,4 @@ stripe
 # support
 anyascii
 python-slugify
+uuid6

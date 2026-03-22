@@ -7,7 +7,7 @@ from aiohttp import web
 import redis.asyncio as aioredis
 
 from vchat.db import async_session_factory
-from vchat.models import Chat, Project, ProjectUser, ChatMsg
+from vchat.models import Chat, Project, ChatMsg
 from vchat.settings import config
 from vchat.utils import login_required, meta
 from vchat.i18n import lazy_gettext as _

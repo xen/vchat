@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import ENUM, JSONB, TSVECTOR
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, Created, Updated, ShortId
+from .base import Base, Created, Updated, UUID7
 
 project_role_enum = ENUM(
     "owner",
@@ -56,7 +56,7 @@ chat_type_enum = ENUM(
 )
 
 
-class Chat(Base, Created, Updated, ShortId):
+class Chat(Base, Created, Updated, UUID7):
     __tablename__ = "chat"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
@@ -136,7 +136,7 @@ status_enum = ENUM(
 )
 
 
-class Document(Base, Created, Updated, ShortId):
+class Document(Base, Created, Updated, UUID7):
     __tablename__ = "document"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
@@ -199,7 +199,7 @@ class Document(Base, Created, Updated, ShortId):
 class Chunk(Base, Created, Updated):
     __tablename__ = "chunk"
 
-    id: Mapped[int] = mapped_column(sa.Integer, autoincrement=True)
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
     chat_id: Mapped[int | None] = mapped_column(
         sa.Integer,
         ForeignKey("chat.id", ondelete="CASCADE"),
@@ -227,5 +227,3 @@ class Chunk(Base, Created, Updated):
     content: Mapped[str] = mapped_column(sa.Text, nullable=False)
     tsv: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
-
-    __table_args__ = ({"postgresql_partition_by": "HASH (project_id)"},)

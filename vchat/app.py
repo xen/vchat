@@ -15,7 +15,6 @@ from redis.asyncio import from_url as redis_from_url
 
 from vchat.app_keys import CONFIG_KEY, LOGGER_KEY, REDIS_KEY, SIGNER_KEY
 from vchat.i18n import jinja_context_processor
-from vchat.models import Project, ProjectUser
 from vchat.utils import (
     gravatar_url,
     login_required,
@@ -133,21 +132,9 @@ async def init_jinja(request):
         "get_flash_messages": lambda: request.get("flash_messages", []),
         "external": lambda x, **kwargs: make_full_url(request, x, **kwargs),
         "turnstile": request.app[CONFIG_KEY].get("turnstile_site_key", ""),
-        "projects": await get_projects(request),
         "url_for": lambda x, **kwargs: request.app.router[x].url_for(**kwargs),
         "csrf_token": csrf_token,
         "gravatar_url": gravatar_url,
         "vchat_chat": request.app[CONFIG_KEY].get("vchat_chat", ""),
         "static_version": request.app.get("static_version", ""),
     }
-
-
-async def get_projects(request):
-    if request.get("user"):
-        result = await request["db"].execute(
-            sa.select(Project)
-            .join(ProjectUser)
-            .where(ProjectUser.user_id == request["user"].id)
-        )
-        return result.scalars().all()
-    return []

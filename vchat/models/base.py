@@ -1,5 +1,6 @@
 import base64
 import enum
+import uuid6
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, ClassVar
@@ -40,7 +41,7 @@ class DateTime_(sa.TypeDecorator):
     impl = TIMESTAMP(timezone=True)
     cache_ok = True
 
-    def process_bind_param(self, value, _):
+    def process_bind_param(self, value, dialect):
         if isinstance(value, str):
             return datetime.fromisoformat(value)
         return value
@@ -85,7 +86,7 @@ class Base(_Base):
 
     def asdict(self, *, columnwise: bool = False):
         if columnwise:
-            return {column: getattr(self, column) for column in self.__mapper__.columns}
+            return {column.key: getattr(self, column.key) for column in self.__mapper__.columns}
 
         d = self.__dict__.copy()
         d.pop("_sa_instance_state", None)
@@ -137,8 +138,12 @@ class Updated:
     updated_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
-class ShortId:
-    short_id: Mapped[str] = mapped_column(sa.String(20), unique=True, nullable=True)
+def generate_uuid7() -> str:
+    return str(uuid6.uuid7())
+
+
+class UUID7:
+    short_id: Mapped[str] = mapped_column(sa.String(36), default=generate_uuid7, unique=True, nullable=True)
 
 
 class Enum(enum.Enum):

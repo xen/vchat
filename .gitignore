@@ -101,7 +101,5 @@ frontend_chat/build
 
 # media
 media
-
-# data
+docs/word
 data/
-static/sitemap.xml
