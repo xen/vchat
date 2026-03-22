@@ -141,6 +141,7 @@ docs: ## convert all docs in docs/ to .docx
 		pandoc "$$f" \
 			-f markdown \
 			-t docx \
+			--reference-doc=docs/template.dotx \
 			--standalone \
 			--filter ./frontend/node_modules/.bin/mermaid-filter \
 			-o "docs/word/$$(basename "$${f%.md}.docx")"; \

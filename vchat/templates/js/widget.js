@@ -1,14 +1,7 @@
 (function () {
-  // Get project ID from the script tag src
+  // Get script location
   var scriptTag = document.currentScript;
   var src = scriptTag.src;
-  var urlParams = new URLSearchParams(src.split("?")[1]);
-  var projectId = urlParams.get("id");
-
-  if (!projectId) {
-    console.error("vchat Chat: Project ID not found in script tag.");
-    return;
-  }
 
   // Get configuration from the container div
   var container = document.getElementById("vchat-chat");
@@ -110,10 +103,9 @@
       if (!iframeLoaded) {
         var iframe = document.createElement("iframe");
         iframe.id = "vchat-widget-iframe";
-        // Construct URL
-        // We assume the script is served from the same origin as the chat
         var origin = new URL(src).origin;
-        var chatUrl = new URL(origin + "/chat/widget/" + projectId);
+        var chatPath = {{ widget_chat_path | tojson | safe }};
+        var chatUrl = new URL(origin + chatPath);
         if (userUid) chatUrl.searchParams.append("user_uid", userUid);
         if (userName) chatUrl.searchParams.append("user_name", userName);
         if (userEmail) chatUrl.searchParams.append("user_email", userEmail);

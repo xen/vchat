@@ -34,7 +34,7 @@ from jobs.embedder.tasks import (
     refresh_source_index,
 )
 from jobs.suggestions import generate_project_topics
-from vchat.app_keys import SIGNER_KEY
+from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import lazy_gettext as _
 from vchat.models import (
@@ -69,6 +69,7 @@ __all__ = [
     "project_stats",
     "project_topics",
     "project_integration",
+    "public_widget_chat",
     "public_project_chat",
     "project_files",
     "secure_download",
@@ -1596,8 +1597,15 @@ async def project_integration(request):
 
 @meta(title=_("Chat Widget"))
 @aiohttp_jinja2.template("chat/chat.html")
-async def public_project_chat(request):
-    project_id = request.match_info.get("project_id")
+async def public_widget_chat(request):
+    configured_project = (request.app[CONFIG_KEY].get("vchat_chat") or "").strip()
+    if not configured_project:
+        raise web.HTTPNotFound(text="Widget chat is not configured")
+
+    return await _render_public_chat(request, configured_project)
+
+
+async def _render_public_chat(request, project_id: str):
     # No login required, but we verify signature if provided
     project = await request["db"].scalar(
         sa.select(Project).where(Project.short_id == project_id)
@@ -1611,17 +1619,11 @@ async def public_project_chat(request):
     sign = request.query.get("sign", "")
 
     if not user_uid:
-        # Generate a temporary guest ID if not provided?
-        # Or require it? The requirement says "copy and paste special javascript code... data-user-uid='...'"
-        # So it should be provided. If not, maybe generate one stored in cookie?
-        # For now, let's generate a random one if missing.
         import uuid
 
         user_uid = f"guest_{uuid.uuid4().hex[:8]}"
 
     # Verify signature if project has secret and sign is provided
-    # Requirement: "integration sign also should be here if project want to use user attribution"
-    # So if sign is present, we verify it.
     if sign and "secret" in project.config:
         import hashlib
         import hmac
@@ -1630,23 +1632,7 @@ async def public_project_chat(request):
         msg = user_uid.encode("utf-8")
         expected_sign = hmac.new(secret, msg, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected_sign, sign):
-            # Invalid signature
-            # Should we block or just treat as unverified?
-            # Let's log and maybe warn? Or just proceed as unverified?
-            # For security, if they try to sign, it must be valid.
             return web.HTTPForbidden(text="Invalid signature")
-
-    # Create or get chat
-    # We need to find an existing active chat for this user_uid and project?
-    # Or just create a new one?
-    # The existing project_chat creates a new Chat every time.
-    # Let's stick to that for now, or maybe reuse if recent?
-    # Reusing would be better for user experience (refreshing page).
-    # Let's try to find the latest chat for this user_uid in this project.
-
-    # Check for existing recent chat (e.g. last 24 hours)
-    # For now, let's just create a new one to match project_chat behavior,
-    # but maybe we should improve this later.
 
     chat = Chat(
         title=f"Chat for {user_name or user_uid}",
@@ -1659,11 +1645,9 @@ async def public_project_chat(request):
     await request["db"].commit()
     await request["db"].refresh(chat)
 
-    # Generate signed payload for WebSocket authentication
-    # The WebSocket handler expects [user_id, chat_id]
-    # user_id can be string now.
     serializer = URLSafeSerializer(config.get("secret_key"))
     payload = serializer.dumps([user_uid, chat.short_id], salt="vchat")
+    support_csrf_token = request.app[SIGNER_KEY].dumps({"chat_id": chat.id})
 
     provider_obj, model_obj = resolve_ai_settings(
         project.provider,
@@ -1684,7 +1668,15 @@ async def public_project_chat(request):
         "current_ai_provider_label": provider_obj.title,
         "allow_ai_switch": False,
         "ai_settings_url": None,
+        "support_csrf_token": support_csrf_token,
     }
+
+
+@meta(title=_("Chat Widget"))
+@aiohttp_jinja2.template("chat/chat.html")
+async def public_project_chat(request):
+    project_id = request.match_info.get("project_id")
+    return await _render_public_chat(request, project_id)
 
 
 @meta(title=_("Project Call"))

@@ -48,12 +48,7 @@ async def favicon(request):
 
 
 async def widget_js(request):
-    # Serve the widget.js file, potentially injecting configuration if needed
-    # For now, just serve the static file or render a template if we need dynamic values
-    # The user request says "copy and paste special javascript code... <script src='.../js?project={project.id}'></script>"
-    # So we might need to use the project_id from query param if we want to bake it in,
-    # but the example usage shows project_id in the src URL, which is fine.
-    # The JS itself will likely read the script tag src or attributes to get the project ID,
-    # or we can render it into the JS.
-    # Let's render it as a template to be flexible.
-    return aiohttp_jinja2.render_template("js/widget.js", request, {})
+    widget_chat_path = str(request.app.router["public_widget_chat"].url_for())
+    return aiohttp_jinja2.render_template(
+        "js/widget.js", request, {"widget_chat_path": widget_chat_path}
+    )

@@ -5,6 +5,7 @@ from yarl import URL
 
 from .views import (
     admin,
+    api,
     auth,
     frontend,
     projects,
@@ -26,9 +27,19 @@ def setup_routes(app: web.Application) -> None:
     add("GET", "/check", frontend.healthcheck)
     add("*", "/", frontend.index, name="index")
     add("*", "/prices", frontend.prices, name="prices")
+    add("GET", "/widget", frontend.widget_js, name="widget")
     add("GET", "/js", frontend.widget_js, name="widget_js")
     add("*", "/robots.txt", frontend.robots_txt)
     add("*", "/favicon.ico", frontend.favicon)
+
+    # public api
+    add("GET", "/api/update", api.update_document, name="api_update")
+    add(
+        "POST",
+        "/api/support/request",
+        api.create_support_request,
+        name="api_support_request",
+    )
 
     # auth
     add("*", "/auth/login/", auth.login, name="login")
@@ -167,6 +178,12 @@ def setup_routes(app: web.Application) -> None:
         r"/project/{project_id:[a-zA-Z0-9]+}/chat",
         projects.project_chat,
         name="project_chat",
+    )
+    add(
+        "GET",
+        "/chat/widget",
+        projects.public_widget_chat,
+        name="public_widget_chat",
     )
     add(
         "GET",

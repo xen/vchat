@@ -12,7 +12,9 @@ class Request(Base, Created, Updated, UUID7):
     id: Mapped[int] = mapped_column(primary_key=True)
     chat_id: Mapped[int] = mapped_column(ForeignKey("chat.id"))
     status: Mapped[str] = mapped_column(sa.String(20), default="open")
+    name: Mapped[str]
     email: Mapped[str]
     phone: Mapped[str]
-    subject: Mapped[str]
-    text: Mapped[str] = mapped_column(sa.Text)
+    body: Mapped[str] = mapped_column(sa.Text)
+    ip_address: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(sa.String(512), nullable=True)

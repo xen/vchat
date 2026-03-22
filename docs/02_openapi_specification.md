@@ -1,204 +1,264 @@
-# OpenAPI Спецификация API АС «ВБУДУЩЕЕ» (Core #2)
+# OpenAPI спецификация API VChat
 
-## 1. Пояснительная записка
-Данная спецификация описывает программные интерфейсы (API) сервиса «ИИ-агент-чат-бот», развернутого в контуре АС «ВБУДУЩЕЕ».
-API спроектирован для обеспечения работы RAG-системы с использованием GigaChat API.
+## 1. Назначение
+Документ описывает публичные API-методы проекта, необходимые для:
+- синхронизации/индексации документов по URL;
+- отправки пользовательского обращения в поддержку из виджета.
 
-### Основные принципы
-- **RESTful API**: Для управления документами, сессиями и настройками индексации.
-- **Streaming (Server-Sent Events / WebSockets)**: Для потоковой выдачи ответов от LLM в реальном времени.
-- **Интеграция с Битрикс**: Бесшовное взаимодействие фронт-виджета с бэкенд-сервисом.
-- **Безопасность**: Обязательная валидация промптов (Guardrails), логирование personalID и защита от инъекций.
+Все остальные API-методы из этой спецификации удалены как неактуальные.
 
 ---
 
-## 2. OpenAPI 3.0 Спецификация (YAML)
+## 2. OpenAPI 3.0 (YAML)
 
 ```yaml
 openapi: 3.0.3
 info:
-  title: АС «ВБУДУЩЕЕ» AI Agent API
-  description: |
-    API сервиса интеллектуального чат-бота.
-    Обеспечивает поиск по базе знаний Фонда и генерацию ответов через GigaChat.
+  title: VChat Public API
   version: 1.0.0
+  description: |
+    Минимальный публичный API:
+    1) /api/update — обновление индекса по URL документа;
+    2) /api/support/request — создание обращения пользователя из виджета.
 servers:
-  - url: /api/v1
-    description: Продакшн-сервер (инфраструктура Фонда)
+  - url: https://chat.vbudushee.ru
+    description: Production
+
+tags:
+  - name: Indexing
+    description: Синхронизация документов в индексе
+  - name: Support
+    description: Обращения пользователей из виджета
 
 components:
   securitySchemes:
-    SessionAuth:
-      type: apiKey
-      in: cookie
-      name: session_id
-    CSRFToken:
+    CsrfHeader:
       type: apiKey
       in: header
       name: X-CSRFToken
 
   schemas:
-    ChatRequest:
+    IndexUpdateResponse:
       type: object
-      required: [message]
+      required:
+        - status
+        - url
       properties:
-        message:
+        status:
           type: string
-          description: "Пользовательский промпт"
-          maxLength: 1000
-        session_id:
-          type: string
-          description: "Идентификатор сессии для сохранения памяти"
-
-    ChatResponse:
-      type: object
-      properties:
-        answer:
-          type: string
-          description: "Текст ответа от GigaChat"
-        sources:
-          type: array
-          items:
-            $ref: '#/components/schemas/SourceReference'
-
-    SourceReference:
-      type: object
-      properties:
-        title:
-          type: string
-          description: "Название документа-источника"
+          enum: [accepted]
+          description: Заявка принята в фоновую обработку
         url:
           type: string
-          description: "Ссылка на документ в хранилище"
+          format: uri
+          description: URL, переданный в запросе
 
-    ContactForm:
+    ErrorResponse:
       type: object
-      required: [email, question, consent]
+      required:
+        - status
+        - message
       properties:
+        status:
+          type: string
+          enum: [error]
+        message:
+          type: string
+
+    SupportRequestCreate:
+      type: object
+      required:
+        - name
+        - email
+        - phone
+        - body
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Имя пользователя
         email:
           type: string
           format: email
-        question:
+          maxLength: 255
+        phone:
           type: string
-        consent:
-          type: boolean
-          description: "Согласие на обработку ПДн"
+          maxLength: 64
+        body:
+          type: string
+          maxLength: 5000
+          description: Текст обращения
+
+    SupportRequestCreated:
+      type: object
+      required:
+        - status
+        - request_id
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        request_id:
+          type: integer
+          description: Идентификатор созданного объекта Request
 
 paths:
-  # --- CHAT INTERACTION ---
-  /chat/ask:
-    post:
-      summary: Отправить вопрос чат-боту
+  /api/update:
+    get:
+      tags: [Indexing]
+      summary: Обновить индекс документа по URL
       description: |
-        Выполняет RAG-поиск по векторной БД и генерирует ответ через GigaChat API.
-        Включает механизмы защиты (Guardrails).
-      security:
-        - SessionAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ChatRequest'
+        Принимает URL документа через query-параметр `url` и выполняет синхронизацию индекса:
+        - если документ новый, добавляет его в индекс;
+        - если источник отвечает `404`, удаляет документ из индекса;
+        - если источник возвращает редирект, удаляет старый URL и индексирует новый.
+
+        Доступ без авторизации. Безопасность обеспечивается белым списком доменов:
+        URL должен принадлежать домену из списка Source, который предварительно добавлен администратором.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: Прямая ссылка на документ
       responses:
         '200':
-          description: Ответ сформирован
+          description: Заявка принята в очередь фоновой обработки
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ChatResponse'
-        '429':
-          description: Превышен лимит запросов (Rate Limit)
+                $ref: '#/components/schemas/IndexUpdateResponse'
+        '400':
+          description: Некорректный параметр url
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Домен URL не разрешен (не входит в Source)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка индексации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # --- CONTACT FORM (ГИБРИДНАЯ ФОРМА) ---
-  /support/contact:
+  /api/support/request:
     post:
-      summary: Форма «Написать человеку»
-      description: Отправляет обращение на служебную почту Фонда.
+      tags: [Support]
+      summary: Создать обращение пользователя в поддержку
+      description: |
+        Создает объект `vchat/models/support.py::Request`.
+
+        Требования:
+        - запрос должен содержать CSRF токен в заголовке `X-CSRFToken`;
+        - `chat_id` извлекается на сервере из CSRF токена (токен подписан через itsdangerous);
+        - дополнительно сохраняются IP-адрес и User-Agent пользователя.
+      security:
+        - CsrfHeader: []
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ContactForm'
+              $ref: '#/components/schemas/SupportRequestCreate'
       responses:
-        '200':
-          description: Сообщение успешно отправлено
-
-  # --- INDEXING & SYNC ---
-  /admin/sync/start:
-    post:
-      summary: Запуск синхронизации с хранилищем
-      description: |
-        Сканирует хранилище материалов (PDF, Word, Excel).
-        Выполняет извлечение текста, разбиение на чанки и переиндексацию.
-      security:
-        - SessionAuth: []
-      responses:
-        '202':
-          description: Синхронизация запущена в фоновом режиме
-
-  # --- MONITORING ---
-  /metrics:
-    get:
-      summary: Метрики в формате Prometheus
-      description: |
-        Экспорт ключевых показателей: время ответа, расход токенов GigaChat,
-        доля ошибок, скорость индексации.
-      responses:
-        '200':
-          description: Текст в формате Prometheus exposition
+        '201':
+          description: Обращение создано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportRequestCreated'
+        '400':
+          description: Ошибка валидации данных
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Некорректный/просроченный CSRF токен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 ```
 
 ---
 
-## 3. Примеры использования
+## 3. Примеры
 
-### 1. Запрос к чат-боту (RAG)
-**Request:**
+### 3.1 Индексация документа
+
+**Request**
 
 ```http
-POST /api/v1/chat/ask HTTP/1.1
-Content-Type: application/json
-X-CSRFToken: <token>
-
-{
-  "message": "Какие цифровые навыки развивает программа Фонда?",
-  "session_id": "sess_998877"
-}
+GET /api/update?url=https%3A%2F%2Fdocs.example.org%2Freglament.pdf HTTP/1.1
+Host: chat.vbudushee.ru
 ```
 
-**Response:**
+**Response (редирект обработан)**
 
 ```json
 {
-  "answer": "Программа развивает компетенции в области ИИ и работы с данными...",
-  "sources": [
-    {
-      "title": "Паспорт программы ЦНК.pdf",
-      "url": "https://vbudushee.ru/storage/docs/p1.pdf"
-    }
-  ]
+  "status": "accepted",
+  "url": "https://docs.example.org/reglament.pdf"
 }
 ```
 
-### 2. Отправка формы обратной связи
-**Request:**
+### 3.2 Создание обращения
+
+**Request**
 
 ```http
-POST /api/v1/support/contact HTTP/1.1
+POST /api/support/request HTTP/1.1
+Host: chat.vbudushee.ru
 Content-Type: application/json
+X-CSRFToken: <csrf_token_from_widget>
 
 {
-  "email": "user@example.com",
-  "question": "Не могу найти документ о грантах",
-  "consent": true
+  "name": "Иван Петров",
+  "email": "ivan@example.com",
+  "phone": "+79991234567",
+  "body": "Подскажите, где посмотреть актуальные правила подачи заявки?"
+}
+```
+
+**Response**
+
+```json
+{
+  "status": "ok",
+  "request_id": 1024
 }
 ```
 
 ---
 
-## 4. Требования безопасности API
+## 4. Справка: встраивание виджета на сайт
 
-- **Маскирование**: В логах «запрос-ответ» персональные данные пользователей должны быть маскированы.
-- **Токены**: Все ключи доступа к GigaChat API хранятся в защищенной системе управления секретами (не в коде).
-- **Валидация**: Каждое обращение проходит проверку на соответствие теме (Классификатор релевантности).
-- **Трассировка**: Каждому запросу присваивается уникальный идентификатор для сквозного мониторинга.
+Кроме API-методов выше, в проекте есть интеграция чат-виджета через JavaScript-встройку по адресу `/widget`.
+
+Базовый код встраивания:
+
+```html
+<script src="https://chat.vbudushee.ru/widget" defer></script>
+<div id="vchat-chat"></div>
+```
+
+Рекомендации по встраиванию:
+- разместите код перед закрывающим тегом `</body>`;
+- `defer` обязателен, чтобы не блокировать загрузку страницы;
+- контейнер `div#vchat-chat` обязателен: в него монтируется интерфейс виджета;
+- в актуальной версии не используется `project.short_id`, а встраивание выполняется единым скриптом `https://chat.vbudushee.ru/widget`.
