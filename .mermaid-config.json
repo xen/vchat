@@ -1,0 +1,21 @@
+{
+  "themeVariables": {
+    "fontSize": "20px"
+  },
+  "c4": {
+    "c4ShapeInRow": 1,
+    "c4BoundaryInRow": 1,
+    "diagramMarginX": 30,
+    "diagramMarginY": 36,
+    "c4ShapeMargin": 36,
+    "c4ShapePadding": 22
+  },
+  "flowchart": {
+    "nodeSpacing": 70,
+    "rankSpacing": 125
+  },
+  "sequence": {
+    "diagramMarginX": 20,
+    "diagramMarginY": 20
+  }
+}

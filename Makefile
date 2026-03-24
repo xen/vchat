@@ -137,17 +137,21 @@ docs: ## convert all docs in docs/ to .docx
 	@mkdir -p docs/word
 	@for f in docs/*.md; do \
 		echo "Converting $$f to docs/word/$$(basename "$${f%.md}.docx")"; \
+		MERMAID_FILTER_WIDTH=400 \
+		MERMAID_FILTER_SCALE=3 \
+		MERMAID_FILTER_IMAGE_WIDTH=72% \
+		MERMAID_FILTER_FORCE_VERTICAL=1 \
+		MERMAID_FILTER_FORCE_C4_ONE_COLUMN=1 \
 		PUPPETEER_EXECUTABLE_PATH=$$(find $(HOME)/.cache/puppeteer -name Chromium | grep 1108766 | head -n 1) \
 		pandoc "$$f" \
 			-f markdown \
 			-t docx \
 			--reference-doc=docs/template.dotx \
 			--standalone \
-			--filter ./frontend/node_modules/.bin/mermaid-filter \
+			--filter ./bin/mermaid-filter-fit.js \
 			-o "docs/word/$$(basename "$${f%.md}.docx")"; \
 	done
 
 help: ## display this help message
 	@echo "Please use \`make <target>' where <target> is one of"
 	@grep '^[a-zA-Z]' $(MAKEFILE_LIST) | sort | awk -F ':.*?## ' 'NF==2 {printf "\033[36m  %-25s\033[0m %s\n", $$1, $$2}'
-

@@ -28,11 +28,29 @@ C4Context
     System_Ext(storage, "Хранилище материалов", "Источник документов (Word, Excel, PDF, PPTX).")
     System_Ext(gigachat, "GigaChat API", "Генеративная модель для формирования ответов.")
 
-    Rel(user, bitrix, "Взаимодействует с виджетом", "HTTPS")
-    Rel(bitrix, ai_service, "Размещает виджет, который отправляет запросы пользователя", "JSON/HTTPS")
-    Rel(ai_service, gigachat, "Запросы к LLM (Промпт + Контекст)", "SSL/HTTPS")
-    Rel(ai_service, storage, "Синхронизация файлов", "Специфичный протокол")
-    Rel(admin, ai_service, "Мониторинг, работа с логами", "HTTPS (АРМ)")
+    Rel(user, bitrix, "", "")
+    Rel(bitrix, ai_service, "", "")
+    Rel(ai_service, gigachat, "", "")
+    Rel(ai_service, storage, "", "")
+    Rel(admin, ai_service, "", "")
+```
+
+Легенда (System Context):
+```text
+Посетитель портала -> Портал Битрикс:
+  работа с чат-виджетом по HTTPS.
+
+Портал Битрикс -> ИИ-агент (Сервис):
+  передача запросов пользователя в backend (JSON/HTTPS).
+
+ИИ-агент (Сервис) -> GigaChat API:
+  отправка промпта и контекста к LLM (SSL/HTTPS).
+
+ИИ-агент (Сервис) -> Хранилище материалов:
+  синхронизация документов для базы знаний.
+
+Администратор/Технолог -> ИИ-агент (Сервис):
+  мониторинг и работа с логами через АРМ.
 ```
 
 ## 3. C4 Model: Уровень 2 (Containers)
@@ -46,17 +64,35 @@ C4Container
     Container_Boundary(c1, "AI Agent System") {
         Container(widget, "Web-Widget", "JS/Snippet", "Встраиваемый компонент для Битрикс, поддержка потоковой выдачи.")
         Container(api_gateway, "Backend API (Python)", "FastAPI/Flask", "Обработка логики, кэширование, Rate Limiting, управление сессиями.")
-        Container(indexer, "Индексатор (Worker)", "Python", "Извлечение текста, разбиение на чанки, дедупликация.")
+        Container(indexer, "Индексатор (Celery)", "Python", "Извлечение текста, разбиение на чанки, дедупликация.")
 
         ContainerDb(vector_db, "Векторная БД", "PostgreSQL", "Хранение эмбеддингов и метаданных документов.")
         ContainerDb(relational_db, "Postgres", "SQL DB", "История диалогов, системные настройки, логи аудита.")
     }
 
-    Rel(widget, api_gateway, "Запросы через эндпоинты", "HTTPS/WSS")
-    Rel(api_gateway, vector_db, "Семантический поиск (cosine similarity)", "SQL")
-    Rel(api_gateway, relational_db, "Чтение/запись логов и сессий", "SQL")
-    Rel(indexer, vector_db, "Сохранение векторов и метаданных", "SQL")
-    Rel(api_gateway, indexer, "Управление задачами индексации", "Internal")
+    Rel(widget, api_gateway, "", "")
+    Rel(api_gateway, vector_db, "", "")
+    Rel(api_gateway, relational_db, "", "")
+    Rel(indexer, vector_db, "", "")
+    Rel(api_gateway, indexer, "", "")
+```
+
+Легенда (Containers):
+```text
+Web-Widget -> Backend API (Python):
+  пользовательские запросы и потоковая выдача (HTTPS/WSS).
+
+Backend API (Python) -> Векторная БД:
+  семантический поиск по эмбеддингам (SQL).
+
+Backend API (Python) -> Postgres:
+  хранение сессий, истории диалогов и аудита (SQL).
+
+Индексатор (Worker) -> Векторная БД:
+  запись эмбеддингов и метаданных документов (SQL).
+
+Backend API (Python) -> Индексатор (Worker):
+  запуск и контроль задач индексации (internal API/queue).
 ```
 
 ## 4. Архитектурная схема процесса RAG (Flowchart)
@@ -65,7 +101,7 @@ C4Container
 ```mermaid
 graph TD
   subgraph "Подготовка знаний (Offline/Sync)"
-  A["Хранилище Заказчика (Word, Excel, PDF)"] --> B["Коннектор и нормализация текста"]
+  A["Хранилище Заказчика (HTML, Text, Word, Excel, PDF)"] --> B["Коннектор и нормализация текста"]
   B --> C["Разбиение на фрагменты (Chunking)"]
   C --> D["Генерация эмбеддингов"]
   D --> E[("Векторная БД + Метаданные")]
