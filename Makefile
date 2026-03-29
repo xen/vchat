@@ -1,10 +1,10 @@
 .PHONY: clean setup run db lint \
         ensure-pip pip-compile autoupgrade \
-        celery revision downgrade deploy lang \
-		add-lang frontend embedder docs
+        celery revision downgrade deploy \
+		frontend embedder docs
 
 venv/bin/activate:
-	uv venv venv --python=python3.11 -q
+	uv venv venv --python=python3.11
 
 init: ## prepare project
 	. venv/bin/activate && pre-commit install
@@ -27,7 +27,7 @@ downgrade: venv/bin/activate ## downgrade db
 	. venv/bin/activate && python entry.py --downgrade
 
 setup: venv/bin/activate  ## setup python environment
-	. venv/bin/activate && uv pip sync requirements/dev.txt -q
+	. venv/bin/activate && uv pip sync requirements/dev.txt
 
 ensure-pip: venv/bin/activate ## ensure bundled pip is available inside the venv
 	. venv/bin/activate && python -m ensurepip --upgrade
@@ -70,21 +70,6 @@ frontend: venv/bin/activate ## build frontend
 	cd frontend && make deploy
 	cd frontend_chat && make deploy
 
-add-lang: venv/bin/activate requirements/dev.txt ## add new lang: make add-lang LANG=ru
-	. venv/bin/activate && pybabel init -i vchat/translations/messages.pot -d vchat/translations -l $(LANG)
-
-lang: venv/bin/activate requirements/dev.txt ## update lang
-	. venv/bin/activate && pybabel extract -F babel.cfg -o vchat/translations/messages.pot .
-	. venv/bin/activate && pybabel update -i vchat/translations/messages.pot -d vchat/translations
-	. venv/bin/activate && pybabel compile -d vchat/translations
-
-translate: venv/bin/activate requirements/dev.txt ## translate using AI
-	. venv/bin/activate && pybabel extract -F babel.cfg -o vchat/translations/messages.pot .
-	. venv/bin/activate && pybabel update -i vchat/translations/messages.pot -d vchat/translations
-	. venv/bin/activate && python bin/translate.py vchat/translations
-	. venv/bin/activate && pybabel update -i vchat/translations/messages.pot -d vchat/translations
-	. venv/bin/activate && pybabel compile -d vchat/translations
-
 deploy: venv/bin/activate  ## deploy on server project
 	. venv/bin/activate && uv pip sync requirements/requirements.txt --link-mode=copy
 	@if [ "$$(uname -s)" = "Linux" ]; then \
@@ -92,7 +77,6 @@ deploy: venv/bin/activate  ## deploy on server project
 	  . venv/bin/activate && uv pip install -r requirements/req_linux.txt --link-mode=copy; \
 	fi
 	. venv/bin/activate && alembic upgrade head
-	. venv/bin/activate && pybabel compile -d vchat/translations
 
 tunnel:  ## make tunnel to prod database, use `psql postgresql://localhost:54327 -d vchat` to connect
 	@echo "Start tunnel, keep this running...";

@@ -1,17 +1,17 @@
 import logging
-import requests
-import numpy as np
 from typing import List
-from scipy.cluster.vq import kmeans
 
+import numpy as np
+import requests
 import sqlalchemy as sa
+from scipy.cluster.vq import kmeans
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
-from sqlalchemy.orm.attributes import flag_modified
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.models import Project, Chunk
 from vchat.ai_providers import resolve_ai_settings
+from vchat.models import Chunk, Settings
 from vchat.utils import json
 
 logger = logging.getLogger(__name__)
@@ -21,13 +21,15 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 OPENAI_MODEL = "gpt-4o-mini"
 
 
-def _fetch_embedding_sample(
-    session: Session, project_id: int, limit: int = 5000
-) -> np.ndarray:
+def _settings_map(session: Session) -> dict[str, str | None]:
+    rows = session.execute(sa.select(Settings.key, Settings.value)).all()
+    return {row.key: row.value for row in rows}
+
+
+def _fetch_embedding_sample(session: Session, limit: int = 5000) -> np.ndarray:
     """Fetch a random sample of embeddings as a numpy array."""
     stmt = (
         sa.select(Chunk.embedding)
-        .where(Chunk.project_id == project_id)
         .where(Chunk.embedding.isnot(None))
         .order_by(sa.func.random())
         .limit(limit)
@@ -40,7 +42,6 @@ def _fetch_embedding_sample(
 
 def _fetch_representative_chunks_for_centroids(
     session: Session,
-    project_id: int,
     centroids: np.ndarray,
     chunks_per_cluster: int = 3,
 ) -> List[str]:
@@ -48,53 +49,51 @@ def _fetch_representative_chunks_for_centroids(
     all_chunks = []
 
     for centroid in centroids:
-        # Convert numpy array back to list for pgvector compatibility
         centroid_list = centroid.tolist()
-
         stmt = (
             sa.select(Chunk.content)
-            .where(Chunk.project_id == project_id)
+            .where(Chunk.embedding.isnot(None))
             .order_by(Chunk.embedding.cosine_distance(centroid_list))
             .limit(chunks_per_cluster)
         )
         cluster_chunks = list(session.execute(stmt).scalars().all())
         all_chunks.extend(cluster_chunks)
 
-    # Deduplicate while preserving order (optional, but good for prompt clarity)
     unique_chunks = []
     seen = set()
-    for c in all_chunks:
-        if c not in seen:
-            unique_chunks.append(c)
-            seen.add(c)
+    for chunk_text in all_chunks:
+        if chunk_text not in seen:
+            unique_chunks.append(chunk_text)
+            seen.add(chunk_text)
     return unique_chunks
 
 
 def summarize_clustered_topics(
-    project: Project,
+    settings_map: dict[str, str | None],
     representative_chunks: List[str],
 ) -> dict:
     """Send clustered representative chunks to LLM for summarization."""
     if not representative_chunks:
         return {}
 
-    provider, model = resolve_ai_settings(
-        getattr(project, "provider", "openai"),
-        getattr(project, "model", None),
-    )
+    provider_id = settings_map.get("project.provider") or "openai"
+    model_id = settings_map.get("project.model") or None
+    project_title = settings_map.get("project.title") or "vchat"
+
+    provider, model = resolve_ai_settings(provider_id, model_id)
 
     meta = provider.request_meta()
     api_key = meta.get("api_key")
     base_url = meta.get("base_url") or OPENAI_BASE_URL
-    model_id = model.id or OPENAI_MODEL
+    model_name = model.id or OPENAI_MODEL
 
     if not api_key:
-        logger.warning(f"No API key found for project {project.id}")
+        logger.warning("No API key found for configured provider")
         return {}
 
     chunks_str = "\n\n---\n\n".join(representative_chunks)
 
-    prompt = f"""You are a senior data analyst. I have analyzed a large knowledge base for the project "{project.title}"
+    prompt = f"""You are a senior data analyst. I have analyzed a large knowledge base for the project "{project_title}"
 and grouped the content into semantic clusters. Below are representative samples from each cluster.
 
 Your task is to identify the core themes (topics) and likely user intents.
@@ -122,7 +121,7 @@ Example format:
                 "Content-Type": "application/json",
             },
             json={
-                "model": model_id,
+                "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
             },
@@ -134,71 +133,54 @@ Example format:
 
         if content.startswith("```"):
             lines = content.splitlines()
-            if lines[0].startswith("```json"):
-                content = "\n".join(lines[1:-1])
-            else:
-                content = "\n".join(lines[1:-1])
+            content = "\n".join(lines[1:-1])
 
         return json.loads(content)
-    except Exception as e:
-        logger.error(
-            f"Failed to summarize clustered topics for project {project.id}: {e}"
-        )
+    except Exception as exc:
+        logger.error("Failed to summarize clustered topics: %s", exc)
         return {}
 
 
 @app.task(name="jobs.suggestions.generate_project_topics")
-def generate_project_topics(project_id: int):
-    """Execution entry point for the Clustered Celery task."""
+def generate_project_topics():
+    """Generate global topics/intents and save them to settings."""
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            project = session.get(Project, project_id)
-            if not project:
-                logger.warning(f"Project {project_id} not found")
-                return
+            logger.info("Starting clustered topic generation")
+            settings_map = _settings_map(session)
 
-            logger.info(f"Starting clustered topic generation for Project {project_id}")
-            # 1. Fetch a sample of embeddings
-            embeddings = _fetch_embedding_sample(session, project_id, limit=5000)
+            embeddings = _fetch_embedding_sample(session, limit=5000)
             if embeddings.size == 0:
-                logger.info(f"No embeddings found for project {project_id}")
+                logger.info("No embeddings found")
                 return
 
-            # 2. Perform K-Means Clustering
-            # We target 8 clusters as a good balance for multi-themed projects.
-            # If we have fewer than 8 samples, use the sample size.
             num_clusters = min(8, len(embeddings))
-
-            # Whiten the observations (standardize features) for better K-Means performance
-            # However, for embeddings, whitening can sometimes distort semantic relative distances.
-            # We use kmeans directly on raw embeddings as they are usually already normalized.
             centroids, _ = kmeans(embeddings.astype(float), num_clusters)
+            chunks = _fetch_representative_chunks_for_centroids(session, centroids)
+            summary = summarize_clustered_topics(settings_map, chunks)
 
-            # 3. Fetch representative chunks for each centroid
-            chunks = _fetch_representative_chunks_for_centroids(
-                session, project_id, centroids
+            if not summary:
+                logger.warning("No summary generated")
+                return
+
+            topics = summary.get("topics", [])
+            intents = summary.get("intents", [])
+            stmt = insert(Settings).values(
+                [
+                    {"key": "project.topics", "value": json.dumps(topics)},
+                    {"key": "project.intents", "value": json.dumps(intents)},
+                ]
             )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[Settings.key],
+                set_={"value": stmt.excluded.value},
+            )
+            session.execute(stmt)
+            session.commit()
+            logger.info("Successfully updated clustered topics")
 
-            # 4. LLM Analysis
-            summary = summarize_clustered_topics(project, chunks)
-
-            if summary:
-                meta = project.meta or {}
-                meta["topics"] = summary.get("topics", [])
-                meta["intents"] = summary.get("intents", [])
-                project.meta = meta
-                flag_modified(project, "meta")
-                session.commit()
-                logger.info(
-                    f"Successfully updated clustered topics for project {project_id}"
-                )
-            else:
-                logger.warning(f"No summary generated for project {project_id}")
-
-    except Exception as e:
-        logger.exception(
-            f"Error in clustered generate_project_topics for project {project_id}: {e}"
-        )
+    except Exception as exc:
+        logger.exception("Error in generate_project_topics: %s", exc)
     finally:
         engine.dispose()

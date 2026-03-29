@@ -9,7 +9,7 @@ from wtforms import (
 )
 from wtforms.csrf.session import SessionCSRF
 
-from vchat.i18n import lazy_gettext as _
+from vchat.text import _
 from vchat.settings import config
 
 # Email length: https://stackoverflow.com/a/574698/85739

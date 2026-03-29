@@ -142,10 +142,6 @@ def generate_uuid7() -> str:
     return str(uuid6.uuid7())
 
 
-class UUID7:
-    short_id: Mapped[str] = mapped_column(sa.String(36), default=generate_uuid7, unique=True, nullable=True)
-
-
 class Enum(enum.Enum):
     @property
     def literal_value(self):

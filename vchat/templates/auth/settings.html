@@ -2,7 +2,7 @@
 {% set page_title = _("User settings") %}
 
 {% block sidebar %}
-  {% include "include/admin/user_sidebar.html" with context %}
+  {% include "include/admin/sidebar.html" with context %}
 {% endblock %}
 
 {% block content %}
@@ -14,7 +14,7 @@
       <div>
         <h1 class="text-2xl font-semibold">{{ _('User settings') }}</h1>
         <p class="text-base-content/70 text-sm">
-          {{ _('Update your profile details and choose the interface language.') }}
+          {{ _('Update your profile details.') }}
         </p>
       </div>
     </div>
@@ -33,7 +33,6 @@
           {% endif %}
 
           {{ render_field(form.name, class="") }}
-          {{ render_field(form.language) }}
 
           <div class="flex flex-wrap gap-3">
             <button type="submit" class="btn btn-primary gap-2">

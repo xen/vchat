@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from vchat.models import Chunk, Document, Source
-from vchat.models.data import Project
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +32,8 @@ def crawl_file_task(file_id: int):
     try:
         with Session(bind=engine) as session:
             stmt = (
-                select(Document, Source, Project)
+                select(Document, Source)
                 .join(Source, Document.source_id == Source.id)
-                .join(Project, Source.project_id == Project.id)
                 .where(Document.id == file_id)
             )
             row = session.execute(stmt).first()
@@ -44,7 +42,7 @@ def crawl_file_task(file_id: int):
                 print(f"Document {file_id} not found")
                 return
 
-            doc, source, project = row
+            doc, source = row
             file_path_str = doc.uri
 
             if not file_path_str or not Path(file_path_str).exists():
@@ -80,7 +78,7 @@ def crawl_file_task(file_id: int):
                     session.commit()
                     return
 
-                chunk_count = index_document(session, doc, text, project.id)
+                chunk_count = index_document(session, doc, text)
                 print(f"Indexed document {doc.id} with {chunk_count} chunks")
 
             except Exception as exc:
@@ -116,7 +114,7 @@ def crawl_files_source(source_id: int):
 
             for doc in documents:
                 try:
-                    process_document(session, doc, source.project_id)
+                    process_document(session, doc)
                 except Exception as exc:
                     logger.error(
                         f"Error processing document {doc.id} ({doc.title}): {exc}"
@@ -130,7 +128,7 @@ def crawl_files_source(source_id: int):
         engine.dispose()
 
 
-def process_document(session: Session, doc: Document, project_id: int):
+def process_document(session: Session, doc: Document):
     file_path_str = doc.uri
     if not file_path_str or not Path(file_path_str).exists():
         logger.error(f"File not found: {file_path_str}")
@@ -153,10 +151,10 @@ def process_document(session: Session, doc: Document, project_id: int):
         logger.warning(f"No text extracted from {file_path_str}")
         return
 
-    index_document(session, doc, text, project_id)
+    index_document(session, doc, text)
 
 
-def index_document(session: Session, doc: Document, text: str, project_id: int) -> int:
+def index_document(session: Session, doc: Document, text: str) -> int:
     doc.content = text
     doc.hash_value = text
     doc.length = len(text)
@@ -174,9 +172,13 @@ def index_document(session: Session, doc: Document, text: str, project_id: int) 
 
         chunk = Chunk(
             document_id=doc.id,
+            chat_id=None,
+            user_uid="system",
+            msg_id=None,
             chunk_ix=len(chunks),
             content=chunk_text,
-            project_id=project_id,
+            start_offset=i,
+            end_offset=min(i + chunk_size, len(text)),
         )
         chunks.append(chunk)
 

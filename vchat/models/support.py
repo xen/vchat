@@ -2,15 +2,14 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.schema import ForeignKey
 
+from .base import Base, Created, Updated
 
-from .base import Base, Created, UUID7, Updated
 
-
-class Request(Base, Created, Updated, UUID7):
+class Request(Base, Created, Updated):
     __tablename__ = "request"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    chat_id: Mapped[int] = mapped_column(ForeignKey("chat.id"))
+    chat_id: Mapped[str] = mapped_column(ForeignKey("chat.id"))
     status: Mapped[str] = mapped_column(sa.String(20), default="open")
     name: Mapped[str]
     email: Mapped[str]

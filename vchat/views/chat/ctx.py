@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 user_id_ctx: contextvars.ContextVar[int | str | None] = contextvars.ContextVar(
     "user_id", default=None
 )
-chat_id_ctx: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+chat_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "chat_id", default=None
 )
 
@@ -167,7 +167,7 @@ def _vec_literal(vec: List[float]) -> str:
 async def _fetch_user_memory_chunks(
     db: AsyncSession,
     user_id: int | str,
-    chat_id: int,
+    chat_id: str,
     qvec: List[float],
     k_mem: int = 2,
     tau: float = 0.80,
@@ -222,7 +222,7 @@ async def _fetch_user_memory_chunks(
 
 
 async def _fetch_tail_messages(
-    db: AsyncSession, chat_id: int, limit: int = 5
+    db: AsyncSession, chat_id: str, limit: int = 5
 ) -> List[Msg]:
     # Fetch last `limit` messages from chat ordered oldest to newest
     result = await db.execute(
@@ -238,9 +238,8 @@ async def _fetch_tail_messages(
 
 async def _fetch_vector_chunks(
     db: AsyncSession,
-    chat_id: int,
+    chat_id: str,
     query_vec: List[float],
-    project_id: int,
     top_k: int = 10,
 ) -> List[dict]:
     vec_lit = _vec_literal(query_vec)
@@ -251,7 +250,7 @@ async def _fetch_vector_chunks(
                'chat' AS src,
                NULL as uri, NULL as title
         FROM chunk c
-        WHERE c.chat_id = :chat_id AND c.embedding IS NOT NULL AND c.project_id = :project_id
+        WHERE c.chat_id = :chat_id AND c.embedding IS NOT NULL
         ORDER BY c.embedding <=> CAST(:qvec AS vector(1024))
         LIMIT :k_chat
         """
@@ -265,7 +264,6 @@ async def _fetch_vector_chunks(
         FROM chunk c
         JOIN document d ON c.document_id = d.id
         WHERE c.chat_id IS NULL AND c.document_id IS NOT NULL AND c.embedding IS NOT NULL
-          AND c.project_id = :project_id
         ORDER BY c.embedding <=> CAST(:qvec AS vector(1024))
         LIMIT :k_kb
         """
@@ -273,7 +271,6 @@ async def _fetch_vector_chunks(
     params = {
         "qvec": vec_lit,
         "chat_id": chat_id,
-        "project_id": project_id,
         "k_chat": max(2, top_k // 2),
         "k_kb": max(2, top_k - max(2, top_k // 2)),
     }
@@ -290,7 +287,7 @@ async def _fetch_vector_chunks(
 
 
 async def _fetch_ft_chunks(
-    db: AsyncSession, query: str, project_id: int, top_m: int = 10
+    db: AsyncSession, query: str, top_m: int = 10
 ) -> List[dict]:
     if not query or top_m <= 0:
         return []
@@ -299,8 +296,7 @@ async def _fetch_ft_chunks(
         SELECT id, content, chat_id, document_id, chunk_ix, start_offset, end_offset,
                NULL::float8 AS dist, 'ft' AS src
         FROM chunk
-        WHERE project_id = :project_id
-          AND (
+        WHERE (
               tsv @@ websearch_to_tsquery('russian', :q)
            OR tsv @@ websearch_to_tsquery('english', :q)
           )
@@ -308,7 +304,7 @@ async def _fetch_ft_chunks(
         LIMIT :m
         """
     )
-    res = await db.execute(sql, {"q": query, "m": top_m, "project_id": project_id})
+    res = await db.execute(sql, {"q": query, "m": top_m})
     return res.mappings().all()
 
 
@@ -394,9 +390,8 @@ def _build_context_message(
 
 async def get_context(
     db: AsyncSession,
-    chat_id: int,
+    chat_id: str,
     prompt: str,
-    project_id: int,
     tail_limit: int = 5,
     vector_top_k: int = 10,
     ft_top_m: int = 10,
@@ -409,18 +404,12 @@ async def get_context(
     - Top-M full-text search chunks
     Returns combined list of Msg objects with a [context] system message appended.
     """
-    if project_id is None:
-        raise ValueError("project_id is required to scope vector searches")
-    # user_id = user_id_ctx.get()
-
     tail_msgs = await _fetch_tail_messages(db, chat_id, limit=tail_limit)
     qvec = embed_query(prompt)
-    vec_rows = await _fetch_vector_chunks(
-        db, chat_id, qvec, project_id, top_k=vector_top_k
-    )
+    vec_rows = await _fetch_vector_chunks(db, chat_id, qvec, top_k=vector_top_k)
     # user_memory = await _fetch_user_memory_chunks(db, user_id, chat_id, qvec, k_mem=k_mem)
     user_memory = []
-    ft_rows = await _fetch_ft_chunks(db, prompt, project_id=project_id, top_m=ft_top_m)
+    ft_rows = await _fetch_ft_chunks(db, prompt, top_m=ft_top_m)
 
     snippets = _dedup_snippets([*vec_rows, *user_memory, *ft_rows])
     context_msg = _build_context_from_snippets(snippets)

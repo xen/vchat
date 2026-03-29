@@ -7,8 +7,8 @@ from aiohttp import web
 from aiohttp_session import new_session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from vchat.i18n import lazy_gettext as _
-from vchat.models import Chat, ChatMsg, Chunk, Document, Project, User
+from vchat.text import _
+from vchat.models import Chat, ChatMsg, Chunk, Document, User
 from vchat.settings import config
 from vchat.utils import flash, login_required, meta
 
@@ -34,7 +34,7 @@ async def dashboard(request):
     db = request["db"]
 
     totals_query = {
-        "projects": sa.select(sa.func.count()).select_from(Project),
+        "projects": sa.select(sa.literal(1)),
         "documents": sa.select(sa.func.count()).select_from(Document),
         "chunks": sa.select(sa.func.count()).select_from(Chunk),
         "pending_embeddings": sa.select(sa.func.count())
@@ -81,16 +81,6 @@ async def dashboard(request):
         .order_by(sa.text("1"))
     )
 
-    projects_query = (
-        sa.select(
-            sa.func.date_trunc("day", Project.created_at).label("day"),
-            sa.func.count(Project.id).label("count"),
-        )
-        .where(Project.created_at >= start_date)
-        .group_by(sa.text("1"))
-        .order_by(sa.text("1"))
-    )
-
     users_query = (
         sa.select(
             sa.func.date_trunc("day", User.created_at).label("day"),
@@ -103,7 +93,6 @@ async def dashboard(request):
 
     chats_rows = (await db.execute(chats_query)).all()
     votes_rows = (await db.execute(votes_query)).all()
-    projects_rows = (await db.execute(projects_query)).all()
     users_rows = (await db.execute(users_query)).all()
 
     for row in chats_rows:
@@ -116,11 +105,6 @@ async def dashboard(request):
         if key in likes_per_day:
             likes_per_day[key] = row.likes
             dislikes_per_day[key] = row.dislikes
-
-    for row in projects_rows:
-        key = row.day.strftime("%Y-%m-%d")
-        if key in new_projects_per_day:
-            new_projects_per_day[key] = row.count
 
     for row in users_rows:
         key = row.day.strftime("%Y-%m-%d")
@@ -182,4 +166,4 @@ async def login_as(request):
     session["staff_id"] = user.id
     session["role"] = user.role.value
 
-    return web.HTTPFound(location=request.app.router["dashboard"].url_for())
+    return web.HTTPFound(location=request.app.router["admin_dashboard"].url_for())

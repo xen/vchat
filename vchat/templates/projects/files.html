@@ -4,20 +4,20 @@
 {% from 'macros.html' import navbar_tabs with context %}
 
 <div class="flex items-center justify-between">
-    <p class="text-lg font-medium">{{ _('Project Files') }}</p>
+    <p class="text-lg font-medium">Файлы</p>
 </div>
 
 <div class="mt-6">
     <div class="card bg-base-100 shadow mb-6">
         <div class="card-body">
             <div class="flex items-center justify-between">
-                <h3 class="card-title text-base">{{ _('Upload Files') }}</h3>
+                <h3 class="card-title text-base">Загрузка файлов</h3>
                 {% if documents %}
                 <button class="btn btn-sm btn-outline btn-secondary"
-                        hx-post="{{ url('project_actions', action='rebuild_uploads', item_id=project.short_id) }}"
+                        hx-post="{{ url('project_actions', action='rebuild_uploads', item_id='global') }}"
                         hx-swap="none">
                     <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
-                    {{ _('Reindex All') }}
+                    Переиндексировать все
                 </button>
                 {% endif %}
             </div>
@@ -31,11 +31,11 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>{{ _('Type') }}</th>
-                            <th>{{ _('Name') }}</th>
-                            <th>{{ _('Size/Chunks') }}</th>
-                            <th>{{ _('Added') }}</th>
-                            <th>{{ _('Actions') }}</th>
+                            <th>Тип</th>
+                            <th>Название</th>
+                            <th>Размер / чанки</th>
+                            <th>Добавлен</th>
+                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -52,8 +52,8 @@
                             </td>
                             <td>
                                 <div class="flex flex-col gap-0.5 text-sm">
-                                    <span class="font-medium">{{ doc.meta.get('size_bytes', 0)|filesizeformat }}</span>
-                                    <span class="opacity-70">{{ doc.chunk_count }} chunks</span>
+                                    <span class="font-medium">{{ (doc.length or 0)|filesizeformat }}</span>
+                                    <span class="opacity-70">{{ doc.chunk_count|default(0) }} чанков</span>
                                 </div>
                             </td>
                             <td>
@@ -61,18 +61,18 @@
                             </td>
                             <td>
                                 <div class="flex items-center gap-2">
-                                    <a href="{{ url('secure_download', project_id=project.short_id, file_id=doc.short_id) }}"
+                                    <a href="{{ url('secure_download', file_id=doc.id) }}"
                                        class="btn btn-square btn-ghost btn-sm"
-                                       title="{{ _('Download') }}"
+                                       title="Скачать"
                                        target="_blank">
                                         <iconify-icon icon="lucide:download" class="size-4"></iconify-icon>
                                     </a>
                                     <button class="btn btn-square btn-ghost btn-sm text-error"
-                                            hx-post="{{ url('delete_file', project_id=project.short_id, file_id=doc.short_id) }}"
-                                            hx-confirm="{{ _('Are you sure you want to delete this file?') }}"
+                                            hx-post="{{ url('delete_file', file_id=doc.id) }}"
+                                            hx-confirm="Вы уверены, что хотите удалить этот файл?"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
-                                            title="{{ _('Delete') }}">
+                                            title="Удалить">
                                         <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
                                     </button>
                                 </div>
@@ -81,7 +81,7 @@
                         {% else %}
                         <tr>
                             <td colspan="5" class="text-center text-base-content/60 py-8">
-                                {{ _('No files uploaded yet.') }}
+                                Пока нет загруженных файлов.
                             </td>
                         </tr>
                         {% endfor %}
@@ -95,11 +95,11 @@
 <script type="module">
     document.addEventListener('DOMContentLoaded', () => {
         if (window.createUppy) {
-            window.createUppy("{{ external('tus_upload', project_id=project.short_id) }}", "#uppy");
+            window.createUppy("{{ external('tus_upload') }}", "#uppy");
         } else {
             setTimeout(() => {
                  if (window.createUppy) {
-                    window.createUppy("{{ external('tus_upload', project_id=project.short_id) }}", "#uppy");
+                    window.createUppy("{{ external('tus_upload') }}", "#uppy");
                  }
             }, 100);
         }

@@ -16,12 +16,6 @@
   {{ auth_input(form.email, "mail", _('Email address'), 'email', 'email') }}
   {{ auth_input(form.password, "key-round", _('Password'), 'password', 'current-password') }}
 
-  <div class="mt-3 text-end text-sm">
-    <a class="text-primary hover:underline" href="{{ url('recover') }}">
-      {{ _('Forgot password?') }}
-    </a>
-  </div>
-
   {% if turnstile %}
   <div class="mt-6">
     <div class="cf-turnstile" data-sitekey="{{ turnstile }}"></div>
@@ -34,12 +28,6 @@
     {{ _('Login to your account') }}
   </button>
 
-  <p class="text-base-content/70 mt-6 text-center text-sm">
-    {{ _('Not yet registered?') }}
-    <a class="text-primary hover:underline" href="{{ url('register') }}">
-      {{ _('Create account') }}
-    </a>
-  </p>
 </form>
 {% endcall %}
 {% endblock %}

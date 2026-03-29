@@ -3,9 +3,8 @@ from aiohttp import web
 from aiohttp_session import get_session
 import aiohttp_jinja2
 
-from vchat.i18n import lazy_gettext as _
+from vchat.text import _
 from vchat.models import User
-from vchat.settings import config
 from vchat.utils import login_required, meta, flash
 
 from . import forms
@@ -24,16 +23,10 @@ async def settings(request):
     user: User = request["user"]
     form = forms.SettingsForm(data, data=user.asdict(), meta={"csrf_context": session})
 
-    # Needs to access config for languages
-    # Assuming core.settings.config is available
-    form.language.choices = [
-        (name, code) for name, code in config["lang_supported"].items()
-    ]
-
     if request.method == "POST" and form.validate():
         await request["db"].execute(
             sa.update(User)
-            .values(name=form.name.data, language=form.language.data)
+            .values(name=form.name.data)
             .where(User.id == user.id)
         )
         await request["db"].commit()

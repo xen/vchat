@@ -285,7 +285,7 @@ def _validate_support_payload(payload: dict[str, Any]) -> tuple[str, str, str, s
     return name[:255], email[:255], phone[:64], body[:5000]
 
 
-def _extract_chat_id_from_token(request: web.Request, token: str) -> int | None:
+def _extract_chat_id_from_token(request: web.Request, token: str) -> str | None:
     signer = request.app[SIGNER_KEY]
 
     try:
@@ -294,17 +294,16 @@ def _extract_chat_id_from_token(request: web.Request, token: str) -> int | None:
         return None
 
     if isinstance(payload, dict) and "chat_id" in payload:
-        try:
-            return int(payload["chat_id"])
-        except (TypeError, ValueError):
-            return None
+        chat_id = payload["chat_id"]
+        if isinstance(chat_id, str) and chat_id:
+            return chat_id
+        return None
 
     # Backward-compatible payload style: "chat:<id>"
     if isinstance(payload, str) and payload.startswith("chat:"):
-        try:
-            return int(payload.split(":", 1)[1])
-        except (TypeError, ValueError):
-            return None
+        chat_id = payload.split(":", 1)[1]
+        if chat_id:
+            return chat_id
 
     return None
 

@@ -15,7 +15,7 @@ from vchat.ai_providers import (
     get_model_choices,
     get_provider_choices,
 )
-from vchat.i18n import lazy_gettext as _
+from vchat.text import _
 from vchat.settings import config
 
 DEFAULT_SYSTEM_PROMPT = _(
@@ -25,7 +25,7 @@ DEFAULT_SYSTEM_PROMPT = _(
 )
 
 
-class ProjectForm(Form):
+class WorkspaceForm(Form):
     class Meta:
         csrf = True  # Enable CSRF
         csrf_secret = config["secret_key"]
@@ -33,13 +33,13 @@ class ProjectForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     title = StringField(
-        _("Project Title"),
+        _("Workspace Title"),
         validators=[
             validators.DataRequired(),
             validators.Length(max=100, message=_("Length up to 100 characters")),
         ],
         render_kw={"class": "form-control"},
-        description=_("Project title. Recommended size is 70 characters"),
+        description=_("Workspace title. Recommended size is 70 characters"),
     )
 
     system_prompt = TextAreaField(
@@ -236,7 +236,7 @@ class OnboardingForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     project_title = StringField(
-        _("Project Title"),
+        _("Workspace Title"),
         validators=[
             validators.DataRequired(),
             validators.Length(max=100, message=_("Length up to 100 characters")),

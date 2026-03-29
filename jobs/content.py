@@ -68,7 +68,7 @@ def translate_chapters():
     if not client:
         return
 
-    supported_langs = config.get("lang_supported", {"en": "English"})
+    supported_langs = {"ru": "Русский"}
 
     with Session(engine) as session:
         # Get all original chapters (from_id is None)
@@ -115,7 +115,7 @@ def translate_page(page_id: int):
     if not client:
         return
 
-    supported_langs = config.get("lang_supported", {"en": "English"})
+    supported_langs = {"ru": "Русский"}
 
     with Session(engine) as session:
         page = session.get(Page, page_id)

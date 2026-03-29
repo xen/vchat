@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.models.data import Project, Source
+from vchat.models.data import Settings, Source
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -23,18 +23,19 @@ def crawl_source_task(source_id: int):
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = (
-                select(Source, Project.crawl_page_limit)
-                .join(Project, Project.id == Source.project_id)
-                .where(Source.id == source_id)
-            )
-            row = session.execute(stmt).one_or_none()
-
-            if not row:
+            source = session.get(Source, source_id)
+            if not source:
                 print(f"Source {source_id} not found")
                 return
 
-            source, crawl_page_limit = row
+            crawl_page_limit_value = session.execute(
+                select(Settings.value).where(Settings.key == "project.crawl_page_limit")
+            ).scalar_one_or_none()
+            try:
+                crawl_page_limit = int(crawl_page_limit_value or 100)
+            except (TypeError, ValueError):
+                crawl_page_limit = 100
+
             source_type = source.type
             url = source.uri
             source_title = source.title
@@ -93,8 +94,8 @@ def crawl_source_task(source_id: int):
         # Chain refresh_project_index
         from jobs.embedder.tasks import refresh_project_index
 
-        print(f"Triggering refresh_project_index for project {source.project_id}")
-        refresh_project_index.delay(source.project_id)
+        print("Triggering refresh_project_index")
+        refresh_project_index.delay()
 
     print(f"Finished crawling source {source_id}")
 
@@ -103,22 +104,20 @@ def crawl_source_task(source_id: int):
     name="jobs.crawler.tasks.crawl_all_sources_task",
     queue="crawler",
 )
-def crawl_all_sources_task(project_id: int):
+def crawl_all_sources_task():
     """
-    Crawl all sources for a given project.
+    Crawl all non-upload sources.
     """
-    print(f"Starting crawl for all sources in project {project_id}")
+    print("Starting crawl for all sources")
 
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = select(Source).where(
-                Source.project_id == project_id, Source.type != "upload"
-            )
+            stmt = select(Source).where(Source.type != "upload")
             sources = session.execute(stmt).scalars().all()
 
             if not sources:
-                print(f"No sources found for project {project_id}")
+                print("No sources found")
                 return
 
             source_ids = [source.id for source in sources]
@@ -131,4 +130,4 @@ def crawl_all_sources_task(project_id: int):
     for source_id in source_ids:
         crawl_source_task.delay(source_id)
 
-    print(f"Finished queueing crawl tasks for project {project_id}")
+    print("Finished queueing crawl tasks")

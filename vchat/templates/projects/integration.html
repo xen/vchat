@@ -1,44 +1,83 @@
 {% extends "admin.html" %}
 
-{% block title %}{{ _('Integration') }}{% endblock %}
+{% block title %}Интеграция{% endblock %}
 
 {% block content %}
 
 <div class="flex items-center justify-between">
-    <p class="text-lg font-medium">{{ _('Integration') }}</p>
+    <p class="text-lg font-medium">Интеграция</p>
 </div>
 
-<div class="mt-6">
+<div class="mt-6 space-y-6">
   <div class="card bg-base-100 shadow-sm">
-    <div class="card-body p-0">
-      <p class="mb-4">
-        {{ _('To integrate the chat widget on your site, copy and paste the following code snippet before the closing </body> tag.') }}
+    <div class="card-body">
+      <h2 class="card-title">Публичный API VChat</h2>
+      <p>
+        На этой странице собрана краткая инструкция по публичным методам API.
+        Полный документ: <code>docs/02_openapi_specification.md</code>.
+      </p>
+      <ul class="list-disc pl-6 space-y-1">
+        <li><code>GET /api/update</code> — обновление индекса по URL документа.</li>
+        <li><code>POST /api/support/request</code> — создание обращения пользователя из виджета.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h3 class="font-semibold text-base">1) Обновление индекса документа</h3>
+      <p class="text-sm opacity-80">Метод принимает URL документа и запускает фоновую синхронизацию индекса.</p>
+
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>GET /api/update?url=https%3A%2F%2Fdocs.example.org%2Freglament.pdf</code></pre>
+
+      <p class="text-sm opacity-80 mt-2">Пример ответа:</p>
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>{
+  "status": "accepted",
+  "url": "https://docs.example.org/reglament.pdf"
+}</code></pre>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h3 class="font-semibold text-base">2) Создание обращения в поддержку</h3>
+      <p class="text-sm opacity-80">
+        Требуется заголовок <code>X-CSRFToken</code> и JSON-тело с полями:
+        <code>name</code>, <code>email</code>, <code>phone</code>, <code>body</code>.
       </p>
 
-      {% set widget_script_src = external('widget') %}
-      {% set basic_snippet -%}
-<script src="{{ widget_script_src }}" defer></script>
-<div id="vchat-chat"></div>
-      {%- endset %}
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>POST /api/support/request
+Content-Type: application/json
+X-CSRFToken: &lt;csrf_token_from_widget&gt;
 
-      <div class="relative mb-6" data-code-block>
-        <button
-          type="button"
-          class="btn btn-ghost btn-sm absolute right-3 top-3 z-10"
-          data-copy-target="integration-snippet-basic"
-          data-copied-label="{{ _('Copied!') }}"
-          aria-label="{{ _('Copy code') }}"
-        >
-          <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
-          <span class="ml-2 copy-label">{{ _('Copy') }}</span>
-        </button>
-        <pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code id="integration-snippet-basic" class="language-html">{{ basic_snippet | trim }}</code></pre>
-      </div>
+{
+  "name": "Иван Петров",
+  "email": "ivan@example.com",
+  "phone": "+79991234567",
+  "body": "Подскажите, где посмотреть актуальные правила подачи заявки?"
+}</code></pre>
 
-      <div class="alert alert-info mb-0">
-        <iconify-icon icon="lucide:info" class="size-6"></iconify-icon>
-        <span>{{ _('Widget embedding no longer uses project.short_id. Use a single script URL and the #vchat-chat container only.') }}</span>
-      </div>
+      <p class="text-sm opacity-80 mt-2">Пример ответа:</p>
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>{
+  "status": "ok",
+  "request_id": 1024
+}</code></pre>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h3 class="font-semibold text-base">Встраивание виджета</h3>
+      <p class="text-sm opacity-80">
+        Разместите код перед закрывающим тегом <code>&lt;/body&gt;</code>.
+      </p>
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>&lt;script src="https://chat.vbudushee.ru/widget" defer&gt;&lt;/script&gt;
+&lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
+      <ul class="list-disc pl-6 space-y-1 text-sm opacity-80">
+        <li><code>defer</code> обязателен, чтобы не блокировать загрузку страницы.</li>
+        <li>Контейнер <code>div#vchat-chat</code> обязателен, в него монтируется интерфейс виджета.</li>
+        <li>Используется единый скрипт: <code>https://chat.vbudushee.ru/widget</code>.</li>
+      </ul>
     </div>
   </div>
 </div>

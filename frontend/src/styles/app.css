@@ -5,8 +5,8 @@
 @import "./plugins/highlight.css";
 
 /* Custom Declarations */
-@import "./vchat/animation.css";
-@import "./vchat/components.css";
+@import "./core/animation.css";
+@import "./core/components.css";
 
 /* Page wise */
 @import "./pages/landing.css";
@@ -22,8 +22,8 @@
 @import "./plugins/select.css";
 @import "./plugins/text-editor.css"; */
 
-@import '@uppy/vchat/css/style.min.css';
-@import '@uppy/drag-drop/css/style.min.css';
+@import "@uppy/core/css/style.min.css";
+@import "@uppy/drag-drop/css/style.min.css";
 @import "@uppy/dashboard/css/style.css";
 
 @import "./styles.css";

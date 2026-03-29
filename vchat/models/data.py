@@ -9,43 +9,7 @@ from sqlalchemy.dialects.postgresql import ENUM, JSONB, TSVECTOR
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, Created, Updated, UUID7
-
-project_role_enum = ENUM(
-    "owner",
-    "member",
-    name="projectrole",
-    create_type=False,
-)
-
-
-class Project(Base, Created, Updated):
-    __tablename__ = "project"
-
-    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
-    title: Mapped[str] = mapped_column(sa.String(62), nullable=False, default="")
-    user_id: Mapped[int] = mapped_column(
-        sa.Integer, ForeignKey("users.id"), nullable=False
-    )
-    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    system_prompt: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    agent_style: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    provider: Mapped[str] = mapped_column(
-        sa.String(64),
-        nullable=False,
-        default="openai",
-        server_default=sa.text("'openai'"),
-    )
-    model: Mapped[str] = mapped_column(
-        sa.String(128),
-        nullable=False,
-        default="gpt-4o-mini",
-        server_default=sa.text("'gpt-4o-mini'"),
-    )
-    crawl_page_limit: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, default=100
-    )
+from .base import Base, Created, Updated, generate_uuid7
 
 
 chat_type_enum = ENUM(
@@ -56,10 +20,14 @@ chat_type_enum = ENUM(
 )
 
 
-class Chat(Base, Created, Updated, UUID7):
+class Chat(Base, Created, Updated):
     __tablename__ = "chat"
 
-    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    id: Mapped[str] = mapped_column(
+        sa.String(36),
+        primary_key=True,
+        default=generate_uuid7,
+    )
     title: Mapped[str] = mapped_column(sa.String(200), nullable=False, default="")
     user_uid: Mapped[str] = mapped_column(sa.String(256), nullable=False, index=True)
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
@@ -83,8 +51,8 @@ class ChatMsg(Base):
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     full_context: Mapped[str] = mapped_column(sa.Text, nullable=False)
     role: Mapped[str] = mapped_column(chat_role_enum, nullable=False)
-    chat_id: Mapped[int] = mapped_column(
-        sa.Integer,
+    chat_id: Mapped[str] = mapped_column(
+        sa.String(36),
         ForeignKey("chat.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -103,7 +71,18 @@ class ChatMsg(Base):
         sa.Integer, nullable=False, default=0, server_default=sa.text("0")
     )
     vote_comment: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    # is_pinned: Mapped[bool] = mapped_column(default=False, nullable=False)
+    guardrail_triggered: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+        index=True,
+    )
+    guardrail_stage: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)
+    guardrail_reasons: Mapped[list[str] | None] = mapped_column(
+        sa.ARRAY(sa.String()),
+        nullable=True,
+    )
 
 
 source_type_enum = ENUM(
@@ -136,7 +115,7 @@ status_enum = ENUM(
 )
 
 
-class Document(Base, Created, Updated, UUID7):
+class Document(Base, Created, Updated):
     __tablename__ = "document"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
@@ -148,13 +127,13 @@ class Document(Base, Created, Updated, UUID7):
         index=True,
     )
     content: Mapped[str] = mapped_column(sa.Text, nullable=True)
-    _hash: Mapped[str] = mapped_column("hash", sa.String(64), nullable=False)  # sha256
+    _hash: Mapped[str] = mapped_column("hash", sa.String(64), nullable=False)
     _lang: Mapped[str] = mapped_column(
         "lang", sa.String(2), nullable=False, default="ru"
     )
     _length: Mapped[int] = mapped_column(
         "length", sa.Integer, nullable=False, default=0
-    )  # length in characters
+    )
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(
         status_enum, nullable=False, default="added", index=True
@@ -162,7 +141,6 @@ class Document(Base, Created, Updated, UUID7):
     title: Mapped[str | None] = mapped_column(sa.String, nullable=True)
     is_ignored: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
 
-    # calculate hash before insert
     @hybrid_property
     def hash_value(self) -> str:
         return self._hash
@@ -171,7 +149,6 @@ class Document(Base, Created, Updated, UUID7):
     def hash_value(self, value: str) -> None:
         self._hash = hashlib.sha256(value.encode("utf-8")).hexdigest()
 
-    # detect language using pycld2 and store in lang field
     @hybrid_property
     def language(self) -> str:
         return self.lang
@@ -180,7 +157,7 @@ class Document(Base, Created, Updated, UUID7):
     def language(self, value: str) -> None:
         is_reliable, _, details = cld2.detect(value)
         if is_reliable and details:
-            self.lang = details[0][1]  # get the most probable language code
+            self.lang = details[0][1]
         else:
             self.lang = ""
 
@@ -200,8 +177,8 @@ class Chunk(Base, Created, Updated):
     __tablename__ = "chunk"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
-    chat_id: Mapped[int | None] = mapped_column(
-        sa.Integer,
+    chat_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
         ForeignKey("chat.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
@@ -227,3 +204,10 @@ class Chunk(Base, Created, Updated):
     content: Mapped[str] = mapped_column(sa.Text, nullable=False)
     tsv: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+
+
+class Settings(Base):
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(sa.String(255), primary_key=True)
+    value: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

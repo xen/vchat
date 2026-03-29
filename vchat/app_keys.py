@@ -15,3 +15,4 @@ REDIS_KEY: web.AppKey[Redis] = web.AppKey("redis", Redis)
 SIGNER_KEY: web.AppKey[URLSafeTimedSerializer] = web.AppKey(
     "signer", URLSafeTimedSerializer
 )
+SETTINGS_KEY: web.AppKey[ConfigDict] = web.AppKey("settings", dict)

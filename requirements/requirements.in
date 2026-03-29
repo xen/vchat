@@ -6,6 +6,7 @@ celery
 
 aiohttp
 aiohttp-jinja2==1.6
+prometheus-client
 gunicorn
 coloredlogs
 expandvars
@@ -33,6 +34,7 @@ sqlparse
 # ai
 tiktoken
 openai
+openai-guardrails
 spacy
 pycld2
 transformers

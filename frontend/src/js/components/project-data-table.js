@@ -33,27 +33,6 @@ const escapeHtml = (value) => {
   return String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-  return `
-                    <div class="flex flex-wrap items-center gap-1">
-                        <button
-                            type="button"
-                            class="${toggleClass}"
-                            data-doc-action="toggle-ignore"
-                            data-doc-id="${docId}"
-                            data-doc-ignore-value="${toggleValue}"
-                        >
-                            ${toggleLabel}
-                        </button>
-                        <button
-                            type="button"
-                            class="btn btn-xs btn-outline btn-error"
-                            data-doc-action="delete"
-                            data-doc-id="${docId}"
-                        >
-                            Delete
-                        </button>
-                    </div>
-                `
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
@@ -141,7 +120,7 @@ const compareStrings = (rowA, rowB, columnId) => {
 
 const DOCUMENT_REFRESH_EVENT = "project-documents:refresh"
 
-window.useProjectDataTable = (projectId) => {
+window.useProjectDataTable = () => {
   const sortableHeader = (label) => ({ column }) => {
     const title = escapeHtml(label)
     if (!column.getCanSort?.()) {
@@ -358,7 +337,6 @@ window.useProjectDataTable = (projectId) => {
   ]
 
   return {
-    projectId,
     flexRender,
     loading: true,
     headerGroups: [],
@@ -485,7 +463,7 @@ window.useProjectDataTable = (projectId) => {
     },
     fetchDocuments() {
       this.loading = true
-      fetch(`/project/${this.projectId}/documents/json`)
+      fetch('/documents/json')
         .then(res => res.json())
         .then(jsonData => {
           this.data = Array.isArray(jsonData)
@@ -648,7 +626,7 @@ window.useProjectDataTable = (projectId) => {
       }
       this.documentModalContent.innerHTML = '<div class="p-4 text-sm opacity-70">Loading content...</div>'
       try {
-        const res = await fetch(`/project/${this.projectId}/document/${docId}/content`, {
+        const res = await fetch(`/document/${docId}/content`, {
           headers: {
             'HX-Request': 'true',
           },
@@ -677,7 +655,7 @@ window.useProjectDataTable = (projectId) => {
       const payload = new URLSearchParams()
       payload.append('is_ignored', desiredState ? 'true' : 'false')
 
-      const ok = await this.sendRowAction(`/api/actions/ignore_document/${docId}`, payload)
+      const ok = await this.sendRowAction(`/actions/project/ignore_document/${docId}`, payload)
       if (ok) {
         doc.is_ignored = desiredState
         this.updateDerivedState()
@@ -691,7 +669,7 @@ window.useProjectDataTable = (projectId) => {
         return
       }
 
-      const ok = await this.sendRowAction(`/api/actions/delete_document/${docId}`)
+      const ok = await this.sendRowAction(`/actions/project/delete_document/${docId}`)
       if (ok) {
         this.data = this.data.filter(item => item.id !== docId)
         this.table.setOptions(prev => ({ ...prev, data: this.data }))

@@ -4,7 +4,7 @@
 {% from 'macros.html' import navbar_tabs with context %}
 
 <div class="flex items-center justify-between">
-    <p class="text-lg font-medium">{{ _('Project Statistics') }}</p>
+    <p class="text-lg font-medium">Статистика</p>
 </div>
 
 <div class="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
@@ -17,7 +17,7 @@
                 </div>
                 <div class="ml-5 w-0 flex-1">
                     <dl>
-                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Total Chats') }}</dt>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">Всего чатов</dt>
                         <dd>
                             <div class="text-lg font-medium text-base-content">{{ total_chats }}</div>
                         </dd>
@@ -36,7 +36,7 @@
                 </div>
                 <div class="ml-5 w-0 flex-1">
                     <dl>
-                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Unique Users') }}</dt>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">Уникальные пользователи</dt>
                         <dd>
                             <div class="text-lg font-medium text-base-content">{{ total_users }}</div>
                         </dd>
@@ -55,7 +55,7 @@
                 </div>
                 <div class="ml-5 w-0 flex-1">
                     <dl>
-                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Total Messages') }}</dt>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">Всего сообщений</dt>
                         <dd>
                             <div class="text-lg font-medium text-base-content">{{ total_msgs }}</div>
                         </dd>
@@ -74,7 +74,7 @@
                 </div>
                 <div class="ml-5 w-0 flex-1">
                     <dl>
-                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Document Hits') }}</dt>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">Переходы к документам</dt>
                         <dd>
                             <div class="text-lg font-medium text-base-content">{{ total_hits }}</div>
                         </dd>
@@ -95,7 +95,7 @@
                 </div>
                 <div class="ml-5 w-0 flex-1">
                     <dl>
-                        <dt class="text-sm font-medium text-base-content/70 truncate">{{ _('Total Tokens') }}</dt>
+                        <dt class="text-sm font-medium text-base-content/70 truncate">Всего токенов</dt>
                         <dd>
                             <div class="text-lg font-medium text-base-content">{{ total_tokens }}</div>
                         </dd>
@@ -109,14 +109,14 @@
 {% if token_breakdown %}
 <div class="mt-6 card bg-base-100 shadow">
     <div class="card-body">
-        <h3 class="card-title text-base font-medium mb-4">{{ _('Tokens by Provider and Model') }}</h3>
+        <h3 class="card-title text-base font-medium mb-4">Токены по провайдеру и модели</h3>
         <div class="overflow-x-auto">
             <table class="table table-sm">
                 <thead>
                     <tr>
-                        <th>{{ _('Provider') }}</th>
-                        <th>{{ _('Model') }}</th>
-                        <th class="text-right">{{ _('Tokens') }}</th>
+                        <th>Провайдер</th>
+                        <th>Модель</th>
+                        <th class="text-right">Токены</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -138,16 +138,16 @@
 <div class="mt-8">
     <div class="card bg-base-100 shadow">
         <div class="card-body">
-            <h3 class="card-title text-base font-medium mb-4">{{ _('Indexed Data by Source') }}</h3>
+            <h3 class="card-title text-base font-medium mb-4">Проиндексированные данные по источникам</h3>
             <div class="overflow-x-auto">
                 <table class="table table-sm">
                     <thead>
                         <tr>
-                            <th>{{ _('Source') }}</th>
-                            <th class="text-right">{{ _('Documents') }}</th>
-                            <th class="text-right">{{ _('Data Volume') }}</th>
-                            <th class="text-right">{{ _('Chunks') }}</th>
-                            <th class="text-right">{{ _('Chunk Storage') }}</th>
+                            <th>Источник</th>
+                            <th class="text-right">Документы</th>
+                            <th class="text-right">Объем данных</th>
+                            <th class="text-right">Чанки</th>
+                            <th class="text-right">Хранилище чанков</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -183,7 +183,7 @@
                     </tbody>
                     <tfoot>
                         <tr class="font-bold border-t-2">
-                            <td>{{ _('Total') }}</td>
+                            <td>Итого</td>
                             <td class="text-right">{{ total_docs }}</td>
                             <td class="text-right">
                                 {% if total_data_volume < 1024 %}
@@ -220,7 +220,7 @@
     <!-- Chart: Chats & Users -->
     <div class="card bg-base-100 shadow">
         <div class="card-body">
-            <h3 class="card-title text-base font-medium mb-4">{{ _('Chats & Users (Last 30 Days)') }}</h3>
+            <h3 class="card-title text-base font-medium mb-4">Чаты и пользователи (последние 30 дней)</h3>
             <div class="relative h-72 w-full">
                 <canvas id="chatsChart"></canvas>
             </div>
@@ -230,7 +230,7 @@
     <!-- Chart: Messages & Hits -->
     <div class="card bg-base-100 shadow">
         <div class="card-body">
-            <h3 class="card-title text-base font-medium mb-4">{{ _('Messages & Hits (Last 30 Days)') }}</h3>
+            <h3 class="card-title text-base font-medium mb-4">Сообщения и переходы к документам (последние 30 дней)</h3>
             <div class="relative h-72 w-full">
                 <canvas id="msgsChart"></canvas>
             </div>
@@ -240,7 +240,7 @@
     <!-- Chart: Token Usage -->
     <div class="card bg-base-100 shadow">
         <div class="card-body">
-            <h3 class="card-title text-base font-medium mb-4">{{ _('Token Usage (Last 30 Days)') }}</h3>
+            <h3 class="card-title text-base font-medium mb-4">Использование токенов (последние 30 дней)</h3>
             <div class="relative h-72 w-full">
                 <canvas id="tokensChart"></canvas>
             </div>
@@ -261,7 +261,7 @@
                 labels: labels,
                 datasets: [
                     {
-                        label: '{{ _("Chats") }}',
+                        label: 'Чаты',
                         data: {{ data_chats|tojson }},
                         borderColor: 'rgb(59, 130, 246)', // primary
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -269,7 +269,7 @@
                         fill: true
                     },
                     {
-                        label: '{{ _("Users") }}',
+                        label: 'Пользователи',
                         data: {{ data_users|tojson }},
                         borderColor: 'rgb(16, 185, 129)', // secondary
                         backgroundColor: 'rgba(16, 185, 129, 0.1)',
@@ -309,14 +309,14 @@
                 labels: labels,
                 datasets: [
                     {
-                        label: '{{ _("Messages") }}',
+                        label: 'Сообщения',
                         data: {{ data_msgs|tojson }},
                         backgroundColor: 'rgba(139, 92, 246, 0.7)', // accent
                         borderColor: 'rgb(139, 92, 246)',
                         borderWidth: 1
                     },
                     {
-                        label: '{{ _("Document Hits") }}',
+                        label: 'Переходы к документам',
                         data: {{ data_hits|tojson }},
                         backgroundColor: 'rgba(59, 130, 246, 0.7)', // info
                         borderColor: 'rgb(59, 130, 246)',
@@ -355,7 +355,7 @@
                 labels: labels,
                 datasets: [
                     {
-                        label: '{{ _("Tokens") }}',
+                        label: 'Токены',
                         data: {{ data_tokens|tojson }},
                         borderColor: 'rgb(245, 158, 11)', // warning
                         backgroundColor: 'rgba(245, 158, 11, 0.1)',

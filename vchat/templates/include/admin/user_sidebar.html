@@ -12,7 +12,7 @@
 
 <div id="layout-sidebar" class="sidebar-menu sidebar-menu-activation">
   <div class="flex min-h-16 items-center justify-between gap-3 ps-5 pe-4">
-    <a href="{{ url('index') }}">
+    <a href="{{ url('project_view') }}">
       {% include "include/logo.html" %}
     </a>
     <label for="layout-sidebar-hover-trigger" title="{{ _('Toggle sidebar hover') }}"
@@ -28,33 +28,19 @@
       <div class="mb-3 space-y-0.5 px-2.5">
         <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('User') }}</p>
         {{ item(_('User settings'), url('settings'), 'settings') }}
-        {{ item(_('Billing'), url('billing'), 'credit-card') }}
-        {{ item(_('Projects'), url('user-projects'), 'folder') }}
-        {{ item(_('Notifications'), url('messages'), 'bell') }}
-        {{ item(_('Support'), url('user_tickets'), 'life-buoy') }}
 
         {% if request.user.role.value in ['admin'] %}
         <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Admin area') }}</p>
         {{ item(_('Dashboard'), url('admin_dashboard'), 'layout-dashboard') }}
         {{ item(_('Users'), url('admin_users'), 'users') }}
-
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Admin Content') }}</p>
-        {{ item(_('Blog Posts'), url('edit_post_list'), 'file-text') }}
-        {{ item(_('Blog Categories'), url('edit_category_list'), 'flame') }}
-        {{ item(_('Support Tickets'), url('admin_tickets'), 'message-circle') }}
-        {{ item(_('Docs Chapters'), url('admin_chapters'), 'book-open') }}
-        {{ item(_('Docs Pages'), url('admin_pages'), 'file') }}
-        {{ item(_('Docs Favorites'), url('admin_favorites'), 'star') }}
         {% endif %}
 
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Back to site') }}</p>
-
-        <a href="{{ url('dashboard') }}"
+        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Back to app') }}</p>
+        <a href="{{ url('project_view') }}"
           class="btn from-primary to-secondary group/purchase text-primary-content btn-sm max-sm:btn-square relative gap-2 border-0 bg-linear-to-r text-sm">
           <iconify-icon icon="lucide:layout-dashboard" class="size-4"></iconify-icon>
-          <span class="max-sm:hidden">{{ _('Dashboard') }}</span>
+          <span class="max-sm:hidden">{{ _('Workspace') }}</span>
         </a>
-
       </div>
     </div>
     <div class="from-base-100/60 pointer-events-none absolute start-0 end-0 bottom-0 h-7 bg-linear-to-t to-transparent">

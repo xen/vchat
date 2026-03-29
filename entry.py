@@ -36,7 +36,7 @@ except ImportError:
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
-parser.add_argument("--port", type=int, default=8080)
+parser.add_argument("--port", type=int, default=9080)
 parser.add_argument(
     "--revision",
     action="store_true",

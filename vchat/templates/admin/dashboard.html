@@ -9,7 +9,7 @@
   <div class="flex items-center justify-between flex-wrap gap-4">
     <div>
       <h1 class="text-xl font-semibold">{{ _('Admin Dashboard') }}</h1>
-      <p class="text-sm text-base-content/70">{{ _('Global metrics across all projects and users') }}</p>
+      <p class="text-sm text-base-content/70">{{ _('Global metrics for the single workspace and all users') }}</p>
     </div>
   </div>
 
@@ -19,7 +19,7 @@
         <div class="flex items-center gap-4">
           <iconify-icon icon="lucide:folder" class="text-primary size-10"></iconify-icon>
           <div>
-            <p class="text-sm text-base-content/70">{{ _('Projects') }}</p>
+            <p class="text-sm text-base-content/70">{{ _('Workspaces') }}</p>
             <p class="text-2xl font-semibold">{{ totals.projects }}</p>
           </div>
         </div>
@@ -77,7 +77,7 @@
         <div class="flex items-center justify-between mb-4">
           <div>
             <h2 class="card-title text-base font-medium">{{ _('Chats per day (30d)') }}</h2>
-            <p class="text-xs text-base-content/70">{{ _('All projects combined') }}</p>
+            <p class="text-xs text-base-content/70">{{ _('Single workspace') }}</p>
           </div>
         </div>
         <div class="relative h-72 w-full">
@@ -184,7 +184,7 @@
         labels,
         datasets: [
           {
-            label: '{{ _("New projects") }}',
+            label: '{{ _("New workspaces") }}',
             data: newProjectsData,
             borderColor: 'rgb(99, 102, 241)',
             backgroundColor: 'rgba(99, 102, 241, 0.1)',

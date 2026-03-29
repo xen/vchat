@@ -14,8 +14,7 @@ from sentry_sdk import capture_exception
 
 from vchat.app_keys import REDIS_KEY
 from vchat.db import async_session_factory
-from vchat.i18n import i18n_middleware
-from vchat.i18n import lazy_gettext as _
+from vchat.text import _
 from vchat.models import User
 from vchat.utils import Meta
 
@@ -237,7 +236,6 @@ def get_middlewares(config):
         meta_middleware,
         db_session_middleware,
         auth_middleware,
-        i18n_middleware,
         flash_middleware,
         force_https_location_middleware,
     )

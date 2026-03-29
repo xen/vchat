@@ -2533,12 +2533,15 @@ onnxruntime==1.23.2 \
     #   docling
     #   fastembed
     #   faster-whisper
-openai==2.11.0 \
-    --hash=sha256:21189da44d2e3d027b08c7a920ba4454b8b7d6d30ae7e64d9de11dbe946d4faa \
-    --hash=sha256:b3da01d92eda31524930b6ec9d7167c535e843918d7ba8a76b1c38f1104f321e
+openai==2.30.0 \
+    --hash=sha256:9a5ae616888eb2748ec5e0c5b955a51592e0b201a11f4262db920f2a78c5231d
     # via
     #   -r requirements/requirements.in
+    #   openai-agents
     #   langchain-openai
+openai-guardrails==0.2.1 \
+    --hash=sha256:d2d27735ec0d8a801c2398b600ecb484ae063f93502ead146be2ad36436eba36
+    # via -r requirements/requirements.in
 opencv-python==4.12.0.88 \
     --hash=sha256:092c16da4c5a163a818f120c22c5e4a2f96e0db4f24e659c701f1fe629a690f9 \
     --hash=sha256:51fd981c7df6af3e8f70b1556696b05224c4e6b6777bdd2a46b3d4fb09de1a92 \
@@ -2938,6 +2941,10 @@ presidio-analyzer==2.2.360 \
 presidio-anonymizer==2.2.360 \
     --hash=sha256:5f46f36bf3a0b8817b91f09ed3e51093cc331192e148311f1cd69ae0bf3f4a6c
     # via nemoguardrails
+prometheus-client==0.24.1 \
+    --hash=sha256:150db128af71a5c2482b36e588fc8a6b95e498750da4b17065947c16070f4055 \
+    --hash=sha256:7e0ced7fbbd40f7b84962d5d2ab6f17ef88a72504dcf7c0b40737b43b2a461f9
+    # via -r requirements/requirements.in
 prompt-toolkit==3.0.52 \
     --hash=sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855 \
     --hash=sha256:9aac639a3bbd33284347de5ad8d68ecc044b91a762dc39b7c21095fcd6a19955

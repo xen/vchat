@@ -9,7 +9,7 @@ from slugify import slugify
 
 from vchat.models.support import Request
 from vchat.utils import login_required
-from vchat.i18n import lazy_gettext as _
+from vchat.text import _
 
 __all__ = [
     "admin_request_all",

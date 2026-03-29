@@ -6,7 +6,7 @@
     <div class="card bg-base-100 shadow shrink-0">
         <div class="card-body flex-row items-center justify-between py-4">
             <div class="flex items-center gap-4">
-                <a href="{{ url('project_history', project_id=project.short_id) }}" class="btn btn-sm btn-ghost gap-2">
+                <a href="{{ url('project_history') }}" class="btn btn-sm btn-ghost gap-2">
                     <iconify-icon icon="lucide:arrow-left" class="size-5"></iconify-icon>
                 </a>
                 <div>
@@ -40,8 +40,23 @@
                     </div>
                     <div class="chat-bubble {{ 'chat-bubble-primary' if not is_user else '' }} flex flex-col gap-2">
                         <div class="markdown-body">
-                            {{ msg.text }}
+                            {% if msg.has_masked_pii %}
+                            {{ msg.text_display|safe }}
+                            {% else %}
+                            {{ msg.text_display or msg.text }}
+                            {% endif %}
                         </div>
+                        {% if msg.guardrail_hit %}
+                        <div class="rounded border border-warning/30 bg-warning/10 px-3 py-2 text-xs">
+                            <div class="font-semibold text-warning">Сработал guardrail</div>
+                            {% if msg.guardrail_stage_display %}
+                            <div class="text-base-content/80 mt-1">Этап: {{ msg.guardrail_stage_display }}</div>
+                            {% endif %}
+                            {% if msg.guardrail_rules %}
+                            <div class="text-base-content/80 mt-1">Правила: {{ msg.guardrail_rules|join(', ') }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
 
                         {% if msg.vote or msg.vote_comment %}
                         <div class="divider my-0 opacity-20"></div>

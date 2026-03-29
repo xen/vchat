@@ -10,8 +10,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from jobs.utils import send_flash_background
-from vchat.models import ChatMsg, Chunk, Document, Project, Source
+from vchat.models import ChatMsg, Chunk, Document, Source
 
 # Lazy, per-process singleton
 _embed_model = None
@@ -107,9 +106,8 @@ def chunk_text_word_window(
 
 def _fetch_document_context(session: Session, document_id: int):
     stmt = (
-        select(Document, Source.project_id, Project.user_id)
+        select(Document)
         .join(Source, Document.source_id == Source.id)
-        .join(Project, Source.project_id == Project.id)
         .where(Document.id == document_id)
     )
     row = session.execute(stmt).first()
@@ -117,7 +115,7 @@ def _fetch_document_context(session: Session, document_id: int):
         logging.warning("Document %s not found", document_id)
         return None
 
-    doc, project_id, owner_id = row
+    (doc,) = row
 
     if not doc.content:
         logging.warning("Document %s has no content", document_id)
@@ -127,25 +125,16 @@ def _fetch_document_context(session: Session, document_id: int):
         logging.info("Document %s is ignored, skipping", document_id)
         return None
 
-    if project_id is None or owner_id is None:
-        logging.error(
-            "Document %s missing project or owner data, skipping indexing",
-            document_id,
-        )
-        return None
-
-    return doc, project_id, owner_id
+    return doc
 
 
 def _materialize_document_chunks(
-    session: Session, doc: Document, project_id: int, owner_id: int
+    session: Session, doc: Document, user_uid: str = "system"
 ) -> int:
     chunks = chunk_text_word_window(doc.content, max_tokens=1000, overlap=150)
     logging.info("Materializing %s chunks for Document %s", len(chunks), doc.id)
 
-    session.execute(
-        delete(Chunk).where(Chunk.document_id == doc.id, Chunk.project_id == project_id)
-    )
+    session.execute(delete(Chunk).where(Chunk.document_id == doc.id))
 
     if not chunks:
         logging.info("No content to index for Document %s", doc.id)
@@ -153,7 +142,6 @@ def _materialize_document_chunks(
         session.commit()
         return 0
 
-    user_uid = str(owner_id)
     for c in chunks:
         chunk = Chunk(
             chat_id=None,
@@ -165,7 +153,6 @@ def _materialize_document_chunks(
             end_offset=c.end,
             content=c.text,
             embedding=None,
-            project_id=project_id,
         )
         session.add(chunk)
 
@@ -219,7 +206,6 @@ def _process_next_pending_chunk(session: Session) -> bool:
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(
             Chunk.document_id == chunk.document_id,
-            Chunk.project_id == chunk.project_id,
             Chunk.embedding.is_(None),
         )
     ).scalar_one()
@@ -241,9 +227,9 @@ def _process_next_pending_chunk(session: Session) -> bool:
 
 
 def _index_document_chunks(
-    session: Session, doc: Document, project_id: int, owner_id: int
+    session: Session, doc: Document
 ) -> bool:
-    chunk_count = _materialize_document_chunks(session, doc, project_id, owner_id)
+    chunk_count = _materialize_document_chunks(session, doc)
     if chunk_count == 0:
         return False
 
@@ -256,8 +242,7 @@ def _index_document_inner(session: Session, document_id: int) -> bool:
     if not context:
         return False
 
-    doc, project_id, owner_id = context
-    return _index_document_chunks(session, doc, project_id, owner_id)
+    return _index_document_chunks(session, context)
 
 
 @app.task(name="jobs.embedder.tasks.index_chat_message", queue="embeddings")
@@ -272,18 +257,10 @@ def index_chat_message(msg_id: int):
                 logging.warning("ChatMsg %s not found", msg_id)
                 return
 
-            if not msg.project_id:
-                logging.info("ChatMsg %s has no project_id, skipping indexing", msg_id)
-                return
-
             text = msg.text or ""
             chunks = chunk_text_word_window(text)
 
-            session.execute(
-                delete(Chunk).where(
-                    Chunk.msg_id == msg_id, Chunk.project_id == msg.project_id
-                )
-            )
+            session.execute(delete(Chunk).where(Chunk.msg_id == msg_id))
 
             if not chunks:
                 logging.info("No content to index for ChatMsg %s", msg_id)
@@ -302,7 +279,6 @@ def index_chat_message(msg_id: int):
                     end_offset=c.end,
                     content=c.text,
                     embedding=vec,
-                    project_id=msg.project_id,
                 )
                 session.add(chunk)
 
@@ -338,14 +314,13 @@ def pending_chunks():
 
 
 @app.task(name="jobs.embedder.tasks.index_project", queue="embeddings")
-def index_project(project_id: int):
+def index_project():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
             stmt = (
                 select(Document.id)
                 .join(Source, Document.source_id == Source.id)
-                .where(Source.project_id == project_id)
                 .where(Document.is_ignored == False)
             )
             doc_ids = session.execute(stmt).scalars().all()
@@ -353,9 +328,8 @@ def index_project(project_id: int):
         engine.dispose()
 
     logging.info(
-        "Scheduling indexing for %s documents in project %s",
+        "Scheduling indexing for %s documents",
         len(doc_ids),
-        project_id,
     )
 
     for doc_id in doc_ids:
@@ -363,7 +337,7 @@ def index_project(project_id: int):
 
 
 @app.task(name="jobs.embedder.tasks.refresh_project_index", queue="embeddings")
-def refresh_project_index(project_id: int):
+def refresh_project_index():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
@@ -374,7 +348,6 @@ def refresh_project_index(project_id: int):
                 )
                 .join(Document, Chunk.document_id == Document.id)
                 .join(Source, Document.source_id == Source.id)
-                .where(Source.project_id == project_id)
                 .group_by(Chunk.document_id)
                 .subquery()
             )
@@ -384,7 +357,6 @@ def refresh_project_index(project_id: int):
                     sa.select(Document.id)
                     .join(Source, Document.source_id == Source.id)
                     .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-                    .where(Source.project_id == project_id)
                     .where(Document.is_ignored == False)
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
                 )
@@ -400,7 +372,7 @@ def refresh_project_index(project_id: int):
                 session.execute(
                     sa.select(Document.id)
                     .join(Source, Document.source_id == Source.id)
-                    .where(Source.project_id == project_id, Document.is_ignored == True)
+                    .where(Document.is_ignored == True)
                 )
                 .scalars()
                 .all()
@@ -415,40 +387,29 @@ def refresh_project_index(project_id: int):
                     sa.delete(Chunk).where(Chunk.document_id.in_(ignored_doc_ids))
                 )
 
-            owner_id = (
+            dangling_chunk_ids = (
                 session.execute(
-                    sa.select(Project.user_id).where(Project.id == project_id)
+                    sa.select(Chunk.id)
+                    .outerjoin(Document, Chunk.document_id == Document.id)
+                    .where(Chunk.document_id.isnot(None))
+                    .where(Document.id.is_(None))
                 )
-            ).scalar_one_or_none()
+                .scalars()
+                .all()
+            )
 
-            if owner_id is not None:
-                dangling_chunk_ids = (
-                    session.execute(
-                        sa.select(Chunk.id)
-                        .outerjoin(Document, Chunk.document_id == Document.id)
-                        .where(Chunk.document_id.isnot(None))
-                        .where(Document.id.is_(None))
-                        .where(Chunk.user_uid == str(owner_id))
-                    )
-                    .scalars()
-                    .all()
+            if dangling_chunk_ids:
+                logging.info(
+                    "Cleaning up %s chunk records for deleted documents",
+                    len(dangling_chunk_ids),
                 )
-
-                if dangling_chunk_ids:
-                    logging.info(
-                        "Cleaning up %s chunk records for deleted documents",
-                        len(dangling_chunk_ids),
-                    )
-                    session.execute(
-                        sa.delete(Chunk).where(Chunk.id.in_(dangling_chunk_ids))
-                    )
+                session.execute(
+                    sa.delete(Chunk).where(Chunk.id.in_(dangling_chunk_ids))
+                )
 
             session.commit()
     finally:
         engine.dispose()
-
-    if owner_id:
-        send_flash_background(owner_id, "Project index updated", "success")
 
 
 @app.task(name="jobs.embedder.tasks.refresh_source_index", queue="embeddings")

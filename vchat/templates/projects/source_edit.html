@@ -1,5 +1,5 @@
 <h3 class="font-bold text-lg">{{ _('Edit Source') }}</h3>
-<form hx-post="{{ url('project_source_edit', project_id=project.short_id, source_id=source.short_id) }}" hx-swap="none" class="py-4">
+<form hx-post="{{ url('project_source_edit', source_id=source.id) }}" hx-swap="none" class="py-4">
     {{ form.csrf_token }}
 
     <div class="form-control w-full mb-4">

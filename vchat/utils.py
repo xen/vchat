@@ -28,7 +28,7 @@ from yarl import URL
 
 from vchat.aiohttp_client import client_session
 from vchat.app_keys import CONFIG_KEY, REDIS_KEY
-from vchat.i18n import lazy_gettext as _
+from vchat.text import _
 from vchat.settings import config
 
 

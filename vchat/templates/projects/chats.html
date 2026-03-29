@@ -14,7 +14,7 @@
         <div class="overflow-y-auto flex-1 p-2" id="chat-list">
             {% for chat in active_chats %}
             <div class="cursor-pointer p-3 hover:bg-base-200 rounded-box mb-1"
-                 onclick="selectChat('{{ chat.short_id }}', '{{ chat.title or chat.user_uid }}')">
+                 onclick="selectChat('{{ chat.id }}', '{{ chat.title or chat.user_uid }}')">
                 <div class="flex items-center gap-3">
                     <div class="avatar placeholder">
                         <div class="bg-neutral text-neutral-content rounded-full w-10">
@@ -23,7 +23,7 @@
                     </div>
                     <div>
                         <div class="font-medium">
-                            <a href="{{ url('project_chat_monitor_ws', project_id=project.short_id, chat_id=chat.short_id) }}">{{ chat.title or chat.user_uid }}</a>
+                            <a href="{{ url('project_chat_monitor_ws', chat_id=chat.id) }}">{{ chat.title or chat.user_uid }}</a>
                         </div>
                         <div class="text-xs text-base-content/60">{{ chat.created_at.strftime('%H:%M') }}</div>
                     </div>
@@ -72,7 +72,7 @@
 
         // Connect to new WS
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/project/{{ project.short_id }}/chats/monitor/${chatId}`;
+        const wsUrl = `${protocol}//${window.location.host}/chats/monitor/${chatId}`;
 
         currentWs = new WebSocket(wsUrl);
 

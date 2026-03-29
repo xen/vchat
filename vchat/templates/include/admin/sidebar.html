@@ -12,7 +12,7 @@
 
 <div id="layout-sidebar" class="sidebar-menu sidebar-menu-activation">
   <div class="flex min-h-16 items-center justify-between gap-3 ps-5 pe-4">
-    <a href="{{ url('index') }}">
+    <a href="{{ url('project_view') }}">
       {% include "include/logo.html" %}
     </a>
     <label for="layout-sidebar-hover-trigger" title="{{ _('Toggle sidebar hover') }}"
@@ -27,26 +27,16 @@
     <div data-simplebar class="size-full">
       <div class="mb-3 space-y-0.5 px-2.5">
         <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Realtime') }}</p>
-        {{ item(_('User Chats'), url('project_history', project_id=project.short_id), 'message-circle') }}
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Project') }}</p>
-        {{ item(_('Data'), url('project_view', project_id=project.short_id), 'server') }}
-        {{ item(_('Stats'), url('project_stats', project_id=project.short_id), 'chart-bar') }}
-        {{ item(_('Sources'), url('project_edit_sources', project_id=project.short_id), 'binary') }}
-        {{ item(_('Files'), url('project_files', project_id=project.short_id), 'file') }}
+        {{ item(_('User Chats'), url('project_history'), 'message-circle') }}
+        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Workspace') }}</p>
+        {{ item(_('Data'), url('project_view'), 'server') }}
+        {{ item(_('Stats'), url('project_stats'), 'chart-bar') }}
+        {{ item(_('Sources'), url('project_edit_sources'), 'binary') }}
+        {{ item(_('Files'), url('project_files'), 'file') }}
         <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Settings') }}</p>
-        {{ item(_('Users'), url('project_edit_users', project_id=project.short_id), 'users') }}
-        {{ item(_('Integration'), url('project_integration', project_id=project.short_id), 'code') }}
-        {{ item(_('Billing'), url('billing_page', short_id=project.short_id), 'credit-card') }}
-        {{ item(_('Settings'), url('project_edit', project_id=project.short_id), 'settings') }}
-        {{ item(_('Topics'), url('project_topics', project_id=project.short_id), 'sparkles') }}
-
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Personal settings') }}</p>
-
-        <a href="{{ url('settings') }}"
-          class="btn from-primary to-secondary group/purchase text-primary-content btn-sm max-sm:btn-square relative gap-2 border-0 bg-linear-to-r text-sm">
-          <iconify-icon icon="lucide:settings" class="size-4"></iconify-icon>
-          <span class="max-sm:hidden">{{ _('Settings') }}</span>
-        </a>
+        {{ item(_('Integration'), url('project_integration'), 'code') }}
+        {{ item(_('Settings'), url('project_edit'), 'settings') }}
+        {{ item(_('Topics'), url('project_topics'), 'sparkles') }}
 
       </div>
     </div>

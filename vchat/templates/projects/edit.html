@@ -5,35 +5,23 @@
 
 <div class="flex items-center justify-between">
     <p class="text-lg font-medium">
-        {{ _('Edit Project') }}
+        Настройки проекта
     </p>
 </div>
 
 <div class="mt-6">
     <div class="card bg-base-100 shadow max-w-2xl">
         <div class="card-body">
-            <form method="POST" action="{{ url('project_edit', project_id=project.short_id) }}">
+            <form method="POST" action="{{ url('project_edit') }}">
                 {{ form.csrf_token }}
-
-                <div class="form-control w-full">
-                    <label class="label">
-                        <span class="label-text">{{ form.title.label.text }}</span>
-                    </label>
-                    {{ form.title(class="input input-bordered w-full", placeholder=form.title.label.text) }}
-                    {% if form.title.errors %}
-                        <div class="label">
-                            {% for error in form.title.errors %}
-                                <span class="label-text-alt text-error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
+                {{ form.title(type="hidden") }}
+                {{ form.agent_style(type="hidden") }}
 
                 <div class="form-control w-full mt-4">
                     <label class="label">
-                        <span class="label-text">{{ form.system_prompt.label.text }}</span>
+                        <span class="label-text">Системный промпт</span>
                     </label>
-                    {{ form.system_prompt(class="textarea textarea-bordered w-full", placeholder=form.system_prompt.description) }}
+                    {{ form.system_prompt(class="textarea textarea-bordered w-full", placeholder="Системный промпт для поведения ассистента") }}
                     {% if form.system_prompt.errors %}
                         <div class="label">
                             {% for error in form.system_prompt.errors %}
@@ -45,25 +33,11 @@
 
                 <div class="form-control w-full mt-4">
                     <label class="label">
-                        <span class="label-text">{{ form.agent_style.label.text }}</span>
-                    </label>
-                    {{ form.agent_style(class="input input-bordered w-full", placeholder=form.agent_style.description) }}
-                    {% if form.agent_style.errors %}
-                        <div class="label">
-                            {% for error in form.agent_style.errors %}
-                                <span class="label-text-alt text-error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-
-                <div class="form-control w-full mt-4">
-                    <label class="label">
-                        <span class="label-text">{{ form.provider.label.text }}</span>
+                        <span class="label-text">Провайдер ИИ</span>
                     </label>
                     {{ form.provider(class="select select-bordered w-full") }}
                     <label class="label">
-                        <span class="label-text-alt">{{ form.provider.description }}</span>
+                        <span class="label-text-alt">Провайдер для ответов в чате</span>
                     </label>
                     {% if form.provider.errors %}
                         <div class="label">
@@ -76,11 +50,11 @@
 
                 <div class="form-control w-full mt-4">
                     <label class="label">
-                        <span class="label-text">{{ form.model.label.text }}</span>
+                        <span class="label-text">Модель</span>
                     </label>
                     {{ form.model(class="select select-bordered w-full") }}
                     <label class="label">
-                        <span class="label-text-alt">{{ form.model.description }}</span>
+                        <span class="label-text-alt">Модель для ответов в чате</span>
                     </label>
                     {% if form.model.errors %}
                         <div class="label">
@@ -93,9 +67,9 @@
 
                 <div class="form-control w-full mt-4">
                     <label class="label">
-                        <span class="label-text">{{ form.agent_name.label.text }}</span>
+                        <span class="label-text">Имя ассистента</span>
                     </label>
-                    {{ form.agent_name(class="input input-bordered w-full", placeholder=form.agent_name.description) }}
+                    {{ form.agent_name(class="input input-bordered w-full", placeholder="Имя, которое видит пользователь в чате") }}
                     {% if form.agent_name.errors %}
                         <div class="label">
                             {% for error in form.agent_name.errors %}
@@ -107,9 +81,9 @@
 
                 <div class="form-control w-full mt-4">
                     <label class="label">
-                        <span class="label-text">{{ form.welcome_message.label.text }}</span>
+                        <span class="label-text">Приветственное сообщение</span>
                     </label>
-                    {{ form.welcome_message(class="textarea textarea-bordered w-full", placeholder=form.welcome_message.description) }}
+                    {{ form.welcome_message(class="textarea textarea-bordered w-full", placeholder="Сообщение при открытии чата") }}
                     {% if form.welcome_message.errors %}
                         <div class="label">
                             {% for error in form.welcome_message.errors %}
@@ -121,16 +95,8 @@
 
                 <div class="card-actions justify-between mt-6 items-center">
                     <button class="btn btn-primary" type="submit">
-                        {{ _('Save Changes') }}
+                        Сохранить изменения
                     </button>
-
-                    {% if project and project.id != 'new' and is_owner %}
-                        {{ del_button(
-                            url('project_actions', action='delete_project', item_id=project.short_id),
-                            after=url('project_list'),
-                            title=_('Delete Project')
-                        ) }}
-                    {% endif %}
                 </div>
             </form>
         </div>
@@ -163,7 +129,7 @@
             if (!models.length) {
                 const option = document.createElement('option');
                 option.value = previousValue || '';
-                option.textContent = previousValue || {{ _('Default')|tojson }};
+                option.textContent = previousValue || {{ 'По умолчанию'|tojson }};
                 modelSelect.appendChild(option);
                 return;
             }

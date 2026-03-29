@@ -4,7 +4,6 @@ from pathlib import Path
 
 import aiohttp_jinja2
 import jinja2
-import sqlalchemy as sa
 from aiohttp import web
 from aiohttp.helpers import DEBUG
 from aiohttp.web_app import Application
@@ -13,8 +12,16 @@ from itsdangerous import URLSafeTimedSerializer
 from jinja2 import Environment
 from redis.asyncio import from_url as redis_from_url
 
-from vchat.app_keys import CONFIG_KEY, LOGGER_KEY, REDIS_KEY, SIGNER_KEY
-from vchat.i18n import jinja_context_processor
+from vchat.app_keys import (
+    CONFIG_KEY,
+    LOGGER_KEY,
+    REDIS_KEY,
+    SETTINGS_KEY,
+    SIGNER_KEY,
+)
+from vchat.text import _
+from vchat.metrics import validate_multiprocess_setup
+from vchat.project_settings import init_settings_cache
 from vchat.utils import (
     gravatar_url,
     login_required,
@@ -34,6 +41,8 @@ async def create_app() -> Application:
     from .routes import setup_routes
     from .settings import config
 
+    validate_multiprocess_setup()
+
     redis = redis_from_url(config["redis_uri"])
     # 5 MB should be enough for everyone // Bill Gates
     app = web.Application(
@@ -49,6 +58,8 @@ async def create_app() -> Application:
     app[LOGGER_KEY] = logger
     app[REDIS_KEY] = redis
     app[SIGNER_KEY] = URLSafeTimedSerializer(config["secret_key"])
+    app[SETTINGS_KEY] = {}
+    await init_settings_cache(app)
 
     # Setup aiotus
     # Ensure upload directory exists
@@ -60,7 +71,7 @@ async def create_app() -> Application:
     setup_tus(
         app,
         upload_path=upload_dir,
-        upload_url=r"/uploads/{project_id:[a-zA-Z0-9]+}/",
+        upload_url=r"/uploads/",
         upload_resource_name="tus_upload",
         decorator=login_required(),
         on_upload_done=on_upload,
@@ -72,7 +83,6 @@ async def create_app() -> Application:
         context_processors=[
             init_jinja,
             aiohttp_jinja2.request_processor,
-            jinja_context_processor,
         ],
         loader=jinja2.PackageLoader("vchat", "templates"),
     )
@@ -136,5 +146,7 @@ async def init_jinja(request):
         "csrf_token": csrf_token,
         "gravatar_url": gravatar_url,
         "vchat_chat": request.app[CONFIG_KEY].get("vchat_chat", ""),
+        "project_settings": request.app[SETTINGS_KEY],
         "static_version": request.app.get("static_version", ""),
+        "_": _,
     }

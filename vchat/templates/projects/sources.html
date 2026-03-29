@@ -4,7 +4,7 @@
 {% from 'macros.html' import render_field, del_button with context %}
 
 <div class="flex items-center justify-between">
-    <p class="text-lg font-medium">{{ _('Project Sources') }}</p>
+    <p class="text-lg font-medium">Источники</p>
 </div>
 
 <div class="mt-6">
@@ -18,13 +18,13 @@
                 <div class="inline-flex items-center gap-3">
                     <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
                         <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-                        <span class="hidden sm:inline">{{ _('Add Source') }}</span>
+                        <span class="hidden sm:inline">Добавить источник</span>
                     </button>
-                    <button hx-post="{{ url('project_actions', action='crawl_all', item_id=project.short_id) }}"
+                    <button hx-post="{{ url('project_actions', action='crawl_all', item_id='global') }}"
                             hx-swap="none"
                             class="btn btn-secondary btn-sm max-sm:btn-square">
                         <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
-                        <span class="hidden sm:inline">{{ _('Crawl All') }}</span>
+                        <span class="hidden sm:inline">Обойти все</span>
                     </button>
                 </div>
             </div>
@@ -34,12 +34,12 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th>{{ _('Title') }}</th>
-                            <th>{{ _('Type') }}</th>
-                            <th>{{ _('URL') }}</th>
-                            <th>{{ _('Documents') }}</th>
-                            <th>{{ _('Rules') }}</th>
-                            <th>{{ _('Actions') }}</th>
+                            <th>Название</th>
+                            <th>Тип</th>
+                            <th>URL</th>
+                            <th>Документы</th>
+                            <th>Правила</th>
+                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -71,32 +71,32 @@
                             <td>
                                 <div class="inline-flex w-fit">
                                     {% if source.type != 'upload' %}
-                                    <button hx-post="{{ url('project_actions', action='crawl_source', item_id=source.short_id) }}"
+                                    <button hx-post="{{ url('project_actions', action='crawl_source', item_id=source.id) }}"
                                             hx-swap="none"
                                             class="btn btn-square btn-ghost btn-sm"
-                                            title="{{ _('Crawl') }}">
+                                            title="Обход"
                                         <iconify-icon icon="lucide:refresh-cw" class="text-success size-4"></iconify-icon>
                                     </button>
-                                    <button hx-get="{{ url('project_source_edit', project_id=project.short_id, source_id=source.short_id) }}"
+                                    <button hx-get="{{ url('project_source_edit', source_id=source.id) }}"
                                             hx-target="#edit_source_modal_content"
                                             onclick="edit_source_modal.showModal()"
                                             class="btn btn-square btn-ghost btn-sm"
-                                            title="{{ _('Edit') }}">
+                                            title="Редактировать"
                                         <iconify-icon icon="lucide:pencil" class="text-primary size-4"></iconify-icon>
                                     </button>
                                     <button class="btn btn-square btn-ghost btn-sm"
-                                            hx-post="{{ url('project_actions', action='rebuild_source', item_id=source.short_id) }}"
-                                            hx-confirm="{{ _('Are you sure? This will delete all indexed documents for this source and start crawling from scratch.') }}"
+                                            hx-post="{{ url('project_actions', action='rebuild_source', item_id=source.id) }}"
+                                            hx-confirm="Вы уверены? Это удалит все проиндексированные документы этого источника и запустит обход заново."
                                             hx-swap="none"
-                                            title="{{ _('Rebuild') }}">
+                                            title="Полная переиндексация"
                                         <iconify-icon icon="lucide:rotate-ccw" class="text-warning size-4"></iconify-icon>
                                     </button>
                                     <button class="btn btn-square btn-error btn-outline btn-sm border-transparent"
-                                            hx-post="{{ url('project_actions', action='delete_source', item_id=source.short_id) }}"
-                                            hx-confirm="{{ _('Are you sure you want to remove this source?') }}"
+                                            hx-post="{{ url('project_actions', action='delete_source', item_id=source.id) }}"
+                                            hx-confirm="Вы уверены, что хотите удалить этот источник?"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
-                                            title="{{ _('Delete') }}">
+                                            title="Удалить"
                                         <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
                                     </button>
                                     {% endif %}
@@ -106,7 +106,7 @@
                         {% else %}
                         <tr>
                             <td colspan="5" class="text-center text-base-content/60 py-8">
-                                {{ _('No sources found.') }}
+                                Источники не найдены.
                             </td>
                         </tr>
                         {% endfor %}
@@ -120,18 +120,18 @@
 <!-- Add Source Modal -->
 <dialog id="add_source_modal" class="modal">
     <div class="modal-box">
-        <h3 class="font-bold text-lg">{{ _('Add New Source') }}</h3>
-        <form hx-post="{{ url('project_actions', action='add_source', item_id=project.short_id) }}" hx-swap="none" class="py-4">
+        <h3 class="font-bold text-lg">Добавить новый источник</h3>
+        <form hx-post="{{ url('project_actions', action='add_source', item_id='global') }}" hx-swap="none" class="py-4">
             {{ form.csrf_token }}
             <div class="form-control w-full mb-4">
                 <label class="label">
-                    <span class="label-text">{{ _('Title') }}</span>
+                        <span class="label-text">Название</span>
                 </label>
-                {{ form.title(class="input input-bordered w-full", placeholder=_("Optional title")) }}
+                {{ form.title(class="input input-bordered w-full", placeholder="Необязательное название") }}
             </div>
             <div class="form-control w-full mb-4">
                 <label class="label">
-                    <span class="label-text">{{ _('Type') }}</span>
+                        <span class="label-text">Тип</span>
                 </label>
                 {{ form.type(class="select select-bordered w-full", id="source_type_select") }}
             </div>
@@ -140,19 +140,19 @@
             <div id="site_fields" class="source-type-fields">
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('URL') }}</span>
+                        <span class="label-text">URL</span>
                     </label>
                     {{ form.url(class="input input-bordered w-full", placeholder="https://example.com") }}
                 </div>
 
                 <!-- Index Rules -->
-                <div class="divider">{{ _('Index Rules') }}</div>
+                <div class="divider">Правила индексации</div>
                 <div id="index_rules_container">
                     <!-- Rules will be added here -->
                 </div>
                 <button type="button" onclick="addIndexRule()" class="btn btn-sm btn-outline btn-primary mt-2">
                     <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-                    {{ _('Add Rule') }}
+                    Добавить правило
                 </button>
             </div>
 
@@ -160,41 +160,41 @@
             <div id="s3_fields" class="source-type-fields" style="display: none;">
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('AWS Access Key ID') }}</span>
+                        <span class="label-text">AWS Access Key ID</span>
                     </label>
                     {{ form.aws_access_key_id }}
                 </div>
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('AWS Secret Access Key') }}</span>
+                        <span class="label-text">AWS Secret Access Key</span>
                     </label>
                     {{ form.aws_secret_access_key }}
                 </div>
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('Bucket Name') }}</span>
+                        <span class="label-text">Bucket name</span>
                     </label>
                     {{ form.bucket_name }}
                 </div>
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('Endpoint URL') }}</span>
+                        <span class="label-text">Endpoint URL</span>
                     </label>
                     {{ form.endpoint_url }}
                     <label class="label">
-                        <span class="label-text-alt">{{ _('Default: AWS S3. Change for MinIO, DigitalOcean Spaces, etc.') }}</span>
+                        <span class="label-text-alt">По умолчанию: AWS S3. Для MinIO, DigitalOcean Spaces и других укажите свой endpoint.</span>
                     </label>
                 </div>
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('Region') }}</span>
+                        <span class="label-text">Регион</span>
                     </label>
                     {{ form.region }}
                 </div>
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('Prefix') }}</span>
-                        <span class="label-text-alt">{{ _('Optional') }}</span>
+                        <span class="label-text">Префикс</span>
+                        <span class="label-text-alt">Необязательно</span>
                     </label>
                     {{ form.prefix }}
                 </div>
@@ -204,26 +204,22 @@
             <div id="google_drive_fields" class="source-type-fields" style="display: none;">
                 <div class="form-control w-full mb-4">
                     <label class="label">
-                        <span class="label-text">{{ _('Google Drive Folder') }}</span>
+                        <span class="label-text">Папка Google Drive</span>
                     </label>
 
                     <div id="gdrive_auth_section">
-                        <a href="{{ url('google_login') }}?project_id={{ project.short_id }}" class="btn btn-outline btn-primary w-full">
-                            <iconify-icon icon="lucide:key" class="size-4"></iconify-icon>
-                            {{ _('Authorize Google Drive') }}
-                        </a>
-                        <div class="text-xs text-base-content/60 mt-2">
-                            {{ _('You need to authorize access to your Google Drive to select a folder.') }}
+                        <div class="alert alert-info">
+                            <span>Авторизация Google Drive отключена в режиме single-project. Настройте OAuth глобально и обновите список папок ниже.</span>
                         </div>
                     </div>
 
                     <div id="gdrive_folder_section" style="display: none;">
                         <select id="gdrive_folder_select" class="select select-bordered w-full mb-2">
-                            <option value="" disabled selected>{{ _('Select a folder') }}</option>
+                            <option value="" disabled selected>Выберите папку</option>
                         </select>
                         <button type="button" onclick="refreshGoogleFolders()" class="btn btn-ghost btn-xs">
                             <iconify-icon icon="lucide:refresh-cw" class="size-3"></iconify-icon>
-                            {{ _('Refresh Folders') }}
+                            Обновить папки
                         </button>
                     </div>
 
@@ -234,13 +230,13 @@
 
 
             <div class="modal-action">
-                <button type="submit" class="btn btn-primary">{{ _('Add Source') }}</button>
-                <button type="button" onclick="add_source_modal.close()" class="btn">{{ _('Cancel') }}</button>
+                <button type="submit" class="btn btn-primary">Добавить источник</button>
+                <button type="button" onclick="add_source_modal.close()" class="btn">Отмена</button>
             </div>
         </form>
     </div>
     <form method="dialog" class="modal-backdrop">
-        <button>{{ _('Close') }}</button>
+        <button>Закрыть</button>
     </form>
 </dialog>
 
@@ -248,7 +244,7 @@
     <div class="flex gap-2 mb-2 items-end rule-row">
         <div class="form-control w-1/3">
             <label class="label py-1">
-                <span class="label-text-alt">{{ _('Rule Type') }}</span>
+                <span class="label-text-alt">Тип правила</span>
             </label>
             <select name="rule_type[]" class="select select-bordered select-sm w-full">
                 <option value="xpath">XPath Rule</option>
@@ -259,7 +255,7 @@
         </div>
         <div class="form-control w-2/3">
             <label class="label py-1">
-                <span class="label-text-alt">{{ _('Value') }}</span>
+                <span class="label-text-alt">Значение</span>
             </label>
             <input type="text" name="rule_value[]" class="input input-bordered input-sm w-full" placeholder="Value">
         </div>
@@ -330,32 +326,9 @@
         const authSection = document.getElementById('gdrive_auth_section');
         const folderSection = document.getElementById('gdrive_folder_section');
         const select = document.getElementById('gdrive_folder_select');
-
-        try {
-            const response = await fetch('{{ url("google_list_folders") }}');
-            if (response.ok) {
-                const data = await response.json();
-                select.innerHTML = '<option value="" disabled selected>{{ _("Select a folder") }}</option>';
-                data.folders.forEach(folder => {
-                    const option = document.createElement('option');
-                    option.value = folder.id;
-                    option.text = folder.name;
-                    select.appendChild(option);
-                });
-
-                authSection.style.display = 'none';
-                folderSection.style.display = 'block';
-            } else {
-                console.error('Failed to fetch folders');
-                // If 401, show auth section
-                if (response.status === 401) {
-                    authSection.style.display = 'block';
-                    folderSection.style.display = 'none';
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching folders:', error);
-        }
+        select.innerHTML = '<option value="" disabled selected>Папки Google Drive недоступны</option>';
+        authSection.style.display = 'block';
+        folderSection.style.display = 'none';
     }
 
     window.refreshGoogleFolders = fetchGoogleFolders;
@@ -370,7 +343,7 @@
         </div>
     </div>
     <form method="dialog" class="modal-backdrop">
-        <button>{{ _('Close') }}</button>
+        <button>Закрыть</button>
     </form>
 </dialog>
 

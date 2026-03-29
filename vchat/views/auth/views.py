@@ -14,7 +14,7 @@ from itsdangerous import (
 from passlib.hash import pbkdf2_sha512
 
 from vchat.app_keys import CONFIG_KEY
-from vchat.i18n import lazy_gettext as _
+from vchat.text import _
 from vchat.models import User
 from vchat.settings import config
 from vchat.utils import (
@@ -62,14 +62,8 @@ async def login(request):
         if user.is_active is False:
             form.email.errors.append(
                 _(
-                    "You have not confirmed your email. Check your email. If you "
-                    "have not received the letter with the activation link, check "
-                    "your Spam folder. If you accidentally deleted the email, "
-                    "<a class='underline' href='{url}'>get the code again</a>."
-                ).format(
-                    url=request.app.router["resend_code"]
-                    .url_for()
-                    .with_query({"email": user.email})
+                    "You have not confirmed your email. Check your email and Spam "
+                    "folder for the activation link, then try again."
                 )
             )
             return {"form": form}

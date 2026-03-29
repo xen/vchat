@@ -1,4 +1,4 @@
 local.vchat.com {
 	tls internal
-	reverse_proxy http://localhost:8080
+	reverse_proxy http://localhost:9080
 }

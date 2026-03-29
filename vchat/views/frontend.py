@@ -1,14 +1,10 @@
 import re
-from pathlib import Path
 
 import aiohttp_jinja2
-import sqlalchemy as sa
 from aiohttp import web
 
-from vchat.app_keys import CONFIG_KEY
-from vchat.i18n import lazy_gettext as _
-from vchat.models import Project, User
-from vchat.utils import convert_to_html, login_required, meta
+from vchat.text import _
+from vchat.utils import meta
 
 
 @meta(title=_("Welcome to vchat"))
@@ -28,7 +24,7 @@ re_pattern = re.compile("[a-z0-9-_.]+")
 
 async def healthcheck(request):
     await request["db"].execute("select 1;")
-    return web.HTTPFound(request.app.router["index"].url_for())
+    return web.HTTPFound(request.app.router["project_view"].url_for())
 
 
 robots = """
