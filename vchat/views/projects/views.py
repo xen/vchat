@@ -2,6 +2,7 @@ import logging
 import os
 import secrets
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -26,12 +27,17 @@ from vchat.ai_providers import (
 )
 from vchat.app_keys import SETTINGS_KEY, SIGNER_KEY
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
-from vchat.text import _
+from vchat.i18n import _
 from vchat.models import Chat, ChatMsg, Chunk, Document, Source
 from vchat.project_settings import (
     apply_settings_updates,
     get_setting,
     get_setting_json,
+)
+from vchat.source_settings import (
+    DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
+    DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+    DEFAULT_CRAWLER_USER_AGENT,
 )
 from vchat.settings import config
 from vchat.utils import flash, login_required, meta
@@ -46,6 +52,7 @@ __all__ = [
     "project_action",
     "project_edit_sources",
     "project_source_edit",
+    "project_source_settings",
     "project_view",
     "project_document_content",
     "project_documents_json",
@@ -185,7 +192,11 @@ async def project_source_edit(request):
     if data:
         form_kwargs["formdata"] = data
     else:
-        form_data = {"type": source.type, "title": source.title}
+        form_data = {
+            "type": source.type,
+            "title": source.title,
+            "reindex_period": source.reindex_period,
+        }
         source_config = source.config or {}
         if source.type == "s3":
             form_data.update(
@@ -215,9 +226,16 @@ async def project_source_edit(request):
         source_type = form.type.data
         source.type = source_type
         source.title = form.title.data
+        source.reindex_period = form.reindex_period.data
+        source_config = dict(source.config or {})
+        crawler_settings = {
+            "crawler_concurrent_requests": source_config.get("crawler_concurrent_requests"),
+            "crawler_download_delay": source_config.get("crawler_download_delay"),
+            "crawler_user_agent": source_config.get("crawler_user_agent"),
+        }
 
         if source_type == "s3":
-            source.config = {
+            new_config = {
                 "aws_access_key_id": form.aws_access_key_id.data,
                 "aws_secret_access_key": form.aws_secret_access_key.data,
                 "bucket_name": form.bucket_name.data,
@@ -225,12 +243,20 @@ async def project_source_edit(request):
                 "region": form.region.data or "us-east-1",
                 "prefix": form.prefix.data or "",
             }
+            for key, value in crawler_settings.items():
+                if value is not None:
+                    new_config[key] = value
+            source.config = new_config
             source.uri = f"s3://{form.bucket_name.data}"
         elif source_type == "google_drive":
-            source.config = {
+            new_config = {
                 "folder_id": form.google_drive_folder_id.data,
                 "folder_name": form.google_drive_folder_name.data,
             }
+            for key, value in crawler_settings.items():
+                if value is not None:
+                    new_config[key] = value
+            source.config = new_config
             source.uri = f"gdrive://{form.google_drive_folder_id.data}"
         else:
             source.uri = form.url.data
@@ -240,7 +266,7 @@ async def project_source_edit(request):
             for r_type, r_value in zip(rule_types, rule_values):
                 if r_value.strip():
                     rules.append({"type": r_type, "value": r_value.strip()})
-            new_config = source.config.copy() if source.config else {}
+            new_config = source_config.copy()
             if rules:
                 new_config["rules"] = rules
             elif "rules" in new_config:
@@ -252,6 +278,62 @@ async def project_source_edit(request):
         response = web.Response(text="ok")
         response.headers["HX-Refresh"] = "true"
         return response
+
+    return {"project": _project_context(request), "source": source, "form": form}
+
+
+@meta(title=_("Source Settings"))
+@login_required()
+@aiohttp_jinja2.template("projects/source_settings.html")
+async def project_source_settings(request):
+    source_id = int(request.match_info.get("source_id"))
+    db_session = request["db"]
+    source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
+    if not source:
+        raise web.HTTPNotFound()
+
+    session = await get_session(request)
+    form_kwargs = {"meta": {"csrf_context": session}}
+    if request.method == "POST":
+        data = await request.post()
+        form_kwargs["formdata"] = data
+    else:
+        source_config = source.config or {}
+        form_kwargs["data"] = {
+            "reindex_period": source.reindex_period,
+            "concurrent_requests": source_config.get(
+                "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+            ),
+            "download_delay": source_config.get(
+                "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
+            ),
+            "user_agent": source_config.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT,
+        }
+
+    form = forms.SourceCrawlerSettingsForm(**form_kwargs)
+
+    if request.method == "POST" and form.validate():
+        source_config = dict(source.config or {})
+        source.reindex_period = form.reindex_period.data
+        source.updated_at = datetime.now(timezone.utc)
+        source_config["crawler_user_agent"] = (
+            (form.user_agent.data or "").strip() or DEFAULT_CRAWLER_USER_AGENT
+        )
+        source_config["crawler_concurrent_requests"] = int(
+            form.concurrent_requests.data
+            if form.concurrent_requests.data is not None
+            else DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+        )
+        source_config["crawler_download_delay"] = float(
+            form.download_delay.data
+            if form.download_delay.data is not None
+            else DEFAULT_CRAWLER_DOWNLOAD_DELAY
+        )
+
+        source.config = source_config
+        await db_session.commit()
+        await flash(request, _("Source settings updated"), "success")
+        raise web.HTTPFound(request.path)
 
     return {"project": _project_context(request), "source": source, "form": form}
 
@@ -402,6 +484,7 @@ async def project_action(request):
 
         title = form.title.data
         source_type = form.type.data
+        reindex_period = form.reindex_period.data
         source_config = {}
 
         if source_type == "s3":
@@ -442,7 +525,13 @@ async def project_action(request):
             if rules:
                 source_config["rules"] = rules
 
-        source = Source(type=source_type, uri=uri, title=title, config=source_config)
+        source = Source(
+            type=source_type,
+            uri=uri,
+            title=title,
+            config=source_config,
+            reindex_period=reindex_period,
+        )
         db_session.add(source)
         await db_session.commit()
         crawl_source_task.delay(source.id)
@@ -571,7 +660,7 @@ async def project_documents_json(request):
         data.append(
             {
                 "id": str(doc.id),
-                "title": doc.title or (doc.uri.split("/")[-1] if doc.uri else "Untitled"),
+                "title": doc.title or (doc.uri.split("/")[-1] if doc.uri else "Без названия"),
                 "source": source.title or source.uri,
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
@@ -824,7 +913,7 @@ async def project_chat(request):
                 "content": row.text or "",
                 "msg_id": row.id,
                 "signed_msg_id": signed_msg_id,
-                "vote": int(row.vote or 0),
+                "vote": row.vote,
             }
         )
 

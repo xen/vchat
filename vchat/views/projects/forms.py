@@ -1,7 +1,9 @@
 from datetime import timedelta
 
 from wtforms import (
+    FloatField,
     Form,
+    IntegerField,
     SelectField,
     StringField,
     TextAreaField,
@@ -15,13 +17,19 @@ from vchat.ai_providers import (
     get_model_choices,
     get_provider_choices,
 )
-from vchat.text import _
+from vchat.i18n import _
+from vchat.source_settings import (
+    DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
+    DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+    DEFAULT_CRAWLER_USER_AGENT,
+    REINDEX_PERIOD_CHOICES,
+)
 from vchat.settings import config
 
 DEFAULT_SYSTEM_PROMPT = _(
-    "You are a friendly AI agent that helps people achieve their goals. "
-    "Answer concisely, proactively suggest next steps, and ask clarifying "
-    "questions whenever information is missing."
+    "Ты дружелюбный ИИ-ассистент, который помогает людям достигать их целей. "
+    "Отвечай кратко, проактивно предлагай следующие шаги и задавай уточняющие "
+    "вопросы, когда не хватает информации."
 )
 
 
@@ -156,6 +164,13 @@ class SourceForm(Form):
         ],
         render_kw={"class": "select border w-full"},
     )
+    reindex_period = SelectField(
+        _("Reindexing"),
+        choices=list(REINDEX_PERIOD_CHOICES),
+        validators=[validators.DataRequired()],
+        default="manual",
+        render_kw={"class": "select border w-full"},
+    )
 
     # S3 specific fields
     aws_access_key_id = StringField(
@@ -225,6 +240,40 @@ class InviteUserForm(Form):
             validators.Email(message=_("Invalid Email")),
         ],
         render_kw={"class": "form-control"},
+    )
+
+
+class SourceCrawlerSettingsForm(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = config["secret_key"]
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=20)
+
+    reindex_period = SelectField(
+        _("Reindexing"),
+        choices=list(REINDEX_PERIOD_CHOICES),
+        validators=[validators.DataRequired()],
+        default="manual",
+        render_kw={"class": "select select-bordered w-full"},
+    )
+    concurrent_requests = IntegerField(
+        _("Параллельные запросы (CONCURRENT_REQUESTS)"),
+        validators=[validators.Optional(), validators.NumberRange(min=1, max=256)],
+        default=DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
+        render_kw={"class": "input input-bordered w-full"},
+    )
+    download_delay = FloatField(
+        _("Задержка между запросами (DOWNLOAD_DELAY)"),
+        validators=[validators.Optional(), validators.NumberRange(min=0, max=120)],
+        default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+        render_kw={"class": "input input-bordered w-full", "step": "0.1"},
+    )
+    user_agent = StringField(
+        _("User Agent"),
+        validators=[validators.Optional(), validators.Length(max=500)],
+        default=DEFAULT_CRAWLER_USER_AGENT,
+        render_kw={"class": "input input-bordered w-full"},
     )
 
 

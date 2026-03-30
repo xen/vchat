@@ -7,7 +7,7 @@ from aiohttp import web
 from aiohttp_session import new_session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
-from vchat.text import _
+from vchat.i18n import _
 from vchat.models import Chat, ChatMsg, Chunk, Document, User
 from vchat.settings import config
 from vchat.utils import flash, login_required, meta
@@ -70,10 +70,10 @@ async def dashboard(request):
         sa.select(
             sa.func.date_trunc("day", ChatMsg.created_at).label("day"),
             sa.func.coalesce(
-                sa.func.sum(sa.case((ChatMsg.vote == 1, 1), else_=0)), 0
+                sa.func.sum(sa.case((ChatMsg.vote.is_(True), 1), else_=0)), 0
             ).label("likes"),
             sa.func.coalesce(
-                sa.func.sum(sa.case((ChatMsg.vote == -1, 1), else_=0)), 0
+                sa.func.sum(sa.case((ChatMsg.vote.is_(False), 1), else_=0)), 0
             ).label("dislikes"),
         )
         .where(ChatMsg.created_at >= start_date, ChatMsg.role == "assistant")

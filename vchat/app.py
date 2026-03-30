@@ -19,7 +19,7 @@ from vchat.app_keys import (
     SETTINGS_KEY,
     SIGNER_KEY,
 )
-from vchat.text import _
+from vchat.i18n import _
 from vchat.metrics import validate_multiprocess_setup
 from vchat.project_settings import init_settings_cache
 from vchat.utils import (

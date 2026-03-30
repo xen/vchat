@@ -989,11 +989,16 @@ async def chat_actions(request):
         # We can use hx-vals='{"vote": 1}'
 
         # Check if vote is in query or post
-        vote = data.get("vote") or request.query.get("vote")
-        vote_comment = data.get("vote_comment")
-
-        if vote is not None:
-            vote = int(vote)
+        vote_raw = (data.get("vote") or request.query.get("vote") or "").strip().lower()
+        vote: bool | None
+        if vote_raw in {"1", "up", "true", "like"}:
+            vote = True
+        elif vote_raw in {"-1", "down", "false", "dislike"}:
+            vote = False
+        elif vote_raw in {"0", "none", "null", ""}:
+            vote = None
+        else:
+            raise web.HTTPBadRequest(text="Invalid vote value")
 
         msg = await db.scalar(sa.select(ChatMsg).where(ChatMsg.id == int(real_id)))
         if not msg:
@@ -1002,11 +1007,7 @@ async def chat_actions(request):
         if msg.role != "assistant":
             raise web.HTTPBadRequest(text="Can only vote on assistant messages")
 
-        if vote is not None:
-            msg.vote = vote
-
-        if vote_comment is not None:
-            msg.vote_comment = vote_comment
+        msg.vote = vote
 
         await db.commit()
 
@@ -1025,7 +1026,6 @@ async def chat_actions(request):
             {
                 "msg_id": item_id,  # Keep signed ID
                 "vote": msg.vote,
-                "vote_comment": msg.vote_comment,
             },
         )
 

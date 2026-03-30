@@ -67,10 +67,7 @@ class ChatMsg(Base):
     )
     provider: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     model: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
-    vote: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, default=0, server_default=sa.text("0")
-    )
-    vote_comment: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    vote: Mapped[bool | None] = mapped_column(sa.Boolean, nullable=True)
     guardrail_triggered: Mapped[bool] = mapped_column(
         sa.Boolean,
         nullable=False,
@@ -96,6 +93,14 @@ source_type_enum = ENUM(
     create_type=False,
 )
 
+source_reindex_period_enum = ENUM(
+    "weekly",
+    "monthly",
+    "manual",
+    name="sourcereindexperiod",
+    create_type=False,
+)
+
 
 class Source(Base, Created, Updated):
     __tablename__ = "source"
@@ -105,6 +110,16 @@ class Source(Base, Created, Updated):
     title: Mapped[str] = mapped_column(sa.String(255), nullable=False, default="")
     uri: Mapped[str] = mapped_column(sa.String, nullable=False)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    reindex_period: Mapped[str] = mapped_column(
+        source_reindex_period_enum,
+        nullable=False,
+        default="manual",
+        server_default=sa.text("'manual'"),
+    )
+    last_reindexed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 status_enum = ENUM(

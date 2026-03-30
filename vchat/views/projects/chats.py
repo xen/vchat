@@ -7,11 +7,10 @@ import aiohttp_jinja2
 import redis.asyncio as aioredis
 import sqlalchemy as sa
 from aiohttp import web
-from markupsafe import Markup, escape
 
 from vchat.db import async_session_factory
 from vchat.guardrails import mask_russian_pii
-from vchat.text import _
+from vchat.i18n import _
 from vchat.models import Chat, ChatMsg
 from vchat.settings import config
 from vchat.utils import login_required, meta
@@ -278,9 +277,8 @@ async def history_list(request):
     stmt = (
         sa.select(
             Chat,
-            sa.func.count(sa.case((ChatMsg.vote == 1, 1))).label("upvotes"),
-            sa.func.count(sa.case((ChatMsg.vote == -1, 1))).label("downvotes"),
-            sa.func.count(ChatMsg.vote_comment).label("comments"),
+            sa.func.count(sa.case((ChatMsg.vote.is_(True), 1))).label("upvotes"),
+            sa.func.count(sa.case((ChatMsg.vote.is_(False), 1))).label("downvotes"),
             sa.func.count(guardrail_case).label("guardrail_hits"),
         )
         .outerjoin(
@@ -328,7 +326,6 @@ async def history_list(request):
         chat = row.Chat
         chat.upvotes = row.upvotes
         chat.downvotes = row.downvotes
-        chat.comments = row.comments
         chat.guardrail_triggered = (row.guardrail_hits or 0) > 0
         chats.append(chat)
 
@@ -446,16 +443,17 @@ async def history_detail(request):
         if msg.role == "user":
             masked_text, has_pii = mask_russian_pii(msg.text or "")
         msg.has_masked_pii = has_pii
+        msg.text_segments = None
         if has_pii:
-            safe_text = escape(masked_text).replace(
-                "***",
-                (
-                    '<span class="inline-block rounded px-1 py-0.5 '
-                    'bg-pink-200/90 text-pink-800 dark:bg-pink-500/30 '
-                    'dark:text-pink-100 font-semibold">***</span>'
-                ),
-            )
-            msg.text_display = Markup(safe_text)
+            parts = masked_text.split("***")
+            segments = []
+            for idx, part in enumerate(parts):
+                if part:
+                    segments.append({"masked": False, "text": part})
+                if idx < len(parts) - 1:
+                    segments.append({"masked": True, "text": "***"})
+            msg.text_segments = segments
+            msg.text_display = masked_text
         else:
             msg.text_display = msg.text
 

@@ -20,18 +20,18 @@
                     <div class="drawer-side z-[50]">
                         <label
                             for="landing-menu-drawer"
-                            aria-label="{{ _('Close sidebar') }}"
+                            aria-label="{{ _('Закрыть боковую панель') }}"
                             class="drawer-overlay"></label>
                         <ul
                             class="menu bg-base-100 text-base-content min-h-full w-80 p-4">
                             <li>
-                                <a href="{{ url('index') }}">{{ _('Home') }}</a>
+                                <a href="{{ url('index') }}">{{ _('Главная') }}</a>
                             </li>
                             <li class="mt-4 border-t border-base-200 pt-4">
                                 {% if request.user %}
-                                <a href="{{ url('dashboard') }}">{{ _('Dashboard') }}</a>
+                                <a href="{{ url('dashboard') }}">{{ _('Панель') }}</a>
                                 {% else %}
-                                <a href="{{ url('login') }}">{{ _('Login') }}</a>
+                                <a href="{{ url('login') }}">{{ _('Вход') }}</a>
                                 {% endif %}
                             </li>
                         </ul>
@@ -45,7 +45,7 @@
         </div>
         <ul class="menu menu-horizontal hidden gap-2 px-0 lg:inline-flex">
             <li>
-                <a href="{{ url('index') }}">{{ _('Home') }}</a>
+                <a href="{{ url('index') }}">{{ _('Главная') }}</a>
             </li>
         </ul>
         <div class="inline-flex items-center gap-3">
@@ -57,13 +57,13 @@
                 href="{{ url('dashboard') }}"
                 class="btn from-primary to-secondary group/purchase text-primary-content btn-sm max-sm:btn-square relative gap-2 border-0 bg-linear-to-r text-sm">
                 <iconify-icon icon="lucide:layout-dashboard" class="size-4"></iconify-icon>
-                <span class="max-sm:hidden">{{ _('Dashboard') }}</span>
+                <span class="max-sm:hidden">{{ _('Панель') }}</span>
             </a>
             {% else %}
             <a
                 href="{{ url('login') }}"
                 class="btn btn-ghost btn-sm">
-                {{ _('Login') }}
+                {{ _('Вход') }}
             </a>
             {% endif %}
         </div>

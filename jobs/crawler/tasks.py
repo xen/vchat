@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from vchat.models.data import Settings, Source
+from vchat.source_settings import REINDEX_PERIOD_TO_DAYS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -91,6 +93,16 @@ def crawl_source_task(source_id: int):
     if result.returncode != 0:
         print(f"Crawler failed with exit code {result.returncode}")
     else:
+        engine = create_sync_engine()
+        try:
+            with Session(bind=engine) as session:
+                source = session.get(Source, source_id)
+                if source:
+                    source.last_reindexed_at = datetime.now(timezone.utc)
+                    session.commit()
+        finally:
+            engine.dispose()
+
         # Chain refresh_project_index
         from jobs.embedder.tasks import refresh_project_index
 
@@ -131,3 +143,56 @@ def crawl_all_sources_task():
         crawl_source_task.delay(source_id)
 
     print("Finished queueing crawl tasks")
+
+
+def _normalize_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+@app.task(
+    name="jobs.crawler.tasks.schedule_reindex_sources_task",
+    queue="crawler",
+)
+def schedule_reindex_sources_task():
+    print("Checking sources for scheduled reindex")
+
+    now = datetime.now(timezone.utc)
+    queued_ids: list[int] = []
+
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            sources = session.execute(
+                select(Source).where(
+                    Source.type != "upload",
+                    Source.reindex_period != "manual",
+                )
+            ).scalars().all()
+
+            for source in sources:
+                interval_days = REINDEX_PERIOD_TO_DAYS.get(source.reindex_period)
+                if not interval_days:
+                    continue
+
+                last_reindex = _normalize_datetime(source.last_reindexed_at)
+                if last_reindex is None:
+                    queued_ids.append(source.id)
+                    continue
+
+                due_at = last_reindex + timedelta(days=interval_days)
+                if now >= due_at:
+                    queued_ids.append(source.id)
+    finally:
+        engine.dispose()
+
+    if not queued_ids:
+        print("No sources are due for scheduled reindex")
+        return
+
+    print(f"Queueing scheduled reindex for {len(queued_ids)} sources")
+    for source_id in queued_ids:
+        crawl_source_task.delay(source_id)

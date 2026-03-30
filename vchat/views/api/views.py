@@ -1,21 +1,16 @@
 import asyncio
-from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import sqlalchemy as sa
 from aiohttp import web
 from docling.document_converter import DocumentConverter
-from itsdangerous import BadSignature, SignatureExpired
 
 from jobs.embedder.tasks import index_document
-from vchat.app_keys import SIGNER_KEY
 from vchat.document_types import guess_document_type, has_html_form
-from vchat.models import Chat, Chunk, Document, Source
-from vchat.models.support import Request
+from vchat.models import Chunk, Document, Source
 
 __all__ = [
     "update_document",
-    "create_support_request",
 ]
 
 
@@ -82,7 +77,7 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
         return status, None, status
 
 
-async def _extract_content(url: str) -> tuple[str | None, dict[str, Any], str | None]:
+async def _extract_content(url: str) -> tuple[str | None, dict[str, object], str | None]:
     """Return markdown text, metadata and optional title."""
     converter = DocumentConverter()
 
@@ -106,7 +101,7 @@ async def _extract_content(url: str) -> tuple[str | None, dict[str, Any], str | 
     if not body.strip():
         return None, {}, None
 
-    meta: dict[str, Any] = {}
+    meta: dict[str, object] = {}
     doc_type = guess_document_type(url, content_type)
     if doc_type:
         meta["doc_type"] = doc_type
@@ -272,94 +267,3 @@ async def update_document(request: web.Request) -> web.Response:
         }
     )
 
-
-def _validate_support_payload(payload: dict[str, Any]) -> tuple[str, str, str, str] | None:
-    name = (payload.get("name") or "").strip()
-    email = (payload.get("email") or "").strip()
-    phone = (payload.get("phone") or "").strip()
-    body = (payload.get("body") or "").strip()
-
-    if not all((name, email, phone, body)):
-        return None
-
-    return name[:255], email[:255], phone[:64], body[:5000]
-
-
-def _extract_chat_id_from_token(request: web.Request, token: str) -> str | None:
-    signer = request.app[SIGNER_KEY]
-
-    try:
-        payload = signer.loads(token, max_age=86400)
-    except (BadSignature, SignatureExpired):
-        return None
-
-    if isinstance(payload, dict) and "chat_id" in payload:
-        chat_id = payload["chat_id"]
-        if isinstance(chat_id, str) and chat_id:
-            return chat_id
-        return None
-
-    # Backward-compatible payload style: "chat:<id>"
-    if isinstance(payload, str) and payload.startswith("chat:"):
-        chat_id = payload.split(":", 1)[1]
-        if chat_id:
-            return chat_id
-
-    return None
-
-
-async def create_support_request(request: web.Request) -> web.Response:
-    token = (request.headers.get("X-CSRFToken") or "").strip()
-    if not token:
-        return _error("Missing CSRF token", status=403)
-
-    chat_id = _extract_chat_id_from_token(request, token)
-    if not chat_id:
-        return _error("Invalid or expired CSRF token", status=403)
-
-    payload: dict[str, Any]
-    if request.content_type == "application/json":
-        try:
-            payload = await request.json()
-        except Exception:
-            return _error("Invalid JSON payload", status=400)
-    else:
-        payload = dict(await request.post())
-
-    validated = _validate_support_payload(payload)
-    if not validated:
-        return _error("Validation error", status=400)
-
-    chat_exists = await request["db"].scalar(sa.select(Chat.id).where(Chat.id == chat_id))
-    if not chat_exists:
-        return _error("Chat not found", status=403)
-
-    name, email, phone, body = validated
-
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    ip_address = (forwarded_for.split(",", 1)[0].strip() if forwarded_for else request.remote) or ""
-    user_agent = (request.headers.get("User-Agent") or "")[:512]
-
-    record = Request(
-        chat_id=chat_id,
-        status="open",
-        name=name,
-        email=email,
-        phone=phone,
-        body=body,
-        ip_address=ip_address[:64] or None,
-        user_agent=user_agent or None,
-    )
-
-    db = request["db"]
-    db.add(record)
-    await db.commit()
-    await db.refresh(record)
-
-    return web.json_response(
-        {
-            "status": "ok",
-            "request_id": record.id,
-        },
-        status=201,
-    )

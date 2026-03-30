@@ -2,7 +2,7 @@ from wtforms import StringField, validators, Form
 from wtforms.csrf.session import SessionCSRF
 from datetime import timedelta
 from vchat.settings import config
-from vchat.text import _
+from vchat.i18n import _
 
 
 class BaseForm(Form):

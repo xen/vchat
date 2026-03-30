@@ -4,8 +4,7 @@
 
 Документ описывает публичные API-методы проекта, необходимые для:
 
-- синхронизации/индексации документов по URL;
-- отправки пользовательского обращения в поддержку из виджета.
+- синхронизации/индексации документов по URL.
 
 Все остальные API-методы из этой спецификации удалены как неактуальные.
 
@@ -18,8 +17,7 @@ info:
   version: 1.0.0
   description: |
     Минимальный публичный API:
-    1) /api/update — обновление индекса по URL документа;
-    2) /api/support/request — создание обращения пользователя из виджета.
+    1) /api/update — обновление индекса по URL документа.
 servers:
   - url: https://chat.vbudushee.ru
     description: Production
@@ -27,16 +25,8 @@ servers:
 tags:
   - name: Indexing
     description: Синхронизация документов в индексе
-  - name: Support
-    description: Обращения пользователей из виджета
 
 components:
-  securitySchemes:
-    CsrfHeader:
-      type: apiKey
-      in: header
-      name: X-CSRFToken
-
   schemas:
     IndexUpdateResponse:
       type: object
@@ -64,43 +54,6 @@ components:
           enum: [error]
         message:
           type: string
-
-    SupportRequestCreate:
-      type: object
-      required:
-        - name
-        - email
-        - phone
-        - body
-      properties:
-        name:
-          type: string
-          maxLength: 255
-          description: Имя пользователя
-        email:
-          type: string
-          format: email
-          maxLength: 255
-        phone:
-          type: string
-          maxLength: 64
-        body:
-          type: string
-          maxLength: 5000
-          description: Текст обращения
-
-    SupportRequestCreated:
-      type: object
-      required:
-        - status
-        - request_id
-      properties:
-        status:
-          type: string
-          enum: [ok]
-        request_id:
-          type: integer
-          description: Идентификатор созданного объекта Request
 
 paths:
   /api/update:
@@ -148,51 +101,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
-  /api/support/request:
-    post:
-      tags: [Support]
-      summary: Создать обращение пользователя в поддержку
-      description: |
-        Создает объект `vchat/models/support.py::Request`.
-
-        Требования:
-        - запрос должен содержать CSRF токен в заголовке `X-CSRFToken`;
-        - `chat_id` извлекается на сервере из CSRF токена (токен подписан через itsdangerous);
-        - дополнительно сохраняются IP-адрес и User-Agent пользователя.
-      security:
-        - CsrfHeader: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SupportRequestCreate'
-      responses:
-        '201':
-          description: Обращение создано
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SupportRequestCreated'
-        '400':
-          description: Ошибка валидации данных
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Некорректный/просроченный CSRF токен
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Внутренняя ошибка
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 ```
 
 ---
@@ -214,33 +122,6 @@ Host: chat.vbudushee.ru
 {
   "status": "accepted",
   "url": "https://docs.example.org/reglament.pdf"
-}
-```
-
-### 3.2 Создание обращения
-
-**Request**
-
-```http
-POST /api/support/request HTTP/1.1
-Host: chat.vbudushee.ru
-Content-Type: application/json
-X-CSRFToken: <csrf_token_from_widget>
-
-{
-  "name": "Иван Петров",
-  "email": "ivan@example.com",
-  "phone": "+79991234567",
-  "body": "Подскажите, где посмотреть актуальные правила подачи заявки?"
-}
-```
-
-**Response**
-
-```json
-{
-  "status": "ok",
-  "request_id": 1024
 }
 ```
 

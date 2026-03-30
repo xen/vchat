@@ -3,18 +3,18 @@
 {% from "auth/_macros.html" import auth_page, auth_input with context %}
 
 {% block fullbody %}
-{% call auth_page(_('Login'), _('To get access to your projects use this login form.')) %}
+{% call auth_page(_('Вход'), _('Чтобы получить доступ к проектам, используйте форму входа.')) %}
 <form action="{{ url('login') }}" method="POST" class="space-y-2">
   {{ form.csrf_token }}
 
   {% if form.csrf_token.errors %}
-  <div class="alert alert-error">
+  <div class="alert alert-ошибка">
     {{ form.csrf_token.errors[0] }}
   </div>
   {% endif %}
 
-  {{ auth_input(form.email, "mail", _('Email address'), 'email', 'email') }}
-  {{ auth_input(form.password, "key-round", _('Password'), 'password', 'current-password') }}
+  {{ auth_input(form.email, "mail", _('Почта'), 'email', 'email') }}
+  {{ auth_input(form.password, "key-round", _('Пароль'), 'password', 'current-password') }}
 
   {% if turnstile %}
   <div class="mt-6">
@@ -25,7 +25,7 @@
 
   <button type="submit" class="btn btn-primary mt-6 w-full gap-3">
     <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
-    {{ _('Login to your account') }}
+    {{ _('Вход в аккаунт') }}
   </button>
 
 </form>

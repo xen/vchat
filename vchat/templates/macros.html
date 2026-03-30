@@ -1,6 +1,6 @@
 {% macro render_field(field, class="") -%}
 {%- if field.errors -%}
-{% set class_ = "input border input-error w-full" %}
+{% set class_ = "input border input-ошибка w-full" %}
 {% set params = {'aria-describedby': field.id ~ "-feedback"} %}
 {%- elif field.type == 'SelectField' -%}
 {% set class_ = "select border w-full" %}
@@ -22,7 +22,7 @@
   {% if field.errors %}
   <p class="mt-2 text-sm text-error">
     {% for error in field.errors %}
-    {{ error|safe }}<br />
+    {{ ошибка|safe }}<br />
     {% endfor %}
   </p>
   {% endif %}
@@ -34,77 +34,10 @@
 </div>
 {%- endmacro %}
 
-{% macro checkbox(field) %}
-<div class="form-control">
-  <label class="label cursor-pointer justify-start gap-3">
-    {{ field(class="checkbox") }}
-    <span class="label-text {% if field.errors %}text-error{% endif %}">
-      {{ field.label.text }}
-    </span>
-  </label>
-  {% if field.errors %}
-  <div id="{{ field.id }}-feedback" class="text-error text-sm">
-    {% for error in field.errors %}
-    {{ error }}<br />
-    {% endfor %}
-  </div>
-  {% endif %}
-</div>
-{% endmacro %}
-
-{% macro render_ttl_field(field, class="mb-3") -%}
-<div class="{{ class }} form-control">
-  <label class="label">
-    <span class="label-text">{{ field.label.text }}</span>
-  </label>
-  <div class="flex space-x-2">
-    <!-- Time Value Input -->
-    <div class="flex-1">
-      {{ field.form.time_value(class="input border w-full") }}
-      {% if field.form.time_value.errors %}
-      <div class="text-error text-sm mt-1">
-        {% for error in field.form.time_value.errors %}
-        {{ error }}<br />
-        {% endfor %}
-      </div>
-      {% endif %}
-    </div>
-
-    <!-- Time Unit Select -->
-    <div>
-      {{ field.form.time_unit(class="select border w-full") }}
-      {% if field.form.time_unit.errors %}
-      <div class="text-error text-sm mt-1">
-        {% for error in field.form.time_unit.errors %}
-        {{ error }}<br />
-        {% endfor %}
-      </div>
-      {% endif %}
-    </div>
-  </div>
-
-  <!-- General Errors -->
-  {% if field.errors %}
-  <div id="{{ field.id }}-feedback" class="text-error text-sm mt-1">
-    {% for error in field.errors %}
-    {{ error }}<br />
-    {% endfor %}
-  </div>
-  {% endif %}
-
-  <!-- Description -->
-  {% if field.description %}
-  <div id="{{ field.id }}-help" class="text-base-content/60 text-sm mt-1">
-    {{ field.description|safe }}
-  </div>
-  {% endif %}
-</div>
-{%- endmacro %}
-
 {# flash messages #}
 {% macro message() %}
 {% for msg in get_flash_messages() %}
-{% set color = {'success': 'alert-success', 'info': 'alert-info', 'error': 'alert-error', 'warning': 'alert-warning',
+{% set color = {'success': 'alert-success', 'info': 'alert-info', 'error': 'alert-ошибка', 'warning': 'alert-warning',
 'silent':'alert-ghost'}.get(msg.status, 'alert-success') %}
 <div id="alert-{{ loop.index }}" role="alert" class="alert {{ color }} mb-4">
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
@@ -113,72 +46,19 @@
   </svg>
   <span>{{ msg.message }}</span>
   <button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()">
-    {{ _('Close') }}
+    {{ _('Закрыть') }}
   </button>
 </div>
 {% endfor %}
 {% endmacro %}
 
-{% macro notify(text, color='error') %}
-{% set badge_color = {'red': 'badge-error', 'green': 'badge-success', 'blue': 'badge-info', 'yellow':
-'badge-warning'}.get(color, 'badge-ghost') %}
-<span class="badge {{ badge_color }}"> {{ text }} </span>
-{% endmacro %}
-
-{% macro indicator_success(title) %}
-<div class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-success">
-  <svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-    <path
-      d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm3.707 8.207-4 4a1 1 0 0 1-1.414 0l-2-2a1 1 0 0 1 1.414-1.414L9 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414Z">
-    </path>
-  </svg>
-  <span class="sr-only">{{ title }}</span>
-</div>
-{% endmacro %}
-
-{% macro indicator_warning(title) %}
-<div class="inline-flex items-center justify-center flex-shrink-0 w-8 h-8 text-error">
-  <svg class="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-    <path
-      d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm3.707 11.793a1 1 0 1 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 1.414-1.414L10 8.586l2.293-2.293a1 1 0 0 1 1.414 1.414L11.414 10l2.293 2.293Z" />
-  </svg>
-  <span class="sr-only">{{ title }}</span>
-</div>
-{% endmacro %}
-
-{# HTMX Action buttons #}
-{%- macro action(url, title="", active=True, icon_on="bi bi-eye", icon_off="bi bi-eye-slash") -%}
-<button class="btn btn-sm btn-outline" hx-post="{{ url }}" hx-trigger="click">
-  {%- if active -%}
-  <i class="{{ icon_on }}"></i> {{ title }}
-  {% else %}
-  <i class="{{ icon_off }}"></i> {{ title }}
-  {%- endif -%}
-</button>
-{%- endmacro -%}
-
-{% macro del_button(path, after=None, title='', hx_target=None, hx_swap='outerHTML') %}
-<button class="btn btn-sm btn-ghost text-error" hx-post="{{ path }}" hx-trigger="click" hx-swap="{{ hx_swap }}"
-  hx-confirm="{{ _('Are you sure you wish to delete this? It will be removed from the system and all associated data will be lost. This action cannot be undone. Are you sure you wish to continue?') }}"
-  {% if after %} hx-on::after-request="window.location.href = '{{ after }}'" {% endif %} {% if hx_target %}
-  hx-target="{{ hx_target }}" {% endif %}>
-  <svg class="w-6 h-6" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor"
-    viewBox="0 0 24 24">
-    <path fill-rule="evenodd"
-      d="M8.586 2.586A2 2 0 0 1 10 2h4a2 2 0 0 1 2 2v2h3a1 1 0 1 1 0 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a1 1 0 0 1 0-2h3V4a2 2 0 0 1 .586-1.414ZM10 6h4V4h-4v2Zm1 4a1 1 0 1 0-2 0v8a1 1 0 1 0 2 0v-8Zm4 0a1 1 0 1 0-2 0v8a1 1 0 1 0 2 0v-8Z"
-      clip-rule="evenodd" />
-  </svg>
-  {{ title }}
-</button>
-{% endmacro %}
-
 {# admin macros #}
 {% macro search(request, placeholder) %}
 <form class="sm:pr-3" action="{{ url(request.match_info.route.name) }}" method="GET">
-  <label for="products-search" class="sr-only">{{ _('Search') }}</label>
+  <label for="products-search" class="sr-only">{{ _('Поиск') }}</label>
   <div class="relative w-48 mt-1 sm:w-64 xl:w-96">
     <input type="text" name="search" id="products-search" value="{{ request.query.search }}"
-      placeholder="{{ _('Search by') }} {{ placeholder }}" class="input border w-full" />
+      placeholder="{{ _('Поиск по') }} {{ placeholder }}" class="input border w-full" />
   </div>
 </form>
 {% endmacro %}
@@ -188,44 +68,34 @@
   class="sticky bottom-0 right-0 items-center w-full p-4 bg-base-100 border-t border-base-300 sm:flex sm:justify-between">
   <div class="flex items-center mb-4 sm:mb-0">
     <span class="text-sm font-normal text-base-content/70">
-      {{ _('Showing') }}
+      {{ _('Показано') }}
       <span class="font-semibold text-base-content">
-        {% if request.query.get('offset')|int + request.query.get('limit')|int < total|int %} {% if
+        {% if request.query.get('изfset')|int + request.query.get('limit')|int < total|int %} {% if
           request.query.get('limit') %} {{ request.query.get('limit') }} {% else %} {% if total|int < 10 %} {{ total|int
-          }} {% else %} 10 {% endif %} {% endif %} {% else %} {{ total|int - request.query.get('offset')|int }} {% endif
+          }} {% else %} 10 {% endif %} {% endif %} {% else %} {{ total|int - request.query.get('изfset')|int }} {% endif
           %} </span>
-          {{ _('starting from') }}
+          {{ _('начиная с') }}
           <span class="font-semibold text-base-content">
-            {% if request.query.get("offset") %}
-            {{ request.query.get('offset') }}
+            {% if request.query.get("изfset") %}
+            {{ request.query.get('изfset') }}
             {% else %}
             0
             {% endif %}
           </span>
-          {{ _('of') }}
+          {{ _('из') }}
           <span class="font-semibold text-base-content">
             {{ total }}
           </span>
-          {{ _('entries') }}
+          {{ _('записей') }}
       </span>
   </div>
   {{ paginate(total) }}
 </div>
 {% endmacro %}
 
-{# Universal tabs macro #}
-<!-- tab = [{'name': 'name', 'title': 'title', 'url': 'url', 'active': 'name'}] -->
-{% macro navbar_tabs(tabs, active) %}
-<div role="tablist" class="tabs tabs-lift">
-  {% for tab in tabs %}
-  <a role="tab" href="{{ tab.url }}" class="tab {% if tab.name == active %}tab-active{% endif %}">{{ tab.title }}</a>
-  {% endfor %}
-</div>
-{% endmacro %}
-
 {# Theme switcher button #}
 {% macro theme_switcher() %}
-<button aria-label="{{ _('Toggle Theme') }}" class="btn btn-sm btn-circle btn-ghost relative overflow-hidden"
+<button aria-label="{{ _('Сменить тему') }}" class="btn btn-sm btn-circle btn-ghost relative overflow-hidden"
   data-theme-control="toggle">
   <iconify-icon icon="lucide:sun"
     class="absolute size-5 -translate-y-4 opacity-0 transition-all duration-300 group-data-[theme=light]/html:translate-y-0 group-data-[theme=light]/html:opacity-100"></iconify-icon>

@@ -20,6 +20,11 @@ from jobs.crawler import settings as my_settings
 from jobs.crawler.spiders.generic import GenericSpider
 from jobs.crawler.spiders.list import ListSpider
 from jobs.crawler.spiders.sitemap import CustomSitemapSpider
+from vchat.source_settings import (
+    DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
+    DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+    DEFAULT_CRAWLER_USER_AGENT,
+)
 
 
 def main():
@@ -55,6 +60,30 @@ def main():
 
     settings = Settings()
     settings.setmodule(my_settings)
+    settings.set(
+        "USER_AGENT",
+        str(config.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT),
+    )
+    concurrent_requests = config.get(
+        "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+    )
+    try:
+        settings.set("CONCURRENT_REQUESTS", max(1, int(concurrent_requests)))
+    except (TypeError, ValueError):
+        print(
+            f"Ignoring invalid crawler_concurrent_requests={concurrent_requests!r}, "
+            f"using default={DEFAULT_CRAWLER_CONCURRENT_REQUESTS}"
+        )
+        settings.set("CONCURRENT_REQUESTS", DEFAULT_CRAWLER_CONCURRENT_REQUESTS)
+    download_delay = config.get("crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY)
+    try:
+        settings.set("DOWNLOAD_DELAY", max(0.0, float(download_delay)))
+    except (TypeError, ValueError):
+        print(
+            f"Ignoring invalid crawler_download_delay={download_delay!r}, "
+            f"using default={DEFAULT_CRAWLER_DOWNLOAD_DELAY}"
+        )
+        settings.set("DOWNLOAD_DELAY", DEFAULT_CRAWLER_DOWNLOAD_DELAY)
     if page_limit is not None:
         settings.set("CLOSESPIDER_PAGECOUNT", page_limit)
         settings.set("CLOSESPIDER_ITEMCOUNT", page_limit)

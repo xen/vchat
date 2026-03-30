@@ -10,24 +10,24 @@
 
 Это основные контентные ресурсы:
 
-| URL | Название | Стек |
-|:----|:---------|:-----|
-| https://vbudushee.ru/ | Сайт Фонда | Битрикс |
-| https://teacher.vbudushee.ru/ | Школа возможностей | Laravel |
-| https://parents.vbudushee.ru/ | Онлайн-курс «Семья на эмоциях» | Битрикс |
-| https://catalog.vbudushee.ru/ | Каталог образовательных материалов по РЛП | WordPress |
-| https://books.vbudushee.ru/ | Хрестоматия по развитию личностного потенциала | Битрикс |
-| https://navigator.vbudushee.ru/ | Навигатор по навыкам XXI века | Битрикс |
-| https://rost.vbudushee.ru/ | Проект «Мастерские роста» | Битрикс |
-| https://family.vbudushee.ru/ | Путеводитель для современной семьи | Битрикс |
-| https://openness.vbudushee.ru/ | Практики открытости для родителей | Битрикс |
-| https://youcan.vbudushee.ru/ | Онлайн-гид «4 сезон» | Битрикс |
-| https://grant.vbudushee.ru/ | Грантовая платформа | ПЦРНКО |
-| https://ksp.vbudushee.ru/ | Конкурс социальных проектов | ПЦРНКО |
-| https://diagnostics.vbudushee.ru/ | Диагностика личностного потенциала | Laravel |
-| https://digitaltest.vbudushee.ru/ | Тестирование цифровых навыков | Laravel |
-| https://volunteer.vbudushee.ru/ | Программа «Детям про финансы» | Битрикс |
-| https://ai-academy.ru/ | Академия ИИ для школьников | Битрикс |
+| URL                               | Название                                       | Стек      |
+| :-------------------------------- | :--------------------------------------------- | :-------- |
+| https://vbudushee.ru/             | Сайт Фонда                                     | Битрикс   |
+| https://teacher.vbudushee.ru/     | Школа возможностей                             | Laravel   |
+| https://parents.vbudushee.ru/     | Онлайн-курс «Семья на эмоциях»                 | Битрикс   |
+| https://catalog.vbudushee.ru/     | Каталог образовательных материалов по РЛП      | WordPress |
+| https://books.vbudushee.ru/       | Хрестоматия по развитию личностного потенциала | Битрикс   |
+| https://navigator.vbudushee.ru/   | Навигатор по навыкам XXI века                  | Битрикс   |
+| https://rost.vbudushee.ru/        | Проект «Мастерские роста»                      | Битрикс   |
+| https://family.vbudushee.ru/      | Путеводитель для современной семьи             | Битрикс   |
+| https://openness.vbudushee.ru/    | Практики открытости для родителей              | Битрикс   |
+| https://youcan.vbudushee.ru/      | Онлайн-гид «4 сезон»                           | Битрикс   |
+| https://grant.vbudushee.ru/       | Грантовая платформа                            | ПЦРНКО    |
+| https://ksp.vbudushee.ru/         | Конкурс социальных проектов                    | ПЦРНКО    |
+| https://diagnostics.vbudushee.ru/ | Диагностика личностного потенциала             | Laravel   |
+| https://digitaltest.vbudushee.ru/ | Тестирование цифровых навыков                  | Laravel   |
+| https://volunteer.vbudushee.ru/   | Программа «Детям про финансы»                  | Битрикс   |
+| https://ai-academy.ru/            | Академия ИИ для школьников                     | Битрикс   |
 
 * **Метод:** Использование XML-карт сайта (`sitemap.xml`) для приоритизации индексации наиболее важных страниц.
 * **Подготовка:** Исключение технических разделов (личные кабинеты, формы регистрации) через `robots.txt` или настройки правил краулера с помощью правил исключения по маске, чтобы ИИ не индексировал пустые или защищенные страницы.
@@ -36,13 +36,13 @@
 
 Сайты-тренажеры и игры:
 
-| URL | Название | Стек |
-|:----|:---------|:-----|
-| https://fg2024.vbudushee.ru/ | Игра «Фондовый рынок» | Javascript |
-| https://startup.vbudushee.ru/ | Игра «Предпринимательство» | Javascript |
-| https://ai.datalesson.ru | Тренажёр «Урока цифры» 1 | Golang/Javascript |
-| https://vb.datalesson.ru | Тренажёр «Урока цифры» 2 | Golang/Javascript |
-| https://edai.datalesson.ru/ | Тренажёр «Урока цифры» 3 | Javascript |
+| URL                           | Название                   | Стек              |
+| :---------------------------- | :------------------------- | :---------------- |
+| https://fg2024.vbudushee.ru/  | Игра «Фондовый рынок»      | Javascript        |
+| https://startup.vbudushee.ru/ | Игра «Предпринимательство» | Javascript        |
+| https://ai.datalesson.ru      | Тренажёр «Урока цифры» 1   | Golang/Javascript |
+| https://vb.datalesson.ru      | Тренажёр «Урока цифры» 2   | Golang/Javascript |
+| https://edai.datalesson.ru/   | Тренажёр «Урока цифры» 3   | Javascript        |
 
 * **Метод:** Для индексации таких ресурсов краулер должен поддерживать рендеринг JavaScript (Headless browser), иначе текстовое содержимое не будет извлечено.
 * **Анализ:** Необходимо определить, содержат ли эти ресурсы полезную базу знаний для ответов или они являются чисто функциональными инструментами.
@@ -53,15 +53,15 @@
 
 Простые лендинги и витрины:
 
-| URL | Название | Стек |
-|:----|:---------|:-----|
-| https://eigame.vbudushee.ru/ | Игра «Город эмоций» (витрина) | HTML |
-| https://city-eigame.vbudushee.ru/ | Игра «Город эмоций» (игра) | HTML |
-| https://edutainment.vbudushee.ru/ | Семейный Edutainment | HTML |
-| https://mychoice-dd.vbudushee.ru/ | Проект «Мой выбор — Другое дело» | HTML |
-| https://startups.datalesson.ru/ | Тренажёр «Урока цифры» 4 | HTML |
-| https://fingame.vbudushee.ru/ | Мобильное приложение «Вклад» | PHP/HTML |
-| https://consortium.vbudushee.ru/ | Консорциум | PHP/HTML |
+| URL                               | Название                         | Стек     |
+| :-------------------------------- | :------------------------------- | :------- |
+| https://eigame.vbudushee.ru/      | Игра «Город эмоций» (витрина)    | HTML     |
+| https://city-eigame.vbudushee.ru/ | Игра «Город эмоций» (игра)       | HTML     |
+| https://edutainment.vbudushee.ru/ | Семейный Edutainment             | HTML     |
+| https://mychoice-dd.vbudushee.ru/ | Проект «Мой выбор — Другое дело» | HTML     |
+| https://startups.datalesson.ru/   | Тренажёр «Урока цифры» 4         | HTML     |
+| https://fingame.vbudushee.ru/     | Мобильное приложение «Вклад»     | PHP/HTML |
+| https://consortium.vbudushee.ru/  | Консорциум                       | PHP/HTML |
 
 * **Метод:** Прямой рекурсивный обход страниц по расписанию.
 
@@ -72,14 +72,14 @@
 *   **Привязка к источнику:** Четкая маркировка каждого чанка текста URL-адресом конкретного поддомена.
 * **Тегирование:** Разделение контента по направлениям для повышения точности поиска:
 
-| Направление | Ресурсы |
-|:------------|:--------|
-| Для родителей | https://parents.vbudushee.ru/, https://family.vbudushee.ru/, https://ready.vbudushee.ru/, https://openness.vbudushee.ru/ |
-| Финансовая грамотность | https://fg2024.vbudushee.ru/, https://fingame.vbudushee.ru/, https://volunteer.vbudushee.ru/, https://startup.vbudushee.ru/ |
-| Цифровые навыки | https://ai-academy.ru/, https://digitaltest.vbudushee.ru/, https://ai.datalesson.ru, https://vb.datalesson.ru, https://edai.datalesson.ru/, https://startups.datalesson.ru/ |
+| Направление                          | Ресурсы                                                                                                                                                                       |
+| :----------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Для родителей                        | https://parents.vbudushee.ru/, https://family.vbudushee.ru/, https://ready.vbudushee.ru/, https://openness.vbudushee.ru/                                                      |
+| Финансовая грамотность               | https://fg2024.vbudushee.ru/, https://fingame.vbudushee.ru/, https://volunteer.vbudushee.ru/, https://startup.vbudushee.ru/                                                   |
+| Цифровые навыки                      | https://ai-academy.ru/, https://digitaltest.vbudushee.ru/, https://ai.datalesson.ru, https://vb.datalesson.ru, https://edai.datalesson.ru/, https://startups.datalesson.ru/   |
 | Образовательные программы и методики | https://vbudushee.ru/, https://catalog.vbudushee.ru/, https://books.vbudushee.ru/, https://navigator.vbudushee.ru/, https://rost.vbudushee.ru/, https://teacher.vbudushee.ru/ |
-| Гранты и конкурсы | https://grant.vbudushee.ru/, https://ksp.vbudushee.ru/, https://fsprint.vbudushee.ru/ |
-| Диагностика и исследования | https://diagnostics.vbudushee.ru/, https://research.vbudushee.ru/ |
+| Гранты и конкурсы                    | https://grant.vbudushee.ru/, https://ksp.vbudushee.ru/, https://fsprint.vbudushee.ru/                                                                                         |
+| Диагностика и исследования           | https://diagnostics.vbudushee.ru/, https://research.vbudushee.ru/                                                                                                             |
 * **Формат ссылок:** Настройка правил цитирования так, чтобы бот выдавал прямую ссылку на соответствующий поддомен (напр., `catalog.vbudushee.ru`), а не на главную страницу.
 
 ## 3. Технический план подготовки (Pre-indexing)
@@ -96,31 +96,31 @@
 
 * **Новостные и программные сайты** — ежедневная проверка обновлений или по запросу через `GET /api/update`:
 
-| URL | Название |
-|:----|:---------|
-| https://vbudushee.ru/ | Сайт Фонда |
-| https://grant.vbudushee.ru/ | Грантовая платформа |
-| https://ksp.vbudushee.ru/ | Конкурс социальных проектов |
-| https://fsprint.vbudushee.ru/ | Конкурс «ФинСпринт» |
-| https://teacher.vbudushee.ru/ | Школа возможностей |
-| https://ai-academy.ru/ | Академия ИИ для школьников |
+| URL                               | Название                           |
+| :-------------------------------- | :--------------------------------- |
+| https://vbudushee.ru/             | Сайт Фонда                         |
+| https://grant.vbudushee.ru/       | Грантовая платформа                |
+| https://ksp.vbudushee.ru/         | Конкурс социальных проектов        |
+| https://fsprint.vbudushee.ru/     | Конкурс «ФинСпринт»                |
+| https://teacher.vbudushee.ru/     | Школа возможностей                 |
+| https://ai-academy.ru/            | Академия ИИ для школьников         |
 | https://diagnostics.vbudushee.ru/ | Диагностика личностного потенциала |
-| https://digitaltest.vbudushee.ru/ | Тестирование цифровых навыков |
+| https://digitaltest.vbudushee.ru/ | Тестирование цифровых навыков      |
 
 * **Архивные и методические материалы** — индексация раз в месяц или по ручному триггеру:
 
-| URL | Название |
-|:----|:---------|
-| https://books.vbudushee.ru/ | Хрестоматия по развитию личностного потенциала |
-| https://catalog.vbudushee.ru/ | Каталог образовательных материалов по РЛП |
-| https://navigator.vbudushee.ru/ | Навигатор по навыкам XXI века |
-| https://family.vbudushee.ru/ | Путеводитель для современной семьи |
-| https://openness.vbudushee.ru/ | Практики открытости для родителей |
-| https://rost.vbudushee.ru/ | Проект «Мастерские роста» |
-| https://parents.vbudushee.ru/ | Онлайн-курс «Семья на эмоциях» |
-| https://youcan.vbudushee.ru/ | Онлайн-гид «4 сезон» |
-| https://consortium.vbudushee.ru/ | Консорциум |
-| https://volunteer.vbudushee.ru/ | Программа «Детям про финансы» |
+| URL                              | Название                                       |
+| :------------------------------- | :--------------------------------------------- |
+| https://books.vbudushee.ru/      | Хрестоматия по развитию личностного потенциала |
+| https://catalog.vbudushee.ru/    | Каталог образовательных материалов по РЛП      |
+| https://navigator.vbudushee.ru/  | Навигатор по навыкам XXI века                  |
+| https://family.vbudushee.ru/     | Путеводитель для современной семьи             |
+| https://openness.vbudushee.ru/   | Практики открытости для родителей              |
+| https://rost.vbudushee.ru/       | Проект «Мастерские роста»                      |
+| https://parents.vbudushee.ru/    | Онлайн-курс «Семья на эмоциях»                 |
+| https://youcan.vbudushee.ru/     | Онлайн-гид «4 сезон»                           |
+| https://consortium.vbudushee.ru/ | Консорциум                                     |
+| https://volunteer.vbudushee.ru/  | Программа «Детям про финансы»                  |
 
 
 ### Шаг 3: Безопасность и доступ

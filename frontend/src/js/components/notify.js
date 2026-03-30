@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', function () {
         div.className = `alert ${alertClass} relative pr-10 mb-2`; // basic spacing
         div.innerHTML = `
             <span>${data.body}</span>
-            <button class="btn btn-sm btn-ghost btn-circle absolute right-1 top-1" aria-label="Close">
+            <button class="btn btn-sm btn-ghost btn-circle absolute right-1 top-1" aria-label="Закрыть">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         `;
@@ -100,28 +100,36 @@ document.addEventListener('DOMContentLoaded', function () {
             if (noMsg) noMsg.style.display = 'none';
 
             function timeAgo(dateString) {
-                if (!dateString) return 'Just now';
+                if (!dateString) return 'Только что';
                 const date = new Date(dateString);
-                if (isNaN(date.getTime())) return 'Just now';
+                if (isNaN(date.getTime())) return 'Только что';
 
                 const now = new Date();
                 const seconds = Math.floor((now - date) / 1000);
 
-                const intervals = {
-                    year: 31536000,
-                    month: 2592000,
-                    day: 86400,
-                    hour: 3600,
-                    minute: 60
+                const intervals = [
+                    ['год', 'года', 'лет', 31536000],
+                    ['месяц', 'месяца', 'месяцев', 2592000],
+                    ['день', 'дня', 'дней', 86400],
+                    ['час', 'часа', 'часов', 3600],
+                    ['минута', 'минуты', 'минут', 60],
+                ];
+
+                const pluralize = (n, one, few, many) => {
+                    const mod10 = n % 10;
+                    const mod100 = n % 100;
+                    if (mod10 === 1 && mod100 !== 11) return one;
+                    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+                    return many;
                 };
 
-                for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+                for (const [one, few, many, secondsInUnit] of intervals) {
                     const interval = Math.floor(seconds / secondsInUnit);
                     if (interval >= 1) {
-                        return interval + ' ' + unit + (interval > 1 ? 's' : '') + ' ago';
+                        return `${interval} ${pluralize(interval, one, few, many)} назад`;
                     }
                 }
-                return 'Just now';
+                return 'Только что';
             }
 
             // Create item HTML

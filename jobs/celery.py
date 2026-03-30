@@ -48,6 +48,11 @@ app.conf.beat_schedule = {
         "schedule": 300.0,
         "options": {"queue": "embeddings"},
     },
+    "schedule_source_reindex": {
+        "task": "jobs.crawler.tasks.schedule_reindex_sources_task",
+        "schedule": 604800.0,  # 7 days
+        "options": {"queue": "crawler"},
+    },
 }
 
 

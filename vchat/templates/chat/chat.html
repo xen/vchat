@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ _('Chat') }} - {{ project.title }}</title>
+  <title>{{ _('Чат') }} - {{ project.title }}</title>
   <link rel="stylesheet" href="/static/chat/chat.css" />
   <script type="module" src="/static/chat/chat.js"></script>
   <style>
@@ -17,17 +17,17 @@
 <body class="flex flex-col h-[100dvh] bg-base-100 text-base-content antialiased overflow-hidden"
   hx-headers='{"X-CSRFToken": "{{ support_csrf_token if support_csrf_token is defined else csrf_token() }}"}'>
 
-  <!-- Navbar -->
+  <!-- Навигация -->
   <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
     <div class="flex-1 gap-2 items-center">
       <div class="flex flex-col">
         <span class="font-bold text-sm leading-tight">{{ project.title }}</span>
-        <span class="text-xs opacity-60 leading-tight">{{ agent_name if agent_name else _('Virtual Assistant') }}</span>
+        <span class="text-xs opacity-60 leading-tight">{{ agent_name if agent_name else _('Виртуальный ассистент') }}</span>
       </div>
     </div>
     <div class="flex-none flex flex-col items-end gap-1 text-xs">
       {% if allow_ai_switch %}
-      <span class="font-semibold uppercase tracking-wide opacity-60">{{ _('Model') }}</span>
+      <span class="font-semibold uppercase tracking-wide opacity-60">{{ _('Модель') }}</span>
       {% include 'chat/includes/ai_settings.html' %}
       {% endif %}
     </div>
@@ -44,14 +44,14 @@
     <form id="composer" class="relative w-full">
       <textarea id="prompt"
         class="textarea textarea-bordered textarea-md w-full pr-12 resize-none bg-base-100 focus:outline-none" rows="2"
-        placeholder="{{ _('Type a message…') }}"></textarea>
+        placeholder="{{ _('Введите сообщение…') }}"></textarea>
       <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm absolute bottom-3 right-3"
-        aria-label="{{ _('Send') }}">
-        {{ _('Send') }}
+        aria-label="{{ _('Отправить') }}">
+        {{ _('Отправить') }}
       </button>
     </form>
     <div id="status" class="text-xs text-left mt-2 opacity-50">
-      <span class="badge badge-xs badge-warning mr-1"></span> {{ _('connecting…') }}
+      <span class="badge badge-xs badge-warning mr-1"></span> {{ _('подключение…') }}
     </div>
   </div>
 
@@ -81,13 +81,13 @@
 
     function updateStatus(text, type) {
       let badgeClass = 'badge-warning';
-      if (type === 'connected') badgeClass = 'badge-success';
+      if (type === 'подключено') badgeClass = 'badge-success';
       if (type === 'error') badgeClass = 'badge-error';
 
       statusEl.innerHTML = `<span class="badge badge-xs ${badgeClass} mr-1"></span> ${text}`;
     }
 
-    function appendMsg(text, type = 'bot', isPartial = false, msgId = null, signedMsgId = null, vote = 0) {
+    function appendMsg(text, type = 'bot', isPartial = false, msgId = null, signedMsgId = null, vote = null) {
       // If it's a bot message and we are streaming (partial) and have a current bubble
       if (type === 'bot' && isPartial && currentBotBubble) {
         const rawText = (currentBotBubble.dataset.raw || '') + text;
@@ -103,7 +103,7 @@
         if (type === 'bot') {
           const header = document.createElement('div');
           header.className = 'chat-header text-xs opacity-50 mb-1';
-          header.textContent = '{{ agent_name if agent_name else "Assistant" }}';
+          header.textContent = '{{ agent_name if agent_name else "Ассистент" }}';
           chatDiv.appendChild(header);
         }
 
@@ -130,18 +130,18 @@
             footer.id = `vote-area-${msgId}`;
             // Initial render of buttons
             footer.innerHTML = `
-                         <button class="btn btn-ghost btn-xs btn-square ${vote === 1 ? 'text-primary' : ''}"
+                         <button class="btn btn-ghost btn-xs btn-square ${vote === true ? 'text-primary' : ''}"
                                  aria-label="Upvote"
-                                 hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === 1 ? 0 : 1}"
-                                 data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === 1 ? 0 : 1}"
+                                 hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
+                                 data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
                                  hx-swap="outerHTML"
                                  hx-target="#vote-area-${msgId}">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
                          </button>
-                         <button class="btn btn-ghost btn-xs btn-square ${vote === -1 ? 'text-primary' : ''}"
+                         <button class="btn btn-ghost btn-xs btn-square ${vote === false ? 'text-primary' : ''}"
                                  aria-label="Downvote"
-                                 hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === -1 ? 0 : -1}"
-                                 data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === -1 ? 0 : -1}"
+                                 hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
+                                 data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
                                  hx-swap="outerHTML"
                                  hx-target="#vote-area-${msgId}">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" /></svg>
@@ -212,15 +212,15 @@
     function connect() {
       ws = new WebSocket(wsUrl());
       ws.onopen = () => {
-        updateStatus('{{ _("connected") }}', 'connected');
+        updateStatus('{{ _("подключено") }}', 'подключено');
       };
       ws.onclose = () => {
-        updateStatus('{{ _("disconnected") }}', 'warning');
+        updateStatus('{{ _("отключено") }}', 'warning');
         setSending(false);
         currentBotBubble = null;
       };
       ws.onerror = () => {
-        updateStatus('{{ _("error") }}', 'error');
+        updateStatus('{{ _("ошибка") }}', 'error');
         setSending(false);
         currentBotBubble = null;
       };
@@ -236,7 +236,7 @@
         try {
           if (data.type === 'transcription') {
             appendMsg(data.content, 'user');
-            updateStatus('{{ _("processing...") }}', 'connected');
+            updateStatus('{{ _("обработка...") }}', 'подключено');
           } else if (data.type === 'audio_response') {
             const audio = new Audio("data:audio/mp3;base64," + data.audio);
             audio.play();
@@ -260,7 +260,7 @@
             }
           } else if (data.ok) {
             if (data.content) {
-              // Pass signed_msg_id if available (usually at end of stream)
+              // Pass signed_msg_id if available (usually at end из stream)
               appendMsg(data.content, 'bot', data.partial, data.msg_id, data.signed_msg_id);
             } else if (data.signed_msg_id && !data.partial) {
               // Case where content was empty (maybe just sources?) or we just want to ensure ID is attached
@@ -277,7 +277,7 @@
             if (data.sources && data.sources.length > 0) {
               const sourcesHtml = data.sources.map(s => `
                     <a href="${s.uri}" target="_blank" class="link link-hover link-primary inline-flex items-center gap-1 bg-base-100/50 p-1 rounded border border-base-content/10">
-                        <span class="opacity-70">📄</span> ${s.title || '{{ _("Source") }}'}
+                        <span class="opacity-70">📄</span> ${s.title || '{{ _("Источник") }}'}
                     </a>
                   `).join('');
 
@@ -285,7 +285,7 @@
               sourcesContainer.innerHTML = `
                       <div class="divider my-1 opacity-50"></div>
                       <div class="flex flex-col gap-1 text-xs">
-                        <div class="font-bold opacity-70">{{ _('Sources') }}</div>
+                        <div class="font-bold opacity-70">{{ _('Источники') }}</div>
                         <div class="flex flex-wrap gap-2">${sourcesHtml}</div>
                       </div>
                   `;
@@ -307,7 +307,7 @@
               currentBotBubble = null;
             }
           } else {
-            appendMsg(`Error: ${data.error} ${data.status ? '(' + data.status + ')' : ''}\n${typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)}`, 'error');
+            appendMsg(`Ошибка: ${data.error} ${data.status ? '(' + data.status + ')' : ''}\n${typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)}`, 'error');
             setSending(false);
           }
         } catch (e) {
@@ -354,21 +354,6 @@
       }
     });
 
-    logEl.addEventListener('submit', async (e) => {
-      const form = e.target.closest('form[data-vote-url]');
-      if (!form) return;
-      e.preventDefault();
-      const url = form.getAttribute('data-vote-url');
-      const voteArea = form.closest('[id^="vote-area-"]');
-      if (!url || !voteArea) return;
-      try {
-        const html = await voteRequest(url, new FormData(form));
-        replaceVoteArea(voteArea, html);
-      } catch (err) {
-        console.error(err);
-      }
-    });
-
     promptEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -384,7 +369,7 @@
         false,
         message.msg_id || null,
         message.signed_msg_id || null,
-        Number(message.vote || 0),
+        (message.vote === null || message.vote === undefined) ? null : Boolean(message.vote),
       );
     }
 

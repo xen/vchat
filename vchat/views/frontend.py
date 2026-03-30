@@ -1,26 +1,5 @@
-import re
-
 import aiohttp_jinja2
 from aiohttp import web
-
-from vchat.text import _
-from vchat.utils import meta
-
-
-@meta(title=_("Welcome to vchat"))
-@aiohttp_jinja2.template("frontend/index.html")
-async def index(_):
-    return {}
-
-
-@meta(title=_("Prices"))
-@aiohttp_jinja2.template("frontend/prices.html")
-async def prices(_):
-    return {}
-
-
-re_pattern = re.compile("[a-z0-9-_.]+")
-
 
 async def healthcheck(request):
     await request["db"].execute("select 1;")

@@ -1,1 +1,1 @@
-from .views import *  # noqa
+# Support admin views removed.

@@ -14,7 +14,7 @@ from itsdangerous import (
 from passlib.hash import pbkdf2_sha512
 
 from vchat.app_keys import CONFIG_KEY
-from vchat.text import _
+from vchat.i18n import _
 from vchat.models import User
 from vchat.settings import config
 from vchat.utils import (

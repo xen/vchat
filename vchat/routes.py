@@ -4,7 +4,7 @@ from aiohttp import web
 from yarl import URL
 
 from .metrics import metrics_handler
-from .views import admin, api, auth, chat, frontend, projects, support, user
+from .views import admin, api, auth, chat, frontend, projects, user
 
 
 STATIC_PATH = Path(__file__).parent.parent / "static"
@@ -27,12 +27,6 @@ def setup_routes(app: web.Application) -> None:
 
     # public api
     add("GET", "/api/update", api.update_document, name="api_update")
-    add(
-        "POST",
-        "/api/support/request",
-        api.create_support_request,
-        name="api_support_request",
-    )
 
     # auth
     add("*", "/auth/login/", auth.login, name="login")
@@ -46,15 +40,6 @@ def setup_routes(app: web.Application) -> None:
     add("*", "/admin/users/", admin.user_list, name="admin_users")
     add("GET", "/admin/login-as/", admin.login_as, name="admin_login_as")
 
-    # support
-    add(
-        "GET",
-        "/requests/{ticket_id}",
-        support.admin_request_detail,
-        name="admin_ticket_detail",
-    )
-    add("GET", "/requests/", support.admin_request_all, name="user_tickets")
-
     # single-project admin pages
     add("GET", "/", projects.project_view, name="project_view")
     add("GET", "/dashboard", projects.project_view, name="dashboard")
@@ -63,6 +48,12 @@ def setup_routes(app: web.Application) -> None:
     add("*", "/topics", projects.project_topics, name="project_topics")
     add("*", "/sources", projects.project_edit_sources, name="project_edit_sources")
     add("*", r"/source/{source_id:[0-9]+}", projects.project_source_edit, name="project_source_edit")
+    add(
+        "*",
+        r"/source/{source_id:[0-9]+}/settings",
+        projects.project_source_settings,
+        name="project_source_settings",
+    )
     add("GET", r"/document/{document_id:[0-9]+}/content", projects.project_document_content, name="project_document_content")
     add("GET", "/stats", projects.project_stats, name="project_stats")
     add("GET", "/files", projects.project_files, name="project_files")
@@ -81,6 +72,7 @@ def setup_routes(app: web.Application) -> None:
     add("GET", r"/chats/monitor/{chat_id:[a-zA-Z0-9-]+}", projects.chat_monitor_ws, name="project_chat_monitor_ws")
 
     # chat websocket + chat actions
+    add("GET", "/ws/notify", user.notify_ws, name="notify_ws")
     add("GET", "/ws/chat/{payload}", chat.websocket, name="chat_ws")
     add("POST", "/actions/chat/{action}/{item_id}", chat.chat_actions, name="chat_actions")
 

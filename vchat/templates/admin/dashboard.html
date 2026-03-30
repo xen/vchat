@@ -8,8 +8,8 @@
 <div class="p-6 space-y-8">
   <div class="flex items-center justify-between flex-wrap gap-4">
     <div>
-      <h1 class="text-xl font-semibold">{{ _('Admin Dashboard') }}</h1>
-      <p class="text-sm text-base-content/70">{{ _('Global metrics for the single workspace and all users') }}</p>
+      <h1 class="text-xl font-semibold">{{ _('Панель администратора') }}</h1>
+      <p class="text-sm text-base-content/70">{{ _('Глобальные метрики единого рабочего пространства и всех пользователей') }}</p>
     </div>
   </div>
 
@@ -19,7 +19,7 @@
         <div class="flex items-center gap-4">
           <iconify-icon icon="lucide:folder" class="text-primary size-10"></iconify-icon>
           <div>
-            <p class="text-sm text-base-content/70">{{ _('Workspaces') }}</p>
+            <p class="text-sm text-base-content/70">{{ _('Рабочие пространства') }}</p>
             <p class="text-2xl font-semibold">{{ totals.projects }}</p>
           </div>
         </div>
@@ -30,7 +30,7 @@
         <div class="flex items-center gap-4">
           <iconify-icon icon="lucide:file-text" class="text-secondary size-10"></iconify-icon>
           <div>
-            <p class="text-sm text-base-content/70">{{ _('Documents') }}</p>
+            <p class="text-sm text-base-content/70">{{ _('Документы') }}</p>
             <p class="text-2xl font-semibold">{{ totals.documents }}</p>
           </div>
         </div>
@@ -41,7 +41,7 @@
         <div class="flex items-center gap-4">
           <iconify-icon icon="lucide:layers" class="text-accent size-10"></iconify-icon>
           <div>
-            <p class="text-sm text-base-content/70">{{ _('Chunks') }}</p>
+            <p class="text-sm text-base-content/70">{{ _('Чанки') }}</p>
             <p class="text-2xl font-semibold">{{ totals.chunks }}</p>
           </div>
         </div>
@@ -52,7 +52,7 @@
         <div class="flex items-center gap-4">
           <iconify-icon icon="lucide:brain" class="text-warning size-10"></iconify-icon>
           <div>
-            <p class="text-sm text-base-content/70">{{ _('Chunks without embeddings') }}</p>
+            <p class="text-sm text-base-content/70">{{ _('Чанки без эмбеддингов') }}</p>
             <p class="text-2xl font-semibold">{{ totals.pending_embeddings }}</p>
           </div>
         </div>
@@ -63,7 +63,7 @@
         <div class="flex items-center gap-4">
           <iconify-icon icon="lucide:users" class="text-info size-10"></iconify-icon>
           <div>
-            <p class="text-sm text-base-content/70">{{ _('Users') }}</p>
+            <p class="text-sm text-base-content/70">{{ _('Пользователи') }}</p>
             <p class="text-2xl font-semibold">{{ totals.users }}</p>
           </div>
         </div>
@@ -76,8 +76,8 @@
       <div class="card-body">
         <div class="flex items-center justify-between mb-4">
           <div>
-            <h2 class="card-title text-base font-medium">{{ _('Chats per day (30d)') }}</h2>
-            <p class="text-xs text-base-content/70">{{ _('Single workspace') }}</p>
+            <h2 class="card-title text-base font-medium">{{ _('Чаты по дням (30д)') }}</h2>
+            <p class="text-xs text-base-content/70">{{ _('Единое рабочее пространство') }}</p>
           </div>
         </div>
         <div class="relative h-72 w-full">
@@ -90,8 +90,8 @@
       <div class="card-body">
         <div class="flex items-center justify-between mb-4">
           <div>
-            <h2 class="card-title text-base font-medium">{{ _('Likes vs dislikes') }}</h2>
-            <p class="text-xs text-base-content/70">{{ _('Assistant replies, last 30 days') }}</p>
+            <h2 class="card-title text-base font-medium">{{ _('Лайки и дизлайки') }}</h2>
+            <p class="text-xs text-base-content/70">{{ _('Ответы ассистента за последние 30 дней') }}</p>
           </div>
         </div>
         <div class="relative h-72 w-full">
@@ -105,8 +105,8 @@
     <div class="card-body">
       <div class="flex items-center justify-between mb-4">
         <div>
-          <h2 class="card-title text-base font-medium">{{ _('New projects & users') }}</h2>
-          <p class="text-xs text-base-content/70">{{ _('Net new accounts in the last 30 days') }}</p>
+          <h2 class="card-title text-base font-medium">{{ _('Новые проекты и пользователи') }}</h2>
+          <p class="text-xs text-base-content/70">{{ _('Новые аккаунты за последние 30 дней') }}</p>
         </div>
       </div>
       <div class="relative h-72 w-full">
@@ -133,7 +133,7 @@
       data: {
         labels,
         datasets: [{
-          label: '{{ _("Chats") }}',
+          label: '{{ _("Чаты") }}',
           data: chatsData,
           borderColor: 'rgb(59, 130, 246)',
           backgroundColor: 'rgba(59, 130, 246, 0.1)',
@@ -155,14 +155,14 @@
         labels,
         datasets: [
           {
-            label: '{{ _("Likes") }}',
+            label: '{{ _("Лайки") }}',
             data: likesData,
             backgroundColor: 'rgba(34, 197, 94, 0.8)',
             borderColor: 'rgb(34, 197, 94)',
             borderWidth: 1
           },
           {
-            label: '{{ _("Dislikes") }}',
+            label: '{{ _("Дизлайки") }}',
             data: dislikesData,
             backgroundColor: 'rgba(239, 68, 68, 0.8)',
             borderColor: 'rgb(239, 68, 68)',
@@ -184,7 +184,7 @@
         labels,
         datasets: [
           {
-            label: '{{ _("New workspaces") }}',
+            label: '{{ _("Новые рабочие пространства") }}',
             data: newProjectsData,
             borderColor: 'rgb(99, 102, 241)',
             backgroundColor: 'rgba(99, 102, 241, 0.1)',
@@ -192,7 +192,7 @@
             fill: true
           },
           {
-            label: '{{ _("New users") }}',
+            label: '{{ _("Новые пользователи") }}',
             data: newUsersData,
             borderColor: 'rgb(14, 165, 233)',
             backgroundColor: 'rgba(14, 165, 233, 0.1)',

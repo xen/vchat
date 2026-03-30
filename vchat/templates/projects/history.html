@@ -115,13 +115,7 @@
                                         {{ chat.downvotes }}
                                     </span>
                                     {% endif %}
-                                    {% if chat.comments %}
-                                    <span class="flex items-center gap-1 text-base-content/70 font-medium" title="Комментарии">
-                                        <iconify-icon icon="lucide:message-square" class="size-3"></iconify-icon>
-                                        {{ chat.comments }}
-                                    </span>
-                                    {% endif %}
-                                    {% if not chat.upvotes and not chat.downvotes and not chat.comments %}
+                                    {% if not chat.upvotes and not chat.downvotes %}
                                     <span class="opacity-30">-</span>
                                     {% endif %}
                                 </div>

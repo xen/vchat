@@ -18,7 +18,6 @@
       </p>
       <ul class="list-disc pl-6 space-y-1">
         <li><code>GET /api/update</code> — обновление индекса по URL документа.</li>
-        <li><code>POST /api/support/request</code> — создание обращения пользователя из виджета.</li>
       </ul>
     </div>
   </div>
@@ -28,39 +27,12 @@
       <h3 class="font-semibold text-base">1) Обновление индекса документа</h3>
       <p class="text-sm opacity-80">Метод принимает URL документа и запускает фоновую синхронизацию индекса.</p>
 
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>GET /api/update?url=https%3A%2F%2Fdocs.example.org%2Freglament.pdf</code></pre>
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-base-content text-sm font-mono"><code>GET /api/update?url=https%3A%2F%2Fdocs.example.org%2Freglament.pdf</code></pre>
 
       <p class="text-sm opacity-80 mt-2">Пример ответа:</p>
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>{
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-base-content text-sm font-mono"><code>{
   "status": "accepted",
   "url": "https://docs.example.org/reglament.pdf"
-}</code></pre>
-    </div>
-  </div>
-
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <h3 class="font-semibold text-base">2) Создание обращения в поддержку</h3>
-      <p class="text-sm opacity-80">
-        Требуется заголовок <code>X-CSRFToken</code> и JSON-тело с полями:
-        <code>name</code>, <code>email</code>, <code>phone</code>, <code>body</code>.
-      </p>
-
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>POST /api/support/request
-Content-Type: application/json
-X-CSRFToken: &lt;csrf_token_from_widget&gt;
-
-{
-  "name": "Иван Петров",
-  "email": "ivan@example.com",
-  "phone": "+79991234567",
-  "body": "Подскажите, где посмотреть актуальные правила подачи заявки?"
-}</code></pre>
-
-      <p class="text-sm opacity-80 mt-2">Пример ответа:</p>
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>{
-  "status": "ok",
-  "request_id": 1024
 }</code></pre>
     </div>
   </div>
@@ -71,7 +43,7 @@ X-CSRFToken: &lt;csrf_token_from_widget&gt;
       <p class="text-sm opacity-80">
         Разместите код перед закрывающим тегом <code>&lt;/body&gt;</code>.
       </p>
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-sm font-mono"><code>&lt;script src="https://chat.vbudushee.ru/widget" defer&gt;&lt;/script&gt;
+<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-base-content text-sm font-mono"><code>&lt;script src="https://chat.vbudushee.ru/widget" defer&gt;&lt;/script&gt;
 &lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
       <ul class="list-disc pl-6 space-y-1 text-sm opacity-80">
         <li><code>defer</code> обязателен, чтобы не блокировать загрузку страницы.</li>

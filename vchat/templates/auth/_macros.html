@@ -7,9 +7,9 @@
       <div class="w-400 max-w-3xl rounded-[32px] border border-base-200 bg-base-100/90 p-6 shadow-2xl md:p-10">
         <div class="flex items-center justify-between gap-4">
           <a href="{{ url('index') }}">
-            <img alt="{{ _('vchat Logo') }}" class="hidden h-8 dark:inline"
+            <img alt="{{ _('Логотип vchat') }}" class="hidden h-8 dark:inline"
               src="{{ url_for('static', filename='images/logo/logo-dark.svg') }}" />
-            <img alt="{{ _('vchat Logo') }}" class="h-8 dark:hidden"
+            <img alt="{{ _('Логотип vchat') }}" class="h-8 dark:hidden"
               src="{{ url_for('static', filename='images/logo/logo-light.svg') }}" />
           </a>
           {% from "macros.html" import theme_switcher with context %}
@@ -39,10 +39,10 @@
 {%- endmacro %}
 
 {% macro auth_input(field, icon, placeholder=None, input_type="text", autocomplete=None) -%}
-{% set has_error = field.errors %}
+{% set has_ошибка = field.errors %}
 <fieldset class="fieldset mt-4">
   <legend class="fieldset-legend">{{ field.label.text }}</legend>
-  <label class="input w-full gap-3 border {{ 'input-error border-error/60' if has_error else 'border-base-300' }}">
+  <label class="input w-full gap-3 border {{ 'input-ошибка border-ошибка/60' if has_ошибка else 'border-base-300' }}">
     <iconify-icon icon="lucide:{{ icon }}" class="text-base-content/80 size-5"></iconify-icon>
     {% if autocomplete %}
     {{ field(class="grow bg-transparent focus:outline-0", placeholder=placeholder or field.label.text, type=input_type,
@@ -52,7 +52,7 @@
     }}
     {% endif %}
   </label>
-  {% if has_error %}
+  {% if has_ошибка %}
   <p class="mt-2 text-xs text-error">
     {% for error in field.errors %}
     {{ error }}{% if not loop.last %}<br>{% endif %}
@@ -68,14 +68,14 @@
 {%- endmacro %}
 
 {% macro auth_checkbox(field) -%}
-{% set has_error = field.errors %}
+{% set has_ошибка = field.errors %}
 <label class="mt-4 flex items-start gap-3 text-sm">
   {{ field(class="checkbox checkbox-primary mt-1") }}
-  <span class="{% if has_error %}text-error{% else %}text-base-content{% endif %}">
+  <span class="{% if has_ошибка %}text-error{% else %}text-base-content{% endif %}">
     {{ field.label.text|safe }}
   </span>
 </label>
-{% if has_error %}
+{% if has_ошибка %}
 <p class="mt-2 text-xs text-error">
   {% for error in field.errors %}
   {{ error }}{% if not loop.last %}<br>{% endif %}

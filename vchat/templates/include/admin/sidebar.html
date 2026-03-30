@@ -1,5 +1,6 @@
 {% macro item(title, link, icon=None) %}
-{% if request.rel_url.path.startswith(link|string) %}
+{% set link_path = link|string %}
+{% if (link_path == '/' and request.rel_url.path == '/') or (link_path != '/' and request.rel_url.path.startswith(link_path)) %}
 {% set active = 'menu-item false active' %}
 {% else %}
 {% set active = 'menu-item false' %}
@@ -15,7 +16,7 @@
     <a href="{{ url('project_view') }}">
       {% include "include/logo.html" %}
     </a>
-    <label for="layout-sidebar-hover-trigger" title="{{ _('Toggle sidebar hover') }}"
+    <label for="layout-sidebar-hover-trigger" title="{{ _('Переключить режим боковой панели') }}"
       class="btn btn-circle btn-ghost btn-sm text-base-content/50 relative max-lg:hidden">
       <iconify-icon icon="lucide:panel-left-close"
         class="absolute size-4.5 opacity-100 transition-all duration-300 group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:opacity-0"></iconify-icon>
@@ -26,17 +27,17 @@
   <div class="relative min-h-0 grow">
     <div data-simplebar class="size-full">
       <div class="mb-3 space-y-0.5 px-2.5">
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Realtime') }}</p>
-        {{ item(_('User Chats'), url('project_history'), 'message-circle') }}
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Workspace') }}</p>
-        {{ item(_('Data'), url('project_view'), 'server') }}
-        {{ item(_('Stats'), url('project_stats'), 'chart-bar') }}
-        {{ item(_('Sources'), url('project_edit_sources'), 'binary') }}
-        {{ item(_('Files'), url('project_files'), 'file') }}
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Settings') }}</p>
-        {{ item(_('Integration'), url('project_integration'), 'code') }}
-        {{ item(_('Settings'), url('project_edit'), 'settings') }}
-        {{ item(_('Topics'), url('project_topics'), 'sparkles') }}
+        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('История') }}</p>
+        {{ item(_('Чаты пользователей'), url('project_history'), 'message-circle') }}
+        {{ item(_('Статистика'), url('project_stats'), 'chart-bar') }}
+        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Данные') }}</p>
+        {{ item(_('Данные'), url('project_view'), 'server') }}
+        {{ item(_('Источники'), url('project_edit_sources'), 'binary') }}
+        {{ item(_('Файлы'), url('project_files'), 'file') }}
+        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Настройки') }}</p>
+        {{ item(_('Интеграция'), url('project_integration'), 'code') }}
+        {{ item(_('Настройки'), url('project_edit'), 'settings') }}
+        {{ item(_('Темы'), url('project_topics'), 'sparkles') }}
 
       </div>
     </div>
@@ -45,4 +46,4 @@
   </div>
 </div>
 
-<!-- End of Sidebar -->
+<!-- End из Sidebar -->

@@ -64,14 +64,14 @@ const formatBytes = (value) => {
 }
 
 const DOCUMENT_TYPE_META = {
-  html: { label: 'HTML document', icon: 'lucide:globe' },
-  markdown: { label: 'Markdown document', icon: 'lucide:file-text' },
-  office: { label: 'Office document', icon: 'lucide:file-spreadsheet' },
-  audio: { label: 'Audio file', icon: 'lucide:file-music' },
-  video: { label: 'Video file', icon: 'lucide:file-video' },
-  code: { label: 'Source code', icon: 'lucide:file-code' },
-  pdf: { label: 'PDF document', icon: 'lucide:file-text' },
-  other: { label: 'Other', icon: 'lucide:file' },
+  html: { label: 'HTML-документ', icon: 'lucide:globe' },
+  markdown: { label: 'Markdown-документ', icon: 'lucide:file-text' },
+  office: { label: 'Офисный документ', icon: 'lucide:file-spreadsheet' },
+  audio: { label: 'Аудиофайл', icon: 'lucide:file-music' },
+  video: { label: 'Видеофайл', icon: 'lucide:file-video' },
+  code: { label: 'Исходный код', icon: 'lucide:file-code' },
+  pdf: { label: 'PDF-документ', icon: 'lucide:file-text' },
+  other: { label: 'Другое', icon: 'lucide:file' },
 }
 
 const resolveDocumentType = (meta, fallback) => {
@@ -95,7 +95,7 @@ const normalizeMeta = (value) => {
   return { ...value }
 }
 
-const FORM_TOOLTIP = 'Have form'
+const FORM_TOOLTIP = 'Есть форма'
 
 const compareIsoDates = (rowA, rowB, columnId) => {
   const toTimestamp = (value) => {
@@ -140,7 +140,7 @@ window.useProjectDataTable = () => {
                 type="button"
                 class="flex items-center gap-1 text-xs uppercase tracking-wide"
                 data-sort-column="${escapeHtml(column.id)}"
-                aria-label="Sort by ${title}"
+                aria-label="Сортировать по: ${title}"
             >
                 <span>${title}</span>
                 <span class="text-[10px] text-base-content/60">${icon}</span>
@@ -152,7 +152,7 @@ window.useProjectDataTable = () => {
     {
       id: "document_type",
       accessorFn: (row) => resolveDocumentType(row?.meta, row?.document_type),
-      header: sortableHeader("Type"),
+      header: sortableHeader("Тип"),
       cell: (info) => {
         const typeKey = info.getValue() || 'other'
         const metadata = DOCUMENT_TYPE_META[typeKey] || DOCUMENT_TYPE_META.other
@@ -176,9 +176,9 @@ window.useProjectDataTable = () => {
     },
     {
       accessorKey: "title",
-      header: sortableHeader("Title"),
+      header: sortableHeader("Название"),
       cell: (info) => {
-        const title = escapeHtml(info.getValue().trim() || '[Untitled]')
+        const title = escapeHtml(info.getValue().trim() || '[Без названия]')
         const rawUri = info.row.original.uri || ""
         const href = rawUri ? escapeHtml(encodeURI(rawUri)) : ""
         const linkText = escapeHtml(rawUri)
@@ -197,7 +197,7 @@ window.useProjectDataTable = () => {
     },
     {
       accessorKey: "source",
-      header: sortableHeader("Source"),
+      header: sortableHeader("Источник"),
       cell: (info) => {
         const value = escapeHtml(info.getValue() || '')
         return `<div class="text-sm opacity-70 truncate max-w-[200px]" title="${value}">${value || '-'}</div>`
@@ -207,7 +207,7 @@ window.useProjectDataTable = () => {
     },
     {
       accessorKey: "created_at",
-      header: sortableHeader("Indexed"),
+      header: sortableHeader("Проиндексировано"),
       cell: (info) => {
         if (!info.getValue()) return '-'
         const date = new Date(info.getValue())
@@ -218,7 +218,7 @@ window.useProjectDataTable = () => {
     },
     {
       accessorKey: "updated_at",
-      header: sortableHeader("Updated"),
+      header: sortableHeader("Обновлено"),
       cell: (info) => {
         const val = info.getValue()
         if (!val) return '-'
@@ -230,14 +230,14 @@ window.useProjectDataTable = () => {
     },
     {
       id: "size_chunks",
-      header: sortableHeader("Size/Chunks"),
+      header: sortableHeader("Размер/чанки"),
       accessorFn: (row) => Number(row?.size_bytes ?? 0),
       cell: (info) => {
         const bytes = Number(info.row.original.size_bytes || 0)
         const chunkCount = Number(info.row.original.chunk_count || 0)
         const human = escapeHtml(formatBytes(bytes))
         const tooltip = escapeHtml(`${bytes} bytes`)
-        const chunkLabel = escapeHtml(`${chunkCount} chunk${chunkCount === 1 ? '' : 's'}`)
+        const chunkLabel = escapeHtml(`${chunkCount} ${chunkCount === 1 ? 'чанк' : 'чанков'}`)
 
         return `
                     <div class="flex flex-col gap-0.5 text-sm">
@@ -251,7 +251,7 @@ window.useProjectDataTable = () => {
     },
     {
       id: "notes",
-      header: "Notes",
+      header: "Примечания",
       cell: (info) => {
         const meta = info.row.original && typeof info.row.original.meta === 'object' ? info.row.original.meta : null
         const hasForm = Boolean(meta && meta.form)
@@ -290,7 +290,7 @@ window.useProjectDataTable = () => {
                         class="btn btn-ghost btn-xs"
                         data-doc-action="view"
                         data-doc-id="${info.row.original.id}"
-                        title="View document content"
+                        title="Открыть содержимое документа"
                     >
                         <iconify-icon icon="lucide:eye" class="size-4"></iconify-icon>
                     </button>
@@ -300,11 +300,11 @@ window.useProjectDataTable = () => {
     },
     {
       accessorKey: "actions",
-      header: "Actions",
+      header: "Действия",
       cell: (info) => {
         const docId = info.row.original.id
         const isIgnored = Boolean(info.row.original.is_ignored)
-        const toggleLabel = isIgnored ? "Unignore" : "Ignore"
+        const toggleLabel = isIgnored ? "Вернуть в индекс" : "Игнорировать"
         const toggleValue = isIgnored ? "false" : "true"
         const toggleClass = isIgnored
           ? "btn btn-xs btn-outline btn-success"
@@ -327,7 +327,7 @@ window.useProjectDataTable = () => {
                             data-doc-action="delete"
                             data-doc-id="${docId}"
                         >
-                            Delete
+                            Удалить
                         </button>
                     </div>
                 `
@@ -624,7 +624,7 @@ window.useProjectDataTable = () => {
       if (!doc || !this.ensureDocumentModal()) {
         return
       }
-      this.documentModalContent.innerHTML = '<div class="p-4 text-sm opacity-70">Loading content...</div>'
+      this.documentModalContent.innerHTML = '<div class="p-4 text-sm opacity-70">Загрузка содержимого...</div>'
       try {
         const res = await fetch(`/document/${docId}/content`, {
           headers: {
@@ -639,7 +639,7 @@ window.useProjectDataTable = () => {
         this.documentModalContent.innerHTML = html
       } catch (err) {
         console.error('[ProjectDataTable] Failed to load document content:', err)
-        this.documentModalContent.innerHTML = '<div class="p-4 text-sm text-error">Failed to load document content.</div>'
+        this.documentModalContent.innerHTML = '<div class="p-4 text-sm text-error">Не удалось загрузить содержимое документа.</div>'
       }
 
       if (typeof this.documentModal.showModal === 'function') {
@@ -665,7 +665,7 @@ window.useProjectDataTable = () => {
     async deleteDocument(docId) {
       const doc = this.data.find(item => item.id === docId)
       if (!doc) return
-      if (!window.confirm('Are you sure you want to delete this document?')) {
+      if (!window.confirm('Удалить этот документ?')) {
         return
       }
 

@@ -21,7 +21,7 @@
             <div class="flex items-center gap-2">
                 <audio controls class="h-10">
                     <source src="{{ chat.record }}" type="audio/wav">
-                    {{ _('Your browser does not support the audio element.') }}
+                    {{ _('Ваш браузер не поддерживает аудиоэлемент.') }}
                 </audio>
             </div>
             {% endif %}
@@ -41,7 +41,13 @@
                     <div class="chat-bubble {{ 'chat-bubble-primary' if not is_user else '' }} flex flex-col gap-2">
                         <div class="markdown-body">
                             {% if msg.has_masked_pii %}
-                            {{ msg.text_display|safe }}
+                                {% for segment in msg.text_segments %}
+                                    {% if segment.masked %}
+                                    <span class="inline-block rounded px-1 py-0.5 bg-pink-200/90 text-pink-800 dark:bg-pink-500/30 dark:text-pink-100 font-semibold">***</span>
+                                    {% else %}
+                                    {{ segment.text }}
+                                    {% endif %}
+                                {% endfor %}
                             {% else %}
                             {{ msg.text_display or msg.text }}
                             {% endif %}
@@ -58,35 +64,30 @@
                         </div>
                         {% endif %}
 
-                        {% if msg.vote or msg.vote_comment %}
+                        {% if msg.vote is not none %}
                         <div class="divider my-0 opacity-20"></div>
                         <div class="text-xs flex flex-col gap-1 opacity-80">
                             <div class="flex items-center gap-2">
-                                <span class="font-bold opacity-70">{{ _('Feedback') }}:</span>
-                                {% if msg.vote == 1 %}
+                                <span class="font-bold opacity-70">{{ _('Обратная связь') }}:</span>
+                                {% if msg.vote is sameas true %}
                                 <span class="badge badge-success badge-xs gap-1">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
-                                    {{ _('Helpful') }}
+                                    {{ _('Полезно') }}
                                 </span>
-                                {% elif msg.vote == -1 %}
+                                {% elif msg.vote is sameas false %}
                                 <span class="badge badge-error badge-xs gap-1">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" /></svg>
-                                    {{ _('Not Helpful') }}
+                                    {{ _('Не полезно') }}
                                 </span>
                                 {% endif %}
                             </div>
-                            {% if msg.vote_comment %}
-                            <div class="italic bg-base-100/10 p-2 rounded">
-                                "{{ msg.vote_comment }}"
-                            </div>
-                            {% endif %}
                         </div>
                         {% endif %}
                     </div>
                 </div>
             {% else %}
                 <div class="flex h-full items-center justify-center text-base-content/60">
-                    {{ _('No messages in this history') }}
+                    {{ _('В этой истории нет сообщений') }}
                 </div>
             {% endfor %}
         </div>

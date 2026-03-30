@@ -14,7 +14,7 @@ from sentry_sdk import capture_exception
 
 from vchat.app_keys import REDIS_KEY
 from vchat.db import async_session_factory
-from vchat.text import _
+from vchat.i18n import _
 from vchat.models import User
 from vchat.utils import Meta
 

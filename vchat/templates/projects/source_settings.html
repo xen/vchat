@@ -1,0 +1,77 @@
+{% extends "admin.html" %}
+{% block content %}
+<div class="max-w-3xl">
+    <div class="mb-6 flex items-center justify-between gap-3">
+        <div>
+            <h1 class="text-xl font-semibold">{{ _('Настройки источника') }}</h1>
+            <p class="text-sm text-base-content/70">{{ source.title or source.uri }}</p>
+        </div>
+        <a class="btn btn-ghost btn-sm" href="{{ url('project_edit_sources') }}">{{ _('Назад к источникам') }}</a>
+    </div>
+
+    <div class="card bg-base-100 shadow">
+        <div class="card-body">
+            <form method="post" class="space-y-5">
+                {{ form.csrf_token }}
+
+                <div class="form-control w-full">
+                    <label class="label">
+                        <span class="label-text">{{ _('Переиндексация') }}</span>
+                    </label>
+                    {{ form.reindex_period(class="select select-bordered w-full") }}
+                    <label class="label">
+                        <span class="label-text-alt">{{ _('Ручная переиндексация выполняется только вручную через кнопку обхода.') }}</span>
+                    </label>
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label">
+                        <span class="label-text">{{ form.concurrent_requests.label.text }}</span>
+                    </label>
+                    {{ form.concurrent_requests }}
+                    {% if form.concurrent_requests.errors %}
+                        <div class="label">
+                            {% for error in form.concurrent_requests.errors %}
+                                <span class="label-text-alt text-error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label">
+                        <span class="label-text">{{ form.download_delay.label.text }}</span>
+                    </label>
+                    {{ form.download_delay }}
+                    {% if form.download_delay.errors %}
+                        <div class="label">
+                            {% for error in form.download_delay.errors %}
+                                <span class="label-text-alt text-error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label">
+                        <span class="label-text">{{ _('User Agent') }}</span>
+                    </label>
+                    {{ form.user_agent }}
+                    {% if form.user_agent.errors %}
+                        <div class="label">
+                            {% for error in form.user_agent.errors %}
+                                <span class="label-text-alt text-error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="pt-2 flex items-center gap-2">
+                    <button type="submit" class="btn btn-primary">{{ _('Сохранить') }}</button>
+                    <a class="btn btn-ghost" href="{{ url('project_edit_sources') }}">{{ _('Отмена') }}</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
