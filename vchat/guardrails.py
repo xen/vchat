@@ -21,7 +21,7 @@ def _enabled(key: str, default: bool = True) -> bool:
 _RU_PHONE_RE = re.compile(
     r"(?:\\+7|8)\\s*\(?\\d{3}\)?[\\s-]*\\d{3}[\\s-]*\\d{2}[\\s-]*\\d{2}"
 )
-_RU_PASSPORT_RE = re.compile(r"\\b\\d{2}\\s?\\d{2}\\s?\\d{6}\\b")
+_RU_PASSPORT_RE = re.compile(r"\b\d{2}\s+\d{2}\s+\d{6}\b")
 _RU_INN_RE = re.compile(r"\\b(?:\\d{10}|\\d{12})\\b")
 _RU_SNILS_RE = re.compile(r"\\b\\d{3}-?\\d{3}-?\\d{3}\\s?\\d{2}\\b")
 _RU_OMS_RE = re.compile(r"\\b\\d{16}\\b")

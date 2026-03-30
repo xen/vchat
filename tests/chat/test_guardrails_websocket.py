@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from collections import namedtuple
 from typing import Any
 
 import aiohttp
@@ -349,3 +350,167 @@ async def test_websocket_no_guardrail_for_regular_message(monkeypatch: pytest.Mo
 
     assert metrics_calls
     assert metrics_calls[-1]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_websocket_returns_document_recommendations_and_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    state, _redis, metrics_calls = _setup_common(monkeypatch)
+    holder = _patch_websocket(
+        monkeypatch,
+        [
+            _WsMessage(type=aiohttp.WSMsgType.TEXT, data="Покажи раздел про отпуск из employee-handbook"),
+            _WsMessage(type=aiohttp.WSMsgType.ERROR, data=None),
+        ],
+    )
+
+    async def _input_ok(*, text: str, provider: Any) -> GuardrailDecision:
+        _ = text, provider
+        return GuardrailDecision(allowed=True)
+
+    async def _output_ok(*, text: str, provider: Any) -> GuardrailDecision:
+        _ = text, provider
+        return GuardrailDecision(allowed=True)
+
+    _HistoryMessage = namedtuple("_HistoryMessage", ["role", "content"])
+
+    async def _context(*, db: Any, chat_id: str, prompt: str, vector_top_k: int, ft_top_m: int):
+        _ = db, vector_top_k, ft_top_m
+        assert chat_id == "chat-1"
+        assert "employee-handbook" in prompt
+        return (
+            [_HistoryMessage("user", prompt)],
+            [
+                {
+                    "uri": "https://docs.example.local/employee-handbook/pto",
+                    "title": "Employee Handbook: Paid Time Off",
+                    "chunk_id": 101,
+                }
+            ],
+        )
+
+    async def _stream(messages: list[dict[str, Any]], ctx: Any):
+        _ = ctx
+        assert messages and messages[-1]["role"] == "user"
+        yield {"event": "content", "data": "Раздел по отпуску найден в handbook."}
+        yield {"event": "usage", "usage": {"total_tokens": 48}}
+        yield {
+            "event": "assistant_message",
+            "message": {
+                "role": "assistant",
+                "content": "Раздел по отпуску найден в handbook.",
+            },
+        }
+
+    async def _suggestions(messages: list[dict[str, Any]], ctx: Any) -> list[str]:
+        _ = messages, ctx
+        return [
+            "Открыть Employee Handbook: Paid Time Off",
+            "Показать правила переноса отпуска",
+        ]
+
+    monkeypatch.setattr(chat_views, "check_input_guardrails", _input_ok)
+    monkeypatch.setattr(chat_views, "check_output_guardrails", _output_ok)
+    monkeypatch.setattr(chat_views, "get_context", _context)
+    monkeypatch.setattr(chat_views, "ai_chat_stream", _stream)
+    monkeypatch.setattr(chat_views, "generate_suggestions", _suggestions)
+
+    request = _make_request()
+    await chat_views.websocket(request)
+    ws = holder["ws"]
+
+    suggestions_payload = next(
+        item for item in ws.sent_json if item.get("type") == "suggested_actions"
+    )
+    assert suggestions_payload["actions"]
+    assert "Employee Handbook: Paid Time Off" in suggestions_payload["actions"][0]
+
+    final_payload = next(
+        item
+        for item in ws.sent_json
+        if item.get("partial") is False and "sources" in item
+    )
+    assert final_payload["sources"] == [
+        {
+            "uri": "https://docs.example.local/employee-handbook/pto",
+            "title": "Employee Handbook: Paid Time Off",
+        }
+    ]
+
+    assistant_insert = state["chat_msg_inserts"][-1]
+    assert assistant_insert["used_chunks"][0]["uri"] == "https://docs.example.local/employee-handbook/pto"
+    assert assistant_insert["tokens"] == 48
+
+    assert metrics_calls
+    assert metrics_calls[-1]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_websocket_deduplicates_source_links_for_same_document(monkeypatch: pytest.MonkeyPatch) -> None:
+    _state, _redis, _metrics_calls = _setup_common(monkeypatch)
+    holder = _patch_websocket(
+        monkeypatch,
+        [
+            _WsMessage(type=aiohttp.WSMsgType.TEXT, data="Найди контакт службы ИБ в политике безопасности"),
+            _WsMessage(type=aiohttp.WSMsgType.ERROR, data=None),
+        ],
+    )
+
+    async def _input_ok(*, text: str, provider: Any) -> GuardrailDecision:
+        _ = text, provider
+        return GuardrailDecision(allowed=True)
+
+    async def _output_ok(*, text: str, provider: Any) -> GuardrailDecision:
+        _ = text, provider
+        return GuardrailDecision(allowed=True)
+
+    _HistoryMessage = namedtuple("_HistoryMessage", ["role", "content"])
+
+    async def _context(*, db: Any, chat_id: str, prompt: str, vector_top_k: int, ft_top_m: int):
+        _ = db, chat_id, prompt, vector_top_k, ft_top_m
+        return (
+            [_HistoryMessage("user", "Контакты ИБ")],
+            [
+                {
+                    "uri": "https://kb.example.local/security-policy",
+                    "title": "Политика информационной безопасности",
+                    "chunk_id": 1,
+                },
+                {
+                    "uri": "https://kb.example.local/security-policy",
+                    "title": "Политика информационной безопасности",
+                    "chunk_id": 2,
+                },
+            ],
+        )
+
+    async def _stream(messages: list[dict[str, Any]], ctx: Any):
+        _ = messages, ctx
+        yield {"event": "content", "data": "Контакты ИБ указаны в документе."}
+        yield {
+            "event": "assistant_message",
+            "message": {
+                "role": "assistant",
+                "content": "Контакты ИБ указаны в документе.",
+            },
+        }
+
+    monkeypatch.setattr(chat_views, "check_input_guardrails", _input_ok)
+    monkeypatch.setattr(chat_views, "check_output_guardrails", _output_ok)
+    monkeypatch.setattr(chat_views, "get_context", _context)
+    monkeypatch.setattr(chat_views, "ai_chat_stream", _stream)
+
+    request = _make_request()
+    await chat_views.websocket(request)
+    ws = holder["ws"]
+
+    final_payload = next(
+        item
+        for item in ws.sent_json
+        if item.get("partial") is False and "sources" in item
+    )
+    assert final_payload["sources"] == [
+        {
+            "uri": "https://kb.example.local/security-policy",
+            "title": "Политика информационной безопасности",
+        }
+    ]

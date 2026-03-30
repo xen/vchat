@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import aiohttp_jinja2
 import redis.asyncio as aioredis
 import sqlalchemy as sa
+from aiohttp import web
 
 from vchat.db import async_session_factory
 from vchat.guardrails import mask_russian_pii
