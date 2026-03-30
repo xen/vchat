@@ -4,7 +4,7 @@ from docling.document_converter import DocumentConverter
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from vchat.models.data import Document
-from vchat.document_types import guess_document_type, has_html_form
+from vchat.document_types import guess_document_type
 from vchat.settings import config
 import html
 
@@ -84,11 +84,6 @@ class DatabasePipeline:
                     meta["doc_type"] = doc_type
                 if content_type:
                     meta["content_type"] = content_type
-
-                if has_html_form(item.get("content")):
-                    meta["form"] = True
-                elif "form" in meta:
-                    meta.pop("form", None)
 
                 document.meta = meta
                 if item.get("title"):

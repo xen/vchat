@@ -1,4 +1,4 @@
 from .base import Created, Updated, Base  # noqa
-from .user import User, UserRole  # noqa
+from .user import User  # noqa
 from .data import Chat, ChatMsg, Source, Document, Chunk, Settings  # noqa
-from .support import Request  # noqa
+from .admin_event import AdminEvent  # noqa

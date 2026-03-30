@@ -85,8 +85,11 @@ def main():
         )
         settings.set("DOWNLOAD_DELAY", DEFAULT_CRAWLER_DOWNLOAD_DELAY)
     if page_limit is not None:
-        settings.set("CLOSESPIDER_PAGECOUNT", page_limit)
         settings.set("CLOSESPIDER_ITEMCOUNT", page_limit)
+        # For sitemap indexes, pagecount includes sitemap XML fetches and may stop
+        # before enough actual content pages are processed.
+        if source_type != "sitemap":
+            settings.set("CLOSESPIDER_PAGECOUNT", page_limit)
 
     process = CrawlerProcess(settings)
 

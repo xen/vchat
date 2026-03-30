@@ -2,6 +2,7 @@ import './cookies-policy';
 import 'htmx.org/dist/htmx.min.js';
 import '../public/js/app.js';
 import './js/components/project-data-table.js';
+import './js/components/files-data-table.js';
 import './js/components/file-upload.js';
 import './js/components/notify.js';
 import './js/code-blocks.js';

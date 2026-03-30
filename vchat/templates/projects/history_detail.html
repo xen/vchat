@@ -12,12 +12,12 @@
                 <div>
                     <h2 class="card-title text-lg">{{ chat.title or chat.user_uid }}</h2>
                     <div class="text-sm text-base-content/60">
-                        {{ chat.created_at.strftime('%Y-%m-%d %H:%M') }} • {{ chat.type|title }}
+                        {{ chat.created_at.strftime('%Y-%m-%d %H:%M') }}
                     </div>
                 </div>
             </div>
 
-            {% if chat.type == 'call' and chat.record %}
+            {% if chat.record %}
             <div class="flex items-center gap-2">
                 <audio controls class="h-10">
                     <source src="{{ chat.record }}" type="audio/wav">

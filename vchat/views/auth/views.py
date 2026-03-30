@@ -19,10 +19,10 @@ from vchat.models import User
 from vchat.settings import config
 from vchat.utils import (
     DELAY_PROTECTION,
+    admin_event,
     flash,
     login_required,
     meta,
-    register_user,
     sendmessage,
     turnstile_validator,
 )
@@ -36,7 +36,6 @@ serializer = URLSafeTimedSerializer(config["secret_key"])
 __all__ = [
     "login",
     "logout",
-    "register",
     "confirm",
     "recover",
     "resend_code",
@@ -85,9 +84,10 @@ async def login(request):
 
         session = await new_session(request)
         session["staff_id"] = user.id
-        session["role"] = user.role.value
+        request["user"] = user
+        await admin_event("user_login", request)
 
-        target = "dashboard"
+        target = "index"
         if request.rel_url.query.get("next"):
             target = request.rel_url.query["next"]
         return web.HTTPFound(location=request.app.router[target].url_for())
@@ -98,44 +98,10 @@ async def login(request):
 @meta(title=_("Logout from vchat"))
 @login_required()
 async def logout(request):
+    await admin_event("user_logout", request)
     session = await get_session(request)
     session.invalidate()
     return web.HTTPFound(location=request.app.router["login"].url_for())
-
-
-@meta(title=_("Register on vchat"))
-@aiohttp_jinja2.template("auth/register.html")
-async def register(request):
-    session = await get_session(request)
-    data = await request.post()
-    form = forms.RegisterForm(data, meta={"csrf_context": session})
-
-    if request.method == "POST" and form.validate():
-        record = await request["db"].execute(
-            sa.select(User).where(User.email == form.email.data.lower())
-        )
-        user = record.first()
-        if user:
-            form.email.errors.append(
-                _("This email is already in use, log in to the site using your email")
-            )
-            return {"form": form}
-        if not await turnstile_validator(
-            code=data.get("cf-turnstile-response", False), ip=request.remote
-        ):
-            form.email.errors.append(_("CAPTCHA error"))
-            return {"form": form}
-
-        await register_user(
-            request=request,
-            name=form.name.data,
-            email=form.email.data.lower(),
-            encrypted_password=pbkdf2_sha512.encrypt(form.password.data),
-            active=False,
-        )
-        return {"done": True, "form": form}
-
-    return {"form": form}
 
 
 @meta(title=_("Confirm registration"))
@@ -166,7 +132,6 @@ async def confirm(request):
 
     session = await get_session(request)
     session["staff_id"] = record.id
-    session["role"] = record.role.value
     return {"done": True}
 
 

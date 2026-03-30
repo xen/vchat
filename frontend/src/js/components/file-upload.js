@@ -20,7 +20,7 @@ export function createUppy(upload_endpoint, target) {
 
   uppy.use(Dashboard, {
     width: "100%",
-    height: 200,
+    height: 120,
     inline: true,
     autoProceed: true,
     locale: ru_RU,

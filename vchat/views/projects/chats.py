@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -6,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 import aiohttp_jinja2
 import redis.asyncio as aioredis
 import sqlalchemy as sa
-from aiohttp import web
 
 from vchat.db import async_session_factory
 from vchat.guardrails import mask_russian_pii
@@ -74,37 +72,6 @@ async def chats_list(request):
         "project": _project_context(request),
         "active_chats": active_chats,
     }
-
-
-async def forward_redis_to_ws(ws, chat_id):
-    pubsub = redis.pubsub()
-    await pubsub.subscribe(f"chat_monitor:{chat_id}")
-    try:
-        async for msg in pubsub.listen():
-            if msg["type"] == "message":
-                await ws.send_str(msg["data"])
-    except Exception as e:
-        logger.error("Redis listener error: %s", e)
-    finally:
-        await pubsub.unsubscribe(f"chat_monitor:{chat_id}")
-
-
-@login_required()
-async def chat_monitor_ws(request):
-    ws = web.WebSocketResponse()
-    await ws.prepare(request)
-
-    chat_id = request.match_info["chat_id"]
-    task = asyncio.create_task(forward_redis_to_ws(ws, chat_id))
-    try:
-        async for msg in ws:
-            if msg.type == web.WSMsgType.ERROR:
-                break
-    finally:
-        task.cancel()
-        await ws.close()
-
-    return ws
 
 
 @meta(title=_("Chat History"))

@@ -2,10 +2,11 @@ import logging
 import os
 import secrets
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
 import sqlalchemy as sa
@@ -13,6 +14,7 @@ from aiohttp import web
 from aiohttp_session import get_session
 from aiohttp_tus.utils import parse_upload_metadata
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
+from passlib.hash import pbkdf2_sha512
 
 from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
 from jobs.embedder.tasks import index_project, refresh_project_index, refresh_source_index
@@ -28,7 +30,7 @@ from vchat.ai_providers import (
 from vchat.app_keys import SETTINGS_KEY, SIGNER_KEY
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg, Chunk, Document, Source
+from vchat.models import Chat, ChatMsg, Chunk, Document, Source, User
 from vchat.project_settings import (
     apply_settings_updates,
     get_setting,
@@ -40,7 +42,9 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_USER_AGENT,
 )
 from vchat.settings import config
-from vchat.utils import flash, login_required, meta
+from vchat.utils import admin_event, flash, login_required, meta
+
+from vchat.views.admin import forms as admin_forms
 
 from . import forms
 
@@ -51,11 +55,11 @@ __all__ = [
     "project_edit",
     "project_action",
     "project_edit_sources",
-    "project_source_edit",
     "project_source_settings",
     "project_view",
     "project_document_content",
     "project_documents_json",
+    "project_files_json",
     "project_chat",
     "project_stats",
     "project_topics",
@@ -63,7 +67,6 @@ __all__ = [
     "public_widget_chat",
     "project_files",
     "secure_download",
-    "delete_file",
     "on_upload",
 ]
 
@@ -99,7 +102,7 @@ def _get_intents(request) -> list[str]:
     return intents if isinstance(intents, list) else []
 
 
-@meta(title=_("Data"))
+@meta(title=_("Страницы"))
 @login_required()
 @aiohttp_jinja2.template("projects/view.html")
 async def index(request):
@@ -165,6 +168,7 @@ async def project_edit_sources(request):
 
     stmt = (
         sa.select(Source, sa.func.count(Document.id).label("doc_count"))
+        .where(Source.type != "upload")
         .outerjoin(Document, Document.source_id == Source.id)
         .group_by(Source.id)
         .order_by(Source.created_at.desc())
@@ -176,62 +180,68 @@ async def project_edit_sources(request):
     return {"project": _project_context(request), "sources": sources, "form": form}
 
 
-@meta(title=_("Edit Source"))
+@meta(title=_("Source Settings"))
 @login_required()
-@aiohttp_jinja2.template("projects/source_edit.html")
-async def project_source_edit(request):
+@aiohttp_jinja2.template("projects/source_settings.html")
+async def project_source_settings(request):
     source_id = int(request.match_info.get("source_id"))
-    source = await request["db"].scalar(sa.select(Source).where(Source.id == source_id))
-    if not source:
+    db_session = request["db"]
+    source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
+    if not source or source.type == "upload":
         raise web.HTTPNotFound()
 
     session = await get_session(request)
-    data = await request.post()
-
-    form_kwargs = {"meta": {"csrf_context": session}, "obj": source}
-    if data:
+    form_kwargs = {"meta": {"csrf_context": session}}
+    if request.method == "POST":
+        data = await request.post()
         form_kwargs["formdata"] = data
     else:
-        form_data = {
+        source_config = source.config or {}
+        form_kwargs["data"] = {
             "type": source.type,
             "title": source.title,
             "reindex_period": source.reindex_period,
+            "url": source.uri if source.type in {"site", "sitemap", "list"} else "",
+            "aws_access_key_id": source_config.get("aws_access_key_id", ""),
+            "aws_secret_access_key": source_config.get("aws_secret_access_key", ""),
+            "bucket_name": source_config.get("bucket_name", ""),
+            "endpoint_url": source_config.get("endpoint_url", "https://s3.amazonaws.com"),
+            "region": source_config.get("region", "us-east-1"),
+            "prefix": source_config.get("prefix", ""),
+            "google_drive_folder_id": source_config.get("folder_id", ""),
+            "google_drive_folder_name": source_config.get("folder_name", ""),
+            "concurrent_requests": source_config.get(
+                "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+            ),
+            "download_delay": source_config.get(
+                "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
+            ),
+            "user_agent": source_config.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT,
         }
-        source_config = source.config or {}
-        if source.type == "s3":
-            form_data.update(
-                {
-                    "aws_access_key_id": source_config.get("aws_access_key_id", ""),
-                    "aws_secret_access_key": source_config.get("aws_secret_access_key", ""),
-                    "bucket_name": source_config.get("bucket_name", ""),
-                    "endpoint_url": source_config.get("endpoint_url", "https://s3.amazonaws.com"),
-                    "region": source_config.get("region", "us-east-1"),
-                    "prefix": source_config.get("prefix", ""),
-                }
-            )
-        elif source.type == "google_drive":
-            form_data.update(
-                {
-                    "google_drive_folder_id": source_config.get("folder_id", ""),
-                    "google_drive_folder_name": source_config.get("folder_name", ""),
-                }
-            )
-        else:
-            form_data["url"] = source.uri
-        form_kwargs["data"] = form_data
 
-    form = forms.SourceForm(**form_kwargs)
+    form = forms.SourceSettingsForm(**form_kwargs)
 
     if request.method == "POST" and form.validate():
         source_type = form.type.data
-        source.type = source_type
         source.title = form.title.data
         source.reindex_period = form.reindex_period.data
+        source.updated_at = datetime.now(timezone.utc)
         source_config = dict(source.config or {})
+        crawler_user_agent = (form.user_agent.data or "").strip() or DEFAULT_CRAWLER_USER_AGENT
+        crawler_concurrent_requests = int(
+            form.concurrent_requests.data
+            if form.concurrent_requests.data is not None
+            else DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+        )
+        crawler_download_delay = float(
+            form.download_delay.data
+            if form.download_delay.data is not None
+            else DEFAULT_CRAWLER_DOWNLOAD_DELAY
+        )
         crawler_settings = {
-            "crawler_concurrent_requests": source_config.get("crawler_concurrent_requests"),
-            "crawler_download_delay": source_config.get("crawler_download_delay"),
-            "crawler_user_agent": source_config.get("crawler_user_agent"),
+            "crawler_user_agent": crawler_user_agent,
+            "crawler_concurrent_requests": crawler_concurrent_requests,
+            "crawler_download_delay": crawler_download_delay,
         }
 
         if source_type == "s3":
@@ -243,9 +253,7 @@ async def project_source_edit(request):
                 "region": form.region.data or "us-east-1",
                 "prefix": form.prefix.data or "",
             }
-            for key, value in crawler_settings.items():
-                if value is not None:
-                    new_config[key] = value
+            new_config.update(crawler_settings)
             source.config = new_config
             source.uri = f"s3://{form.bucket_name.data}"
         elif source_type == "google_drive":
@@ -253,9 +261,7 @@ async def project_source_edit(request):
                 "folder_id": form.google_drive_folder_id.data,
                 "folder_name": form.google_drive_folder_name.data,
             }
-            for key, value in crawler_settings.items():
-                if value is not None:
-                    new_config[key] = value
+            new_config.update(crawler_settings)
             source.config = new_config
             source.uri = f"gdrive://{form.google_drive_folder_id.data}"
         else:
@@ -267,71 +273,15 @@ async def project_source_edit(request):
                 if r_value.strip():
                     rules.append({"type": r_type, "value": r_value.strip()})
             new_config = source_config.copy()
+            new_config.update(crawler_settings)
             if rules:
                 new_config["rules"] = rules
-            elif "rules" in new_config:
-                del new_config["rules"]
+            else:
+                new_config.pop("rules", None)
             source.config = new_config
 
-        await request["db"].commit()
-        await flash(request, _("Source updated"), "success")
-        response = web.Response(text="ok")
-        response.headers["HX-Refresh"] = "true"
-        return response
-
-    return {"project": _project_context(request), "source": source, "form": form}
-
-
-@meta(title=_("Source Settings"))
-@login_required()
-@aiohttp_jinja2.template("projects/source_settings.html")
-async def project_source_settings(request):
-    source_id = int(request.match_info.get("source_id"))
-    db_session = request["db"]
-    source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
-    if not source:
-        raise web.HTTPNotFound()
-
-    session = await get_session(request)
-    form_kwargs = {"meta": {"csrf_context": session}}
-    if request.method == "POST":
-        data = await request.post()
-        form_kwargs["formdata"] = data
-    else:
-        source_config = source.config or {}
-        form_kwargs["data"] = {
-            "reindex_period": source.reindex_period,
-            "concurrent_requests": source_config.get(
-                "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
-            ),
-            "download_delay": source_config.get(
-                "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
-            ),
-            "user_agent": source_config.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT,
-        }
-
-    form = forms.SourceCrawlerSettingsForm(**form_kwargs)
-
-    if request.method == "POST" and form.validate():
-        source_config = dict(source.config or {})
-        source.reindex_period = form.reindex_period.data
-        source.updated_at = datetime.now(timezone.utc)
-        source_config["crawler_user_agent"] = (
-            (form.user_agent.data or "").strip() or DEFAULT_CRAWLER_USER_AGENT
-        )
-        source_config["crawler_concurrent_requests"] = int(
-            form.concurrent_requests.data
-            if form.concurrent_requests.data is not None
-            else DEFAULT_CRAWLER_CONCURRENT_REQUESTS
-        )
-        source_config["crawler_download_delay"] = float(
-            form.download_delay.data
-            if form.download_delay.data is not None
-            else DEFAULT_CRAWLER_DOWNLOAD_DELAY
-        )
-
-        source.config = source_config
         await db_session.commit()
+        await admin_event("source_update", request)
         await flash(request, _("Source settings updated"), "success")
         raise web.HTTPFound(request.path)
 
@@ -358,6 +308,8 @@ async def project_topics(request):
     form = forms.TopicsForm(**form_kwargs)
 
     if request.method == "POST" and form.validate():
+        prev_topics = _get_topics(request)
+        prev_intents = _get_intents(request)
         topics_list = [t.strip() for t in form.topics.data.split("\n") if t.strip()]
         intents_list = [i.strip() for i in form.intents.data.split("\n") if i.strip()]
         await apply_settings_updates(
@@ -369,6 +321,10 @@ async def project_topics(request):
             },
         )
         await db_session.commit()
+        if (prev_topics or prev_intents) and not topics_list and not intents_list:
+            await admin_event("topics_delete", request)
+        else:
+            await admin_event("topics_update", request)
         await flash(request, _("Topics updated"), "success")
         raise web.HTTPFound(request.path)
 
@@ -382,16 +338,135 @@ async def project_action(request):
     action = request.match_info.get("action")
     user_id = request["user"].id
 
-    token = request.headers.get("X-CSRFToken")
-    if not token:
-        raise web.HTTPForbidden(text="Missing CSRF Token")
+    if action not in {"user_create", "user_password"}:
+        token = request.headers.get("X-CSRFToken")
+        if not token:
+            raise web.HTTPForbidden(text="Missing CSRF Token")
 
-    try:
-        signed_user_id = request.app[SIGNER_KEY].loads(token, max_age=86400)
-        if signed_user_id != user_id:
-            raise web.HTTPForbidden(text="Invalid CSRF Token Owner")
-    except (BadSignature, SignatureExpired):
-        raise web.HTTPForbidden(text="Invalid CSRF Token")
+        try:
+            signed_user_id = request.app[SIGNER_KEY].loads(token, max_age=86400)
+            if signed_user_id != user_id:
+                raise web.HTTPForbidden(text="Invalid CSRF Token Owner")
+        except (BadSignature, SignatureExpired):
+            raise web.HTTPForbidden(text="Invalid CSRF Token")
+
+    if action == "user_create":
+        session = await get_session(request)
+        data = await request.post()
+        form = admin_forms.CreateUserForm(data, meta={"csrf_context": session})
+        users = (
+            await db_session.execute(sa.select(User).order_by(User.id.desc()))
+        ).scalars().all()
+
+        if not form.validate():
+            return aiohttp_jinja2.render_template(
+                "admin/user_list.html",
+                request,
+                {
+                    "users": users,
+                    "add_form": form,
+                    "total_users": len(users),
+                    "current_user_id": request["user"].id,
+                },
+                status=400,
+            )
+
+        email = form.email.data.strip().lower()
+        exists = await db_session.scalar(sa.select(User.id).where(User.email == email))
+        if exists:
+            form.email.errors.append(_("This email is already in use"))
+            return aiohttp_jinja2.render_template(
+                "admin/user_list.html",
+                request,
+                {
+                    "users": users,
+                    "add_form": form,
+                    "total_users": len(users),
+                    "current_user_id": request["user"].id,
+                },
+                status=400,
+            )
+
+        db_session.add(
+            User(
+                email=email,
+                name=(email.split("@", 1)[0] or email).strip()[:100],
+                password=pbkdf2_sha512.encrypt(form.password.data),
+                is_active=True,
+            )
+        )
+        await db_session.commit()
+        await admin_event("user_create", request)
+        await flash(request, _("User created"), "success")
+        raise web.HTTPFound(request.app.router["users"].url_for())
+
+    if action == "user_password":
+        target_user_id = int(item_id)
+        user_obj = await db_session.scalar(sa.select(User).where(User.id == target_user_id))
+        if not user_obj:
+            raise web.HTTPNotFound()
+
+        session = await get_session(request)
+        data = await request.post() if request.method == "POST" else None
+        form = admin_forms.UserPasswordForm(data, meta={"csrf_context": session})
+
+        if request.method == "POST":
+            if not form.validate():
+                return aiohttp_jinja2.render_template(
+                    "admin/user_password_modal.html",
+                    request,
+                    {"form": form, "target_user": user_obj},
+                    status=400,
+                )
+
+            user_obj.password = pbkdf2_sha512.encrypt(form.password.data)
+            await db_session.commit()
+            await admin_event("user_update", request)
+            await flash(request, _("Password updated"), "success")
+            response = web.Response(text="ok")
+            response.headers["HX-Refresh"] = "true"
+            return response
+
+        return aiohttp_jinja2.render_template(
+            "admin/user_password_modal.html",
+            request,
+            {"form": form, "target_user": user_obj},
+        )
+
+    if action == "user_delete":
+        target_user_id = int(item_id)
+        is_htmx = request.headers.get("HX-Request", "").lower() == "true"
+
+        if target_user_id == request["user"].id:
+            message = _("You cannot delete yourself")
+            if is_htmx:
+                return web.Response(text=message, status=400)
+            await flash(request, message, "error")
+            raise web.HTTPFound(request.app.router["users"].url_for())
+
+        total_users = await db_session.scalar(sa.select(sa.func.count(User.id))) or 0
+        if total_users <= 1:
+            message = _("Cannot delete the last user")
+            if is_htmx:
+                return web.Response(text=message, status=400)
+            await flash(request, message, "error")
+            raise web.HTTPFound(request.app.router["users"].url_for())
+
+        user_obj = await db_session.scalar(sa.select(User).where(User.id == target_user_id))
+        if not user_obj:
+            raise web.HTTPNotFound()
+
+        await db_session.delete(user_obj)
+        await db_session.commit()
+        await admin_event("user_delete", request)
+
+        if is_htmx:
+            response = web.Response(text="ok")
+            response.headers["HX-Refresh"] = "true"
+            return response
+
+        await flash(request, _("User deleted"), "success")
+        raise web.HTTPFound(request.app.router["users"].url_for())
 
     if action == "update_ai_settings":
         data = await request.post()
@@ -423,7 +498,7 @@ async def project_action(request):
                     "ai_provider_options": get_ai_provider_options(),
                     "current_ai_provider": provider_obj.id,
                     "current_ai_model": model_obj.id,
-                    "ai_settings_url": request.app.router["project_actions"].url_for(
+                    "ai_settings_url": request.app.router["actions"].url_for(
                         action="update_ai_settings", item_id="global"
                     ),
                     "allow_ai_switch": True,
@@ -433,6 +508,7 @@ async def project_action(request):
 
     if action == "generate_topics":
         generate_project_topics.delay()
+        await admin_event("topics_generate_request", request)
         await flash(request, _("Topics generation started in background"), "success")
         return web.json_response({"ok": True})
 
@@ -534,6 +610,7 @@ async def project_action(request):
         )
         db_session.add(source)
         await db_session.commit()
+        await admin_event("source_create", request)
         crawl_source_task.delay(source.id)
         response = web.Response(text="ok")
         response.headers["HX-Refresh"] = "true"
@@ -545,6 +622,7 @@ async def project_action(request):
             raise web.HTTPNotFound()
         await db_session.delete(source)
         await db_session.commit()
+        await admin_event("source_delete", request)
         return web.Response(text="", status=200)
 
     if action == "rebuild_source":
@@ -553,6 +631,7 @@ async def project_action(request):
             raise web.HTTPNotFound()
         await db_session.execute(sa.delete(Document).where(Document.source_id == source.id))
         await db_session.commit()
+        await admin_event("source_reindex_request", request)
         crawl_source_task.delay(source.id)
         return web.Response(text="ok")
 
@@ -569,6 +648,7 @@ async def project_action(request):
         if not source:
             raise web.HTTPNotFound()
         refresh_source_index.delay(source.id)
+        await admin_event("source_reindex_request", request)
         await flash(request, _("Update task started for %(title)s", title=source.title or source.uri), "success")
         return web.Response(text="ok", status=200)
 
@@ -588,18 +668,53 @@ async def project_action(request):
         return web.Response(text="ok", status=200)
 
     if action == "rebuild_uploads":
-        upload_source = await db_session.scalar(
-            sa.select(Source).where(Source.type == "upload").order_by(Source.id.asc())
-        )
-        if upload_source:
-            refresh_source_index.delay(upload_source.id)
+        legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
+        document_ids = (
+            await db_session.execute(
+                sa.select(Document.id)
+                .where(
+                    sa.or_(
+                        Document.source_id.is_(None),
+                        Document.source_id.in_(legacy_upload_source_ids),
+                    )
+                )
+                .order_by(Document.id.asc())
+            )
+        ).scalars().all()
+        for document_id in document_ids:
+            crawl_file_task.delay(document_id)
         await flash(request, _("Upload index rebuild started"), "success")
+        return web.Response(text="ok", status=200)
+
+    if action == "delete_file":
+        file_id = int(item_id)
+        document = await db_session.scalar(
+            sa.select(Document).where(
+                Document.id == file_id,
+                sa.or_(
+                    Document.source_id.is_(None),
+                    Document.source_id.in_(sa.select(Source.id).where(Source.type == "upload")),
+                ),
+            )
+        )
+        if not document:
+            raise web.HTTPNotFound()
+
+        if document.uri and os.path.exists(document.uri):
+            try:
+                os.remove(document.uri)
+            except OSError as e:
+                logger.error("Error deleting file %s: %s", document.uri, e)
+
+        await db_session.delete(document)
+        await db_session.commit()
+        await admin_event("file_delete", request)
         return web.Response(text="ok", status=200)
 
     raise web.HTTPBadRequest(text="Unknown action")
 
 
-@meta(title=_("Data"))
+@meta(title=_("Страницы"))
 @login_required()
 @aiohttp_jinja2.template("projects/view.html")
 async def project_view(request):
@@ -607,13 +722,28 @@ async def project_view(request):
     sources = (
         (
             await db_session.execute(
-                sa.select(Source).order_by(Source.title.asc(), Source.created_at.asc())
+                sa.select(Source)
+                .where(Source.type != "upload")
+                .order_by(Source.title.asc(), Source.created_at.asc())
             )
         )
         .scalars()
         .all()
     )
-    return {"project": _project_context(request), "sources": sources}
+    source_filters = sorted(
+        {
+            (source.title or source.uri)
+            for source in sources
+            if (source.title or source.uri)
+        },
+        key=lambda value: value.lower(),
+    )
+
+    return {
+        "project": _project_context(request),
+        "sources": sources,
+        "source_filters": source_filters,
+    }
 
 
 @login_required()
@@ -643,6 +773,7 @@ async def project_documents_json(request):
             )
             .join(Source, Document.source_id == Source.id)
             .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
+            .where(Source.type != "upload")
             .order_by(Document.created_at.desc())
         )
     ).all()
@@ -661,7 +792,7 @@ async def project_documents_json(request):
             {
                 "id": str(doc.id),
                 "title": doc.title or (doc.uri.split("/")[-1] if doc.uri else "Без названия"),
-                "source": source.title or source.uri,
+                "source": (source.title or source.uri) if source else _("Файлы"),
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
                 "status": doc.status,
@@ -683,17 +814,22 @@ async def project_documents_json(request):
 async def project_stats(request):
     db = request["db"]
 
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
-    start_date = datetime.utcnow() - timedelta(days=30)
+    tz_name = config.get("time_zone") or "UTC"
+    app_tz = ZoneInfo(tz_name)
+    now_local = datetime.now(app_tz)
+    start_day_local = now_local.date() - timedelta(days=30)
+    start_date_local = datetime.combine(start_day_local, time.min, tzinfo=app_tz)
+    start_date_utc = start_date_local.astimezone(timezone.utc)
 
     chats_query = (
         sa.select(
-            sa.func.date_trunc("day", Chat.created_at).label("day"),
+            sa.func.date_trunc("day", sa.func.timezone(tz_name, Chat.created_at)).label("day"),
             sa.func.count(Chat.id).label("count"),
             sa.func.count(sa.distinct(Chat.user_uid)).label("users"),
         )
-        .where(Chat.created_at >= start_date)
+        .where(Chat.created_at >= start_date_utc)
         .group_by(sa.text("1"))
         .order_by(sa.text("1"))
     )
@@ -701,16 +837,34 @@ async def project_stats(request):
 
     msgs_query = (
         sa.select(
-            sa.func.date_trunc("day", ChatMsg.created_at).label("day"),
+            sa.func.date_trunc("day", sa.func.timezone(tz_name, ChatMsg.created_at)).label("day"),
             sa.func.count(ChatMsg.id).label("count"),
             sa.func.sum(sa.func.jsonb_array_length(ChatMsg.used_chunks)).label("hits"),
             sa.func.sum(ChatMsg.tokens).label("tokens"),
         )
-        .where(ChatMsg.created_at >= start_date, ChatMsg.role == "assistant")
+        .where(ChatMsg.created_at >= start_date_utc, ChatMsg.role == "assistant")
         .group_by(sa.text("1"))
         .order_by(sa.text("1"))
     )
     msgs_res = (await db.execute(msgs_query)).all()
+
+    votes_query = (
+        sa.select(
+            sa.func.date_trunc("day", sa.func.timezone(tz_name, ChatMsg.created_at)).label("day"),
+            sa.func.coalesce(
+                sa.func.sum(sa.case((ChatMsg.vote.is_(True), 1), else_=0)),
+                0,
+            ).label("likes"),
+            sa.func.coalesce(
+                sa.func.sum(sa.case((ChatMsg.vote.is_(False), 1), else_=0)),
+                0,
+            ).label("dislikes"),
+        )
+        .where(ChatMsg.created_at >= start_date_utc, ChatMsg.role == "assistant")
+        .group_by(sa.text("1"))
+        .order_by(sa.text("1"))
+    )
+    votes_res = (await db.execute(votes_query)).all()
 
     token_usage_query = (
         sa.select(
@@ -747,8 +901,16 @@ async def project_stats(request):
 
     stats = {}
     for i in range(31):
-        d = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
-        stats[d] = {"chats": 0, "users": 0, "messages": 0, "hits": 0, "tokens": 0}
+        d = (start_day_local + timedelta(days=i)).strftime("%Y-%m-%d")
+        stats[d] = {
+            "chats": 0,
+            "users": 0,
+            "messages": 0,
+            "hits": 0,
+            "tokens": 0,
+            "likes": 0,
+            "dislikes": 0,
+        }
 
     for row in chats_res:
         d = row.day.strftime("%Y-%m-%d")
@@ -763,18 +925,32 @@ async def project_stats(request):
             stats[d]["hits"] = row.hits or 0
             stats[d]["tokens"] = row.tokens or 0
 
+    for row in votes_res:
+        d = row.day.strftime("%Y-%m-%d")
+        if d in stats:
+            stats[d]["likes"] = row.likes or 0
+            stats[d]["dislikes"] = row.dislikes or 0
+
     labels = sorted(stats.keys())
     data_chats = [stats[d]["chats"] for d in labels]
     data_users = [stats[d]["users"] for d in labels]
     data_msgs = [stats[d]["messages"] for d in labels]
     data_hits = [stats[d]["hits"] for d in labels]
     data_tokens = [stats[d]["tokens"] for d in labels]
+    data_likes = [stats[d]["likes"] for d in labels]
+    data_dislikes = [stats[d]["dislikes"] for d in labels]
 
     total_unique_users = (
         await db.scalar(
             sa.select(sa.func.count(sa.distinct(Chat.user_uid))).where(
-                Chat.created_at >= start_date
+                Chat.created_at >= start_date_utc
             )
+        )
+        or 0
+    )
+    pending_embeddings = (
+        await db.scalar(
+            sa.select(sa.func.count(Chunk.id)).where(Chunk.embedding.is_(None))
         )
         or 0
     )
@@ -782,13 +958,14 @@ async def project_stats(request):
     source_docs_query = (
         sa.select(
             Source.id,
+            Source.type,
             Source.title,
             sa.func.count(Document.id).label("doc_count"),
             sa.func.coalesce(sa.func.sum(Document._length), 0).label("data_volume"),
         )
         .select_from(Source)
         .outerjoin(Document, Document.source_id == Source.id)
-        .group_by(Source.id, Source.title)
+        .group_by(Source.id, Source.type, Source.title)
         .order_by(Source.title)
     )
     source_docs_res = (await db.execute(source_docs_query)).all()
@@ -805,6 +982,36 @@ async def project_stats(request):
         .group_by(Source.id)
     )
     source_chunks_res = (await db.execute(source_chunks_query)).all()
+    legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
+    files_docs_row = (
+        await db.execute(
+            sa.select(
+                sa.func.count(Document.id).label("doc_count"),
+                sa.func.coalesce(sa.func.sum(Document._length), 0).label("data_volume"),
+            ).where(
+                sa.or_(
+                    Document.source_id.is_(None),
+                    Document.source_id.in_(legacy_upload_source_ids),
+                )
+            )
+        )
+    ).one()
+    files_chunks_row = (
+        await db.execute(
+            sa.select(
+                sa.func.count(Chunk.id).label("chunk_count"),
+                sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.content)), 0).label("chunk_storage"),
+            )
+            .select_from(Document)
+            .outerjoin(Chunk, Chunk.document_id == Document.id)
+            .where(
+                sa.or_(
+                    Document.source_id.is_(None),
+                    Document.source_id.in_(legacy_upload_source_ids),
+                )
+            )
+        )
+    ).one()
 
     chunks_by_source = {row.id: row for row in source_chunks_res}
     source_stats = []
@@ -817,10 +1024,11 @@ async def project_stats(request):
         chunk_data = chunks_by_source.get(row.id)
         chunk_count = chunk_data.chunk_count if chunk_data else 0
         chunk_storage = chunk_data.chunk_storage if chunk_data else 0
+        source_title = _("Файлы") if row.type == "upload" else row.title
         source_stats.append(
             {
                 "id": row.id,
-                "title": row.title,
+                "title": source_title,
                 "doc_count": row.doc_count,
                 "data_volume": row.data_volume,
                 "chunk_count": chunk_count,
@@ -832,6 +1040,26 @@ async def project_stats(request):
         total_chunks += chunk_count
         total_chunk_storage += chunk_storage
 
+    files_doc_count = int(files_docs_row.doc_count or 0)
+    files_data_volume = int(files_docs_row.data_volume or 0)
+    files_chunk_count = int(files_chunks_row.chunk_count or 0)
+    files_chunk_storage = int(files_chunks_row.chunk_storage or 0)
+    if files_doc_count > 0:
+        source_stats.append(
+            {
+                "id": None,
+                "title": _("Файлы"),
+                "doc_count": files_doc_count,
+                "data_volume": files_data_volume,
+                "chunk_count": files_chunk_count,
+                "chunk_storage": files_chunk_storage,
+            }
+        )
+        total_docs += files_doc_count
+        total_data_volume += files_data_volume
+        total_chunks += files_chunk_count
+        total_chunk_storage += files_chunk_storage
+
     return {
         "project": _project_context(request),
         "labels": labels,
@@ -840,11 +1068,14 @@ async def project_stats(request):
         "data_msgs": data_msgs,
         "data_hits": data_hits,
         "data_tokens": data_tokens,
+        "data_likes": data_likes,
+        "data_dislikes": data_dislikes,
         "total_chats": sum(data_chats),
         "total_users": total_unique_users,
         "total_msgs": sum(data_msgs),
         "total_hits": sum(data_hits),
         "total_tokens": sum(data_tokens),
+        "pending_embeddings": pending_embeddings,
         "token_breakdown": token_breakdown,
         "source_stats": source_stats,
         "total_docs": total_docs,
@@ -885,7 +1116,6 @@ async def project_chat(request):
             title=f"Chat for {project.title}",
             user_uid=user_uid,
             meta={},
-            type="chat",
         )
         request["db"].add(chat)
         await request["db"].commit()
@@ -919,7 +1149,7 @@ async def project_chat(request):
 
     project = _project_context(request)
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
-    ai_settings_url = request.app.router["project_actions"].url_for(
+    ai_settings_url = request.app.router["actions"].url_for(
         action="update_ai_settings", item_id="global"
     )
 
@@ -977,7 +1207,6 @@ async def _render_public_chat(request):
         title=f"Chat for {user_name or user_uid}",
         user_uid=user_uid,
         meta={"name": user_name, "email": user_email},
-        type="chat",
     )
     request["db"].add(chat)
     await request["db"].commit()
@@ -1020,16 +1249,28 @@ async def public_widget_chat(request):
 @aiohttp_jinja2.template("projects/files.html")
 async def project_files(request):
     db_session = request["db"]
+    legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
 
-    source = await db_session.scalar(
-        sa.select(Source).where(Source.type == "upload").order_by(Source.id.asc())
+    has_documents = bool(
+        await db_session.scalar(
+            sa.select(sa.func.count(Document.id)).where(
+                sa.or_(
+                    Document.source_id.is_(None),
+                    Document.source_id.in_(legacy_upload_source_ids),
+                )
+            )
+        )
     )
-    if not source:
-        source = Source(type="upload", title="Uploaded Files", uri="uploads://", config={})
-        db_session.add(source)
-        await db_session.commit()
-        await db_session.refresh(source)
 
+    return {
+        "project": _project_context(request),
+        "has_documents": has_documents,
+    }
+
+
+@login_required()
+async def project_files_json(request):
+    legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
     chunk_counts = (
         sa.select(
             Chunk.document_id.label("document_id"),
@@ -1038,26 +1279,47 @@ async def project_files(request):
         .group_by(Chunk.document_id)
         .subquery()
     )
+    size_bytes_expr = sa.func.coalesce(
+        sa.cast(sa.func.octet_length(Document.content), sa.BigInteger),
+        sa.cast(Document._length, sa.BigInteger),
+        sa.literal(0, type_=sa.BigInteger),
+    ).label("size_bytes")
 
     rows = (
-        await db_session.execute(
-            sa.select(Document, chunk_counts.c.chunk_count)
+        await request["db"].execute(
+            sa.select(Document, size_bytes_expr, chunk_counts.c.chunk_count)
             .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-            .where(Document.source_id == source.id)
+            .where(
+                sa.or_(
+                    Document.source_id.is_(None),
+                    Document.source_id.in_(legacy_upload_source_ids),
+                )
+            )
             .order_by(Document.created_at.desc())
         )
     ).all()
 
-    documents = []
-    for doc, chunk_count in rows:
-        doc.chunk_count = int(chunk_count or 0)
-        documents.append(doc)
+    data = []
+    for doc, size_bytes, chunk_count in rows:
+        raw_meta = doc.meta if isinstance(doc.meta, dict) else {}
+        meta_payload = dict(raw_meta)
+        doc_type_value = meta_payload.get("doc_type")
+        if not isinstance(doc_type_value, str) or not doc_type_value:
+            doc_type_value = "file"
+        meta_payload.setdefault("doc_type", doc_type_value)
+        data.append(
+            {
+                "id": str(doc.id),
+                "title": doc.title or meta_payload.get("filename") or "Без названия",
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "size_bytes": int(size_bytes or 0),
+                "chunk_count": int(chunk_count or 0),
+                "document_type": doc_type_value,
+                "meta": meta_payload,
+            }
+        )
 
-    return {
-        "project": _project_context(request),
-        "documents": documents,
-        "upload_source": source,
-    }
+    return web.json_response(data)
 
 
 @login_required()
@@ -1067,8 +1329,15 @@ async def secure_download(request):
 
     document = await db_session.scalar(
         sa.select(Document)
-        .join(Source, Document.source_id == Source.id)
-        .where(Document.id == file_id, Source.type == "upload")
+        .where(
+            Document.id == file_id,
+            sa.or_(
+                Document.source_id.is_(None),
+                Document.source_id.in_(
+                    sa.select(Source.id).where(Source.type == "upload")
+                ),
+            ),
+        )
     )
 
     if not document:
@@ -1081,41 +1350,8 @@ async def secure_download(request):
     return web.FileResponse(file_path)
 
 
-@login_required()
-async def delete_file(request):
-    file_id = int(request.match_info.get("file_id"))
-    db_session = request["db"]
-
-    document = await db_session.scalar(
-        sa.select(Document)
-        .join(Source, Document.source_id == Source.id)
-        .where(Document.id == file_id, Source.type == "upload")
-    )
-
-    if document:
-        if document.uri and os.path.exists(document.uri):
-            try:
-                os.remove(document.uri)
-            except OSError as e:
-                logger.error("Error deleting file %s: %s", document.uri, e)
-
-        await db_session.delete(document)
-        await db_session.commit()
-        return web.Response(text="ok")
-
-    return web.HTTPNotFound()
-
-
 async def on_upload(request: web.Request, resource: Any, source_path: Path) -> None:
     db_session = request.get("db")
-
-    source = await db_session.scalar(
-        sa.select(Source).where(Source.type == "upload").order_by(Source.id.asc())
-    )
-    if not source:
-        source = Source(type="upload", title="Uploaded Files", uri="uploads://", config={})
-        db_session.add(source)
-        await db_session.flush()
 
     metadata = parse_upload_metadata(resource.metadata_header or "")
 
@@ -1133,7 +1369,7 @@ async def on_upload(request: web.Request, resource: Any, source_path: Path) -> N
     ext = Path(original_filename).suffix
 
     document = Document(
-        source_id=source.id,
+        source_id=None,
         title=original_filename,
         uri="",
         content="",
@@ -1160,4 +1396,5 @@ async def on_upload(request: web.Request, resource: Any, source_path: Path) -> N
     document.length = 0
 
     await db_session.commit()
+    await admin_event("file_upload", request)
     crawl_file_task.delay(document.id)

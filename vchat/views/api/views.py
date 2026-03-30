@@ -6,7 +6,7 @@ from aiohttp import web
 from docling.document_converter import DocumentConverter
 
 from jobs.embedder.tasks import index_document
-from vchat.document_types import guess_document_type, has_html_form
+from vchat.document_types import guess_document_type
 from vchat.models import Chunk, Document, Source
 
 __all__ = [
@@ -107,9 +107,6 @@ async def _extract_content(url: str) -> tuple[str | None, dict[str, object], str
         meta["doc_type"] = doc_type
     if content_type:
         meta["content_type"] = content_type
-    if has_html_form(body):
-        meta["form"] = True
-
     title = None
     if "<title" in body.lower():
         low = body.lower()
@@ -266,4 +263,3 @@ async def update_document(request: web.Request) -> web.Response:
             "message": "Document indexed",
         }
     )
-

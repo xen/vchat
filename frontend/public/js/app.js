@@ -61,7 +61,13 @@ class LayoutCustomizer {
       control.addEventListener("click", () => {
         let theme = control.getAttribute("data-theme-control") ?? "light"
         if (theme === "toggle") {
-          theme = this.config.theme === "light" ? "dark" : "light"
+          if (this.config.theme === "system") {
+            theme = "light"
+          } else if (this.config.theme === "light") {
+            theme = "dark"
+          } else {
+            theme = "system"
+          }
         }
         this.config.theme = theme
         this.updateTheme()

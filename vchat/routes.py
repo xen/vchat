@@ -19,7 +19,6 @@ def setup_routes(app: web.Application) -> None:
 
     # frontend
     add("GET", "/check", frontend.healthcheck)
-    add("GET", "/home", projects.project_view, name="index")
     add("GET", "/widget", frontend.widget_js, name="widget")
     add("GET", "/js", frontend.widget_js, name="widget_js")
     add("*", "/robots.txt", frontend.robots_txt)
@@ -29,52 +28,80 @@ def setup_routes(app: web.Application) -> None:
     add("GET", "/api/update", api.update_document, name="api_update")
 
     # auth
-    add("*", "/auth/login/", auth.login, name="login")
-    add("*", "/auth/register/", auth.login, name="register")
-    add("*", "/auth/logout/", auth.logout, name="logout")
-    add("*", "/auth/settings/", user.settings, name="settings")
-    add("*", "/auth/settings/password/", user.settings, name="settings_password")
+    add("*", "/login/", auth.login, name="login")
+    add("*", "/logout/", auth.logout, name="logout")
 
     # admin
-    add("GET", "/admin/", admin.dashboard, name="admin_dashboard")
-    add("*", "/admin/users/", admin.user_list, name="admin_users")
-    add("GET", "/admin/login-as/", admin.login_as, name="admin_login_as")
+    add("*", "/users", admin.user_list, name="users")
+    add("GET", "/events", admin.event_list, name="admin_events")
 
     # single-project admin pages
-    add("GET", "/", projects.project_view, name="project_view")
-    add("GET", "/dashboard", projects.project_view, name="dashboard")
-    add("*", "/settings/project", projects.project_edit, name="project_edit")
-    add("GET", "/documents/json", projects.project_documents_json, name="project_documents_json")
+    add("GET", "/", projects.project_stats, name="index")
+    add("GET", "/pages", projects.project_view, name="project_view")
+    add("*", "/edit", projects.project_edit, name="project_edit")
+    add(
+        "GET",
+        "/documents/json",
+        projects.project_documents_json,
+        name="project_documents_json",
+    )
     add("*", "/topics", projects.project_topics, name="project_topics")
-    add("*", "/sources", projects.project_edit_sources, name="project_edit_sources")
-    add("*", r"/source/{source_id:[0-9]+}", projects.project_source_edit, name="project_source_edit")
+    add("*", "/source", projects.project_edit_sources, name="project_edit_sources")
     add(
         "*",
-        r"/source/{source_id:[0-9]+}/settings",
+        r"/source/{source_id:[0-9]+}",
         projects.project_source_settings,
         name="project_source_settings",
     )
-    add("GET", r"/document/{document_id:[0-9]+}/content", projects.project_document_content, name="project_document_content")
+    add(
+        "GET",
+        r"/document/{document_id:[0-9]+}/content",
+        projects.project_document_content,
+        name="project_document_content",
+    )
     add("GET", "/stats", projects.project_stats, name="project_stats")
     add("GET", "/files", projects.project_files, name="project_files")
-    add("GET", r"/files/download/{file_id:[0-9]+}", projects.secure_download, name="secure_download")
-    add("POST", r"/files/delete/{file_id:[0-9]+}", projects.delete_file, name="delete_file")
-    add("*", "/actions/project/{action}/{item_id}", projects.project_action, name="project_actions")
+    add("GET", "/files/json", projects.project_files_json, name="project_files_json")
+    add(
+        "GET",
+        r"/files/{file_id:[0-9]+}",
+        projects.secure_download,
+        name="secure_download",
+    )
+    add(
+        "*",
+        "/actions/{action}/{item_id}",
+        projects.project_action,
+        name="actions",
+    )
 
     # chat pages + monitor
     add("GET", "/chat", projects.project_chat, name="project_chat")
-    add("GET", r"/chat/{chat_id:[a-zA-Z0-9-]+}", projects.project_chat, name="project_chat_with_id")
+    add(
+        "GET",
+        r"/chat/{chat_id:[a-zA-Z0-9-]+}",
+        projects.project_chat,
+        name="project_chat_with_id",
+    )
     add("GET", "/chat/widget", projects.public_widget_chat, name="public_widget_chat")
     add("GET", "/integration", projects.project_integration, name="project_integration")
     add("GET", "/chats", projects.chats_list, name="project_chats_list")
     add("GET", "/history", projects.history_list, name="project_history")
-    add("GET", r"/history/{chat_id:[a-zA-Z0-9-]+}", projects.history_detail, name="project_history_detail")
-    add("GET", r"/chats/monitor/{chat_id:[a-zA-Z0-9-]+}", projects.chat_monitor_ws, name="project_chat_monitor_ws")
-
+    add(
+        "GET",
+        r"/history/{chat_id:[a-zA-Z0-9-]+}",
+        projects.history_detail,
+        name="project_history_detail",
+    )
     # chat websocket + chat actions
     add("GET", "/ws/notify", user.notify_ws, name="notify_ws")
     add("GET", "/ws/chat/{payload}", chat.websocket, name="chat_ws")
-    add("POST", "/actions/chat/{action}/{item_id}", chat.chat_actions, name="chat_actions")
+    add(
+        "POST",
+        "/actions/chat/{action}/{item_id}",
+        chat.chat_actions,
+        name="chat_actions",
+    )
 
     # static files
     app.router.add_static(

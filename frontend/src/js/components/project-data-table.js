@@ -95,8 +95,6 @@ const normalizeMeta = (value) => {
   return { ...value }
 }
 
-const FORM_TOOLTIP = 'Есть форма'
-
 const compareIsoDates = (rowA, rowB, columnId) => {
   const toTimestamp = (value) => {
     if (!value) return 0
@@ -204,6 +202,11 @@ window.useProjectDataTable = () => {
       },
       enableSorting: true,
       sortingFn: compareStrings,
+      filterFn: (row, columnId, filterValue) => {
+        if (!filterValue) return true
+        const value = (row.getValue(columnId) ?? '').toString()
+        return value === filterValue
+      },
     },
     {
       accessorKey: "created_at",
@@ -248,37 +251,6 @@ window.useProjectDataTable = () => {
       },
       enableSorting: true,
       sortingFn: compareNumbers,
-    },
-    {
-      id: "notes",
-      header: "Примечания",
-      cell: (info) => {
-        const meta = info.row.original && typeof info.row.original.meta === 'object' ? info.row.original.meta : null
-        const hasForm = Boolean(meta && meta.form)
-        const lang = meta && meta.lang ? escapeHtml(meta.lang.toUpperCase()) : null
-
-        let content = ''
-
-        if (lang) {
-          content += `<span class="badge badge-sm badge-ghost mr-1">${lang}</span>`
-        }
-
-        if (hasForm) {
-          const label = escapeHtml(FORM_TOOLTIP)
-          content += `<a class="btn btn-xs btn-outline" title="${label}" aria-label="${label}">F</a>`
-        }
-
-        if (!content) {
-          return '<span class="text-xs text-base-content/50">—</span>'
-        }
-
-        return `
-                    <div class="flex justify-center items-center">
-                        ${content}
-                    </div>
-                `
-      },
-      enableSorting: false,
     },
     {
       id: "view",
@@ -350,6 +322,7 @@ window.useProjectDataTable = () => {
     rangeStart: 0,
     rangeEnd: 0,
     search: "",
+    sourceFilter: "",
     table: null,
     state: null,
     data: [],
@@ -367,6 +340,7 @@ window.useProjectDataTable = () => {
         },
         globalFilter: "",
         sorting: [],
+        columnFilters: [],
       }
 
       this.initFromUrl()
@@ -408,11 +382,19 @@ window.useProjectDataTable = () => {
       if (typeof window === 'undefined') return
       const params = new URLSearchParams(window.location.search)
       const search = params.get('search')
+      const source = params.get('source')
       const page = params.get('page')
 
       if (search) {
         this.state.globalFilter = search
         this.search = search
+      }
+      if (source) {
+        this.sourceFilter = source
+        this.state.columnFilters = [{ id: 'source', value: source }]
+      } else {
+        this.sourceFilter = ""
+        this.state.columnFilters = []
       }
       if (page) {
         const pageIndex = parseInt(page, 10) - 1
@@ -430,6 +412,12 @@ window.useProjectDataTable = () => {
         params.set('search', this.state.globalFilter)
       } else {
         params.delete('search')
+      }
+
+      if (this.sourceFilter) {
+        params.set('source', this.sourceFilter)
+      } else {
+        params.delete('source')
       }
 
       if (this.state.pagination.pageIndex > 0) {
@@ -456,6 +444,8 @@ window.useProjectDataTable = () => {
               pageIndex: this.state.pagination.pageIndex
             },
             globalFilter: this.state.globalFilter
+            ,
+            columnFilters: this.state.columnFilters
           }
         }))
         this.updateDerivedState()
@@ -472,7 +462,6 @@ window.useProjectDataTable = () => {
                 meta: rawMeta,
                 document_type: rawDocumentType,
                 document_type_label: _unusedDocumentTypeLabel,
-                notes: _unusedNotes,
                 ...rest
               } = item || {}
 
@@ -535,6 +524,14 @@ window.useProjectDataTable = () => {
     updateSearch() {
       this.table?.setPageIndex(0)
       this.table?.setGlobalFilter(this.search)
+    },
+    updateSourceFilter() {
+      this.table?.setPageIndex(0)
+      const sourceColumn = this.table?.getColumn('source')
+      if (!sourceColumn) {
+        return
+      }
+      sourceColumn.setFilterValue(this.sourceFilter || undefined)
     },
     registerRefreshListener() {
       if (this.refreshListener || typeof document === 'undefined') {
@@ -655,7 +652,7 @@ window.useProjectDataTable = () => {
       const payload = new URLSearchParams()
       payload.append('is_ignored', desiredState ? 'true' : 'false')
 
-      const ok = await this.sendRowAction(`/actions/project/ignore_document/${docId}`, payload)
+      const ok = await this.sendRowAction(`/actions/ignore_document/${docId}`, payload)
       if (ok) {
         doc.is_ignored = desiredState
         this.updateDerivedState()
@@ -669,7 +666,7 @@ window.useProjectDataTable = () => {
         return
       }
 
-      const ok = await this.sendRowAction(`/actions/project/delete_document/${docId}`)
+      const ok = await this.sendRowAction(`/actions/delete_document/${docId}`)
       if (ok) {
         this.data = this.data.filter(item => item.id !== docId)
         this.table.setOptions(prev => ({ ...prev, data: this.data }))

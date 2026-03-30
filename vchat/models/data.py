@@ -12,14 +12,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, Created, Updated, generate_uuid7
 
 
-chat_type_enum = ENUM(
-    "chat",
-    "call",
-    name="chattype",
-    create_type=False,
-)
-
-
 class Chat(Base, Created, Updated):
     __tablename__ = "chat"
 
@@ -31,7 +23,6 @@ class Chat(Base, Created, Updated):
     title: Mapped[str] = mapped_column(sa.String(200), nullable=False, default="")
     user_uid: Mapped[str] = mapped_column(sa.String(256), nullable=False, index=True)
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    type: Mapped[str] = mapped_column(chat_type_enum, nullable=False, default="chat")
     record: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
 
 
@@ -135,10 +126,10 @@ class Document(Base, Created, Updated):
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
     uri: Mapped[str] = mapped_column(sa.String, nullable=True)
-    source_id: Mapped[int] = mapped_column(
+    source_id: Mapped[int | None] = mapped_column(
         sa.Integer,
         ForeignKey("source.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     content: Mapped[str] = mapped_column(sa.Text, nullable=True)

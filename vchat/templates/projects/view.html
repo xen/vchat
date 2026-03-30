@@ -2,7 +2,7 @@
 {% block content %}
 
 <div class="flex items-center justify-between">
-    <p class="text-lg font-medium">Данные</p>
+    <p class="text-lg font-medium">Страницы</p>
 </div>
 
 <div class="mt-6" x-data="useProjectDataTable()">
@@ -19,9 +19,18 @@
                         @input="updateSearch"
                         placeholder="Поиск документов..." />
                 </label>
+                <label class="select select-sm w-56">
+                    <iconify-icon icon="lucide:filter" class="text-base-content/70 size-4.5"></iconify-icon>
+                    <select x-model="sourceFilter" @change="updateSourceFilter">
+                        <option value="">Все источники</option>
+                        {% for source_name in source_filters %}
+                            <option value="{{ source_name }}">{{ source_name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
                 <div class="flex items-center gap-2">
                   <div class="join">
-                    <button hx-post="{{ url('project_actions', action='refresh_project_index', item_id='global') }}"
+                    <button hx-post="{{ url('actions', action='refresh_project_index', item_id='global') }}"
                             hx-swap="none"
                             class="btn btn-secondary btn-sm max-sm:btn-square">
                         <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
@@ -38,7 +47,7 @@
                             {% for source in sources %}
                                 <li>
                                     <button type="button" class="btn btn-ghost btn-outline btn-sm max-sm:btn-square"
-                                            hx-post="{{ url('project_actions', action='refresh_source_index', item_id=source.id) }}"
+                                            hx-post="{{ url('actions', action='refresh_source_index', item_id=source.id) }}"
                                             hx-swap="none">
                                         {{ 'Обновить %(title)s' % {'title': (source.title or source.uri)} }}
                                     </button>
@@ -46,7 +55,7 @@
                             {% endfor %}
                             <li>
                                 <button type="button" class="btn btn-secondary btn-outline btn-sm max-sm:btn-square"
-                                        hx-post="{{ url('project_actions', action='index_project', item_id='global') }}"
+                                        hx-post="{{ url('actions', action='index_project', item_id='global') }}"
                                         hx-swap="none">
                                     Полная переиндексация
                                 </button>

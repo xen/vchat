@@ -18,7 +18,7 @@
                         <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
                         <span class="hidden sm:inline">Добавить источник</span>
                     </button>
-                    <button hx-post="{{ url('project_actions', action='crawl_all', item_id='global') }}"
+                    <button hx-post="{{ url('actions', action='crawl_all', item_id='global') }}"
                             hx-swap="none"
                             class="btn btn-secondary btn-sm max-sm:btn-square">
                         <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
@@ -80,41 +80,32 @@
                             </td>
                             <td>
                                 <div class="inline-flex w-fit">
-                                    {% if source.type != 'upload' %}
-                                    <button hx-post="{{ url('project_actions', action='crawl_source', item_id=source.id) }}"
+                                    <button hx-post="{{ url('actions', action='crawl_source', item_id=source.id) }}"
                                             hx-swap="none"
                                             class="btn btn-square btn-ghost btn-sm"
                                             title="Обход">
                                         <iconify-icon icon="lucide:refresh-cw" class="text-success size-4"></iconify-icon>
                                     </button>
-                                    <button hx-get="{{ url('project_source_edit', source_id=source.id) }}"
-                                            hx-target="#edit_source_modal_content"
-                                            onclick="edit_source_modal.showModal()"
-                                            class="btn btn-square btn-ghost btn-sm"
-                                            title="Редактировать">
-                                        <iconify-icon icon="lucide:pencil" class="text-primary size-4"></iconify-icon>
-                                    </button>
                                     <a href="{{ url('project_source_settings', source_id=source.id) }}"
                                        class="btn btn-square btn-ghost btn-sm"
-                                       title="Настройки">
-                                        <iconify-icon icon="lucide:sliders-horizontal" class="text-info size-4"></iconify-icon>
+                                       title="Редактировать">
+                                        <iconify-icon icon="lucide:pencil" class="text-primary size-4"></iconify-icon>
                                     </a>
                                     <button class="btn btn-square btn-ghost btn-sm"
-                                            hx-post="{{ url('project_actions', action='rebuild_source', item_id=source.id) }}"
+                                            hx-post="{{ url('actions', action='rebuild_source', item_id=source.id) }}"
                                             hx-confirm="Вы уверены? Это удалит все проиндексированные документы этого источника и запустит обход заново."
                                             hx-swap="none"
                                             title="Полная переиндексация">
                                         <iconify-icon icon="lucide:rotate-ccw" class="text-warning size-4"></iconify-icon>
                                     </button>
                                     <button class="btn btn-square btn-error btn-outline btn-sm border-transparent"
-                                            hx-post="{{ url('project_actions', action='delete_source', item_id=source.id) }}"
+                                            hx-post="{{ url('actions', action='delete_source', item_id=source.id) }}"
                                             hx-confirm="Вы уверены, что хотите удалить этот источник?"
                                             hx-target="closest tr"
                                             hx-swap="outerHTML"
                                             title="Удалить">
                                         <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
                                     </button>
-                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
@@ -136,7 +127,7 @@
 <dialog id="add_source_modal" class="modal">
     <div class="modal-box">
         <h3 class="font-bold text-lg">Добавить новый источник</h3>
-        <form hx-post="{{ url('project_actions', action='add_source', item_id='global') }}" hx-swap="none" class="py-4">
+        <form hx-post="{{ url('actions', action='add_source', item_id='global') }}" hx-swap="none" class="py-4">
             {{ form.csrf_token }}
             <div class="form-control w-full mb-4">
                 <label class="label">
@@ -354,18 +345,5 @@
 
     window.refreshGoogleFolders = fetchGoogleFolders;
 </script>
-
-<!-- Edit Source Modal -->
-<dialog id="edit_source_modal" class="modal">
-    <div class="modal-box" id="edit_source_modal_content">
-        <!-- Content will be loaded here via HTMX -->
-        <div class="flex justify-center p-4">
-            <span class="loading loading-spinner loading-lg"></span>
-        </div>
-    </div>
-    <form method="dialog" class="modal-backdrop">
-        <button>Закрыть</button>
-    </form>
-</dialog>
 
 {% endblock %}

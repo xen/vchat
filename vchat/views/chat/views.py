@@ -51,6 +51,42 @@ def is_trivial_query(text: str) -> bool:
     return bool(TRIVIAL_REGEX.match(text.strip()))
 
 
+def extract_total_tokens(usage_data: Any) -> int:
+    """Normalize token usage payload from different provider/client formats."""
+    if not usage_data:
+        return 0
+    if hasattr(usage_data, "model_dump"):
+        usage_data = usage_data.model_dump()
+    if not isinstance(usage_data, dict):
+        return 0
+
+    def _as_int(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    total = _as_int(usage_data.get("total_tokens"))
+    if total > 0:
+        return total
+
+    total = _as_int(usage_data.get("total"))
+    if total > 0:
+        return total
+
+    prompt = _as_int(usage_data.get("prompt_tokens") or usage_data.get("input_tokens"))
+    completion = _as_int(
+        usage_data.get("completion_tokens") or usage_data.get("output_tokens")
+    )
+    if prompt > 0 or completion > 0:
+        return prompt + completion
+
+    nested = usage_data.get("usage")
+    if isinstance(nested, dict):
+        return extract_total_tokens(nested)
+    return 0
+
+
 @dataclass
 class GenerationContext:
     provider: BaseAIProvider
@@ -717,9 +753,9 @@ async def websocket(request):
 
                         elif event_type == "usage":
                             usage_data = event.get("usage", {})
-                            # We can track total tokens for the whole interaction
-                            # For now, let's just store what OpenAI returns
-                            total_tokens = usage_data.get("total_tokens", 0)
+                            parsed_total_tokens = extract_total_tokens(usage_data)
+                            if parsed_total_tokens > 0:
+                                total_tokens = max(total_tokens, parsed_total_tokens)
                         elif event_type == "guardrail":
                             reason = (event.get("reason") or "unknown").strip().lower()
                             if reason:

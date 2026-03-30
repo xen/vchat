@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import mimetypes
 import os
-import re
 from urllib.parse import urlparse
 
 DEFAULT_DOCUMENT_TYPE = "other"
@@ -177,7 +176,6 @@ _CODE_CONTENT_SUFFIXES = (
 __all__ = [
     "DOCUMENT_TYPE_INFO",
     "guess_document_type",
-    "has_html_form",
     "get_document_type_label",
 ]
 
@@ -229,15 +227,6 @@ def guess_document_type(uri: str | None = None, content_type: str | None = None)
             return _EXTENSION_TO_TYPE[base]
 
     return DEFAULT_DOCUMENT_TYPE
-
-
-def has_html_form(html: str | None) -> bool:
-    """Detect whether an HTML string contains a form element."""
-
-    if not html:
-        return False
-    return bool(re.search(r"<\s*form\b", html, flags=re.IGNORECASE))
-
 
 def get_document_type_label(doc_type: str) -> str:
     """Return a human-readable label for a document type."""

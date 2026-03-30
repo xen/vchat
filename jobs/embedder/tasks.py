@@ -105,11 +105,7 @@ def chunk_text_word_window(
 
 
 def _fetch_document_context(session: Session, document_id: int):
-    stmt = (
-        select(Document)
-        .join(Source, Document.source_id == Source.id)
-        .where(Document.id == document_id)
-    )
+    stmt = select(Document).where(Document.id == document_id)
     row = session.execute(stmt).first()
     if not row:
         logging.warning("Document %s not found", document_id)
@@ -320,7 +316,6 @@ def index_project():
         with Session(bind=engine) as session:
             stmt = (
                 select(Document.id)
-                .join(Source, Document.source_id == Source.id)
                 .where(Document.is_ignored == False)
             )
             doc_ids = session.execute(stmt).scalars().all()
@@ -347,7 +342,6 @@ def refresh_project_index():
                     sa.func.count(Chunk.id).label("chunk_count"),
                 )
                 .join(Document, Chunk.document_id == Document.id)
-                .join(Source, Document.source_id == Source.id)
                 .group_by(Chunk.document_id)
                 .subquery()
             )
@@ -355,7 +349,6 @@ def refresh_project_index():
             docs_without_chunks = (
                 session.execute(
                     sa.select(Document.id)
-                    .join(Source, Document.source_id == Source.id)
                     .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
                     .where(Document.is_ignored == False)
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
@@ -371,7 +364,6 @@ def refresh_project_index():
             ignored_doc_ids = (
                 session.execute(
                     sa.select(Document.id)
-                    .join(Source, Document.source_id == Source.id)
                     .where(Document.is_ignored == True)
                 )
                 .scalars()

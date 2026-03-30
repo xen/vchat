@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.models import Chunk, Document, Source
+from vchat.models import Chunk, Document
 
 logger = logging.getLogger(__name__)
 
@@ -31,18 +31,10 @@ def crawl_file_task(file_id: int):
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = (
-                select(Document, Source)
-                .join(Source, Document.source_id == Source.id)
-                .where(Document.id == file_id)
-            )
-            row = session.execute(stmt).first()
-
-            if not row:
+            doc = session.scalar(select(Document).where(Document.id == file_id))
+            if not doc:
                 print(f"Document {file_id} not found")
                 return
-
-            doc, source = row
             file_path_str = doc.uri
 
             if not file_path_str or not Path(file_path_str).exists():

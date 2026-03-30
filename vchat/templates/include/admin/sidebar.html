@@ -30,13 +30,15 @@
         <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('История') }}</p>
         {{ item(_('Чаты пользователей'), url('project_history'), 'message-circle') }}
         {{ item(_('Статистика'), url('project_stats'), 'chart-bar') }}
-        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Данные') }}</p>
-        {{ item(_('Данные'), url('project_view'), 'server') }}
+        <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Индексация') }}</p>
         {{ item(_('Источники'), url('project_edit_sources'), 'binary') }}
+        {{ item(_('Страницы'), url('project_view'), 'server') }}
         {{ item(_('Файлы'), url('project_files'), 'file') }}
         <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Настройки') }}</p>
         {{ item(_('Интеграция'), url('project_integration'), 'code') }}
         {{ item(_('Настройки'), url('project_edit'), 'settings') }}
+        {{ item(_('Пользователи'), url('users'), 'users') }}
+        {{ item(_('Журнал действий'), url('admin_events'), 'clipboard-list') }}
         {{ item(_('Темы'), url('project_topics'), 'sparkles') }}
 
       </div>

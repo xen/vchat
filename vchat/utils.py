@@ -157,6 +157,30 @@ async def flash(request, message, category="success"):
     await r.publish(channel_name, payload)
 
 
+async def admin_event(event_name: str, request) -> None:
+    db = request.get("db")
+    if db is None:
+        return
+
+    user = request.get("user")
+    user_id = getattr(user, "id", None)
+    user_email = getattr(user, "email", None) or "anonymous"
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    ip_address = (forwarded_for.split(",", 1)[0].strip() if forwarded_for else request.remote) or None
+
+    from vchat.models import AdminEvent
+
+    db.add(
+        AdminEvent(
+            user_id=user_id,
+            user_email=user_email,
+            ip_address=ip_address,
+            event_name=(event_name or "").strip()[:128] or "unknown_event",
+        )
+    )
+    await db.commit()
+
+
 serializer_timed = URLSafeTimedSerializer(config["secret_key"])
 serializer = URLSafeSerializer(config["secret_key"])
 
@@ -234,7 +258,7 @@ def gravatar_url(
     return f"https://www.gravatar.com/avatar/{email_hash}?{query_params}"
 
 
-def login_required(allowed_roles=None):
+def login_required():
     def decorator(func):
         @wraps(func)
         async def decorated_view(request):
@@ -245,11 +269,6 @@ def login_required(allowed_roles=None):
                     query_params = {"next": request.path}
                     url = f"{url}?{urlencode(query_params)}"
                 return aiohttp.web.HTTPFound(url)
-
-            if allowed_roles is not None:
-                user_role = getattr(request.get("user", {}), "role", None)
-                if user_role.value not in allowed_roles:
-                    raise aiohttp.web.HTTPForbidden()
 
             return await func(request)
 
@@ -393,15 +412,10 @@ async def run_command(command):
 
 
 async def get_all_users(db_session):
-    from vchat.models import User, UserRole
+    from vchat.models import User
 
     users = await db_session.execute(
-        sa.select(User).where(
-            sa.and_(
-                User.is_active.is_(True),
-                User.role == UserRole.user,
-            )
-        )
+        sa.select(User).where(User.is_active.is_(True))
     )
     return users.scalars().fetchall()
 
@@ -435,46 +449,6 @@ md = markdown.Markdown(
 def convert_to_html(text: str) -> Tuple[str, dict]:
     """Convert markdown to html and return metadata"""
     return md.convert(text), {**getattr(md, "Meta", {})}
-
-
-async def register_user(
-    *,
-    request,
-    name,
-    email,
-    encrypted_password,
-    active=False,
-):
-    from vchat.models import User, UserRole
-
-    insert_query = (
-        sa.insert(User)
-        .values(
-            name=name,
-            email=email,
-            password=encrypted_password,
-            is_active=active,
-            role=UserRole.user,
-        )
-        .returning(User.id)
-    )
-    user_id = await request["db"].execute(insert_query)
-    await request["db"].commit()
-    user_id = user_id.scalar()
-    context = {
-        "url": "https://{host}/auth/confirm/{secret}".format(
-            host=request.host,
-            secret=URLSafeSerializer(config["secret_key"]).dumps(email),
-        )
-    }
-    await sendmessage(
-        to=email,
-        subject=_("Registration confirmation"),
-        template="mail/register-email.html",
-        request=request,
-        context=context,
-    )
-    return user_id
 
 
 # --- Redis (optional) support for background tasks ---

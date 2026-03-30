@@ -5,90 +5,119 @@
     <p class="text-lg font-medium">Файлы</p>
 </div>
 
-<div class="mt-6">
+<div class="mt-6" x-data="useFilesDataTable()">
     <div class="card bg-base-100 shadow mb-6">
         <div class="card-body">
             <div class="flex items-center justify-between">
                 <h3 class="card-title text-base">Загрузка файлов</h3>
-                {% if documents %}
+                {% if has_documents %}
                 <button class="btn btn-sm btn-outline btn-secondary"
-                        hx-post="{{ url('project_actions', action='rebuild_uploads', item_id='global') }}"
+                        hx-post="{{ url('actions', action='rebuild_uploads', item_id='global') }}"
                         hx-swap="none">
                     <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
                     Переиндексировать все
                 </button>
                 {% endif %}
             </div>
-            <div id="uppy" class="min-h-[300px]"></div>
+            <div id="uppy" class="min-h-[120px]"></div>
         </div>
     </div>
 
     <div class="card bg-base-100 shadow">
         <div class="card-body p-0">
+            <div class="border-base-200 flex items-center justify-between border-b border-dashed px-5 py-5">
+                <label class="input input-sm w-56">
+                    <iconify-icon icon="lucide:search" class="text-base-content/70 size-4.5"></iconify-icon>
+                    <input
+                        class="text-base placeholder:text-sm"
+                        type="search"
+                        x-model="search"
+                        @input="updateSearch"
+                        placeholder="Поиск файлов..." />
+                </label>
+                <p class="text-base-content/70 text-sm" x-show="!loading">
+                    Показано
+                    <span class="text-base-content font-medium" x-text="rangeStart"></span>
+                    -
+                    <span class="text-base-content font-medium" x-text="rangeEnd"></span>
+                    из
+                    <span class="text-base-content font-medium" x-text="filteredRowCount"></span>
+                </p>
+            </div>
+
             <div class="overflow-x-auto">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Тип</th>
-                            <th>Название</th>
-                            <th>Размер / чанки</th>
-                            <th>Добавлен</th>
-                            <th>Действия</th>
-                        </tr>
+                <div x-show="loading" class="flex justify-center items-center h-40">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                </div>
+                <table class="table" x-show="!loading">
+                    <thead x-ref="filesHead">
+                        <template x-for="headerGroup in headerGroups" :key="headerGroup.id">
+                            <tr>
+                                <template x-for="header in headerGroup.headers" :key="header.id">
+                                    <th x-html="flexRender(header.column.columnDef.header, header.getContext())"></th>
+                                </template>
+                            </tr>
+                        </template>
                     </thead>
-                    <tbody>
-                        {% for doc in documents %}
-                        <tr class="hover:bg-base-200/40">
-                            <td>
-                                <div class="flex items-center gap-2">
-                                    <iconify-icon icon="lucide:file-text" class="size-4 opacity-70"></iconify-icon>
-                                    <span class="text-xs opacity-70">{{ doc.meta.get('doc_type', 'file') }}</span>
-                                </div>
-                            </td>
-                            <td>
-                                <div class="font-medium">{{ doc.title or doc.meta.get('filename', 'Unknown') }}</div>
-                            </td>
-                            <td>
-                                <div class="flex flex-col gap-0.5 text-sm">
-                                    <span class="font-medium">{{ (doc.length or 0)|filesizeformat }}</span>
-                                    <span class="opacity-70">{{ doc.chunk_count|default(0) }} чанков</span>
-                                </div>
-                            </td>
-                            <td>
-                                <div class="text-sm opacity-70">{{ doc.created_at.strftime('%Y-%m-%d') }}</div>
-                            </td>
-                            <td>
-                                <div class="flex items-center gap-2">
-                                    <a href="{{ url('secure_download', file_id=doc.id) }}"
-                                       class="btn btn-square btn-ghost btn-sm"
-                                       title="Скачать"
-                                       target="_blank">
-                                        <iconify-icon icon="lucide:download" class="size-4"></iconify-icon>
-                                    </a>
-                                    <button class="btn btn-square btn-ghost btn-sm text-error"
-                                            hx-post="{{ url('delete_file', file_id=doc.id) }}"
-                                            hx-confirm="Вы уверены, что хотите удалить этот файл?"
-                                            hx-target="closest tr"
-                                            hx-swap="outerHTML"
-                                            title="Удалить">
-                                        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="5" class="text-center text-base-content/60 py-8">
-                                Пока нет загруженных файлов.
-                            </td>
-                        </tr>
-                        {% endfor %}
+                    <tbody x-ref="filesBody">
+                        <template x-if="visibleRows.length === 0">
+                            <tr>
+                                <td colspan="5" class="text-center text-base-content/60 py-8">
+                                    Пока нет загруженных файлов.
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="row in visibleRows" :key="row.id">
+                            <tr class="hover:bg-base-200/40">
+                                <template x-for="cell in row.getVisibleCells()" :key="cell.id">
+                                    <td x-html="flexRender(cell.column.columnDef.cell, cell.getContext())"></td>
+                                </template>
+                            </tr>
+                        </template>
                     </tbody>
                 </table>
+            </div>
+
+            <div class="border-base-200 flex items-center justify-end gap-2 border-t border-dashed p-5" x-show="!loading && pageCount > 1">
+                <div class="join">
+                    <button
+                        class="btn btn-square btn-sm btn-outline border-base-300 join-item"
+                        :disabled="!canPreviousPage"
+                        @click="prevPage()">
+                        <iconify-icon icon="lucide:arrow-left"></iconify-icon>
+                    </button>
+                    <span class="join-item btn btn-sm btn-ghost no-animation cursor-default">
+                        <span x-text="pageIndex + 1"></span> / <span x-text="pageCount"></span>
+                    </span>
+                    <button
+                        class="btn btn-square btn-sm btn-outline border-base-300 join-item"
+                        :disabled="!canNextPage"
+                        @click="nextPage()">
+                        <iconify-icon icon="lucide:arrow-right"></iconify-icon>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Document Content Modal -->
+<dialog id="document_modal" class="modal">
+    <div class="modal-box w-11/12 max-w-5xl h-[80vh] p-0 flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="font-bold text-lg">Содержимое файла</h3>
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost">✕</button>
+            </form>
+        </div>
+        <div id="document-content" class="p-6 overflow-y-auto flex-1 prose max-w-none">
+            <!-- Content will be loaded here -->
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>Закрыть</button>
+    </form>
+</dialog>
 
 <script type="module">
     document.addEventListener('DOMContentLoaded', () => {

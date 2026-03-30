@@ -16,12 +16,132 @@
 
                 <div class="form-control w-full">
                     <label class="label">
+                        <span class="label-text">{{ _('Заголовок') }}</span>
+                    </label>
+                    {{ form.title(class="input input-bordered w-full", placeholder=_("Необязательный заголовок")) }}
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label">
+                        <span class="label-text">{{ _('Тип') }}</span>
+                    </label>
+                    {{ form.type(class="select select-bordered w-full", id="source_type_select", disabled=True) }}
+                    <input type="hidden" name="type" value="{{ source.type }}">
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label">
                         <span class="label-text">{{ _('Переиндексация') }}</span>
                     </label>
                     {{ form.reindex_period(class="select select-bordered w-full") }}
                     <label class="label">
                         <span class="label-text-alt">{{ _('Ручная переиндексация выполняется только вручную через кнопку обхода.') }}</span>
                     </label>
+                </div>
+
+                <div id="site_fields" class="space-y-5">
+                    <div class="form-control w-full">
+                        <label class="label">
+                            <span class="label-text">{{ _('URL') }}</span>
+                        </label>
+                        {{ form.url(class="input input-bordered w-full", placeholder="https://example.com") }}
+                        {% if form.url.errors %}
+                            <div class="label">
+                                {% for error in form.url.errors %}
+                                    <span class="label-text-alt text-error">{{ error }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <h3 class="text-base font-semibold">{{ _('Правила индексации') }}</h3>
+                    <div class="text-sm space-y-2">
+                        <div class="space-y-2">
+                            <p>
+                                {{ _('Эти правила помогают исключать страницы из индекса и обхода, даже если URL есть в sitemap.xml или был найден роботом при переходе по ссылкам.') }}
+                            </p>
+                            <p>{{ _('Примеры исключения:') }}</p>
+                            <ul class="list-disc pl-5 space-y-1">
+                                <li><strong>XPath Rule:</strong> <code>//a[contains(@href, "/private/")]</code> — {{ _('не переходить по ссылкам на приватные разделы.') }}</li>
+                                <li><strong>CSS Rule:</strong> <code>a[href*="/checkout"], a[href*="/cart"]</code> — {{ _('исключить служебные страницы корзины/оформления.') }}</li>
+                                <li><strong>Ignored Param:</strong> <code>utm_source</code>, <code>session_id</code> — {{ _('не создавать отдельные URL в обходе и индексе из-за параметров трекинга/сессии.') }}</li>
+                                <li><strong>URL Regex:</strong> <code>^https://example\\.com/(admin|internal|tmp)/</code> — {{ _('полностью исключить ветки URL из обхода и индексации.') }}</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div id="index_rules_container">
+                        {% if source.config and source.config.get('rules') %}
+                            {% for rule in source.config.get('rules') %}
+                            <div class="flex gap-2 mb-2 items-end rule-row">
+                                <div class="form-control w-1/3">
+                                    <label class="label py-1">
+                                        <span class="label-text-alt">{{ _('Тип правила') }}</span>
+                                    </label>
+                                    <select name="rule_type[]" class="select select-bordered select-sm w-full">
+                                        <option value="xpath" {% if rule.type == 'xpath' %}selected{% endif %}>XPath Rule</option>
+                                        <option value="css" {% if rule.type == 'css' %}selected{% endif %}>CSS Rule</option>
+                                        <option value="param" {% if rule.type == 'param' %}selected{% endif %}>Ignored Param</option>
+                                        <option value="regex" {% if rule.type == 'regex' %}selected{% endif %}>URL Regex</option>
+                                    </select>
+                                </div>
+                                <div class="form-control w-2/3">
+                                    <label class="label py-1">
+                                        <span class="label-text-alt">{{ _('Значение') }}</span>
+                                    </label>
+                                    <input type="text" name="rule_value[]" value="{{ rule.value }}" class="input input-bordered input-sm w-full" placeholder="Значение">
+                                </div>
+                                <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error">
+                                    <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+                                </button>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    <button type="button" onclick="addIndexRule()" class="btn btn-sm btn-outline btn-primary mt-2">
+                        <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+                        {{ _('Добавить правило') }}
+                    </button>
+                </div>
+
+                <div id="s3_fields" class="space-y-5" style="display:none;">
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('AWS Access Key ID') }}</span></label>
+                        {{ form.aws_access_key_id }}
+                    </div>
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('AWS Secret Access Key') }}</span></label>
+                        {{ form.aws_secret_access_key }}
+                    </div>
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('Имя бакета') }}</span></label>
+                        {{ form.bucket_name }}
+                    </div>
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('URL эндпоинта') }}</span></label>
+                        {{ form.endpoint_url }}
+                    </div>
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('Регион') }}</span></label>
+                        {{ form.region }}
+                    </div>
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('Префикс') }}</span></label>
+                        {{ form.prefix }}
+                    </div>
+                </div>
+
+                <div id="google_drive_fields" class="space-y-5" style="display:none;">
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('ID папки') }}</span></label>
+                        {{ form.google_drive_folder_id }}
+                    </div>
+                    <div class="form-control w-full">
+                        <label class="label"><span class="label-text">{{ _('Название папки') }}</span></label>
+                        {{ form.google_drive_folder_name }}
+                    </div>
+                    <div class="text-xs text-base-content/60">
+                        {{ _('Чтобы изменить папку, создайте новый источник.') }}
+                    </div>
                 </div>
 
                 <div class="form-control w-full">
@@ -74,4 +194,63 @@
         </div>
     </div>
 </div>
+
+<template id="rule_template">
+    <div class="flex gap-2 mb-2 items-end rule-row">
+        <div class="form-control w-1/3">
+            <label class="label py-1">
+                <span class="label-text-alt">{{ _('Тип правила') }}</span>
+            </label>
+            <select name="rule_type[]" class="select select-bordered select-sm w-full">
+                <option value="xpath">XPath Rule</option>
+                <option value="css">CSS Rule</option>
+                <option value="param">Ignored Param</option>
+                <option value="regex">URL Regex</option>
+            </select>
+        </div>
+        <div class="form-control w-2/3">
+            <label class="label py-1">
+                <span class="label-text-alt">{{ _('Значение') }}</span>
+            </label>
+            <input type="text" name="rule_value[]" class="input input-bordered input-sm w-full" placeholder="Значение">
+        </div>
+        <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error">
+            <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+        </button>
+    </div>
+</template>
+
+<script>
+    const typeSelect = document.getElementById('source_type_select');
+    const siteFields = document.getElementById('site_fields');
+    const s3Fields = document.getElementById('s3_fields');
+    const googleDriveFields = document.getElementById('google_drive_fields');
+    const rulesContainer = document.getElementById('index_rules_container');
+    const ruleTemplate = document.getElementById('rule_template');
+
+    function updateFieldsVisibility() {
+        const selectedType = typeSelect.value;
+        if (selectedType === 's3') {
+            siteFields.style.display = 'none';
+            s3Fields.style.display = 'block';
+            googleDriveFields.style.display = 'none';
+        } else if (selectedType === 'google_drive') {
+            siteFields.style.display = 'none';
+            s3Fields.style.display = 'none';
+            googleDriveFields.style.display = 'block';
+        } else {
+            siteFields.style.display = 'block';
+            s3Fields.style.display = 'none';
+            googleDriveFields.style.display = 'none';
+        }
+    }
+
+    function addIndexRule() {
+        const clone = ruleTemplate.content.cloneNode(true);
+        rulesContainer.appendChild(clone);
+    }
+
+    window.addIndexRule = addIndexRule;
+    document.addEventListener('DOMContentLoaded', updateFieldsVisibility);
+</script>
 {% endblock %}

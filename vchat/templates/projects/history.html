@@ -63,7 +63,6 @@
                 <thead>
                     <tr>
                         <th>Пользователь</th>
-                        <th>Тип</th>
                         <th>Дата</th>
                         <th>Реакции</th>
                     </tr>
@@ -85,19 +84,6 @@
                                     {% endif %}
                                 </div>
                             </div>
-                        </td>
-                        <td>
-                            {% if chat.type == 'call' %}
-                            <span class="badge badge-primary badge-outline gap-2">
-                                <iconify-icon icon="lucide:phone" class="size-3"></iconify-icon>
-                                Звонок
-                            </span>
-                            {% else %}
-                            <span class="badge badge-ghost badge-outline gap-2">
-                                <iconify-icon icon="lucide:message-circle" class="size-3"></iconify-icon>
-                                Чат
-                            </span>
-                            {% endif %}
                         </td>
                         <td>{{ chat.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>
@@ -124,7 +110,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center text-base-content/60 py-8">
+                        <td colspan="3" class="text-center text-base-content/60 py-8">
                             История не найдена
                         </td>
                     </tr>

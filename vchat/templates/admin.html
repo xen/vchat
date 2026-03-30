@@ -15,8 +15,6 @@
   <link rel="icon" type="image/png" href="/static/favicon.ico">
   <link href="/static/assets/app.css?v={{ static_version }}" rel="stylesheet" type="text/css">
 
-  {% include "include/counter.html" with context %}
-
   {% block extramedia %}{% endblock %}
   <script>
     try {
@@ -37,24 +35,26 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 {% endif %}
 
 <div class="size-full">
-  <div class="flex">
-    <input type="checkbox" id="layout-sidebar-toggle-trigger" class="hidden" aria-label="{{ _('Переключить боковую панель') }}" />
-    <input type="checkbox" id="layout-sidebar-hover-trigger" class="hidden" aria-label="{{ _('Компактная боковая панель') }}" />
-    <div id="layout-sidebar-hover" class="bg-base-300 h-screen w-1"></div>
-    {% block sidebar %}
-    {% include "include/admin/sidebar.html" with context %}
-    {% endblock %}
+  {% block fullbody %}
+    <div class="flex">
+      <input type="checkbox" id="layout-sidebar-toggle-trigger" class="hidden" aria-label="{{ _('Переключить боковую панель') }}" />
+      <input type="checkbox" id="layout-sidebar-hover-trigger" class="hidden" aria-label="{{ _('Компактная боковая панель') }}" />
+      <div id="layout-sidebar-hover" class="bg-base-300 h-screen w-1"></div>
+      {% block sidebar %}
+      {% include "include/admin/sidebar.html" with context %}
+      {% endblock %}
 
-    <label for="layout-sidebar-toggle-trigger" id="layout-sidebar-backdrop"></label>
+      <label for="layout-sidebar-toggle-trigger" id="layout-sidebar-backdrop"></label>
 
-    <div class="flex h-screen min-w-0 grow flex-col overflow-auto">
-      {% include "include/admin/header.html" with context %}
-      <div id="layout-content">
-        {% block content %}{% endblock %}
+      <div class="flex h-screen min-w-0 grow flex-col overflow-auto">
+        {% include "include/admin/header.html" with context %}
+        <div id="layout-content">
+          {% block content %}{% endblock %}
+        </div>
+        {% include "include/admin/footer.html" with context %}
       </div>
-      {% include "include/admin/footer.html" with context %}
     </div>
-  </div>
+  {% endblock %}
 </div>
 
 {% block extra_bottom %}{% endblock %}

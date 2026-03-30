@@ -1,0 +1,53 @@
+{% extends "admin.html" %}
+{% set page_title = _("Журнал действий") %}
+
+{% block content %}
+<div class="px-4 py-6">
+  <div class="mb-6">
+    <h1 class="text-2xl font-semibold">{{ _('Журнал действий') }}</h1>
+  </div>
+
+  <div class="overflow-x-auto rounded-box border border-base-200 bg-base-100 shadow-sm">
+    <table class="table w-full">
+      <thead>
+        <tr>
+          <th>{{ _('Кто') }}</th>
+          <th>{{ _('Откуда') }}</th>
+          <th>{{ _('Действие') }}</th>
+          <th>{{ _('Дата и время') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in events %}
+        <tr class="hover">
+          <td>{{ item.user_email }}</td>
+          <td>{{ item.ip_address or '-' }}</td>
+          <td><code>{{ item.event_name }}</code></td>
+          <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="text-center text-base-content/60 py-8">{{ _('Записей пока нет') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if total_pages > 1 %}
+  <div class="mt-4 flex items-center justify-end gap-2">
+    <a class="btn btn-sm btn-outline {% if not has_prev %}btn-disabled{% endif %}"
+       href="{% if has_prev %}{{ request.path_qs.split('?')[0] }}?page={{ page - 1 }}{% else %}#{% endif %}">
+      {{ _('Назад') }}
+    </a>
+    <span class="text-sm text-base-content/70">
+      {{ _('Страница') }} {{ page }} {{ _('из') }} {{ total_pages }}
+    </span>
+    <a class="btn btn-sm btn-outline {% if not has_next %}btn-disabled{% endif %}"
+       href="{% if has_next %}{{ request.path_qs.split('?')[0] }}?page={{ page + 1 }}{% else %}#{% endif %}">
+      {{ _('Вперёд') }}
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

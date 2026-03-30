@@ -1,33 +1,38 @@
-{% extends "base.html" %}
+{% extends "admin.html" %}
 
 {% from "auth/_macros.html" import auth_page, auth_input with context %}
 
 {% block fullbody %}
-{% call auth_page(_('Вход'), _('Чтобы получить доступ к проектам, используйте форму входа.')) %}
-<form action="{{ url('login') }}" method="POST" class="space-y-2">
-  {{ form.csrf_token }}
+<div class="flex min-h-screen flex-col">
+  <div class="grow">
+    {% call auth_page(_('Вход'), _('Чтобы получить доступ к проектам, используйте форму входа.')) %}
+    <form action="{{ url('login') }}" method="POST" class="space-y-2">
+      {{ form.csrf_token }}
 
-  {% if form.csrf_token.errors %}
-  <div class="alert alert-ошибка">
-    {{ form.csrf_token.errors[0] }}
+      {% if form.csrf_token.errors %}
+      <div class="alert alert-ошибка">
+        {{ form.csrf_token.errors[0] }}
+      </div>
+      {% endif %}
+
+      {{ auth_input(form.email, "mail", _('Почта'), 'email', 'email') }}
+      {{ auth_input(form.password, "key-round", _('Пароль'), 'password', 'current-password') }}
+
+      {% if turnstile %}
+      <div class="mt-6">
+        <div class="cf-turnstile" data-sitekey="{{ turnstile }}"></div>
+      </div>
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+      {% endif %}
+
+      <button type="submit" class="btn btn-primary mt-6 w-full gap-3">
+        <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
+        {{ _('Вход в аккаунт') }}
+      </button>
+
+    </form>
+    {% endcall %}
   </div>
-  {% endif %}
-
-  {{ auth_input(form.email, "mail", _('Почта'), 'email', 'email') }}
-  {{ auth_input(form.password, "key-round", _('Пароль'), 'password', 'current-password') }}
-
-  {% if turnstile %}
-  <div class="mt-6">
-    <div class="cf-turnstile" data-sitekey="{{ turnstile }}"></div>
-  </div>
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-  {% endif %}
-
-  <button type="submit" class="btn btn-primary mt-6 w-full gap-3">
-    <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
-    {{ _('Вход в аккаунт') }}
-  </button>
-
-</form>
-{% endcall %}
+  {% include "include/admin/footer.html" with context %}
+</div>
 {% endblock %}

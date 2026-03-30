@@ -277,6 +277,27 @@ class SourceCrawlerSettingsForm(Form):
     )
 
 
+class SourceSettingsForm(SourceForm):
+    concurrent_requests = IntegerField(
+        _("Параллельные запросы (CONCURRENT_REQUESTS)"),
+        validators=[validators.Optional(), validators.NumberRange(min=1, max=256)],
+        default=DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
+        render_kw={"class": "input input-bordered w-full"},
+    )
+    download_delay = FloatField(
+        _("Задержка между запросами (DOWNLOAD_DELAY)"),
+        validators=[validators.Optional(), validators.NumberRange(min=0, max=120)],
+        default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+        render_kw={"class": "input input-bordered w-full", "step": "0.1"},
+    )
+    user_agent = StringField(
+        _("User Agent"),
+        validators=[validators.Optional(), validators.Length(max=500)],
+        default=DEFAULT_CRAWLER_USER_AGENT,
+        render_kw={"class": "input input-bordered w-full"},
+    )
+
+
 class OnboardingForm(Form):
     class Meta:
         csrf = True

@@ -14,7 +14,7 @@ from docling.document_converter import DocumentConverter
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from vchat.document_types import guess_document_type, has_html_form
+from vchat.document_types import guess_document_type
 from vchat.models.data import Document, Source
 from vchat.settings import config
 
@@ -206,23 +206,6 @@ class S3Crawler:
             doc_type = guess_document_type(uri, None)
             if doc_type:
                 meta["doc_type"] = doc_type
-
-            if doc_type == "html":
-                raw_html = None
-                try:
-                    with open(
-                        tmp_path, "r", encoding="utf-8", errors="ignore"
-                    ) as raw_file:
-                        raw_html = raw_file.read()
-                except Exception:
-                    raw_html = None
-
-                if has_html_form(raw_html):
-                    meta["form"] = True
-                elif "form" in meta:
-                    meta.pop("form", None)
-            elif "form" in meta:
-                meta.pop("form", None)
 
             document.meta = meta
 
