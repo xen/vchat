@@ -27,7 +27,7 @@ from vchat.ai_providers import (
     is_provider_available,
     resolve_ai_settings,
 )
-from vchat.app_keys import SETTINGS_KEY, SIGNER_KEY
+from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
 from vchat.models import Chat, ChatMsg, Chunk, Document, Source, User
@@ -1239,7 +1239,7 @@ async def _render_public_chat(request):
 @meta(title=_("Chat Widget"))
 @aiohttp_jinja2.template("chat/chat.html")
 async def public_widget_chat(request):
-    if not (request.app["config"].get("vchat_chat") or "").strip():
+    if not (request.app[CONFIG_KEY].get("vchat_chat") or "").strip():
         raise web.HTTPNotFound(text="Widget chat is not configured")
     return await _render_public_chat(request)
 

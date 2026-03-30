@@ -17,14 +17,6 @@
                 </div>
             </div>
 
-            {% if chat.record %}
-            <div class="flex items-center gap-2">
-                <audio controls class="h-10">
-                    <source src="{{ chat.record }}" type="audio/wav">
-                    {{ _('Ваш браузер не поддерживает аудиоэлемент.') }}
-                </audio>
-            </div>
-            {% endif %}
         </div>
     </div>
 

@@ -10,7 +10,6 @@ from aiohttp.helpers import DEBUG
 from aiohttp.web_middlewares import normalize_path_middleware
 from aiohttp_session import get_session, session_middleware
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
-from sentry_sdk import capture_exception
 
 from vchat.app_keys import REDIS_KEY
 from vchat.db import async_session_factory
@@ -63,7 +62,6 @@ async def error_middleware(
             logger.warning("Not Found (%s %s)", request.method, request.rel_url)
         elif ex.status == 500:
             logger.error("Server Error", exc_info=True)
-            capture_exception(ex)
 
         if ex.status in errors:
             return await handle_error(request, code=ex.status)
@@ -72,7 +70,6 @@ async def error_middleware(
         raise
     except Exception as ex:
         logger.info("Server Error", exc_info=True)
-        capture_exception(ex)
 
         return await handle_error(request, code=500)
 

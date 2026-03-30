@@ -234,13 +234,7 @@
         }
 
         try {
-          if (data.type === 'transcription') {
-            appendMsg(data.content, 'user');
-            updateStatus('{{ _("обработка...") }}', 'подключено');
-          } else if (data.type === 'audio_response') {
-            const audio = new Audio("data:audio/mp3;base64," + data.audio);
-            audio.play();
-          } else if (data.type === 'suggested_actions') {
+          if (data.type === 'suggested_actions') {
             if (data.actions && data.actions.length > 0) {
               const actionsDiv = document.createElement('div');
               actionsDiv.className = 'pl-12 flex flex-wrap gap-2 mb-4'; // Added margin-bottom for spacing

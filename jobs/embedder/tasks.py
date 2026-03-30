@@ -1,31 +1,26 @@
 import logging
 import time
 from collections import namedtuple
-from typing import List
+from typing import Any, List
 
 import sqlalchemy as sa
-from sentence_transformers import SentenceTransformer
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
+from vchat.embeddings import load_embedding_model
 from vchat.models import ChatMsg, Chunk, Document, Source
 
 # Lazy, per-process singleton
 _embed_model = None
 
 
-def get_embed_model() -> SentenceTransformer:
+def get_embed_model() -> Any:
     global _embed_model
     if _embed_model is None:
         logging.info("Loading embedding model.")
-        _embed_model = SentenceTransformer(
-            "Qwen/Qwen3-Embedding-0.6B",
-            device="cpu",
-            tokenizer_kwargs={"padding_side": "left"},
-            trust_remote_code=True,
-        )
+        _embed_model = load_embedding_model(device="cpu")
         logging.info("Embedding model loaded.")
     return _embed_model
 

@@ -1,27 +1,17 @@
 import argparse
 import asyncio
+import getpass
 import logging
+import re
 import sys
 
 import aiohttp
-import sentry_sdk
-from aiohttp.helpers import DEBUG
+import sqlalchemy as sa
+from passlib.hash import pbkdf2_sha512
 
 from vchat.app import create_app
-
-if not DEBUG:
-    sentry_sdk.init(
-        dsn="https://95174ed89be636d7a189ce9f60f04261@o4508591956426752.ingest.us.sentry.io/4508591958196224",
-        # Set traces_sample_rate to 1.0 to capture 100%
-        # of transactions for tracing.
-        traces_sample_rate=0.2,
-        _experiments={
-            # Set continuous_profiling_auto_start to True
-            # to automatically start the profiler when
-            # possible.
-            "continuous_profiling_auto_start": True,
-        },
-    )
+from vchat.db import async_session_factory
+from vchat.models import User
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -43,6 +33,11 @@ parser.add_argument(
     help="Create new migration revision",
 )
 parser.add_argument("--downgrade", action="store_true", help="Downgrade database")
+parser.add_argument(
+    "--create-user",
+    action="store_true",
+    help="Create an admin user (interactive)",
+)
 
 args = parser.parse_args()
 if args.revision:
@@ -66,6 +61,60 @@ if args.downgrade:
     else:
         logging.info("Downgrade skipped")
     sys.exit(0)
+
+
+async def _create_user_cli() -> int:
+    try:
+        email = input("Email: ").strip().lower()
+    except EOFError:
+        print("Input cancelled")
+        return 1
+    if not email:
+        print("Email is required")
+        return 1
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        print("Invalid email format")
+        return 1
+
+    try:
+        password = getpass.getpass("Password: ")
+    except EOFError:
+        print("Input cancelled")
+        return 1
+    if not password:
+        print("Password is required")
+        return 1
+    try:
+        password_confirm = getpass.getpass("Confirm password: ")
+    except EOFError:
+        print("Input cancelled")
+        return 1
+    if password != password_confirm:
+        print("Passwords do not match")
+        return 1
+
+    async with async_session_factory() as db:
+        existing = await db.scalar(sa.select(User.id).where(User.email == email))
+        if existing:
+            print(f"User already exists: {email}")
+            return 1
+
+        user = User(
+            email=email,
+            name=email,
+            password=pbkdf2_sha512.hash(password),
+            is_active=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        print(f"User created: id={user.id}, email={user.email}")
+        return 0
+
+
+if args.create_user:
+    exit_code = asyncio.run(_create_user_cli())
+    sys.exit(exit_code)
 
 app = create_app()
 

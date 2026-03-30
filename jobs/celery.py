@@ -2,13 +2,8 @@ import os
 import sys
 from pathlib import Path
 
-import sentry_sdk
 from celery import Celery, signals
 from celery.signals import task_postrun
-from sentry_sdk.integrations.aiohttp import AioHttpIntegration
-from sentry_sdk.integrations.celery import CeleryIntegration
-from sentry_sdk.integrations.redis import RedisIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from vchat.settings import config
 
@@ -54,23 +49,6 @@ app.conf.beat_schedule = {
         "options": {"queue": "crawler"},
     },
 }
-
-
-@signals.celeryd_init.connect
-def init_sentry(**_kwargs):
-    sconf = config.get("sentry", {})
-    sentry_sdk.init(
-        dsn=sconf.get("sdk_celery"),
-        integrations=[
-            AioHttpIntegration(),
-            SqlalchemyIntegration(),
-            RedisIntegration(),
-            CeleryIntegration(monitor_beat_tasks=True),
-        ],
-        traces_sample_rate=sconf.get("trace_rate", 0.0),
-        profiles_sample_rate=sconf.get("profile_rate", 0.0),
-    )
-
 
 @task_postrun.connect
 def run_gc(*_, **__):

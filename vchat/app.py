@@ -23,7 +23,6 @@ from vchat.i18n import _
 from vchat.metrics import validate_multiprocess_setup
 from vchat.project_settings import init_settings_cache
 from vchat.utils import (
-    gravatar_url,
     login_required,
     make_full_url,
     paginator,
@@ -141,11 +140,8 @@ async def init_jinja(request):
         ),
         "get_flash_messages": lambda: request.get("flash_messages", []),
         "external": lambda x, **kwargs: make_full_url(request, x, **kwargs),
-        "turnstile": request.app[CONFIG_KEY].get("turnstile_site_key", ""),
         "url_for": lambda x, **kwargs: request.app.router[x].url_for(**kwargs),
         "csrf_token": csrf_token,
-        "gravatar_url": gravatar_url,
-        "vchat_chat": request.app[CONFIG_KEY].get("vchat_chat", ""),
         "project_settings": request.app[SETTINGS_KEY],
         "static_version": request.app.get("static_version", ""),
         "_": _,

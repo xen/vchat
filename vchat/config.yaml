@@ -39,14 +39,6 @@ media_prefix: "/media"
 media_root: "media"
 post_per_page: 10
 
-# Cloudflare Turnstile keys
-turnstile_secret_key: my_tyurnstile_server_key
-turnstile_site_key: my_turnstile_key
-
-# Mailgun
-mailgun_key: my_mailgun_api_key
-mailgun_url: https://api.eu.mailgun.net/v3/mg.vchat.com
-
 # OpenAI Configuration
 openai_api_key: ""
 openai_model: "gpt-4o-mini"
@@ -54,9 +46,11 @@ openai_base_url: "https://api.openai.com/v1"
 openai_guardrails_enabled: true
 guardrails_config_path: "guardrails_config.json"
 guardrails_ru_pii_enabled: true
+embedding_model_id: "Qwen/Qwen3-Embedding-0.6B"
+embedding_local_files_only: true
+embedding_allow_remote_fallback: false
 yandex_api_key: ""
 gigachat_api_key: ""
-google_api_key: ""
 
 # vchat project integration keys
 vchat_chat: "yMlHl1BjbY"

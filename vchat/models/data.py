@@ -23,7 +23,6 @@ class Chat(Base, Created, Updated):
     title: Mapped[str] = mapped_column(sa.String(200), nullable=False, default="")
     user_uid: Mapped[str] = mapped_column(sa.String(256), nullable=False, index=True)
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    record: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
 
 
 chat_role_enum = ENUM(

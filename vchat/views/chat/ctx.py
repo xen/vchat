@@ -9,11 +9,11 @@ import pycld2 as cld2
 import spacy
 import sqlalchemy as sa
 import tiktoken
-from sentence_transformers import SentenceTransformer
 from spacy.lang.en.stop_words import STOP_WORDS
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ._types import Msg
+from vchat.embeddings import load_embedding_model
 from vchat.settings import config
 from vchat.models import ChatMsg
 
@@ -142,11 +142,7 @@ def trim_messages(messages: list[Msg], max_tokens: int = 8000) -> list:
 # for embedding
 logger.info("Heavy task: loading embedding model...")
 
-_embed_model: SentenceTransformer = SentenceTransformer(
-    "Qwen/Qwen3-Embedding-0.6B",
-    device="cpu",
-    tokenizer_kwargs={"padding_side": "left"},
-)
+_embed_model = load_embedding_model(device="cpu")
 
 
 def embed_query(text: str) -> List[float]:

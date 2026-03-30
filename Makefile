@@ -1,4 +1,4 @@
-.PHONY: clean setup run db lint \
+.PHONY: clean setup run db lint user \
         ensure-pip pip-compile autoupgrade \
         celery revision downgrade deploy \
 		frontend embedder docs
@@ -25,6 +25,9 @@ revision: venv/bin/activate ## create db revision
 
 downgrade: venv/bin/activate ## downgrade db
 	. venv/bin/activate && python entry.py --downgrade
+
+user: venv/bin/activate ## create user interactively
+	. venv/bin/activate && python entry.py --create-user
 
 setup: venv/bin/activate  ## setup python environment
 	. venv/bin/activate && uv pip sync requirements/dev.txt

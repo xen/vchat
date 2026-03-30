@@ -58,7 +58,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 </div>
 
 {% block extra_bottom %}{% endblock %}
+{% block bottom_scripts %}
 <script src="/static/assets/index.js?v={{ static_version }}"></script>
+{% endblock %}
 
 </body>
 </html>

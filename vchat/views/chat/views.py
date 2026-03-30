@@ -1,9 +1,5 @@
-import asyncio
-import base64
 import logging
-import os
 import re
-import tempfile
 import time
 from dataclasses import dataclass
 from typing import Any, List, Optional
@@ -19,7 +15,6 @@ from itsdangerous import (
     URLSafeSerializer,
 )
 
-from vchat.ai import get_whisper_model
 from vchat.ai_providers import (
     BaseAIProvider,
     ModelInfo,
@@ -265,26 +260,6 @@ def _is_guardrail_blocked(reasons: set[str]) -> bool:
         "guardrail_tripwire",
     }
     return bool(reasons & blocking_reasons)
-
-
-async def generate_tts_audio(text: str) -> Optional[bytes]:
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{OPENAI_BASE_URL}/audio/speech",
-            headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "tts-1",
-                "input": text,
-                "voice": "alloy",
-            },
-        ) as resp:
-            if resp.status != 200:
-                logger.error(f"TTS error: {await resp.text()}")
-                return None
-            return await resp.read()
 
 
 async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
@@ -610,49 +585,7 @@ async def websocket(request):
                 break
 
             user_text = ""
-            request_tts = False
-
-            if msg.type == web.WSMsgType.BINARY:
-                # Handle audio message
-                audio_data = msg.data
-                model = get_whisper_model()
-                if not model:
-                    await ws.send_json(
-                        {"ok": False, "error": "STT model not available"}
-                    )
-                    continue
-
-                def transcribe_audio(data):
-                    with tempfile.NamedTemporaryFile(
-                        suffix=".webm", delete=False
-                    ) as tmp:
-                        tmp.write(data)
-                        tmp_path = tmp.name
-                    try:
-                        segments, _ = model.transcribe(
-                            tmp_path, language="ru", beam_size=5
-                        )
-                        return " ".join([s.text for s in segments]).strip()
-                    except Exception as e:
-                        logger.error(f"Transcription error: {e}")
-                        return ""
-                    finally:
-                        if os.path.exists(tmp_path):
-                            os.unlink(tmp_path)
-
-                user_text = await asyncio.get_event_loop().run_in_executor(
-                    None, transcribe_audio, audio_data
-                )
-
-                if not user_text:
-                    await ws.send_json({"ok": False, "error": "No speech detected"})
-                    continue
-
-                # Notify frontend of the transcribed text
-                await ws.send_json({"type": "transcription", "content": user_text})
-                request_tts = True
-
-            elif msg.type == web.WSMsgType.TEXT:
+            if msg.type == web.WSMsgType.TEXT:
                 if msg.data.strip().lower() == "ping":
                     await ws.send_str("pong")
                     continue
@@ -782,17 +715,6 @@ async def websocket(request):
                                 "name": tool_call.get("name"),
                                 "content": tool_call.get("result"),
                             }
-                        )
-
-                # Generate and send TTS if requested
-                if request_tts and total_content:
-                    audio_bytes = await generate_tts_audio(total_content)
-                    if audio_bytes:
-                        # Send as base64 or binary?
-                        # Sending as base64 in JSON is easier for the existing protocol
-                        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-                        await ws.send_json(
-                            {"type": "audio_response", "audio": audio_b64}
                         )
 
                 output_guardrails = await check_output_guardrails(

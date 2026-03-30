@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import hashlib
 import logging
 import os
 import uuid
@@ -12,7 +11,6 @@ from urllib.parse import urlencode
 
 import aiohttp
 import aiohttp_jinja2
-import html2text
 import markdown
 import msgspec
 import redis.asyncio as aioredis
@@ -26,7 +24,6 @@ from itsdangerous import (
 from markupsafe import Markup
 from yarl import URL
 
-from vchat.aiohttp_client import client_session
 from vchat.app_keys import CONFIG_KEY, REDIS_KEY
 from vchat.i18n import _
 from vchat.settings import config
@@ -247,17 +244,6 @@ def make_full_url(request, endpoint, **kwargs):
     )
 
 
-def gravatar_url(
-    email: str, size: int = 100, default: str = "identicon", rating: str = "g"
-) -> str:
-    if not email:
-        return ""
-    email_encoded = email.strip().lower().encode("utf-8")
-    email_hash = hashlib.md5(email_encoded).hexdigest()
-    query_params = urlencode({"s": str(size), "d": default, "r": rating})
-    return f"https://www.gravatar.com/avatar/{email_hash}?{query_params}"
-
-
 def login_required():
     def decorator(func):
         @wraps(func)
@@ -275,66 +261,6 @@ def login_required():
         return decorated_view
 
     return decorator
-
-
-async def turnstile_validator(code=None, ip=None):
-    # https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
-    validate_url = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-    if config.get("mode", "production") == "stage":
-        return True
-    data = {
-        "secret": config["turnstile_secret_key"],
-        "response": code,
-        "remoteip": ip,
-    }
-    async with (
-        client_session(
-            cookie_jar=aiohttp.DummyCookieJar(),
-        ) as session,
-        session.post(validate_url, data=data) as response,
-    ):
-        if response.ok:
-            resp = await response.json()
-            if resp.get("success"):
-                return True
-
-        logger.error(
-            "Error request cloudflare: [%s] %s", response.status, await response.text()
-        )
-
-    return False
-
-
-# confir for text generated for email
-html2text.config.BODY_WIDTH = 80
-html2text.config.INLINE_LINKS = True
-html2text.config.PROTECT_LINKS = True
-
-
-async def sendmessage(
-    *, to=None, subject=None, template=None, request=None, context=None
-):
-    if isinstance(to, str):
-        to = [to]
-    async with client_session(client_timeout=5) as session:
-        html = aiohttp_jinja2.render_string(template, request, context)
-        text_maker = html2text.HTML2Text()
-        text = text_maker.handle(html)
-        data = {
-            "from": "vchat <no-reply@mg.vchat.com>",
-            "to": to,
-            "subject": str(subject),
-            "text": text,
-            "html": html,
-        }
-        auth = aiohttp.BasicAuth("api", request.app[CONFIG_KEY]["mailgun_key"])
-        base_url = request.app[CONFIG_KEY]["mailgun_url"]
-        async with session.post(f"{base_url}/messages", auth=auth, data=data) as resp:
-            if resp.status != 200:
-                resp_text = await resp.text()
-                logging.error("Error sending email: %s", resp_text)
-                return False
-    return True
 
 
 def paginator(total: int, request: aiohttp.web_request.Request) -> str:

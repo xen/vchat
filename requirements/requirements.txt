@@ -440,7 +440,6 @@ certifi==2025.11.12 \
     #   httpcore
     #   httpx
     #   requests
-    #   sentry-sdk
 cffi==2.0.0 \
     --hash=sha256:00bdf7acc5f795150faa6957054fbbca2439db2f775ce831222b66f192f03beb \
     --hash=sha256:07b271772c100085dd28b74fa0cd81c8fb1a3ba18b21e03d7c27f3436a10606b \
@@ -4320,7 +4319,6 @@ sentence-transformers==5.2.0 \
     --hash=sha256:aa57180f053687d29b08206766ae7db549be5074f61849def7b17bf0b8025ca2 \
     --hash=sha256:acaeb38717de689f3dab45d5e5a02ebe2f75960a4764ea35fea65f58a4d3019f
     # via -r requirements/requirements.in
-sentry-sdk==2.47.0 \
     --hash=sha256:8218891d5e41b4ea8d61d2aed62ed10c80e39d9f2959d6f939efbf056857e050 \
     --hash=sha256:d72f8c61025b7d1d9e52510d03a6247b280094a327dd900d987717a4fce93412
     # via -r requirements/requirements.in
@@ -5054,7 +5052,6 @@ urllib3==2.6.2 \
     # via
     #   botocore
     #   requests
-    #   sentry-sdk
 uuid-utils==0.12.0 \
     --hash=sha256:1b8fce83ecb3b16af29c7809669056c4b6e7cc912cab8c6d07361645de12dd79 \
     --hash=sha256:252bd3d311b5d6b7f5dfce7a5857e27bb4458f222586bb439463231e5a9cbd64 \
