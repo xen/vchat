@@ -98,15 +98,8 @@ def test_guardrails_reason_detection_branches(monkeypatch: pytest.MonkeyPatch) -
     assert "russian_pii" in reasons
 
 
-def test_embeddings_resolution_and_loader(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(embeddings.config, "embedding_model_id", "my/model")
-    monkeypatch.setitem(embeddings.config, "embedding_local_files_only", True)
-    monkeypatch.setitem(embeddings.config, "embedding_allow_remote_fallback", False)
-
-    monkeypatch.setattr(embeddings, "snapshot_download", lambda **kwargs: "/tmp/model")
-    path = embeddings.resolve_embedding_model_path()
-    assert path == "/tmp/model"
-
+def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(embeddings.config, "embedding_model_dir", "data")
     calls = {}
 
     class _FakeST:
@@ -119,7 +112,7 @@ def test_embeddings_resolution_and_loader(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(embeddings, "SentenceTransformer", _FakeST)
     model = embeddings.load_embedding_model(device="cpu")
     assert isinstance(model, _FakeST)
-    assert calls["model_path"] == "/tmp/model"
+    assert calls["model_path"] == "data"
 
 
 def test_openai_guardrails_cache_and_extract(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

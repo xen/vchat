@@ -1,0 +1,56 @@
+{
+  // See https://go.microsoft.com/fwlink/?LinkId=733558
+  // for the documentation about the tasks.json format
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SSL",
+      "type": "shell",
+      "command": "make ssl",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "Run",
+      "type": "shell",
+      "command": "make run",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "Celery",
+      "type": "shell",
+      "command": "make celery",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "Embedder",
+      "type": "shell",
+      "command": "make embedder",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      }
+    },
+    {
+      "label": "All",
+      "dependsOn": [
+        "SSL",
+        "Run",
+        "Celery",
+        "Embedder"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

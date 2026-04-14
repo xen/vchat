@@ -1,7 +1,5 @@
 # Scrapy settings for crawler project
 
-BOT_NAME = "jobs.crawler"
-
 SPIDER_MODULES = ["jobs.crawler.spiders"]
 NEWSPIDER_MODULE = "jobs.crawler.spiders"
 
@@ -17,6 +15,11 @@ ITEM_PIPELINES = {
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
+
+try:
+    from jobs.crawler import local_settings  # noqa: F401
+except ImportError:
+    pass
 
 # Enable or disable extensions
 # EXTENSIONS = {

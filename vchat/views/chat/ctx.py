@@ -9,6 +9,7 @@ import pycld2 as cld2
 import spacy
 import sqlalchemy as sa
 import tiktoken
+from pgvector.sqlalchemy import Vector
 from spacy.lang.en.stop_words import STOP_WORDS
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,11 @@ from vchat.embeddings import load_embedding_model
 from vchat.settings import config
 from vchat.models import ChatMsg
 
+cfg = config
 MODEL = config.get("openai", {}).get("model", "gpt-4o-mini")
+EMBEDDING_QUERY_PROMPT = (
+    "Instruct: Дан вопрос, необходимо найти абзац текста с ответом\nQuery: "
+)
 
 logger = logging.getLogger(__name__)
 
@@ -140,20 +145,21 @@ def trim_messages(messages: list[Msg], max_tokens: int = 8000) -> list:
 # until we make our bot "smart" it should be enough to use qwen or
 # market will be changed and somebody will release better model
 # for embedding
-logger.info("Heavy task: loading embedding model...")
+_embed_model = None
 
-_embed_model = load_embedding_model(device="cpu")
+
+def _get_embed_model():
+    global _embed_model
+    if _embed_model is None:
+        logger.info("Heavy task: loading embedding model...")
+        _embed_model = load_embedding_model(device="cpu")
+    return _embed_model
 
 
 def embed_query(text: str) -> List[float]:
-    global _embed_model
-    emb = _embed_model.encode([text], normalize_embeddings=True)
+    payload = f"{EMBEDDING_QUERY_PROMPT}{text}"
+    emb = _get_embed_model().encode([payload], normalize_embeddings=True)
     return emb[0].tolist()
-
-
-def _vec_literal(vec: List[float]) -> str:
-    # Converts vector to Postgres pgvector literal format
-    return "[" + ",".join(f"{x:.6f}" for x in vec) + "]"
 
 
 # --- User-memory RAG bucket ---
@@ -171,12 +177,11 @@ async def _fetch_user_memory_chunks(
 ) -> List[dict]:
     if not user_id or k_mem <= 0:
         return []
-    vec = _vec_literal(qvec)
     sql = sa.text(
         """
         SELECT cc.id, cc.content, cc.chat_id, cc.document_id, cc.chunk_ix,
                cc.start_offset, cc.end_offset,
-               cc.embedding <=> CAST(:qvec AS vector(1024)) AS dist,
+               cc.embedding <=> CAST(:qvec AS vector(:vect_dim)) AS dist,
                'mem' AS src
         FROM chunk cc
         JOIN chat_msg m ON m.id = cc.msg_id
@@ -184,13 +189,14 @@ async def _fetch_user_memory_chunks(
           AND cc.embedding IS NOT NULL
           AND m.role = 'user'
           AND m.chat_id <> :chat_id
-        ORDER BY cc.embedding <=> CAST(:qvec AS vector(1024)) ASC
+        ORDER BY cc.embedding <=> CAST(:qvec AS vector(:vect_dim)) ASC
         LIMIT :k_cand
         """
-    )
+    ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
     k_cand = max(8, k_mem * 5)
     params = {
-        "qvec": vec,
+        "qvec": qvec,
+        "vect_dim": cfg["vec_dim"],
         "user_id": str(user_id),
         "chat_id": chat_id,
         "k_cand": k_cand,
@@ -238,34 +244,34 @@ async def _fetch_vector_chunks(
     query_vec: List[float],
     top_k: int = 10,
 ) -> List[dict]:
-    vec_lit = _vec_literal(query_vec)
     chat_sql = sa.text(
         """
         SELECT c.id, c.content, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
-               c.embedding <=> CAST(:qvec AS vector(1024)) AS dist,
+               c.embedding <=> CAST(:qvec AS vector(:vect_dim)) AS dist,
                'chat' AS src,
                NULL as uri, NULL as title
         FROM chunk c
         WHERE c.chat_id = :chat_id AND c.embedding IS NOT NULL
-        ORDER BY c.embedding <=> CAST(:qvec AS vector(1024))
+        ORDER BY c.embedding <=> CAST(:qvec AS vector(:vect_dim))
         LIMIT :k_chat
         """
-    )
+    ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
     kb_sql = sa.text(
         """
         SELECT c.id, c.content, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
-               c.embedding <=> CAST(:qvec AS vector(1024)) AS dist,
+               c.embedding <=> CAST(:qvec AS vector(:vect_dim)) AS dist,
                'kb' AS src,
                d.uri, d.title
         FROM chunk c
         JOIN document d ON c.document_id = d.id
         WHERE c.chat_id IS NULL AND c.document_id IS NOT NULL AND c.embedding IS NOT NULL
-        ORDER BY c.embedding <=> CAST(:qvec AS vector(1024))
+        ORDER BY c.embedding <=> CAST(:qvec AS vector(:vect_dim))
         LIMIT :k_kb
         """
-    )
+    ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
     params = {
-        "qvec": vec_lit,
+        "qvec": query_vec,
+        "vect_dim": cfg["vec_dim"],
         "chat_id": chat_id,
         "k_chat": max(2, top_k // 2),
         "k_kb": max(2, top_k - max(2, top_k // 2)),

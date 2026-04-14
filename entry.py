@@ -6,12 +6,14 @@ import re
 import sys
 
 import aiohttp
+import aiohttp.web
 import sqlalchemy as sa
 from passlib.hash import pbkdf2_sha512
 
 from vchat.app import create_app
 from vchat.db import async_session_factory
 from vchat.models import User
+from vchat.settings import config
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -38,6 +40,11 @@ parser.add_argument(
     action="store_true",
     help="Create an admin user (interactive)",
 )
+parser.add_argument(
+    "--model",
+    action="store_true",
+    help="Download the embedding model into data/",
+)
 
 args = parser.parse_args()
 if args.revision:
@@ -63,33 +70,14 @@ if args.downgrade:
     sys.exit(0)
 
 
-async def _create_user_cli() -> int:
-    try:
-        email = input("Email: ").strip().lower()
-    except EOFError:
-        print("Input cancelled")
-        return 1
-    if not email:
-        print("Email is required")
-        return 1
+async def create_user() -> int:
+    email = input("Email: ").strip().lower()
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         print("Invalid email format")
         return 1
 
-    try:
-        password = getpass.getpass("Password: ")
-    except EOFError:
-        print("Input cancelled")
-        return 1
-    if not password:
-        print("Password is required")
-        return 1
-    try:
-        password_confirm = getpass.getpass("Confirm password: ")
-    except EOFError:
-        print("Input cancelled")
-        return 1
-    if password != password_confirm:
+    password = getpass.getpass("Password: ")
+    if password != getpass.getpass("Confirm password: "):
         print("Passwords do not match")
         return 1
 
@@ -113,8 +101,17 @@ async def _create_user_cli() -> int:
 
 
 if args.create_user:
-    exit_code = asyncio.run(_create_user_cli())
+    exit_code = asyncio.run(create_user())
     sys.exit(exit_code)
+
+if args.model:
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(
+        repo_id=config["embedding_model_id"],
+        local_dir=config["embedding_model_dir"],
+    )
+    sys.exit(0)
 
 app = create_app()
 

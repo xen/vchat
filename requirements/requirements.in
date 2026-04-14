@@ -76,15 +76,5 @@ boto3  # For S3 document crawling
 # i18n
 Babel
 
-# voice
-aiortc
-av
-faster-whisper
-
-# payments
-stripe
-
-# support
-anyascii
-python-slugify
-uuid6
+# metrics
+prometheus_client

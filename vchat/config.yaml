@@ -46,9 +46,14 @@ openai_base_url: "https://api.openai.com/v1"
 openai_guardrails_enabled: true
 guardrails_config_path: "vchat/guardrails_config.json"
 guardrails_ru_pii_enabled: true
-embedding_model_id: "Qwen/Qwen3-Embedding-0.6B"
-embedding_local_files_only: true
-embedding_allow_remote_fallback: false
+embedding_model_id: "ai-sage/Giga-Embeddings-instruct"
+embedding_model_dir: "data"
+# Embedding / pgvector dimension for stored vectors and similarity queries.
+vec_dim: 2048
+embedding_max_seq_length: 4096
+embedding_chunk_max_tokens: 3500
+embedding_chunk_overlap_tokens: 400
+embedding_chunk_max_chars: 12000
 yandex_api_key: ""
 gigachat_api_key: ""
 

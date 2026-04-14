@@ -80,12 +80,12 @@ venv
 
 # configs
 local.yaml
+local_*.*
 .env
 
 # telethon session
 *.session
 
-local_settings.py
 celerybeat-schedule*
 
 *.ipynb

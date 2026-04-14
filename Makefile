@@ -31,6 +31,7 @@ user: venv/bin/activate ## create user interactively
 
 setup: venv/bin/activate  ## setup python environment
 	. venv/bin/activate && uv pip sync requirements/dev.txt
+	. venv/bin/activate && python entry.py --model
 
 ensure-pip: venv/bin/activate ## ensure bundled pip is available inside the venv
 	. venv/bin/activate && python -m ensurepip --upgrade

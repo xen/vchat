@@ -2,7 +2,7 @@ import os
 import sys
 from pathlib import Path
 
-from celery import Celery, signals
+from celery import Celery
 from celery.signals import task_postrun
 
 from vchat.settings import config

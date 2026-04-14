@@ -11,9 +11,14 @@ from jobs.celery import app
 from jobs.db import create_sync_engine
 from vchat.embeddings import load_embedding_model
 from vchat.models import ChatMsg, Chunk, Document, Source
+from vchat.settings import config
 
 # Lazy, per-process singleton
 _embed_model = None
+EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]
+EMBEDDING_CHUNK_MAX_TOKENS = config["embedding_chunk_max_tokens"]
+EMBEDDING_CHUNK_OVERLAP_TOKENS = config["embedding_chunk_overlap_tokens"]
+EMBEDDING_CHUNK_MAX_CHARS = config["embedding_chunk_max_chars"]
 
 
 def get_embed_model() -> Any:
@@ -33,20 +38,15 @@ def make_embed_vector(text: str) -> List[float]:
 
 
 ChunkData = namedtuple("ChunkData", ["index", "start", "end", "text"])
-MAX_CHARS_PER_CHUNK = 4096
 
 
-def chunk_text_word_window(
-    text: str,
-    max_tokens: int = 1000,
-    overlap: int = 150,
-    max_chars: int = MAX_CHARS_PER_CHUNK,
-) -> List[ChunkData]:
+def chunk_text_word_window(text: str) -> List[ChunkData]:
     """
     Split text into overlapping windows by whitespace tokens.
     Returns list of tuples: (chunk_ix, start_offset, end_offset, chunk_text),
     where offsets are token-based indices in the original token list.
     """
+    tokenizer = get_embed_model().tokenizer
     tokens = text.split()
     n = len(tokens)
     chunks: List[ChunkData] = []
@@ -57,9 +57,9 @@ def chunk_text_word_window(
     ix = 0
     while i < n:
         token = tokens[i]
-        if len(token) > max_chars:
-            for start in range(0, len(token), max_chars):
-                piece = token[start : start + max_chars]
+        if len(token) > EMBEDDING_CHUNK_MAX_CHARS:
+            for start in range(0, len(token), EMBEDDING_CHUNK_MAX_CHARS):
+                piece = token[start : start + EMBEDDING_CHUNK_MAX_CHARS]
                 chunks.append(ChunkData(ix, i, i + 1, piece))
                 ix += 1
             i += 1
@@ -71,18 +71,27 @@ def chunk_text_word_window(
         while j < n:
             token = tokens[j]
             token_chars = len(token) if not chunk_tokens else len(token) + 1
+            candidate_text = " ".join([*chunk_tokens, token])
+            candidate_token_len = len(
+                tokenizer(
+                    candidate_text,
+                    add_special_tokens=False,
+                    truncation=False,
+                )["input_ids"]
+            )
             if chunk_tokens and (
-                len(chunk_tokens) >= max_tokens or char_len + token_chars > max_chars
+                candidate_token_len > EMBEDDING_CHUNK_MAX_TOKENS
+                or char_len + token_chars > EMBEDDING_CHUNK_MAX_CHARS
             ):
                 break
 
-            if not chunk_tokens and len(token) > max_chars:
+            if not chunk_tokens and len(token) > EMBEDDING_CHUNK_MAX_CHARS:
                 break  # handled at loop start on next iteration
 
             chunk_tokens.append(token)
             char_len += token_chars
             j += 1
-            if len(chunk_tokens) >= max_tokens:
+            if candidate_token_len >= EMBEDDING_CHUNK_MAX_TOKENS:
                 break
 
         if not chunk_tokens:
@@ -95,7 +104,7 @@ def chunk_text_word_window(
         ix += 1
         if j >= n:
             break
-        i = max(0, j - overlap)
+        i = max(0, j - EMBEDDING_CHUNK_OVERLAP_TOKENS)
     return chunks
 
 
@@ -122,7 +131,7 @@ def _fetch_document_context(session: Session, document_id: int):
 def _materialize_document_chunks(
     session: Session, doc: Document, user_uid: str = "system"
 ) -> int:
-    chunks = chunk_text_word_window(doc.content, max_tokens=1000, overlap=150)
+    chunks = chunk_text_word_window(doc.content)
     logging.info("Materializing %s chunks for Document %s", len(chunks), doc.id)
 
     session.execute(delete(Chunk).where(Chunk.document_id == doc.id))
