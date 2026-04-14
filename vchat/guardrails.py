@@ -1,10 +1,142 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from vchat.ai_providers import BaseAIProvider
 from vchat.settings import config
+
+logger = logging.getLogger("vchat.guardrails")
+
+GuardrailsAsyncOpenAI: Any = None
+
+_cached_client: Any | None = None
+_cached_key: tuple[str, str] | None = None
+
+_OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
+    "version": 1,
+    "pre_flight": {
+        "version": 1,
+        "guardrails": [
+            {
+                "name": "Contains PII",
+                "config": {
+                    "entities": [
+                        "CREDIT_CARD",
+                        "CVV",
+                        "CRYPTO",
+                        "EMAIL_ADDRESS",
+                        "IBAN_CODE",
+                        "BIC_SWIFT",
+                        "IP_ADDRESS",
+                        "MEDICAL_LICENSE",
+                        "NRP",
+                        "PHONE_NUMBER",
+                    ]
+                },
+            },
+            {
+                "name": "Moderation",
+                "config": {
+                    "categories": [
+                        "sexual",
+                        "sexual/minors",
+                        "hate",
+                        "hate/threatening",
+                        "harassment",
+                        "harassment/threatening",
+                        "self-harm",
+                        "self-harm/intent",
+                        "self-harm/instructions",
+                        "violence",
+                        "violence/graphic",
+                        "illicit",
+                        "illicit/violent",
+                    ]
+                },
+            },
+            {
+                "name": "Prompt Injection Detection",
+                "config": {
+                    "confidence_threshold": 0.7,
+                    "model": "gpt-4.1-mini",
+                    "include_reasoning": False,
+                },
+            },
+        ],
+    },
+    "input": {
+        "version": 1,
+        "guardrails": [
+            {
+                "name": "Jailbreak",
+                "config": {
+                    "confidence_threshold": 0.7,
+                    "model": "gpt-4.1-mini",
+                    "include_reasoning": False,
+                },
+            },
+            {
+                "name": "Custom Prompt Check",
+                "config": {
+                    "confidence_threshold": 0.7,
+                    "model": "gpt-4.1-mini",
+                    "system_prompt_details": (
+                        "You are a customer support assistant. Raise the "
+                        "guardrail if questions aren't focused on customer "
+                        "inquiries, product support, and service-related questions."
+                    ),
+                    "include_reasoning": False,
+                },
+            },
+        ],
+    },
+    "output": {
+        "version": 1,
+        "guardrails": [
+            {
+                "name": "Contains PII",
+                "config": {
+                    "entities": [
+                        "CREDIT_CARD",
+                        "CVV",
+                        "CRYPTO",
+                        "EMAIL_ADDRESS",
+                        "IBAN_CODE",
+                        "BIC_SWIFT",
+                        "IP_ADDRESS",
+                        "MEDICAL_LICENSE",
+                        "NRP",
+                        "PHONE_NUMBER",
+                    ],
+                    "block": True,
+                },
+            },
+            {
+                "name": "URL Filter",
+                "config": {"url_allow_list": ["https://vchat.com/"]},
+            },
+            {
+                "name": "NSFW Text",
+                "config": {
+                    "confidence_threshold": 0.7,
+                    "model": "gpt-4.1-mini",
+                    "include_reasoning": False,
+                },
+            },
+            {
+                "name": "Prompt Injection Detection",
+                "config": {
+                    "confidence_threshold": 0.7,
+                    "model": "gpt-4.1-mini",
+                    "include_reasoning": False,
+                },
+            },
+        ],
+    },
+}
 
 
 @dataclass
@@ -16,6 +148,70 @@ class GuardrailDecision:
 
 def _enabled(key: str, default: bool = True) -> bool:
     return bool(config.get(key, default))
+
+
+def _get_guardrails_client_class() -> Any | None:
+    global GuardrailsAsyncOpenAI
+    if GuardrailsAsyncOpenAI is not None:
+        return GuardrailsAsyncOpenAI
+
+    try:
+        from guardrails import GuardrailsAsyncOpenAI as client_class
+    except Exception as exc:
+        logger.warning("Failed to import GuardrailsAsyncOpenAI: %s", exc)
+        return None
+
+    GuardrailsAsyncOpenAI = client_class
+    return client_class
+
+
+def get_guardrails_client(
+    *, api_key: str, base_url: str
+) -> Any | None:
+    if not _enabled("openai_guardrails_enabled", True):
+        return None
+
+    client_class = _get_guardrails_client_class()
+    if client_class is None:
+        return None
+
+    global _cached_client, _cached_key
+    key = (api_key, base_url)
+    if _cached_client is not None and _cached_key == key:
+        return _cached_client
+
+    try:
+        _cached_client = client_class(
+            config=_OPENAI_GUARDRAILS_PIPELINE,
+            raise_guardrail_errors=False,
+            api_key=api_key,
+            base_url=base_url,
+        )
+    except Exception as exc:
+        logger.warning("Failed to initialize GuardrailsAsyncOpenAI: %s", exc)
+        return None
+
+    _cached_key = key
+    return _cached_client
+
+
+def extract_tripwire_details(exc: Any) -> tuple[str, str]:
+    info: dict[str, Any] = (
+        getattr(getattr(exc, "guardrail_result", None), "info", {}) or {}
+    )
+
+    stage = str(info.get("stage_name", "input")).strip().lower()
+    if stage == "pre_flight":
+        stage = "input"
+    if stage not in {"input", "output"}:
+        stage = "input"
+
+    name = str(info.get("guardrail_name", "guardrail_tripwire")).strip().lower()
+    name = re.sub(r"[^a-z0-9_]+", "_", name).strip("_")
+    if not name:
+        name = "guardrail_tripwire"
+
+    return stage, name
 
 
 _RU_PHONE_RE = re.compile(

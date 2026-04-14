@@ -22,10 +22,14 @@ from vchat.ai_providers import (
     resolve_ai_settings,
 )
 from vchat.db import async_session_factory
-from vchat.guardrails import check_input_guardrails, check_output_guardrails
+from vchat.guardrails import (
+    check_input_guardrails,
+    check_output_guardrails,
+    extract_tripwire_details,
+    get_guardrails_client,
+)
 from vchat.metrics import record_chat_request
 from vchat.models import Chat, ChatMsg
-from vchat.openai_guardrails import extract_tripwire_details, get_guardrails_client
 from vchat.project_settings import get_setting, get_setting_json
 from vchat.settings import config
 from vchat.utils import json, run_task

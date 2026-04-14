@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from vchat import guardrails
-from vchat import openai_guardrails as og
 
 
 @pytest.mark.asyncio
@@ -56,19 +54,34 @@ def test_extract_tripwire_details_normalizes_values() -> None:
             info={"stage_name": "pre_flight", "guardrail_name": "PII Blocker!"}
         )
     )
-    stage, reason = og.extract_tripwire_details(exc)  # type: ignore[arg-type]
+    stage, reason = guardrails.extract_tripwire_details(exc)  # type: ignore[arg-type]
     assert stage == "input"
     assert reason == "pii_blocker"
 
 
 def test_get_guardrails_client_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(og.config, "openai_guardrails_enabled", False)
-    client = og.get_guardrails_client(api_key="k", base_url="https://example.com")
+    monkeypatch.setitem(guardrails.config, "openai_guardrails_enabled", False)
+    client = guardrails.get_guardrails_client(
+        api_key="k",
+        base_url="https://example.com",
+    )
     assert client is None
 
 
-def test_get_guardrails_client_missing_config_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setitem(og.config, "openai_guardrails_enabled", True)
-    monkeypatch.setitem(og.config, "guardrails_config_path", str(tmp_path / "missing.json"))
-    client = og.get_guardrails_client(api_key="k", base_url="https://example.com")
+def test_get_guardrails_client_init_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(guardrails.config, "openai_guardrails_enabled", True)
+    monkeypatch.setattr(guardrails, "_cached_client", None)
+    monkeypatch.setattr(guardrails, "_cached_key", None)
+
+    def _boom(**kwargs):
+        _ = kwargs
+        raise RuntimeError("broken")
+
+    monkeypatch.setattr(guardrails, "GuardrailsAsyncOpenAI", _boom)
+    client = guardrails.get_guardrails_client(
+        api_key="k",
+        base_url="https://example.com",
+    )
     assert client is None

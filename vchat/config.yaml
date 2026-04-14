@@ -44,7 +44,6 @@ openai_api_key: ""
 openai_model: "gpt-4o-mini"
 openai_base_url: "https://api.openai.com/v1"
 openai_guardrails_enabled: true
-guardrails_config_path: "vchat/guardrails_config.json"
 guardrails_ru_pii_enabled: true
 embedding_model_id: "ai-sage/Giga-Embeddings-instruct"
 embedding_model_dir: "data"

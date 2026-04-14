@@ -10,7 +10,6 @@ import sqlalchemy as sa
 
 from vchat import embeddings
 from vchat import guardrails
-from vchat import openai_guardrails as og
 from vchat.document_types import get_document_type_label, guess_document_type
 from vchat.models.base import (
     Base,
@@ -116,12 +115,10 @@ def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_openai_guardrails_cache_and_extract(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    cfg = tmp_path / "guardrails.json"
-    cfg.write_text("{}", encoding="utf-8")
-    monkeypatch.setitem(og.config, "openai_guardrails_enabled", True)
-    monkeypatch.setitem(og.config, "guardrails_config_path", str(cfg))
-    monkeypatch.setattr(og, "_cached_client", None)
-    monkeypatch.setattr(og, "_cached_key", None)
+    _ = tmp_path
+    monkeypatch.setitem(guardrails.config, "openai_guardrails_enabled", True)
+    monkeypatch.setattr(guardrails, "_cached_client", None)
+    monkeypatch.setattr(guardrails, "_cached_key", None)
 
     created = []
 
@@ -129,14 +126,25 @@ def test_openai_guardrails_cache_and_extract(monkeypatch: pytest.MonkeyPatch, tm
         def __init__(self, **kwargs):
             created.append(kwargs)
 
-    monkeypatch.setattr(og, "GuardrailsAsyncOpenAI", _FakeClient)
-    one = og.get_guardrails_client(api_key="k", base_url="https://example.com")
-    two = og.get_guardrails_client(api_key="k", base_url="https://example.com")
+    monkeypatch.setattr(guardrails, "GuardrailsAsyncOpenAI", _FakeClient)
+    one = guardrails.get_guardrails_client(
+        api_key="k",
+        base_url="https://example.com",
+    )
+    two = guardrails.get_guardrails_client(
+        api_key="k",
+        base_url="https://example.com",
+    )
     assert one is two
     assert len(created) == 1
+    assert created[0]["config"] == guardrails._OPENAI_GUARDRAILS_PIPELINE
 
-    stage, reason = og.extract_tripwire_details(
-        SimpleNamespace(guardrail_result=SimpleNamespace(info={"stage_name": "output", "guardrail_name": ""}))
+    stage, reason = guardrails.extract_tripwire_details(
+        SimpleNamespace(
+            guardrail_result=SimpleNamespace(
+                info={"stage_name": "output", "guardrail_name": ""}
+            )
+        )
     )
     assert stage == "output"
     assert reason == "guardrail_tripwire"
