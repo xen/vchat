@@ -34,13 +34,15 @@ class _MsgSpecJSON:
     _encoder = msgspec.json.Encoder()
     _decoder = msgspec.json.Decoder()
 
-    def dumps(self, obj):
+    def dumps(self, obj, **kwargs):
         # Encode to bytes, then decode to UTF-8 string
+        # `msgspec` does not support stdlib flags like `ensure_ascii`,
+        # but some call sites still pass them through.
         return self._encoder.encode(obj).decode("utf-8")
 
-    def dump(self, obj, fp):
+    def dump(self, obj, fp, **kwargs):
         # Write the UTF-8 JSON string into a file-like object
-        fp.write(self.dumps(obj))
+        fp.write(self.dumps(obj, **kwargs))
 
     def loads(self, s):
         # If s is a string, convert to bytes; if it’s already bytes, just use it

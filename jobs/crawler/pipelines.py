@@ -1,18 +1,16 @@
 import logging
-
-from docling.document_converter import DocumentConverter
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
-from vchat.models.data import Document
+
+from vchat.document_pipeline import extract_url_document
 from vchat.document_types import guess_document_type
+from vchat.models.data import Document
 from vchat.settings import config
-import html
 
 
 class DatabasePipeline:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.converter = DocumentConverter()
         self.engine = create_engine(
             self._sync_uri(config["database_uri"]),
             echo=True,
@@ -31,13 +29,10 @@ class DatabasePipeline:
         spider.logger.info(f"Pipeline received {url}")
 
         try:
-            result = self.converter.convert(url)
-            markdown_content = result.document.export_to_markdown()
+            markdown_content, normalized_title, extracted_meta = extract_url_document(url)
         except Exception as exc:
-            spider.logger.error(f"Docling failed for {url}: {exc}", exc_info=True)
-
-        if not markdown_content:
-            markdown_content = item.get("content")
+            spider.logger.error("Extraction failed for %s: %s", url, exc, exc_info=True)
+            return item
 
         if not markdown_content:
             spider.logger.warning(f"Skipping {url}: no content extracted")
@@ -71,11 +66,12 @@ class DatabasePipeline:
                 document.content = markdown_content
                 document.status = "indexed"
                 document.hash_value = markdown_content
-                document.language = markdown_content
-                document.length = markdown_content
+                document.language = ""
+                document.length = len(markdown_content)
 
                 item_meta = item.get("meta", {})
                 meta = dict(document.meta or {})
+                meta.update(extracted_meta)
                 if item_meta:
                     meta.update(item_meta)
                 content_type = item.get("content_type")
@@ -86,9 +82,10 @@ class DatabasePipeline:
                     meta["content_type"] = content_type
 
                 document.meta = meta
-                if item.get("title"):
-                    clean_title = item["title"].strip()
-                    document.title = html.escape(clean_title)
+                if normalized_title:
+                    document.title = normalized_title
+                elif item.get("title"):
+                    document.title = item["title"].strip()[:512]
 
                 session.commit()
                 spider.logger.info("Indexed %s", url)

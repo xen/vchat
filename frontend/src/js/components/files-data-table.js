@@ -350,26 +350,7 @@ window.useFilesDataTable = () => ({
     return Boolean(this.documentModal && this.documentModalContent)
   },
   async viewDocument(fileId) {
-    if (!this.ensureDocumentModal()) {
-      window.alert('Окно предпросмотра недоступно')
-      return
-    }
-
-    const modal = this.documentModal
-    const content = this.documentModalContent
-    content.innerHTML = '<div class="flex justify-center p-8"><span class="loading loading-spinner loading-lg"></span></div>'
-    modal.showModal()
-
-    try {
-      const response = await fetch(`/document/${fileId}/content`)
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      content.innerHTML = await response.text()
-    } catch (error) {
-      console.error('[FilesDataTable] Failed to load file preview:', error)
-      content.innerHTML = '<div class="text-error">Не удалось загрузить содержимое файла.</div>'
-    }
+    window.open(`/document/${fileId}`, '_blank', 'noopener')
   },
   async deleteFile(fileId) {
     if (!window.confirm('Вы уверены, что хотите удалить этот файл?')) {

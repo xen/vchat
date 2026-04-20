@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar, Iterable
 
+import tiktoken
+
 from vchat.settings import config
 
 
@@ -10,6 +12,9 @@ from vchat.settings import config
 class ModelInfo:
     id: str
     label: str
+    context_window: int
+    max_tokens: int
+    tokenizer_name: str | None = None
 
 
 class BaseAIProvider:
@@ -59,15 +64,33 @@ class BaseAIProvider:
             "base_url": self.base_url,
         }
 
+    def token_count(self, text: str, model: ModelInfo | None = None) -> int:
+        target = model or (self.models[0] if self.models else None)
+        tokenizer_name = target.tokenizer_name if target else None
+        try:
+            if tokenizer_name:
+                enc = tiktoken.get_encoding(tokenizer_name)
+            elif target:
+                enc = tiktoken.encoding_for_model(target.id)
+            else:
+                enc = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text or ""))
+
 
 class OpenAIProvider(BaseAIProvider):
     id = "openai"
     title = "OpenAI"
 
     _models: ClassVar[list[ModelInfo]] = [
-        ModelInfo("gpt-4o-mini", "GPT-4o mini"),
-        ModelInfo("gpt-4o", "GPT-4o"),
-        ModelInfo("gpt-3.5-turbo", "GPT-3.5 Turbo"),
+        ModelInfo(
+            "gpt-4o-mini", "GPT-4o mini", context_window=128000, max_tokens=16384
+        ),
+        ModelInfo("gpt-4o", "GPT-4o", context_window=128000, max_tokens=16384),
+        ModelInfo(
+            "gpt-3.5-turbo", "GPT-3.5 Turbo", context_window=16384, max_tokens=4096
+        ),
     ]
 
     @property
@@ -88,8 +111,20 @@ class YandexGPTProvider(BaseAIProvider):
     supports_chat = False
 
     _models: ClassVar[list[ModelInfo]] = [
-        ModelInfo("yandexgpt-lite", "YandexGPT Lite"),
-        ModelInfo("yandexgpt-pro", "YandexGPT Pro"),
+        ModelInfo(
+            "yandexgpt-lite",
+            "YandexGPT Lite",
+            context_window=32768,
+            max_tokens=4096,
+            tokenizer_name="cl100k_base",
+        ),
+        ModelInfo(
+            "yandexgpt-pro",
+            "YandexGPT Pro",
+            context_window=32768,
+            max_tokens=4096,
+            tokenizer_name="cl100k_base",
+        ),
     ]
 
     @property
@@ -99,28 +134,98 @@ class YandexGPTProvider(BaseAIProvider):
     def _load_api_key(self) -> str | None:
         return config.get("yandex_api_key")
 
+    @property
+    def base_url(self) -> str | None:
+        return config.get("yandex_base_url")
+
 
 class GigaChatProvider(BaseAIProvider):
     id = "gigachat"
     title = "GigaChat"
-    supports_chat = False
+    supports_chat = True
 
     _models: ClassVar[list[ModelInfo]] = [
-        ModelInfo("gigachat-pro", "GigaChat Pro"),
+        ModelInfo(
+            "GigaChat",
+            "GigaChat",
+            context_window=32768,
+            max_tokens=4096,
+            tokenizer_name="cl100k_base",
+        ),
+        ModelInfo(
+            "GigaChat-Pro",
+            "GigaChat Pro",
+            context_window=32768,
+            max_tokens=4096,
+            tokenizer_name="cl100k_base",
+        ),
+        ModelInfo(
+            "gigachat-pro",
+            "GigaChat Pro (legacy id)",
+            context_window=32768,
+            max_tokens=4096,
+            tokenizer_name="cl100k_base",
+        ),
     ]
 
     @property
     def models(self) -> list[ModelInfo]:
+        raw = config.get("gigachat_models")
+        if isinstance(raw, list) and raw:
+            items: list[ModelInfo] = []
+            for entry in raw:
+                if isinstance(entry, str) and entry.strip():
+                    items.append(
+                        ModelInfo(
+                            entry.strip(),
+                            entry.strip(),
+                            context_window=32768,
+                            max_tokens=4096,
+                            tokenizer_name="cl100k_base",
+                        )
+                    )
+                    continue
+
+                if isinstance(entry, dict):
+                    model_id = str(entry.get("id") or "").strip()
+                    if not model_id:
+                        continue
+                    label = str(entry.get("label") or model_id).strip()
+                    context_window = int(entry.get("context_window") or 32768)
+                    max_tokens = int(entry.get("max_tokens") or 4096)
+                    tokenizer_name = entry.get("tokenizer_name")
+                    if tokenizer_name is not None:
+                        tokenizer_name = str(tokenizer_name).strip() or None
+
+                    items.append(
+                        ModelInfo(
+                            model_id,
+                            label,
+                            context_window=context_window,
+                            max_tokens=max_tokens,
+                            tokenizer_name=tokenizer_name or "cl100k_base",
+                        )
+                    )
+
+            if items:
+                return items
+
         return list(self._models)
 
     def _load_api_key(self) -> str | None:
         return config.get("gigachat_api_key")
 
+    @property
+    def base_url(self) -> str | None:
+        return config.get(
+            "gigachat_base_url", "https://gigachat.devices.sberbank.ru/api/v1"
+        )
+
 
 PROVIDER_CLASSES: tuple[type[BaseAIProvider], ...] = (
+    GigaChatProvider,
     OpenAIProvider,
     YandexGPTProvider,
-    GigaChatProvider,
 )
 
 

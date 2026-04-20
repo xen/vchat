@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from aiohttp import web
+
+
+def extract_client_ip(request: web.Request) -> str | None:
+    forwarded = (
+        request.headers.get("CF-Connecting-IP")
+        or request.headers.get("X-Real-IP")
+        or request.headers.get("X-Forwarded-For")
+    )
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+        return ip or None
+
+    peername = request.transport.get_extra_info("peername") if request.transport else None
+    if isinstance(peername, tuple) and peername:
+        return str(peername[0])
+    return None
+
+
+def infer_device_type(user_agent: str | None) -> str:
+    ua = (user_agent or "").lower()
+    if not ua:
+        return "unknown"
+    if any(token in ua for token in ("ipad", "tablet")):
+        return "tablet"
+    if any(token in ua for token in ("iphone", "android", "mobile")):
+        return "mobile"
+    return "desktop"
+
+
+def infer_browser(user_agent: str | None) -> str:
+    ua = (user_agent or "").lower()
+    if not ua:
+        return "unknown"
+    if "edg/" in ua:
+        return "edge"
+    if "opr/" in ua or "opera" in ua:
+        return "opera"
+    if "firefox/" in ua:
+        return "firefox"
+    if "chrome/" in ua and "chromium/" not in ua:
+        return "chrome"
+    if "safari/" in ua and "chrome/" not in ua:
+        return "safari"
+    if "chromium/" in ua:
+        return "chromium"
+    return "other"
+
+
+def merge_chat_meta(
+    existing: dict[str, Any] | None,
+    request: web.Request,
+    *,
+    device_fingerprint: str | None = None,
+    platform: str | None = None,
+    language: str | None = None,
+    timezone_name: str | None = None,
+    screen: str | None = None,
+) -> dict[str, Any]:
+    meta = dict(existing or {})
+    user_agent = request.headers.get("User-Agent", "").strip()
+
+    updates = {
+        "ip_address": extract_client_ip(request),
+        "user_agent": user_agent or None,
+        "browser": infer_browser(user_agent),
+        "device_type": infer_device_type(user_agent),
+        "device_fingerprint": (device_fingerprint or "").strip() or None,
+        "platform": (platform or "").strip() or None,
+        "language": (language or "").strip() or None,
+        "timezone": (timezone_name or "").strip() or None,
+        "screen": (screen or "").strip() or None,
+        "session_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    for key, value in updates.items():
+        if value not in (None, ""):
+            meta[key] = value
+
+    return meta

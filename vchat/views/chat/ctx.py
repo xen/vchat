@@ -1,30 +1,51 @@
+from __future__ import annotations
+
+import asyncio
 import contextvars
+import json
 import logging
 import re
-from heapq import nlargest
+from dataclasses import asdict, dataclass, field
 from string import punctuation
-from typing import List
+from typing import Any
 
-import pycld2 as cld2
-import spacy
 import sqlalchemy as sa
-import tiktoken
 from pgvector.sqlalchemy import Vector
-from spacy.lang.en.stop_words import STOP_WORDS
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ._types import Msg
+from vchat.ai_providers import BaseAIProvider, ModelInfo
 from vchat.embeddings import load_embedding_model
-from vchat.settings import config
 from vchat.models import ChatMsg
+from vchat.settings import config
 
+from ._types import Msg
+
+logger = logging.getLogger(__name__)
 cfg = config
-MODEL = config.get("openai", {}).get("model", "gpt-4o-mini")
+
 EMBEDDING_QUERY_PROMPT = (
     "Instruct: Дан вопрос, необходимо найти абзац текста с ответом\nQuery: "
 )
+MAX_SNIPPET_LEN = 2600
+MAX_CONTEXT_SNIPPETS = 6
+MAX_SNIPPETS_PER_SOURCE = 2
+TAIL_MSG_LIMIT = 5
+VECTOR_TOP_K = 10
+FT_TOP_M = 10
+MAX_LEXICAL_TERMS = 8
+VECTOR_MAX_DIST = 0.78
+MAX_CONTEXT_SNIPPET_TOKENS = 5000
+MAX_INPUT_CONTEXT_TOKENS = 10000
+CONTEXT_SAFETY_MARGIN = 1024
+RERANK_LIMIT = 24
+RRF_K = 60
+RERANK_MODEL = cfg.get(
+    "reranker_model_id", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+)
 
-logger = logging.getLogger(__name__)
+SNIPPET_INJECTION_PATTERNS = re.compile(
+    r"(?i)\b(system|assistant|user|instruction|command|rules?|prompt)\b"
+)
 
 user_id_ctx: contextvars.ContextVar[int | str | None] = contextvars.ContextVar(
     "user_id", default=None
@@ -33,26 +54,136 @@ chat_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "chat_id", default=None
 )
 
-MAX_SNIPPET_LEN = 700
-MAX_CONTEXT_SNIPPETS = 6
-
-SNIPPET_INJECTION_PATTERNS = re.compile(
-    r"(?i)\b(system|assistant|user|instruction|command|rules?|prompt)\b"
-)
-
-# list of languages supported by spacy
+lang_models = {"en": "en_core_web_sm", "ru": "ru_core_news_sm"}
+_nlps: dict[str, Any] = {}
+_embed_model: Any | None = None
+_rerank_model: Any | None = None
 
 
-lang_models = {
-    "en": "en_core_web_sm",
-    "ru": "ru_core_news_sm",
-}
+@dataclass(frozen=True)
+class ContextSnippet:
+    text: str
+    kind: str | None = None
+    src: str | None = None
+    uri: str | None = None
+    title: str | None = None
+    display_path: str | None = None
+    header_text: str | None = None
+    section_path: str | None = None
+    entity_terms: list[str] | None = None
 
-# spacy models and languages
+
+@dataclass(frozen=True)
+class ContextPayload:
+    type: str = "rag_context"
+    version: int = 1
+    snippets: list[ContextSnippet] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ContextPolicy:
+    quote_mode: bool
+    table_mode: bool
+    enumeration_mode: bool
+    has_source_url: bool
+    has_quote_candidate: bool
+    has_table_candidate: bool
+    has_enumeration_coverage: bool
+    reason_code: str
+
+
+@dataclass(frozen=True)
+class Snippet:
+    id: int | None = None
+    text: str | None = None
+    chat_id: str | None = None
+    document_id: int | None = None
+    chunk_ix: int | None = None
+    start_offset: int | None = None
+    end_offset: int | None = None
+    dist: float | None = None
+    src: str | None = None
+    uri: str | None = None
+    title: str | None = None
+    kind: str | None = None
+    header_text: str | None = None
+    section_path: str | None = None
+    entity_terms: list[str] | None = None
+    token_count: int | None = None
+    rerank_score: float | None = None
+
+    @classmethod
+    def from_mapping(cls, row: dict[str, Any]) -> "Snippet":
+        return cls(
+            id=row.get("id"),
+            text=row.get("text"),
+            chat_id=row.get("chat_id"),
+            document_id=row.get("document_id"),
+            chunk_ix=row.get("chunk_ix"),
+            start_offset=row.get("start_offset"),
+            end_offset=row.get("end_offset"),
+            dist=row.get("dist"),
+            src=row.get("src"),
+            uri=row.get("uri"),
+            title=row.get("title"),
+            kind=row.get("kind"),
+            header_text=row.get("header_text"),
+            section_path=row.get("section_path"),
+            entity_terms=row.get("entity_terms"),
+            token_count=row.get("token_count"),
+            rerank_score=row.get("rerank_score"),
+        )
+
+    @property
+    def display_path(self) -> str | None:
+        title = (self.title or "").strip()
+        branch = (self.section_path or self.header_text or "").strip()
+        if title and branch and branch != title:
+            return f"{title} / {branch}"
+        return title or branch or None
+
+
+@dataclass(frozen=True)
+class ContextResult:
+    messages: list[Msg]
+    used_chunks: list[dict[str, Any]]
+    sources: list[dict[str, Any]]
+    policy: dict[str, Any]
+    coverage: dict[str, Any]
+
+
+def get_cld2():
+    try:
+        import pycld2 as cld2  # type: ignore[import]
+    except ImportError:
+        return None
+    return cld2
+
+
+def load_nlp(lang: str):
+    if lang not in lang_models:
+        return None
+    if lang in _nlps:
+        return _nlps[lang]
+    try:
+        import spacy  # type: ignore[import]
+
+        nlp = spacy.load(lang_models[lang])
+        _nlps[lang] = nlp
+        return nlp
+    except Exception:
+        logger.exception("Failed to load spaCy model for %s", lang)
+        return None
 
 
 def detect_lang(text: str) -> str | None:
-    is_reliable, _, details = cld2.detect(text)
+    cld2 = get_cld2()
+    if not cld2:
+        return None
+    try:
+        is_reliable, _, details = cld2.detect(text)
+    except Exception:
+        return None
     if is_reliable:
         lang = details[0][1]
         if lang in lang_models:
@@ -60,173 +191,146 @@ def detect_lang(text: str) -> str | None:
     return None
 
 
-lang_models = {"en": "en_core_web_sm", "ru": "ru_core_news_sm"}
-nlps = {lang: spacy.load(model) for lang, model in lang_models.items()}
+def lexical_query(text: str) -> str:
+    lang = detect_lang(text) or "en"
+    nlp = load_nlp(lang)
+    if not nlp:
+        return text
 
-
-def text_summarizer(text, percentage, lang="en") -> str:
-    # load the model into spaCy
-    if lang not in lang_models:
-        return text[:200] + " …"
-
-    nlp = nlps[lang]
-
-    # pass the text into the nlp function
     doc = nlp(text)
+    scores: dict[str, float] = {}
+    quoted = re.findall(r'"([^"]+)"', text)
+    for item in quoted:
+        phrase = item.strip()
+        if phrase:
+            scores[phrase] = scores.get(phrase, 0.0) + 10.0
 
-    # ## The score of each word is kept in a frequency table
-    # tokens = [token.text for token in doc]
-    freq_of_word = dict()
+    for ent in doc.ents:
+        phrase = ent.text.strip()
+        if phrase:
+            scores[phrase] = scores.get(phrase, 0.0) + 8.0
 
-    # Text cleaning and vectorization
-    for word in doc:
-        if word.text.lower() not in list(STOP_WORDS):
-            if word.text.lower() not in punctuation:
-                if word.text not in freq_of_word.keys():
-                    freq_of_word[word.text] = 1
-                else:
-                    freq_of_word[word.text] += 1
+    for token in doc:
+        if token.is_stop or token.is_punct or token.is_space:
+            continue
+        if token.pos_ not in {"NOUN", "PROPN", "ADJ", "NUM"}:
+            continue
 
-    # Maximum frequency of word
-    max_freq = max(freq_of_word.values())
+        lemma = token.lemma_.strip()
+        if len(lemma) >= 2:
+            scores[lemma] = scores.get(lemma, 0.0) + 2.0
 
-    # Normalization of word frequency
-    for word in freq_of_word.keys():
-        freq_of_word[word] = freq_of_word[word] / max_freq
+        if token.pos_ not in {"NOUN", "PROPN"}:
+            continue
 
-    # In this part, each sentence is weighed based on how often it contains the token.
-    sent_tokens = [sent for sent in doc.sents]
-    sent_scores = dict()
-    for sent in sent_tokens:
-        for word in sent:
-            if word.text.lower() in freq_of_word.keys():
-                if sent not in sent_scores.keys():
-                    sent_scores[sent] = freq_of_word[word.text.lower()]
-                else:
-                    sent_scores[sent] += freq_of_word[word.text.lower()]
+        left = [
+            child.lemma_.strip()
+            for child in token.lefts
+            if child.dep_ in {"amod", "compound", "flat", "nummod"}
+        ]
+        right = [
+            child.lemma_.strip()
+            for child in token.rights
+            if child.dep_ in {"nmod", "flat", "compound"}
+        ]
+        phrase = " ".join(part for part in [*left, lemma, *right] if part).strip()
+        if len(phrase) >= 3 and phrase != lemma:
+            scores[phrase] = scores.get(phrase, 0.0) + 5.0
 
-    len_tokens = int(len(sent_tokens) * percentage)
+    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    terms = [term for term, _ in ranked[:MAX_LEXICAL_TERMS]]
+    if not terms:
+        return text
+    return " OR ".join(terms)
 
-    # Summary for the sentences with maximum score. Here, each sentence in the list is of spacy.span type
-    summary = nlargest(
-        n=len_tokens, iterable=sent_scores, key=lambda sent: sent_scores[sent]
+
+def queryprofile(text: str) -> dict[str, Any]:
+    rewritten = lexical_query(text)
+    lowered = text.lower()
+    lexical_terms: list[str] = []
+    seen_terms = set()
+    for term in re.split(r"\s+OR\s+", rewritten):
+        normalized = term.strip().strip('"').lower()
+        if len(normalized) < 2 or normalized in seen_terms:
+            continue
+        seen_terms.add(normalized)
+        lexical_terms.append(normalized)
+
+    table_mode = any(
+        token in lowered
+        for token in (
+            "table",
+            "таблиц",
+            "column",
+            "колонк",
+            "header",
+            "строк",
+            "row",
+        )
     )
-
-    # Prepare for final summary
-    final_summary = [word.text for word in summary]
-
-    # convert to a string
-    summary = " ".join(final_summary)
-
-    # Return final summary
-    return summary
-
-
-def token_count(text: str) -> int:
-    enc = tiktoken.encoding_for_model(MODEL)
-    return len(enc.encode(text))
-
-
-def trim_messages(messages: list[Msg], max_tokens: int = 8000) -> list:
-    total_tokens = 0
-    trimmed = []
-    # Iterate from the end (newest messages)
-    for msg in reversed(messages):
-        tokens = token_count(msg.content)
-        if total_tokens + tokens > max_tokens:
-            break
-        total_tokens += tokens
-        trimmed.append(msg)
-    # Return reversed trimmed list to restore original order
-    return list(reversed(trimmed))
-
-
-# https://huggingface.co/spaces/mteb/leaderboard
-# until we make our bot "smart" it should be enough to use qwen or
-# market will be changed and somebody will release better model
-# for embedding
-_embed_model = None
+    quote_mode = any(
+        token in lowered
+        for token in ("quote", "citation", "source", "цитат", "дослов", "источник")
+    )
+    enumeration_mode = any(
+        token in lowered
+        for token in (
+            "all",
+            "list",
+            "enumerate",
+            "перечис",
+            "спис",
+            "какие",
+            "все",
+        )
+    )
+    return {
+        "lexical_query": rewritten,
+        "lexical_terms": lexical_terms,
+        "table_mode": table_mode,
+        "quote_mode": quote_mode,
+        "enumeration_mode": enumeration_mode,
+    }
 
 
 def _get_embed_model():
     global _embed_model
     if _embed_model is None:
-        logger.info("Heavy task: loading embedding model...")
+        logger.info("Loading embedding model for retrieval")
         _embed_model = load_embedding_model(device="cpu")
     return _embed_model
 
 
-def embed_query(text: str) -> List[float]:
+def embed_query(text: str) -> list[float]:
     payload = f"{EMBEDDING_QUERY_PROMPT}{text}"
-    emb = _get_embed_model().encode([payload], normalize_embeddings=True)
+    emb = _get_embed_model().encode([payload], normalize_embeddings=True, batch_size=1)
     return emb[0].tolist()
 
 
-# --- User-memory RAG bucket ---
-# Picks past user messages from other chats via pgvector cosine (<=>),
-# applies relevance thresholds (tau, tau_fallback) and light diversification
-# (max 1 snippet per foreign chat). Returns at most k_mem snippets.
-async def _fetch_user_memory_chunks(
+def loadrerank():
+    global _rerank_model
+    if _rerank_model is not None:
+        return _rerank_model
+    try:
+        from sentence_transformers import CrossEncoder  # type: ignore[import]
+
+        _rerank_model = CrossEncoder(
+            RERANK_MODEL,
+            device="cpu",
+            max_length=512,
+            local_files_only=True,
+        )
+    except Exception:
+        logger.exception("Cross-encoder reranker is unavailable")
+        _rerank_model = False
+    return _rerank_model
+
+
+async def tail_messages(
     db: AsyncSession,
-    user_id: int | str,
     chat_id: str,
-    qvec: List[float],
-    k_mem: int = 2,
-    tau: float = 0.80,
-    tau_fallback: float = 0.75,
-) -> List[dict]:
-    if not user_id or k_mem <= 0:
-        return []
-    sql = sa.text(
-        """
-        SELECT cc.id, cc.content, cc.chat_id, cc.document_id, cc.chunk_ix,
-               cc.start_offset, cc.end_offset,
-               cc.embedding <=> CAST(:qvec AS vector(:vect_dim)) AS dist,
-               'mem' AS src
-        FROM chunk cc
-        JOIN chat_msg m ON m.id = cc.msg_id
-        WHERE cc.user_uid = :user_id
-          AND cc.embedding IS NOT NULL
-          AND m.role = 'user'
-          AND m.chat_id <> :chat_id
-        ORDER BY cc.embedding <=> CAST(:qvec AS vector(:vect_dim)) ASC
-        LIMIT :k_cand
-        """
-    ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
-    k_cand = max(8, k_mem * 5)
-    params = {
-        "qvec": qvec,
-        "vect_dim": cfg["vec_dim"],
-        "user_id": str(user_id),
-        "chat_id": chat_id,
-        "k_cand": k_cand,
-    }
-    rows = (await db.execute(sql, params)).mappings().all()
-    max_dist = 1.0 - tau
-    primary = [r for r in rows if r.get("dist") is not None and r["dist"] <= max_dist]
-    if not primary and rows:
-        fb_max = 1.0 - tau_fallback
-        for r in rows:
-            if r.get("dist") is not None and r["dist"] <= fb_max:
-                primary = [r]
-                break
-    seen_chats = set()
-    diversified: List[dict] = []
-    for r in primary:
-        cid = r.get("chat_id")
-        if cid in (None, chat_id) or cid in seen_chats:
-            continue
-        seen_chats.add(cid)
-        diversified.append(r)
-        if len(diversified) >= k_mem:
-            break
-    return diversified
-
-
-async def _fetch_tail_messages(
-    db: AsyncSession, chat_id: str, limit: int = 5
-) -> List[Msg]:
-    # Fetch last `limit` messages from chat ordered oldest to newest
+    limit: int = TAIL_MSG_LIMIT,
+) -> list[Msg]:
     result = await db.execute(
         sa.select(ChatMsg.text, ChatMsg.role)
         .where(ChatMsg.chat_id == chat_id)
@@ -234,98 +338,154 @@ async def _fetch_tail_messages(
         .limit(limit)
     )
     rows = result.all()
-    # Reverse to chronological order
     return [Msg(role=role, content=text) for text, role in reversed(rows)]
 
 
-async def _fetch_vector_chunks(
+async def vector_supply(
     db: AsyncSession,
     chat_id: str,
-    query_vec: List[float],
-    top_k: int = 10,
-) -> List[dict]:
+    query_vec: list[float],
+    *,
+    top_k: int = VECTOR_TOP_K,
+) -> list[Snippet]:
+    if top_k <= 0:
+        return []
+
+    k_chat = max(2, top_k // 2)
+    k_kb = max(2, top_k - k_chat)
+
     chat_sql = sa.text(
         """
-        SELECT c.id, c.content, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
-               c.embedding <=> CAST(:qvec AS vector(:vect_dim)) AS dist,
+        SELECT c.id, c.text, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
+               c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
+               c.embedding <=> :qvec AS dist,
                'chat' AS src,
-               NULL as uri, NULL as title
+               NULL AS uri,
+               NULL AS title
         FROM chunk c
-        WHERE c.chat_id = :chat_id AND c.embedding IS NOT NULL
-        ORDER BY c.embedding <=> CAST(:qvec AS vector(:vect_dim))
+        WHERE c.chat_id = :chat_id
+          AND c.embedding IS NOT NULL
+          AND c.embedding <=> :qvec <= :max_dist
+        ORDER BY c.embedding <=> :qvec
         LIMIT :k_chat
         """
     ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
+
     kb_sql = sa.text(
         """
-        SELECT c.id, c.content, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
-               c.embedding <=> CAST(:qvec AS vector(:vect_dim)) AS dist,
+        SELECT c.id, c.text, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
+               c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
+               c.embedding <=> :qvec AS dist,
                'kb' AS src,
-               d.uri, d.title
+               d.uri AS uri,
+               d.title AS title
         FROM chunk c
         JOIN document d ON c.document_id = d.id
-        WHERE c.chat_id IS NULL AND c.document_id IS NOT NULL AND c.embedding IS NOT NULL
-        ORDER BY c.embedding <=> CAST(:qvec AS vector(:vect_dim))
+        WHERE c.chat_id IS NULL
+          AND c.document_id IS NOT NULL
+          AND c.embedding IS NOT NULL
+          AND c.embedding <=> :qvec <= :max_dist
+        ORDER BY c.embedding <=> :qvec
         LIMIT :k_kb
         """
     ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
+
     params = {
         "qvec": query_vec,
-        "vect_dim": cfg["vec_dim"],
         "chat_id": chat_id,
-        "k_chat": max(2, top_k // 2),
-        "k_kb": max(2, top_k - max(2, top_k // 2)),
+        "k_chat": k_chat,
+        "k_kb": k_kb,
+        "max_dist": VECTOR_MAX_DIST,
     }
-    chat_rows = (
-        (await db.execute(chat_sql, {**params, "k_chat": params["k_chat"]}))
-        .mappings()
-        .all()
-    )
-    kb_rows = (
-        (await db.execute(kb_sql, {**params, "k_kb": params["k_kb"]})).mappings().all()
-    )
-    rows = sorted([*chat_rows, *kb_rows], key=lambda row: row.get("dist", float("inf")))
+    chat_rows = (await db.execute(chat_sql, params)).mappings().all()
+    kb_rows = (await db.execute(kb_sql, params)).mappings().all()
+    rows = [Snippet.from_mapping(dict(row)) for row in [*chat_rows, *kb_rows]]
+    rows.sort(key=lambda item: item.dist if item.dist is not None else float("inf"))
     return rows[:top_k]
 
 
-async def _fetch_ft_chunks(
-    db: AsyncSession, query: str, top_m: int = 10
-) -> List[dict]:
-    if not query or top_m <= 0:
+async def fulltext_supply(
+    db: AsyncSession,
+    prompt_text: str,
+    *,
+    top_m: int = FT_TOP_M,
+) -> list[Snippet]:
+    if not prompt_text or top_m <= 0:
         return []
+
+    profile = queryprofile(prompt_text)
+    query_text = profile["lexical_query"]
+    logger.info("FTS query rewrite: %r -> %r", prompt_text, query_text)
+
     sql = sa.text(
         """
-        SELECT id, content, chat_id, document_id, chunk_ix, start_offset, end_offset,
-               NULL::float8 AS dist, 'ft' AS src
-        FROM chunk
+        SELECT c.id, c.text, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
+               c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
+               NULL::float8 AS dist,
+               'ft' AS src,
+               d.uri AS uri,
+               d.title AS title
+        FROM chunk c
+        LEFT JOIN document d ON c.document_id = d.id
         WHERE (
-              tsv @@ websearch_to_tsquery('russian', :q)
-           OR tsv @@ websearch_to_tsquery('english', :q)
-          )
-        ORDER BY id DESC
+               c.fts @@ websearch_to_tsquery('russian', :q)
+            OR c.fts @@ websearch_to_tsquery('english', :q)
+        )
+        ORDER BY
+            CASE
+                WHEN :table_mode = true AND c.kind IN ('table', 'table_rows') THEN 3
+                WHEN c.kind IN ('section_summary', 'summary') THEN 1
+                ELSE 0
+            END DESC,
+            (
+                ts_rank_cd(c.fts, websearch_to_tsquery('russian', :q))
+                + ts_rank_cd(c.fts, websearch_to_tsquery('english', :q))
+            ) DESC,
+            c.id DESC
         LIMIT :m
         """
     )
-    res = await db.execute(sql, {"q": query, "m": top_m})
-    return res.mappings().all()
+    rows = (await db.execute(sql, {"q": query_text, "m": top_m, "table_mode": profile["table_mode"]})).mappings().all()
+    return [Snippet.from_mapping(dict(row)) for row in rows]
 
 
-def _dedup_snippets(snippets: List[dict], max_prefix: int = 200) -> List[dict]:
-    seen = set()
-    out: List[dict] = []
-    for s in snippets:
-        txt = (s.get("content") or "").strip()
-        if not txt:
-            continue
-        key = txt[:max_prefix]
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(s)
-    return out
+def reciprocal_rank_fusion(rankings: list[list[Snippet]]) -> list[Snippet]:
+    fused: dict[tuple[Any, ...], Snippet] = {}
+    scores: dict[tuple[Any, ...], float] = {}
+
+    for ranking in rankings:
+        for rank, snippet in enumerate(ranking, start=1):
+            text = (snippet.text or "").strip()
+            if not text:
+                continue
+            key = (
+                snippet.document_id,
+                snippet.chat_id,
+                snippet.id,
+                snippet.chunk_ix,
+                snippet.start_offset,
+                snippet.end_offset,
+                text[:200],
+            )
+            if key not in fused:
+                fused[key] = snippet
+            scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
+
+    ranked: list[Snippet] = []
+    for key, snippet in fused.items():
+        ranked.append(
+            Snippet(
+                **{
+                    **asdict(snippet),
+                    "rerank_score": round(scores[key], 6),
+                }
+            )
+        )
+    ranked.sort(key=lambda item: item.rerank_score or 0.0, reverse=True)
+    return ranked
 
 
-def _sanitize_snippet_text(text: str) -> str:
+def sanitize_snippet_text(text: str) -> str:
     clean = (text or "").replace("\r", " ").replace("\n", " ").strip()
     clean = re.sub(r"\s+", " ", clean)
     clean = clean.replace("```", '"')
@@ -338,102 +498,296 @@ def _sanitize_snippet_text(text: str) -> str:
     return clean[:MAX_SNIPPET_LEN].strip()
 
 
-def _build_context_from_snippets(snips: List[dict]) -> Msg:
-    sanitized = []
-    for snippet in snips:
-        clean = _sanitize_snippet_text(snippet.get("content", ""))
+def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
+    ranked = [snippet for snippet in snippets if (snippet.text or "").strip()]
+    if not ranked:
+        return []
+
+    model = loadrerank()
+    if not model:
+        return ranked[:RERANK_LIMIT]
+
+    profile = queryprofile(query)
+    pairs = []
+    for snippet in ranked[:RERANK_LIMIT]:
+        snippet_text = snippet.text or ""
+        if snippet.kind in {"table", "table_rows"}:
+            snippet_text = re.sub(r"\n{3,}", "\n\n", snippet_text.replace("\r", "")).strip()
+        else:
+            snippet_text = sanitize_snippet_text(snippet_text)
+        pairs.append((query, snippet_text))
+
+    try:
+        scores = model.predict(pairs, show_progress_bar=False)
+    except Exception:
+        logger.exception("Cross-encoder rerank failed, falling back to RRF")
+        return ranked[:RERANK_LIMIT]
+
+    rescored: list[Snippet] = []
+    for snippet, score in zip(ranked[:RERANK_LIMIT], scores, strict=True):
+        boosted = float(score)
+        header_text = (snippet.header_text or "").lower()
+        entity_terms = [term.lower() for term in (snippet.entity_terms or [])]
+        for term in profile["lexical_terms"]:
+            if term in header_text:
+                boosted += 0.15
+            if term in entity_terms:
+                boosted += 0.10
+        if profile["table_mode"] and snippet.kind in {"table", "table_rows"}:
+            boosted += 0.20
+        if snippet.kind in {"section_summary", "summary"}:
+            boosted += 0.05
+        rescored.append(Snippet(**{**asdict(snippet), "rerank_score": round(boosted, 6)}))
+
+    rescored.sort(key=lambda item: item.rerank_score or 0.0, reverse=True)
+    out: list[Snippet] = []
+    seen_by_source_ref: dict[tuple[str, Any], int] = {}
+    for item in rescored:
+        source = str(item.src or "unknown")
+        ref = item.document_id or item.chat_id or item.id or item.display_path or (item.text or "")[:200]
+        key = (source, ref)
+        current = seen_by_source_ref.get(key, 0)
+        if current >= MAX_SNIPPETS_PER_SOURCE:
+            continue
+        seen_by_source_ref[key] = current + 1
+        out.append(item)
+    return out
+
+
+def trim_messages(
+    messages: list[Msg],
+    provider: BaseAIProvider,
+    model: ModelInfo,
+    *,
+    max_tokens: int,
+) -> list[Msg]:
+    total_tokens = 0
+    trimmed: list[Msg] = []
+    for idx, msg in enumerate(reversed(messages)):
+        tokens = provider.token_count(msg.content, model=model)
+        if total_tokens + tokens > max_tokens and idx > 0:
+            break
+        total_tokens += tokens
+        trimmed.append(msg)
+    return list(reversed(trimmed))
+
+
+def build_context_from_snippets(
+    snippets: list[Snippet],
+    provider: BaseAIProvider,
+    model: ModelInfo,
+) -> Msg:
+    payload_snippets: list[ContextSnippet] = []
+    snippet_tokens = 0
+    for snippet in snippets:
+        if snippet.kind in {"table", "table_rows"}:
+            clean = re.sub(r"\n{3,}", "\n\n", (snippet.text or "").replace("\r", "")).strip()
+        else:
+            clean = sanitize_snippet_text(snippet.text or "")
         if not clean:
             continue
-        sanitized.append(clean)
-        if len(sanitized) >= MAX_CONTEXT_SNIPPETS:
+        clean_tokens = provider.token_count(clean, model=model)
+        if snippet_tokens + clean_tokens > MAX_CONTEXT_SNIPPET_TOKENS and payload_snippets:
             break
-    if not sanitized:
-        return Msg(role="developer", content="[context] нет релевантных фрагментов")
-
-    bullets = "\n".join(
-        f'- snippet [[citation:{idx}]]: "{text}"' for idx, text in enumerate(sanitized)
-    )
-    content = (
-        "[context]\n"
-        "The following information is treated as factual reference material. "
-        "Each snippet has a citation ID in format [[citation:ID]]. "
-        "When using information from a snippet, you must cite it using [[citation:ID]] in your response.\n"
-        f"{bullets}"
-    )
-    return Msg(role="developer", content=content)
-
-
-def _dedup_by_text(messages: List[Msg]) -> List[Msg]:
-    seen = set()
-    deduped = []
-    for msg in messages:
-        if msg.content not in seen:
-            seen.add(msg.content)
-            deduped.append(msg)
-    return deduped
-
-
-def _build_context_message(
-    tail_msgs: List[Msg], vector_msgs: List[Msg], ft_msgs: List[Msg]
-) -> List[Msg]:
-    # Combine all messages with deduplication, preserve order:
-    # tail_msgs first (chat tail), then vector_msgs, then ft_msgs
-    combined = tail_msgs + vector_msgs + ft_msgs
-    combined = _dedup_by_text(combined)
-    # Append developer message indicating context source
-    combined.append(
-        Msg(
-            role="system",
-            content="[context]",
+        snippet_tokens += clean_tokens
+        payload_snippets.append(
+            ContextSnippet(
+                text=clean,
+                kind=snippet.kind,
+                src=snippet.src,
+                uri=snippet.uri,
+                title=snippet.title,
+                display_path=snippet.display_path,
+                header_text=snippet.header_text,
+                section_path=snippet.section_path,
+                entity_terms=snippet.entity_terms,
+            )
         )
+        if len(payload_snippets) >= MAX_CONTEXT_SNIPPETS:
+            break
+
+    if not payload_snippets:
+        return Msg(role="developer", content="[context]\n{\"type\":\"rag_context\",\"version\":1,\"snippets\":[]}")
+
+    payload = ContextPayload(snippets=payload_snippets)
+    return Msg(
+        role="developer",
+        content="[context]\n" + json.dumps(asdict(payload), ensure_ascii=False),
     )
-    return combined
+
+
+def _build_policy_and_coverage(
+    prompt_text: str,
+    snippets: list[Snippet],
+) -> tuple[ContextPolicy, dict[str, Any]]:
+    profile = queryprofile(prompt_text)
+    has_source_url = any(snippet.uri for snippet in snippets)
+    has_quote_candidate = any(
+        snippet.uri and snippet.kind in {"text", "summary", "section_summary"}
+        for snippet in snippets
+    )
+    has_table_candidate = any(
+        snippet.kind in {"table", "table_rows"} for snippet in snippets
+    )
+    coverage_refs = {
+        (
+            snippet.document_id,
+            snippet.section_path or snippet.header_text or snippet.title or snippet.id,
+        )
+        for snippet in snippets
+        if snippet.kind in {"table", "table_rows", "text", "section_summary", "summary"}
+    }
+    has_enumeration_coverage = len(coverage_refs) >= 2
+
+    reason_code = "ok"
+    if profile["quote_mode"] and not has_source_url:
+        reason_code = "missing_source_url"
+    elif profile["quote_mode"] and not has_quote_candidate:
+        reason_code = "missing_quote_candidate"
+    elif profile["table_mode"] and not has_table_candidate:
+        reason_code = "missing_table_candidate"
+    elif profile["enumeration_mode"] and not has_enumeration_coverage:
+        reason_code = "partial_enumeration"
+
+    policy = ContextPolicy(
+        quote_mode=profile["quote_mode"],
+        table_mode=profile["table_mode"],
+        enumeration_mode=profile["enumeration_mode"],
+        has_source_url=has_source_url,
+        has_quote_candidate=has_quote_candidate,
+        has_table_candidate=has_table_candidate,
+        has_enumeration_coverage=has_enumeration_coverage,
+        reason_code=reason_code,
+    )
+    coverage = {
+        "snippet_count": len(snippets),
+        "source_count": len({snippet.uri for snippet in snippets if snippet.uri}),
+        "section_count": len(coverage_refs),
+        "table_count": sum(1 for snippet in snippets if snippet.kind in {"table", "table_rows"}),
+        "quote_ready": has_source_url and has_quote_candidate,
+        "enumeration_coverage": has_enumeration_coverage,
+    }
+    return policy, coverage
+
+
+def _build_source_payloads(snippets: list[Snippet]) -> list[dict[str, Any]]:
+    sources: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for citation_id, snippet in enumerate(snippets):
+        key = (
+            snippet.uri,
+            snippet.document_id,
+            snippet.chunk_ix,
+            snippet.section_path,
+            snippet.header_text,
+            snippet.kind,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(
+            {
+                "citation_id": citation_id,
+                "uri": snippet.uri,
+                "title": snippet.title,
+                "display_path": snippet.display_path,
+                "kind": snippet.kind,
+                "header_text": snippet.header_text,
+                "section_path": snippet.section_path,
+            }
+        )
+    return sources
+
+
+def _build_used_chunks(snippets: list[Snippet]) -> list[dict[str, Any]]:
+    used_chunks: list[dict[str, Any]] = []
+    for citation_id, snippet in enumerate(snippets):
+        used_chunks.append(
+            {
+                "id": snippet.id,
+                "citation_id": citation_id,
+                "document_id": snippet.document_id,
+                "chunk_ix": snippet.chunk_ix,
+                "src": snippet.src,
+                "uri": snippet.uri,
+                "title": snippet.title,
+                "display_path": snippet.display_path,
+                "kind": snippet.kind,
+                "header_text": snippet.header_text,
+                "section_path": snippet.section_path,
+                "score": snippet.dist,
+                "rerank_score": snippet.rerank_score,
+            }
+        )
+    return used_chunks
 
 
 async def get_context(
     db: AsyncSession,
     chat_id: str,
     prompt: str,
-    tail_limit: int = 5,
-    vector_top_k: int = 10,
-    ft_top_m: int = 10,
-    k_mem: int = 2,
-) -> tuple[List[Msg], List[dict]]:
-    """
-    Retrieve context messages for a prompt using RAG approach:
-    - Last few chat messages (tail)
-    - Top-K vector similarity chunks
-    - Top-M full-text search chunks
-    Returns combined list of Msg objects with a [context] system message appended.
-    """
-    tail_msgs = await _fetch_tail_messages(db, chat_id, limit=tail_limit)
-    qvec = embed_query(prompt)
-    vec_rows = await _fetch_vector_chunks(db, chat_id, qvec, top_k=vector_top_k)
-    # user_memory = await _fetch_user_memory_chunks(db, user_id, chat_id, qvec, k_mem=k_mem)
-    user_memory = []
-    ft_rows = await _fetch_ft_chunks(db, prompt, top_m=ft_top_m)
+    *,
+    provider: BaseAIProvider,
+    model: ModelInfo,
+    tail_limit: int = TAIL_MSG_LIMIT,
+    vector_top_k: int = VECTOR_TOP_K,
+    ft_top_m: int = FT_TOP_M,
+) -> ContextResult:
+    profile = queryprofile(prompt)
+    query_vec = embed_query(prompt)
+    tail = await tail_messages(db, chat_id=chat_id, limit=tail_limit)
 
-    snippets = _dedup_snippets([*vec_rows, *user_memory, *ft_rows])
-    context_msg = _build_context_from_snippets(snippets)
-
-    context_msgs = tail_msgs + [context_msg]
-    context_msgs.append(Msg(role="user", content=prompt))
-    logger.info("Context tail messages: %d", len(tail_msgs))
-
-    # Prepare used chunks metadata (exclude vector data to save space)
-    used_chunks = []
-    for idx, s in enumerate(snippets):
-        used_chunks.append(
-            {
-                "id": s.get("id"),
-                "citation_id": idx,
-                "document_id": s.get("document_id"),
-                "chunk_ix": s.get("chunk_ix"),
-                "score": s.get("dist"),
-                "src": s.get("src"),
-                "uri": s.get("uri"),
-                "title": s.get("title"),
-            }
+    async with asyncio.TaskGroup() as task_group:
+        vector_task = task_group.create_task(
+            vector_supply(db=db, chat_id=chat_id, query_vec=query_vec, top_k=vector_top_k)
+        )
+        ft_task = task_group.create_task(
+            fulltext_supply(db=db, prompt_text=prompt, top_m=ft_top_m)
         )
 
-    return context_msgs, used_chunks
+    vector_snippets = vector_task.result()
+    ft_snippets = ft_task.result()
+    snippets = reciprocal_rank_fusion([vector_snippets, ft_snippets])
+    if profile["table_mode"]:
+        snippets.sort(
+            key=lambda item: (
+                item.kind not in {"table", "table_rows"},
+                -(item.rerank_score or 0.0),
+                item.dist if item.dist is not None else float("inf"),
+            )
+        )
+    snippets = crossrerank(prompt, snippets)
+
+    policy, coverage = _build_policy_and_coverage(prompt, snippets)
+    policy_msg = Msg(
+        role="developer",
+        content="[policy]\n"
+        + json.dumps(
+            {"policy": asdict(policy), "coverage": coverage},
+            ensure_ascii=False,
+        ),
+    )
+    context_msg = build_context_from_snippets(snippets, provider=provider, model=model)
+
+    context_msgs = tail + [policy_msg, context_msg, Msg(role="user", content=prompt)]
+    context_budget = max(
+        2048,
+        min(
+            MAX_INPUT_CONTEXT_TOKENS,
+            model.context_window - model.max_tokens - CONTEXT_SAFETY_MARGIN,
+        ),
+    )
+    context_msgs = trim_messages(
+        context_msgs,
+        provider=provider,
+        model=model,
+        max_tokens=context_budget,
+    )
+
+    return ContextResult(
+        messages=context_msgs,
+        used_chunks=_build_used_chunks(snippets),
+        sources=_build_source_payloads(snippets),
+        policy=asdict(policy),
+        coverage=coverage,
+    )

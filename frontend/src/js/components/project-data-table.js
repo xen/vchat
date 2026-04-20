@@ -618,32 +618,10 @@ window.useProjectDataTable = () => {
     },
     async viewDocument(docId) {
       const doc = this.data.find(item => item.id === docId)
-      if (!doc || !this.ensureDocumentModal()) {
+      if (!doc) {
         return
       }
-      this.documentModalContent.innerHTML = '<div class="p-4 text-sm opacity-70">Загрузка содержимого...</div>'
-      try {
-        const res = await fetch(`/document/${docId}/content`, {
-          headers: {
-            'HX-Request': 'true',
-          },
-          credentials: 'same-origin',
-        })
-        if (!res.ok) {
-          throw new Error(`Failed to load document: ${res.status}`)
-        }
-        const html = await res.text()
-        this.documentModalContent.innerHTML = html
-      } catch (err) {
-        console.error('[ProjectDataTable] Failed to load document content:', err)
-        this.documentModalContent.innerHTML = '<div class="p-4 text-sm text-error">Не удалось загрузить содержимое документа.</div>'
-      }
-
-      if (typeof this.documentModal.showModal === 'function') {
-        this.documentModal.showModal()
-      } else {
-        this.documentModal.setAttribute('open', 'true')
-      }
+      window.open(`/document/${docId}`, '_blank', 'noopener')
     },
     async toggleIgnore(docId, desiredState) {
       const doc = this.data.find(item => item.id === docId)

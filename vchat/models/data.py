@@ -206,8 +206,27 @@ class Chunk(Base, Created, Updated):
     start_offset: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     end_offset: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
 
-    content: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    tsv: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
+    kind: Mapped[str] = mapped_column(
+        sa.String(32),
+        nullable=False,
+        default="text",
+        server_default=sa.text("'text'"),
+        index=True,
+    )
+    header_text: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    section_path: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    entity_terms: Mapped[list[str] | None] = mapped_column(
+        sa.ARRAY(sa.String()),
+        nullable=True,
+    )
+    token_count: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
+    text: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    fts: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(2048), nullable=True)
 
 

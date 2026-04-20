@@ -69,9 +69,10 @@
     const aiModelSelect = document.getElementById('chat-model-select');
     const aiStatusEl = document.getElementById('ai-settings-status');
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
+    const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
 
     let ws;
-    let currentBotBubble = null; // Should point to the .chat-bubble element
+    let currentBotBubble = null;
 
     function wsUrl() {
       const payload = '{{ payload }}';
@@ -87,19 +88,106 @@
       statusEl.innerHTML = `<span class="badge badge-xs ${badgeClass} mr-1"></span> ${text}`;
     }
 
-    function appendMsg(text, type = 'bot', isPartial = false, msgId = null, signedMsgId = null, vote = null) {
-      // If it's a bot message and we are streaming (partial) and have a current bubble
+    function renderSourcesHtml(sources = [], reasonCode = null) {
+      if ((!sources || sources.length === 0) && !reasonCode) {
+        return '';
+      }
+      const sourceCards = (sources || []).map((source) => {
+        const citationId = source.citation_id ?? '';
+        const title = source.display_path || source.title || '{{ _("Источник") }}';
+        const metaParts = [source.kind, source.section_path].filter(Boolean);
+        const metaHtml = metaParts.length
+          ? `<div class="mt-1 text-[0.7rem] opacity-70">${metaParts.join(' · ')}</div>`
+          : '';
+        const href = source.uri || '#';
+        return `
+          <a
+            href="${href}"
+            target="_blank"
+            rel="noopener"
+            class="source-item rounded-box border border-base-content/10 bg-base-100/60 px-3 py-2 hover:border-primary/40 transition-colors"
+            data-id="${citationId}">
+            <div class="font-medium">${title}</div>
+            ${metaHtml}
+          </a>
+        `;
+      }).join('');
+      const reasonBadge = reasonCode
+        ? `<span class="badge badge-outline badge-xs">${reasonCode}</span>`
+        : '';
+      return `
+        <div data-structured-context="true">
+          <div class="divider my-2 opacity-40"></div>
+          <div class="flex flex-col gap-2 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-bold opacity-70">{{ _('Источники') }}</div>
+              ${reasonBadge}
+            </div>
+            <div class="grid gap-2">${sourceCards}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function attachStructuredContext(bubble, sources = [], reasonCode = null) {
+      if (!bubble) {
+        return;
+      }
+      bubble.querySelectorAll('[data-structured-context="true"]').forEach((node) => node.remove());
+      const html = renderSourcesHtml(sources, reasonCode);
+      if (!html) {
+        return;
+      }
+      bubble.insertAdjacentHTML('beforeend', html);
+    }
+
+    function ensureVoteArea(chatDiv, msgId, signedMsgId, vote = null) {
+      if (!chatDiv || !signedMsgId) {
+        return;
+      }
+      const areaId = `vote-area-${msgId}`;
+      const existing = chatDiv.querySelector(`#${areaId}`);
+      if (existing) {
+        existing.remove();
+      }
+      const footer = document.createElement('div');
+      footer.className = 'chat-footer opacity-50 flex gap-2 items-center mt-1';
+      footer.id = areaId;
+      footer.innerHTML = `
+        <button class="btn btn-ghost btn-xs btn-square ${vote === true ? 'text-primary' : ''}"
+                aria-label="Upvote"
+                hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
+                data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
+                hx-swap="outerHTML"
+                hx-target="#${areaId}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
+        </button>
+        <button class="btn btn-ghost btn-xs btn-square ${vote === false ? 'text-primary' : ''}"
+                aria-label="Downvote"
+                hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
+                data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
+                hx-swap="outerHTML"
+                hx-target="#${areaId}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" /></svg>
+        </button>
+      `;
+      chatDiv.appendChild(footer);
+      if (window.htmx && typeof window.htmx.process === 'function') {
+        window.htmx.process(footer);
+      }
+    }
+
+    function appendMsg(text, type = 'bot', isPartial = false, msgId = null, signedMsgId = null, vote = null, sources = [], reasonCode = null) {
       if (type === 'bot' && isPartial && currentBotBubble) {
         const rawText = (currentBotBubble.dataset.raw || '') + text;
         currentBotBubble.dataset.raw = rawText;
-        // Wrap content in markdown-body for consistent styling
         currentBotBubble.querySelector('.markdown-body').innerHTML = marked.parse(rawText);
+        logEl.scrollTop = logEl.scrollHeight;
+        return;
       } else {
-        // Create new message block
         const chatDiv = document.createElement('div');
         chatDiv.className = type === 'bot' ? 'chat chat-start' : 'chat chat-end';
 
-        // Add header for bot
         if (type === 'bot') {
           const header = document.createElement('div');
           header.className = 'chat-header text-xs opacity-50 mb-1';
@@ -107,7 +195,6 @@
           chatDiv.appendChild(header);
         }
 
-        // Create bubble
         const bubble = document.createElement('div');
         bubble.className = type === 'bot'
           ? 'chat-bubble chat-bubble-base-200 w-full max-w-sm sm:max-w-md md:max-w-lg'
@@ -118,42 +205,14 @@
           bubble.innerHTML = `<div class="markdown-body">${marked.parse(text)}</div>`;
           if (isPartial) {
             currentBotBubble = bubble;
-          } else {
-            currentBotBubble = null;
+          }
+          if (!isPartial) {
+            attachStructuredContext(bubble, sources, reasonCode);
           }
           chatDiv.appendChild(bubble);
-
-          // Add HTMX voting buttons if we have a msgId (completed message)
           if (!isPartial && signedMsgId) {
-            const footer = document.createElement('div');
-            footer.className = 'chat-footer opacity-50 flex gap-2 items-center mt-1';
-            footer.id = `vote-area-${msgId}`;
-            // Initial render of buttons
-            footer.innerHTML = `
-                         <button class="btn btn-ghost btn-xs btn-square ${vote === true ? 'text-primary' : ''}"
-                                 aria-label="Upvote"
-                                 hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
-                                 data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
-                                 hx-swap="outerHTML"
-                                 hx-target="#vote-area-${msgId}">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
-                         </button>
-                         <button class="btn btn-ghost btn-xs btn-square ${vote === false ? 'text-primary' : ''}"
-                                 aria-label="Downvote"
-                                 hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
-                                 data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
-                                 hx-swap="outerHTML"
-                                 hx-target="#vote-area-${msgId}">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" /></svg>
-                         </button>
-                     `;
-            chatDiv.appendChild(footer);
-            // Process HTMX on the new content if HTMX is available.
-            if (window.htmx && typeof window.htmx.process === 'function') {
-              window.htmx.process(footer);
-            }
+            ensureVoteArea(chatDiv, msgId, signedMsgId, vote);
           }
-
         } else {
           if (type === 'error') {
             bubble.className = 'chat-bubble chat-bubble-error text-error-content';
@@ -209,6 +268,26 @@
       }
     }
 
+    async function reportSession() {
+      if (!signedChatId || typeof window.vchatGetFingerprint !== 'function') {
+        return;
+      }
+      try {
+        const payload = await window.vchatGetFingerprint();
+        await fetch(`/actions/chat/session/${signedChatId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify(payload),
+        });
+      } catch (error) {
+        console.warn('Failed to report chat session metadata', error);
+      }
+    }
+
     function connect() {
       ws = new WebSocket(wsUrl());
       ws.onopen = () => {
@@ -253,52 +332,35 @@
               logEl.scrollTop = logEl.scrollHeight;
             }
           } else if (data.ok) {
-            if (data.content) {
-              // Pass signed_msg_id if available (usually at end из stream)
-              appendMsg(data.content, 'bot', data.partial, data.msg_id, data.signed_msg_id);
-            } else if (data.signed_msg_id && !data.partial) {
-              // Case where content was empty (maybe just sources?) or we just want to ensure ID is attached
-              // But usually we call appendMsg with content.
-              // If this is the final message with no content but has ID, we might need to update the last bubble?
-              // appendMsg handles finding currentBotBubble.
-              // Let's call it with empty content to trigger the ID attachment logic if needed?
-              // Or better, modify appendMsg to handle empty content update?
-              // appendMsg(text, ...) -> if text is empty string, it appends empty string.
-              // Let's passed it.
-              appendMsg("", 'bot', data.partial, data.msg_id, data.signed_msg_id);
-            }
-
-            if (data.sources && data.sources.length > 0) {
-              const sourcesHtml = data.sources.map(s => `
-                    <a href="${s.uri}" target="_blank" class="link link-hover link-primary inline-flex items-center gap-1 bg-base-100/50 p-1 rounded border border-base-content/10">
-                        <span class="opacity-70">📄</span> ${s.title || '{{ _("Источник") }}'}
-                    </a>
-                  `).join('');
-
-              const sourcesContainer = document.createElement('div');
-              sourcesContainer.innerHTML = `
-                      <div class="divider my-1 opacity-50"></div>
-                      <div class="flex flex-col gap-1 text-xs">
-                        <div class="font-bold opacity-70">{{ _('Источники') }}</div>
-                        <div class="flex flex-wrap gap-2">${sourcesHtml}</div>
-                      </div>
-                  `;
-
-              if (currentBotBubble) {
-                currentBotBubble.appendChild(sourcesContainer);
-              } else {
-                const div = document.createElement('div');
-                div.className = 'chat chat-start';
-                const bubble = document.createElement('div');
-                bubble.className = 'chat-bubble chat-bubble-base-200';
-                bubble.appendChild(sourcesContainer);
-                div.appendChild(bubble);
-                logEl.appendChild(div);
+            if (data.partial) {
+              if (data.content) {
+                appendMsg(data.content, 'bot', true);
               }
-            }
-            if (!data.partial) {
+            } else if (currentBotBubble) {
+              if (data.content) {
+                const rawText = (currentBotBubble.dataset.raw || '') + data.content;
+                currentBotBubble.dataset.raw = rawText;
+                currentBotBubble.querySelector('.markdown-body').innerHTML = marked.parse(rawText);
+              }
+              attachStructuredContext(currentBotBubble, data.sources || [], data.reason_code || null);
+              const chatDiv = currentBotBubble.closest('.chat');
+              if (chatDiv && data.signed_msg_id) {
+                ensureVoteArea(chatDiv, data.msg_id, data.signed_msg_id);
+              }
               setSending(false);
               currentBotBubble = null;
+            } else {
+              appendMsg(
+                data.content || '',
+                'bot',
+                false,
+                data.msg_id,
+                data.signed_msg_id,
+                null,
+                data.sources || [],
+                data.reason_code || null,
+              );
+              setSending(false);
             }
           } else {
             appendMsg(`Ошибка: ${data.error} ${data.status ? '(' + data.status + ')' : ''}\n${typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)}`, 'error');
@@ -364,11 +426,13 @@
         message.msg_id || null,
         message.signed_msg_id || null,
         (message.vote === null || message.vote === undefined) ? null : Boolean(message.vote),
+        message.sources || [],
+        message.reason_code || null,
       );
     }
 
-    // initial connect
     connect();
+    reportSession();
 
     const welcomeMessage = {{ welcome_message| tojson | safe }};
     if (!initialMessages.length && welcomeMessage) {

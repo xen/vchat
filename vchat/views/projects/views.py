@@ -2,6 +2,7 @@ import logging
 import os
 import secrets
 import shutil
+import json
 from datetime import datetime, time, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,7 @@ from vchat.ai_providers import (
     resolve_ai_settings,
 )
 from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
 from vchat.models import Chat, ChatMsg, Chunk, Document, Source, User
@@ -58,6 +60,7 @@ __all__ = [
     "project_source_settings",
     "project_view",
     "project_document_content",
+    "project_document_detail",
     "project_documents_json",
     "project_files_json",
     "project_chat",
@@ -69,6 +72,74 @@ __all__ = [
     "secure_download",
     "on_upload",
 ]
+
+
+def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
+    if row.role != "assistant":
+        return []
+
+    if row.full_context:
+        try:
+            payload = json.loads(row.full_context)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict) and isinstance(payload.get("sources"), list):
+            return [item for item in payload["sources"] if isinstance(item, dict)]
+
+    sources: list[dict[str, Any]] = []
+    seen: set[tuple[Any, ...]] = set()
+    for item in row.used_chunks or []:
+        if not isinstance(item, dict):
+            continue
+        citation_id = item.get("citation_id")
+        uri = item.get("uri")
+        title = item.get("title")
+        display_path = item.get("display_path") or title
+        key = (citation_id, uri, display_path)
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(
+            {
+                "citation_id": citation_id,
+                "uri": uri,
+                "title": title,
+                "display_path": display_path,
+                "kind": item.get("kind"),
+                "header_text": item.get("header_text"),
+                "section_path": item.get("section_path"),
+            }
+        )
+    return sources
+
+
+async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
+    db = request["db"]
+    document = await db.scalar(sa.select(Document).where(Document.id == document_id))
+    if not document:
+        raise web.HTTPNotFound()
+
+    chunk_rows = (
+        await db.execute(
+            sa.select(Chunk)
+            .where(Chunk.document_id == document.id)
+            .order_by(Chunk.chunk_ix.asc(), Chunk.id.asc())
+        )
+    ).scalars().all()
+
+    raw_meta = document.meta if isinstance(document.meta, dict) else {}
+    structure = raw_meta.get("structure") if isinstance(raw_meta.get("structure"), list) else []
+    outline = raw_meta.get("outline") if isinstance(raw_meta.get("outline"), list) else []
+    extraction = raw_meta.get("extraction") if isinstance(raw_meta.get("extraction"), dict) else {}
+
+    return {
+        "project": _project_context(request),
+        "document": document,
+        "document_structure": structure,
+        "document_outline": outline,
+        "document_extraction": extraction,
+        "document_chunks": chunk_rows,
+    }
 
 
 def _project_context(request) -> SimpleNamespace:
@@ -974,7 +1045,7 @@ async def project_stats(request):
         sa.select(
             Source.id,
             sa.func.count(Chunk.id).label("chunk_count"),
-            sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.content)), 0).label("chunk_storage"),
+            sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label("chunk_storage"),
         )
         .select_from(Source)
         .outerjoin(Document, Document.source_id == Source.id)
@@ -1000,7 +1071,7 @@ async def project_stats(request):
         await db.execute(
             sa.select(
                 sa.func.count(Chunk.id).label("chunk_count"),
-                sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.content)), 0).label("chunk_storage"),
+                sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label("chunk_storage"),
             )
             .select_from(Document)
             .outerjoin(Chunk, Chunk.document_id == Document.id)
@@ -1086,16 +1157,18 @@ async def project_stats(request):
 
 
 @login_required()
+@aiohttp_jinja2.template("projects/document_content.html")
 async def project_document_content(request):
     document_id = int(request.match_info.get("document_id"))
-    document = await request["db"].scalar(sa.select(Document).where(Document.id == document_id))
-    if not document:
-        raise web.HTTPNotFound()
+    return await _document_detail_context(request, document_id)
 
-    return web.Response(
-        text=f'<pre class="whitespace-pre-wrap overflow-y-auto" style="max-height: 500px">{document.content}</pre>',
-        content_type="text/html",
-    )
+
+@meta(title=_("Структура документа"))
+@login_required()
+@aiohttp_jinja2.template("projects/document_detail.html")
+async def project_document_detail(request):
+    document_id = int(request.match_info.get("document_id"))
+    return await _document_detail_context(request, document_id)
 
 
 @meta(title=_("Chat"))
@@ -1107,6 +1180,8 @@ async def project_chat(request):
         chat = await request["db"].scalar(sa.select(Chat).where(Chat.id == chat_id))
         if not chat:
             raise web.HTTPNotFound(text="Chat not found")
+        chat.meta = merge_chat_meta(chat.meta, request)
+        await request["db"].commit()
     else:
         user_uid_param = request.rel_url.query.get("user_uid", "").strip()
         user_uid = user_uid_param or str(request["user"].id)
@@ -1115,7 +1190,7 @@ async def project_chat(request):
         chat = Chat(
             title=f"Chat for {project.title}",
             user_uid=user_uid,
-            meta={},
+            meta=merge_chat_meta({}, request),
         )
         request["db"].add(chat)
         await request["db"].commit()
@@ -1125,6 +1200,7 @@ async def project_chat(request):
 
     serializer = URLSafeSerializer(config.get("secret_key"))
     payload = serializer.dumps([request["user"].id, chat.id], salt="vchat")
+    signed_chat_id = serializer.dumps(chat.id, salt="chat")
     history_rows = (
         await request["db"].execute(
             sa.select(ChatMsg)
@@ -1144,6 +1220,7 @@ async def project_chat(request):
                 "msg_id": row.id,
                 "signed_msg_id": signed_msg_id,
                 "vote": row.vote,
+                "sources": _message_sources(row),
             }
         )
 
@@ -1167,6 +1244,7 @@ async def project_chat(request):
         "allow_ai_switch": True,
         "ai_settings_url": str(ai_settings_url),
         "initial_messages": initial_messages,
+        "signed_chat_id": signed_chat_id,
     }
 
 
@@ -1206,7 +1284,10 @@ async def _render_public_chat(request):
     chat = Chat(
         title=f"Chat for {user_name or user_uid}",
         user_uid=user_uid,
-        meta={"name": user_name, "email": user_email},
+        meta=merge_chat_meta(
+            {"name": user_name, "email": user_email},
+            request,
+        ),
     )
     request["db"].add(chat)
     await request["db"].commit()
@@ -1214,6 +1295,7 @@ async def _render_public_chat(request):
 
     serializer = URLSafeSerializer(config.get("secret_key"))
     payload = serializer.dumps([user_uid, chat.id], salt="vchat")
+    signed_chat_id = serializer.dumps(chat.id, salt="chat")
     support_csrf_token = request.app[SIGNER_KEY].dumps({"chat_id": chat.id})
 
     project = _project_context(request)
@@ -1233,6 +1315,8 @@ async def _render_public_chat(request):
         "allow_ai_switch": False,
         "ai_settings_url": None,
         "support_csrf_token": support_csrf_token,
+        "signed_chat_id": signed_chat_id,
+        "initial_messages": [],
     }
 
 

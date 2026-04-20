@@ -2,13 +2,14 @@ import logging
 import sys
 from pathlib import Path
 
-import pypdf
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.models import Chunk, Document
+from jobs.embedder.tasks import index_document
+from vchat.document_pipeline import extract_local_file_document
+from vchat.models import Document, Source
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +27,19 @@ def _ensure_meta(doc: Document) -> None:
     queue="crawler",
 )
 def crawl_file_task(file_id: int):
-    print(f"Starting crawl for file {file_id}")
+    logger.info("Starting crawl for file %s", file_id)
 
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
             doc = session.scalar(select(Document).where(Document.id == file_id))
             if not doc:
-                print(f"Document {file_id} not found")
+                logger.warning("Document %s not found", file_id)
                 return
             file_path_str = doc.uri
 
             if not file_path_str or not Path(file_path_str).exists():
-                print(f"File not found: {file_path_str}")
+                logger.warning("File not found: %s", file_path_str)
                 _ensure_meta(doc)
                 doc.status = "error"
                 doc.meta["error"] = "File not found"
@@ -46,35 +47,37 @@ def crawl_file_task(file_id: int):
                 return
 
             try:
-                text = ""
-                ext = Path(file_path_str).suffix.lower()
+                content, title, meta = extract_local_file_document(file_path_str)
 
-                if ext == ".pdf":
-                    text = extract_pdf(file_path_str)
-                elif ext in {".txt", ".md", ".rtf"}:
-                    text = extract_text(file_path_str)
-                elif ext == ".docx":
-                    text = extract_docx(file_path_str)
-                else:
-                    print(f"Unsupported file type: {ext}")
+                if not content:
+                    logger.warning("No text extracted from %s", file_path_str)
                     _ensure_meta(doc)
-                    doc.status = "error"
-                    doc.meta["error"] = f"Unsupported file type: {ext}"
-                    session.commit()
-                    return
-
-                if not text:
-                    print(f"No text extracted from {file_path_str}")
                     doc.status = "indexed"
                     doc.content = ""
+                    doc.length = 0
+                    doc.hash_value = ""
                     session.commit()
                     return
 
-                chunk_count = index_document(session, doc, text)
-                print(f"Indexed document {doc.id} with {chunk_count} chunks")
+                _ensure_meta(doc)
+                merged_meta = dict(doc.meta or {})
+                merged_meta.update(meta)
+
+                doc.content = content
+                doc.hash_value = content
+                doc.length = len(content)
+                doc.status = "indexed"
+                doc.language = ""
+                doc.meta = merged_meta
+                if title:
+                    doc.title = title
+                session.commit()
+
+                index_document.delay(doc.id)
+                logger.info("Normalized file document %s and scheduled indexing", doc.id)
 
             except Exception as exc:
-                print(f"Error processing document {doc.id}: {exc}")
+                logger.exception("Error processing document %s", doc.id)
                 import traceback
 
                 traceback.print_exc()
@@ -126,85 +129,24 @@ def process_document(session: Session, doc: Document):
         logger.error(f"File not found: {file_path_str}")
         return
 
-    text = ""
-    ext = Path(file_path_str).suffix.lower()
-
-    if ext == ".pdf":
-        text = extract_pdf(file_path_str)
-    elif ext in {".txt", ".md", ".rtf"}:
-        text = extract_text(file_path_str)
-    elif ext == ".docx":
-        text = extract_docx(file_path_str)
-    else:
-        logger.warning(f"Unsupported file type: {ext}")
-        return
-
-    if not text:
+    content, title, meta = extract_local_file_document(file_path_str)
+    if not content:
         logger.warning(f"No text extracted from {file_path_str}")
         return
 
-    index_document(session, doc, text)
-
-
-def index_document(session: Session, doc: Document, text: str) -> int:
-    doc.content = text
-    doc.hash_value = text
-    doc.length = len(text)
+    _ensure_meta(doc)
+    merged_meta = dict(doc.meta or {})
+    merged_meta.update(meta)
+    doc.content = content
+    doc.hash_value = content
+    doc.length = len(content)
     doc.status = "indexed"
-
-    session.execute(delete(Chunk).where(Chunk.document_id == doc.id))
-
-    chunk_size = 1000
-    overlap = 100
-    chunks = []
-    for i in range(0, len(text), chunk_size - overlap):
-        chunk_text = text[i : i + chunk_size]
-        if not chunk_text.strip():
-            continue
-
-        chunk = Chunk(
-            document_id=doc.id,
-            chat_id=None,
-            user_uid="system",
-            msg_id=None,
-            chunk_ix=len(chunks),
-            content=chunk_text,
-            start_offset=i,
-            end_offset=min(i + chunk_size, len(text)),
-        )
-        chunks.append(chunk)
-
-    session.add_all(chunks)
+    doc.language = ""
+    doc.meta = merged_meta
+    if title:
+        doc.title = title
     session.commit()
-    return len(chunks)
-
-
-def extract_pdf(file_path: str) -> str:
-    reader = pypdf.PdfReader(file_path)
-    text = ""
-    for page in reader.pages:
-        extracted = page.extract_text() or ""
-        text += extracted + "\n"
-    return text
-
-
-def extract_text(file_path: str) -> str:
-    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-        return f.read()
-
-
-def extract_docx(file_path: str) -> str:
-    try:
-        import docx
-
-        doc = docx.Document(file_path)
-        return "\n".join([para.text for para in doc.paragraphs])
-    except ImportError:
-        logger.error("python-docx not installed")
-        return ""
-    except Exception as exc:
-        logger.error(f"Error extracting docx: {exc}")
-        return ""
+    index_document.delay(doc.id)
 
 
 if __name__ == "__main__":

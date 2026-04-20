@@ -1,0 +1,21 @@
+{% extends "admin.html" %}
+{% block content %}
+
+<div class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+            <a href="{{ url('project_view') }}" class="btn btn-sm btn-ghost gap-2">
+                <iconify-icon icon="lucide:arrow-left" class="size-4"></iconify-icon>
+                Назад
+            </a>
+            <div>
+                <h1 class="text-xl font-semibold">Структура документа</h1>
+                <p class="text-sm opacity-70">{{ document.title or 'Без названия' }}</p>
+            </div>
+        </div>
+    </div>
+
+    {% include "projects/document_content.html" %}
+</div>
+
+{% endblock %}

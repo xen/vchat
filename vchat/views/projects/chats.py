@@ -1,5 +1,6 @@
 import logging
 import re
+import json
 from datetime import datetime, timedelta, timezone
 
 import aiohttp_jinja2
@@ -91,6 +92,7 @@ async def history_list(request):
     date_from_raw = request.query.get("date_from", "").strip()
     date_to_raw = request.query.get("date_to", "").strip()
     guardrail_reason = request.query.get("guardrail_reason", "").strip()
+    fingerprint = request.query.get("fingerprint", "").strip()
     valid_guardrail_reasons = {key for key, _ in GUARDRAIL_FILTER_OPTIONS}
     if guardrail_reason not in valid_guardrail_reasons:
         guardrail_reason = ""
@@ -226,6 +228,8 @@ async def history_list(request):
         total_query = total_query.where(Chat.created_at >= created_from)
     if created_to_exclusive is not None:
         total_query = total_query.where(Chat.created_at < created_to_exclusive)
+    if fingerprint:
+        total_query = total_query.where(Chat.meta["device_fingerprint"].astext == fingerprint)
 
     if guardrail_filter:
         total_query = total_query.having(sa.func.count(guardrail_case) > 0)
@@ -283,6 +287,8 @@ async def history_list(request):
         stmt = stmt.where(Chat.created_at >= created_from)
     if created_to_exclusive is not None:
         stmt = stmt.where(Chat.created_at < created_to_exclusive)
+    if fingerprint:
+        stmt = stmt.where(Chat.meta["device_fingerprint"].astext == fingerprint)
 
     if guardrail_filter:
         stmt = stmt.having(sa.func.count(guardrail_case) > 0)
@@ -295,6 +301,10 @@ async def history_list(request):
         chat.upvotes = row.upvotes
         chat.downvotes = row.downvotes
         chat.guardrail_triggered = (row.guardrail_hits or 0) > 0
+        chat.browser = (chat.meta or {}).get("browser")
+        chat.device_type = (chat.meta or {}).get("device_type")
+        chat.device_fingerprint = (chat.meta or {}).get("device_fingerprint")
+        chat.ip_address = (chat.meta or {}).get("ip_address")
         chats.append(chat)
 
     range_start = offset + 1 if chats else 0
@@ -309,6 +319,8 @@ async def history_list(request):
         base_filters["date_to"] = date_to_value
     if guardrail_reason:
         base_filters["guardrail_reason"] = guardrail_reason
+    if fingerprint:
+        base_filters["fingerprint"] = fingerprint
 
     def _query_for_page(target_page: int):
         query = {}
@@ -374,6 +386,7 @@ async def history_list(request):
         "search_query": search_query,
         "date_from": date_from_value,
         "date_to": date_to_value,
+        "fingerprint": fingerprint,
     }
 
 
@@ -394,6 +407,20 @@ async def history_detail(request):
     )
     result = await request["db"].execute(stmt)
     messages = result.scalars().all()
+    chat_meta = chat.meta if isinstance(chat.meta, dict) else {}
+    related_chats = []
+    fingerprint = (chat_meta.get("device_fingerprint") or "").strip()
+    if fingerprint:
+        related_stmt = (
+            sa.select(Chat)
+            .where(
+                Chat.id != chat.id,
+                Chat.meta["device_fingerprint"].astext == fingerprint,
+            )
+            .order_by(Chat.created_at.desc())
+            .limit(20)
+        )
+        related_chats = (await request["db"].execute(related_stmt)).scalars().all()
 
     def _legacy_guardrail_info(full_context: str | None) -> tuple[str | None, list[str]]:
         if not full_context or not full_context.startswith("guardrail_blocked"):
@@ -444,9 +471,24 @@ async def history_detail(request):
         msg.guardrail_rules = [
             GUARDRAIL_REASON_LABELS.get(rule, rule) for rule in unique_reasons
         ]
+        msg.context_sources = []
+        msg.reason_code = None
+        if msg.role == "assistant" and msg.full_context:
+            try:
+                payload = json.loads(msg.full_context)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = None
+            if isinstance(payload, dict):
+                msg.context_sources = [
+                    item for item in payload.get("sources", []) if isinstance(item, dict)
+                ]
+                policy = payload.get("policy") if isinstance(payload.get("policy"), dict) else {}
+                msg.reason_code = policy.get("reason_code")
 
     return {
         "project": _project_context(request),
         "chat": chat,
+        "chat_meta": chat_meta,
+        "related_chats": related_chats,
         "messages": messages,
     }

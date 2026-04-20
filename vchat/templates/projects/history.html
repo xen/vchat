@@ -7,7 +7,7 @@
 
 <div class="card bg-base-100 shadow">
     <div class="card-body">
-        <form method="get" action="{{ url('project_history') }}" class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-5">
+        <form method="get" action="{{ url('project_history') }}" class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-6">
             <label class="input input-bordered w-full flex items-center gap-2 md:col-span-2">
                 <iconify-icon icon="lucide:search" class="size-4 text-base-content/60"></iconify-icon>
                 <input
@@ -43,7 +43,16 @@
                     {% endfor %}
                 </select>
             </label>
-            <div class="md:col-span-5 flex items-center gap-2">
+            <label class="input input-bordered w-full flex items-center gap-2">
+                <span class="text-sm text-base-content/70">FP</span>
+                <input
+                    type="text"
+                    name="fingerprint"
+                    value="{{ fingerprint }}"
+                    class="grow"
+                    placeholder="fingerprint">
+            </label>
+            <div class="md:col-span-6 flex items-center gap-2">
                 <label class="label cursor-pointer gap-2">
                     <input
                         type="checkbox"
@@ -64,6 +73,8 @@
                     <tr>
                         <th>Пользователь</th>
                         <th>Дата</th>
+                        <th>Браузер / устройство</th>
+                        <th>Fingerprint / IP</th>
                         <th>Реакции</th>
                     </tr>
                 </thead>
@@ -86,6 +97,26 @@
                             </div>
                         </td>
                         <td>{{ chat.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            <div class="text-xs flex flex-col gap-1">
+                                <span>{{ chat.browser or 'unknown' }}</span>
+                                <span class="opacity-60">{{ chat.device_type or 'unknown' }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="text-xs flex flex-col gap-1">
+                                {% if chat.device_fingerprint %}
+                                <a
+                                    href="{{ url('project_history', query_={'fingerprint': chat.device_fingerprint}) }}"
+                                    class="link link-primary break-all">
+                                    {{ chat.device_fingerprint }}
+                                </a>
+                                {% else %}
+                                <span class="opacity-40">—</span>
+                                {% endif %}
+                                <span class="opacity-60">{{ chat.ip_address or '—' }}</span>
+                            </div>
+                        </td>
                         <td>
                             <a href="{{ url('project_history_detail', chat_id=chat.id) }}" class="no-underline hover:opacity-80 transition-opacity">
                                 <div class="flex gap-3 text-xs">
@@ -110,7 +141,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="3" class="text-center text-base-content/60 py-8">
+                        <td colspan="5" class="text-center text-base-content/60 py-8">
                             История не найдена
                         </td>
                     </tr>

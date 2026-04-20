@@ -5,6 +5,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer, RecognizerRegistry
+from presidio_analyzer.context_aware_enhancers import ContextAwareEnhancer
+from presidio_analyzer.nlp_engine import NlpArtifacts, NlpEngine
+from presidio_anonymizer import AnonymizerEngine
+from presidio_anonymizer.entities import OperatorConfig
+
 from vchat.ai_providers import BaseAIProvider
 from vchat.settings import config
 
@@ -14,6 +20,8 @@ GuardrailsAsyncOpenAI: Any = None
 
 _cached_client: Any | None = None
 _cached_key: tuple[str, str] | None = None
+_presidio_analyzer: Any | None = None
+_presidio_anonymizer: Any | None = None
 
 _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
     "version": 1,
@@ -96,28 +104,6 @@ _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
     "output": {
         "version": 1,
         "guardrails": [
-            {
-                "name": "Contains PII",
-                "config": {
-                    "entities": [
-                        "CREDIT_CARD",
-                        "CVV",
-                        "CRYPTO",
-                        "EMAIL_ADDRESS",
-                        "IBAN_CODE",
-                        "BIC_SWIFT",
-                        "IP_ADDRESS",
-                        "MEDICAL_LICENSE",
-                        "NRP",
-                        "PHONE_NUMBER",
-                    ],
-                    "block": True,
-                },
-            },
-            {
-                "name": "URL Filter",
-                "config": {"url_allow_list": ["https://vchat.com/"]},
-            },
             {
                 "name": "NSFW Text",
                 "config": {
@@ -215,33 +201,146 @@ def extract_tripwire_details(exc: Any) -> tuple[str, str]:
 
 
 _RU_PHONE_RE = re.compile(
-    r"(?:\\+7|8)\\s*\(?\\d{3}\)?[\\s-]*\\d{3}[\\s-]*\\d{2}[\\s-]*\\d{2}"
+    r"(?:\+7|8)\s*\(?\d{3}\)?[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}"
 )
 _RU_PASSPORT_RE = re.compile(r"\b\d{2}\s+\d{2}\s+\d{6}\b")
-_RU_INN_RE = re.compile(r"\\b(?:\\d{10}|\\d{12})\\b")
-_RU_SNILS_RE = re.compile(r"\\b\\d{3}-?\\d{3}-?\\d{3}\\s?\\d{2}\\b")
-_RU_OMS_RE = re.compile(r"\\b\\d{16}\\b")
+_RU_INN_RE = re.compile(r"\b(?:\d{10}|\d{12})\b")
+_RU_SNILS_RE = re.compile(r"\b\d{3}-?\d{3}-?\d{3}\s?\d{2}\b")
+_RU_OMS_RE = re.compile(r"\b\d{16}\b")
+
+_PRESIDIO_LANGUAGE = "ru"
+_PRESIDIO_SCORE = 0.9
+_RU_PII_ENTITY_TO_REASON: dict[str, str] = {
+    "PHONE_NUMBER_RU": "phone_number_ru",
+    "PASSPORT_RU": "passport_ru",
+    "INN_RU": "inn_ru",
+    "SNILS_RU": "snils_ru",
+    "OMS_RU": "oms_ru",
+}
+_RU_PII_REASON_TO_PATTERN: dict[str, re.Pattern[str]] = {
+    "phone_number_ru": _RU_PHONE_RE,
+    "passport_ru": _RU_PASSPORT_RE,
+    "inn_ru": _RU_INN_RE,
+    "snils_ru": _RU_SNILS_RE,
+    "oms_ru": _RU_OMS_RE,
+}
+
+
+class _NoopNlpEngine(NlpEngine):
+    def load(self) -> None:
+        return None
+
+    def is_loaded(self) -> bool:
+        return True
+
+    def process_text(self, text: str, language: str) -> NlpArtifacts:
+        return NlpArtifacts(
+            entities=[],
+            tokens=[],
+            tokens_indices=[],
+            lemmas=[],
+            nlp_engine=self,
+            language=language,
+        )
+
+    def process_batch(
+        self,
+        texts,
+        language: str,
+        batch_size: int = 1,
+        n_process: int = 1,
+        **kwargs,
+    ):
+        for text in texts:
+            yield text, self.process_text(text, language)
+
+    def is_stopword(self, word: str, language: str) -> bool:
+        return False
+
+    def is_punct(self, word: str, language: str) -> bool:
+        return False
+
+    def get_supported_entities(self) -> list[str]:
+        return []
+
+    def get_supported_languages(self) -> list[str]:
+        return [_PRESIDIO_LANGUAGE]
+
+
+class _NoopContextAwareEnhancer(ContextAwareEnhancer):
+    def __init__(self) -> None:
+        super().__init__(
+            context_similarity_factor=0.0,
+            min_score_with_context_similarity=0.0,
+            context_prefix_count=0,
+            context_suffix_count=0,
+        )
+
+    def enhance_using_context(
+        self,
+        text: str,
+        raw_results: list[Any],
+        nlp_artifacts: Any,
+        recognizers: list[Any],
+        context: list[str] | None = None,
+    ) -> list[Any]:
+        return raw_results
+
+
+def _build_presidio_analyzer() -> AnalyzerEngine:
+    registry = RecognizerRegistry(supported_languages=[_PRESIDIO_LANGUAGE])
+    for entity, reason in _RU_PII_ENTITY_TO_REASON.items():
+        pattern = _RU_PII_REASON_TO_PATTERN[reason]
+        registry.add_recognizer(
+            PatternRecognizer(
+                name=f"{reason}_recognizer",
+                supported_entity=entity,
+                supported_language=_PRESIDIO_LANGUAGE,
+                patterns=[
+                    Pattern(
+                        name=reason,
+                        regex=pattern.pattern,
+                        score=_PRESIDIO_SCORE,
+                    )
+                ],
+            )
+        )
+
+    return AnalyzerEngine(
+        registry=registry,
+        nlp_engine=_NoopNlpEngine(),
+        supported_languages=[_PRESIDIO_LANGUAGE],
+        context_aware_enhancer=_NoopContextAwareEnhancer(),
+    )
+
+
+def _get_presidio_engines() -> tuple[AnalyzerEngine, AnonymizerEngine]:
+    global _presidio_analyzer, _presidio_anonymizer
+    if _presidio_analyzer is not None and _presidio_anonymizer is not None:
+        return _presidio_analyzer, _presidio_anonymizer
+
+    _presidio_analyzer = _build_presidio_analyzer()
+    _presidio_anonymizer = AnonymizerEngine()
+    return _presidio_analyzer, _presidio_anonymizer
+
+
+def _analyze_russian_pii_with_presidio(text: str) -> list[Any]:
+    if not text:
+        return []
+
+    analyzer, _anonymizer = _get_presidio_engines()
+    return analyzer.analyze(text=text, language=_PRESIDIO_LANGUAGE)
 
 
 def _detect_russian_pii_reasons(text: str) -> set[str]:
-    reasons: set[str] = set()
-    if not text:
-        return reasons
-
-    if _RU_PHONE_RE.search(text):
-        reasons.add("phone_number_ru")
-    if _RU_PASSPORT_RE.search(text):
-        reasons.add("passport_ru")
-    if _RU_INN_RE.search(text):
-        reasons.add("inn_ru")
-    if _RU_SNILS_RE.search(text):
-        reasons.add("snils_ru")
-    if _RU_OMS_RE.search(text):
-        reasons.add("oms_ru")
-
+    presidio_results = _analyze_russian_pii_with_presidio(text)
+    reasons = {
+        _RU_PII_ENTITY_TO_REASON[result.entity_type]
+        for result in presidio_results
+        if result.entity_type in _RU_PII_ENTITY_TO_REASON
+    }
     if reasons:
         reasons.add("russian_pii")
-
     return reasons
 
 
@@ -253,21 +352,17 @@ def mask_russian_pii(text: str) -> tuple[str, bool]:
     if not text:
         return text, False
 
-    patterns = (
-        _RU_PHONE_RE,
-        _RU_PASSPORT_RE,
-        _RU_SNILS_RE,
-        _RU_OMS_RE,
-        _RU_INN_RE,
-    )
-    masked = text
-    has_pii = False
-    for pattern in patterns:
-        masked_next, count = pattern.subn("***", masked)
-        if count:
-            has_pii = True
-            masked = masked_next
-    return masked, has_pii
+    analyzer_results = _analyze_russian_pii_with_presidio(text)
+    if not analyzer_results:
+        return text, False
+
+    _, anonymizer = _get_presidio_engines()
+    masked = anonymizer.anonymize(
+        text=text,
+        analyzer_results=analyzer_results,
+        operators={"DEFAULT": OperatorConfig("replace", {"new_value": "***"})},
+    ).text
+    return masked, True
 
 
 async def check_input_guardrails(
@@ -275,7 +370,6 @@ async def check_input_guardrails(
     text: str,
     provider: BaseAIProvider,
 ) -> GuardrailDecision:
-    _ = provider
     decision = GuardrailDecision()
     if not _enabled("guardrails_ru_pii_enabled", True):
         return decision
@@ -295,7 +389,6 @@ async def check_output_guardrails(
     text: str,
     provider: BaseAIProvider,
 ) -> GuardrailDecision:
-    _ = provider
     decision = GuardrailDecision()
     if not _enabled("guardrails_ru_pii_enabled", True):
         return decision

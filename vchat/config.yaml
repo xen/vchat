@@ -43,10 +43,19 @@ post_per_page: 10
 openai_api_key: ""
 openai_model: "gpt-4o-mini"
 openai_base_url: "https://api.openai.com/v1"
+yandex_base_url: ""
+gigachat_base_url: "https://gigachat.devices.sberbank.ru/api/v1"
+gigachat_oauth_url: "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+gigachat_scope: "GIGACHAT_API_PERS"
+gigachat_verify_ssl_certs: true
+gigachat_oauth_timeout_seconds: 15
+gigachat_request_timeout_seconds: 60
+gigachat_suggest_timeout_seconds: 10
 openai_guardrails_enabled: true
 guardrails_ru_pii_enabled: true
 embedding_model_id: "ai-sage/Giga-Embeddings-instruct"
-embedding_model_dir: "data"
+embedding_model_dir: "data/models/giga-embeddings-instruct"
+reranker_model_id: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 # Embedding / pgvector dimension for stored vectors and similarity queries.
 vec_dim: 2048
 embedding_max_seq_length: 4096
@@ -54,6 +63,7 @@ embedding_chunk_max_tokens: 3500
 embedding_chunk_overlap_tokens: 400
 embedding_chunk_max_chars: 12000
 yandex_api_key: ""
+# Base64-ключ из кабинета GigaChat для заголовка Authorization: Basic <key>
 gigachat_api_key: ""
 
 # vchat project integration keys

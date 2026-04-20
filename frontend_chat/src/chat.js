@@ -1,55 +1,105 @@
 import "./chat.css";
 import "htmx.org/dist/htmx.min.js";
+import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import { marked } from "marked";
+
 window.marked = marked;
 
-// Custom renderer for citations
-const renderer = new marked.Renderer();
-const originalLink = renderer.link;
-
-// Override paragraph to handle standalone citations if needed, or just standard text processing
-// But for inline citations, we might need a custom extension or just a post-processing step.
-// Since marked doesn't easily support arbitrary custom syntax without extensions,
-// let's use a simple regex replacement on the output or a custom extension.
-
-// Let's use marked.use with an extension for [[citation:ID]]
 const citationExtension = {
-    name: 'citation',
-    level: 'inline',
-    start(src) { return src.match(/\[\[citation:/)?.index; },
-    tokenizer(src, tokens) {
+    name: "citation",
+    level: "inline",
+    start(src) {
+        return src.match(/\[\[citation:/)?.index;
+    },
+    tokenizer(src) {
         const rule = /^\[\[citation:(\d+)\]\]/;
         const match = rule.exec(src);
-        if (match) {
-            return {
-                type: 'citation',
-                raw: match[0],
-                id: match[1]
-            };
+        if (!match) {
+            return;
         }
+        return {
+            type: "citation",
+            raw: match[0],
+            id: match[1],
+        };
     },
     renderer(token) {
-        return `<button class="inline-flex items-center justify-center w-4 h-4 ml-0.5 text-[0.6rem] font-bold text-primary bg-primary/10 rounded-full align-top cursor-pointer hover:bg-primary hover:text-primary-content transition-colors citation-btn" data-id="${token.id}">${parseInt(token.id) + 1}</button>`;
-    }
+        return `<button class="inline-flex items-center justify-center w-4 h-4 ml-0.5 text-[0.6rem] font-bold text-primary bg-primary/10 rounded-full align-top cursor-pointer hover:bg-primary hover:text-primary-content transition-colors citation-btn" data-id="${token.id}">${parseInt(token.id, 10) + 1}</button>`;
+    },
 };
 
 marked.use({ extensions: [citationExtension] });
 
-document.addEventListener('click', (e) => {
-    if (e.target.matches('.citation-btn')) {
-        const id = e.target.dataset.id;
-        // Find the source in the source list (checking global sources or DOM)
-        // We need to implement highlighting logic.
-        // Dispatch a custom event or call a function if available.
-        const event = new CustomEvent('citation-click', { detail: { id } });
-        document.dispatchEvent(event);
+let fingerprintAgentPromise = null;
 
-        // Simple fallback highlighting for now
-        const sourceElement = document.querySelector(`.source-item[data-id="${id}"]`);
-        if (sourceElement) {
-            sourceElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            sourceElement.classList.add('ring', 'ring-primary');
-            setTimeout(() => sourceElement.classList.remove('ring', 'ring-primary'), 2000);
+function fallbackHash(value) {
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+        hash = (hash << 5) - hash + value.charCodeAt(index);
+        hash |= 0;
+    }
+    return `fallback-${Math.abs(hash)}`;
+}
+
+async function buildFallbackFingerprint() {
+    const seed = [
+        navigator.userAgent || "",
+        navigator.language || "",
+        navigator.platform || "",
+        `${window.screen?.width || 0}x${window.screen?.height || 0}`,
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    ].join("|");
+    return fallbackHash(seed);
+}
+
+window.vchatGetFingerprint = async function vchatGetFingerprint() {
+    if (!fingerprintAgentPromise) {
+        fingerprintAgentPromise = FingerprintJS.load().catch(() => null);
+    }
+
+    let visitorId = "";
+    try {
+        const fp = await fingerprintAgentPromise;
+        if (fp) {
+            const result = await fp.get();
+            visitorId = result.visitorId || "";
         }
+    } catch {
+        visitorId = "";
+    }
+
+    if (!visitorId) {
+        visitorId = await buildFallbackFingerprint();
+    }
+
+    return {
+        device_fingerprint: visitorId,
+        platform:
+            navigator.userAgentData?.platform ||
+            navigator.platform ||
+            "",
+        language: navigator.language || "",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        screen: `${window.screen?.width || 0}x${window.screen?.height || 0}`,
+    };
+};
+
+document.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches(".citation-btn")) {
+        return;
+    }
+
+    const id = target.dataset.id;
+    const citationEvent = new CustomEvent("citation-click", { detail: { id } });
+    document.dispatchEvent(citationEvent);
+
+    const sourceElement = document.querySelector(`.source-item[data-id="${id}"]`);
+    if (sourceElement instanceof HTMLElement) {
+        sourceElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        sourceElement.classList.add("ring", "ring-primary");
+        window.setTimeout(() => {
+            sourceElement.classList.remove("ring", "ring-primary");
+        }, 2000);
     }
 });

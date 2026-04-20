@@ -51,7 +51,7 @@ def _fetch_representative_chunks_for_centroids(
     for centroid in centroids:
         centroid_list = centroid.tolist()
         stmt = (
-            sa.select(Chunk.content)
+            sa.select(Chunk.text)
             .where(Chunk.embedding.isnot(None))
             .order_by(Chunk.embedding.cosine_distance(centroid_list))
             .limit(chunks_per_cluster)

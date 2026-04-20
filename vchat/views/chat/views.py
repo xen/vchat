@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -21,6 +22,7 @@ from vchat.ai_providers import (
     get_default_provider_id,
     resolve_ai_settings,
 )
+from vchat.chat_meta import merge_chat_meta
 from vchat.db import async_session_factory
 from vchat.guardrails import (
     check_input_guardrails,
@@ -112,7 +114,9 @@ def build_generation_context(app) -> GenerationContext:
         provider_id = get_default_provider_id()
     model_id = get_setting(app, "project.model")
     provider, model = resolve_ai_settings(provider_id, model_id)
-    system_prompt = get_setting(app, "project.system_prompt", SYSTEM_PROMPT) or SYSTEM_PROMPT
+    system_prompt = (
+        get_setting(app, "project.system_prompt", SYSTEM_PROMPT) or SYSTEM_PROMPT
+    )
     topics = get_setting_json(app, "project.topics", [])
     intents = get_setting_json(app, "project.intents", [])
     if not isinstance(topics, list):
@@ -129,12 +133,14 @@ async def generate_suggestions(
     Generate 3 short, relevant follow-up actions/questions for the user.
     Uses a lightweight call to a fast model.
     """
-    provider_id = ctx.provider_id
-    if provider_id != "openai":
+    if not getattr(ctx.provider, "supports_chat", True):
         return []
     request_meta = ctx.request_meta()
-    api_key = request_meta.get("api_key") or OPENAI_API_KEY
-    base_url = request_meta.get("base_url") or OPENAI_BASE_URL
+    api_key = request_meta.get("api_key")
+    base_url = request_meta.get("base_url")
+    if ctx.provider_id == "openai":
+        api_key = api_key or OPENAI_API_KEY
+        base_url = base_url or OPENAI_BASE_URL
     model = ctx.model_id or OPENAI_MODEL
     if not api_key:
         return []
@@ -174,6 +180,17 @@ async def generate_suggestions(
 
     try:
         async with aiohttp.ClientSession() as session:
+            request_timeout_seconds = 10.0
+            if ctx.provider_id == "gigachat":
+                from vchat.gigachat_oauth import get_gigachat_access_token
+
+                api_key = await get_gigachat_access_token(
+                    session,
+                    basic_auth_key=api_key,
+                    oauth_timeout_seconds=GIGACHAT_OAUTH_TIMEOUT_SECONDS,
+                )
+                request_timeout_seconds = GIGACHAT_SUGGEST_TIMEOUT_SECONDS
+
             async with session.post(
                 f"{base_url}/chat/completions",
                 headers={
@@ -186,23 +203,50 @@ async def generate_suggestions(
                     "max_tokens": 200,
                     "temperature": 0.5,
                 },
-                timeout=aiohttp.ClientTimeout(total=10.0),
+                timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),
             ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    content = data["choices"][0]["message"]["content"]
-                    # Clean up potential markdown code blocks
-                    content = content.strip()
-                    if content.startswith("```"):
-                        content = content.strip("`json \n")
-                    try:
-                        suggestions = json.loads(content)
-                        if isinstance(suggestions, list):
-                            return suggestions[:3]
-                    except json.JSONDecodeError:
-                        pass
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    logger.warning(
+                        "Failed to generate suggestions: provider=%s model=%s status=%s detail=%s",
+                        ctx.provider_id,
+                        model,
+                        resp.status,
+                        (error_text or "").strip()[:500],
+                    )
+                    return []
+
+                data = await resp.json()
+                content = data["choices"][0]["message"]["content"]
+                # Clean up potential markdown code blocks
+                content = content.strip()
+                if content.startswith("```"):
+                    content = content.strip("`json \n")
+                try:
+                    suggestions = json.loads(content)
+                    if isinstance(suggestions, list):
+                        return suggestions[:3]
+                except json.JSONDecodeError:
+                    logger.warning(
+                        "Suggestion payload is not valid JSON array: provider=%s model=%s payload=%s",
+                        ctx.provider_id,
+                        model,
+                        content[:300],
+                    )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Failed to generate suggestions due to timeout: provider=%s model=%s timeout_seconds=%s",
+            ctx.provider_id,
+            model,
+            request_timeout_seconds,
+        )
     except Exception as e:
-        logger.warning(f"Failed to generate suggestions: {e}")
+        logger.warning(
+            "Failed to generate suggestions: provider=%s model=%s error=%s",
+            ctx.provider_id,
+            model,
+            e,
+        )
 
     return []
 
@@ -214,6 +258,15 @@ logger = logging.getLogger("vchat.chat")
 OPENAI_API_KEY = config.get("openai_api_key")
 OPENAI_BASE_URL = config.get("openai_base_url", "https://api.openai.com/v1")
 OPENAI_MODEL = config.get("openai_model", "gpt-4o-mini")
+GIGACHAT_OAUTH_TIMEOUT_SECONDS = float(
+    config.get("gigachat_oauth_timeout_seconds", 15.0)
+)
+GIGACHAT_REQUEST_TIMEOUT_SECONDS = float(
+    config.get("gigachat_request_timeout_seconds", 60.0)
+)
+GIGACHAT_SUGGEST_TIMEOUT_SECONDS = float(
+    config.get("gigachat_suggest_timeout_seconds", 10.0)
+)
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/3")
 SECRET_KEY = config.get("secret_key")
 CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "embeddings")
@@ -269,16 +322,25 @@ def _is_guardrail_blocked(reasons: set[str]) -> bool:
 async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
     provider_meta = ctx.request_meta()
     provider_id = ctx.provider_id
-    if provider_id != "openai":
-        raise web.HTTPBadRequest(text=f"Provider '{provider_id}' is not supported yet")
-    api_key = provider_meta.get("api_key") or OPENAI_API_KEY
-    base_url = provider_meta.get("base_url") or OPENAI_BASE_URL
+    if not getattr(ctx.provider, "supports_chat", True):
+        raise web.HTTPBadRequest(text=f"Provider '{provider_id}' does not support chat")
+    api_key = provider_meta.get("api_key")
+    base_url = provider_meta.get("base_url")
+    if provider_id == "openai":
+        api_key = api_key or OPENAI_API_KEY
+        base_url = base_url or OPENAI_BASE_URL
     if not api_key:
         raise web.HTTPBadRequest(text="Missing API key for selected provider")
+    if not base_url:
+        raise web.HTTPBadRequest(text="Missing base URL for selected provider")
 
     model = ctx.model_id or OPENAI_MODEL
     current_system_prompt = ctx.system_prompt or SYSTEM_PROMPT
-    guardrails_client = get_guardrails_client(api_key=api_key, base_url=base_url)
+    guardrails_client = (
+        get_guardrails_client(api_key=api_key, base_url=base_url)
+        if provider_id == "openai"
+        else None
+    )
     assistant_message = {"role": "assistant", "content": ""}
     pending_tool_calls: dict[int, dict] = {}
 
@@ -303,7 +365,9 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
 
             usage = getattr(chunk, "usage", None)
             if usage:
-                usage_data = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+                usage_data = (
+                    usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
+                )
                 yield {"event": "usage", "usage": usage_data}
 
             choices = getattr(chunk, "choices", None) or []
@@ -363,97 +427,133 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                         existing["function"]["arguments"] += func_args
     else:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": current_system_prompt},
-                        *messages,
-                    ],
-                    "temperature": 0.2,
-                    "stream": True,
-                    "max_tokens": 2048,
-                    "stream_options": {"include_usage": True},
-                },
-                timeout=aiohttp.ClientTimeout(total=60.0),
-            ) as resp:
-                if resp.status >= 400:
-                    error_text = await resp.text()
-                    raise aiohttp.ClientResponseError(
-                        request_info=resp.request_info,
-                        history=resp.history,
-                        status=resp.status,
-                        message=error_text,
-                        headers=resp.headers,
-                    )
+            request_timeout_seconds = 60.0
+            if provider_id == "gigachat":
+                from vchat.gigachat_oauth import get_gigachat_access_token
 
-                async for line_bytes in resp.content:
-                    line = line_bytes.decode("utf-8").strip()
-                    if not line:
-                        continue
-                    if line.startswith("data:"):
-                        data = line[len("data:") :].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
+                api_key = await get_gigachat_access_token(
+                    session,
+                    basic_auth_key=api_key,
+                    oauth_timeout_seconds=GIGACHAT_OAUTH_TIMEOUT_SECONDS,
+                )
+                request_timeout_seconds = GIGACHAT_REQUEST_TIMEOUT_SECONDS
 
-                            # Handle usage if present (usually in the last chunk)
-                            if "usage" in chunk and chunk["usage"]:
-                                yield {"event": "usage", "usage": chunk["usage"]}
-                                continue
+            try:
+                async with session.post(
+                    f"{base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": current_system_prompt},
+                            *messages,
+                        ],
+                        "temperature": 0.2,
+                        "stream": True,
+                        "max_tokens": 2048,
+                        "stream_options": {"include_usage": True},
+                    },
+                    timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),
+                ) as resp:
+                    if resp.status >= 400:
+                        error_text = await resp.text()
+                        logger.error(
+                            "Provider HTTP error: provider=%s model=%s status=%s detail=%s",
+                            provider_id,
+                            model,
+                            resp.status,
+                            (error_text or "").strip()[:1000],
+                        )
+                        raise aiohttp.ClientResponseError(
+                            request_info=resp.request_info,
+                            history=resp.history,
+                            status=resp.status,
+                            message=error_text,
+                            headers=resp.headers,
+                        )
 
-                            choices = chunk.get("choices", [])
-                            if not choices:
-                                continue
-                            choice = choices[0]
-                            finish_reason = choice.get("finish_reason")
-                            if finish_reason == "content_filter":
-                                yield {
-                                    "event": "guardrail",
-                                    "reason": "content_filter",
-                                }
-                            delta = choice.get("delta", {})
-                            if "role" in delta and delta["role"]:
-                                assistant_message["role"] = delta["role"]
-
-                            content = delta.get("content")
-                            if content:
-                                assistant_message["content"] += content
-                                yield {"event": "content", "data": content}
-
-                            refusal = delta.get("refusal")
-                            if refusal:
-                                yield {"event": "guardrail", "reason": "refusal"}
-
-                            tool_calls_delta = delta.get("tool_calls") or []
-                            for tool_call in tool_calls_delta:
-                                idx = tool_call.get("index", 0)
-                                existing = pending_tool_calls.setdefault(
-                                    idx,
-                                    {
-                                        "id": None,
-                                        "type": tool_call.get("type", "function"),
-                                        "function": {"name": "", "arguments": ""},
-                                    },
-                                )
-                                if tool_call.get("id"):
-                                    existing["id"] = tool_call["id"]
-                                if tool_call.get("type"):
-                                    existing["type"] = tool_call["type"]
-
-                                func = tool_call.get("function") or {}
-                                if func.get("name"):
-                                    existing["function"]["name"] = func["name"]
-                                if func.get("arguments"):
-                                    existing["function"]["arguments"] += func["arguments"]
-                        except Exception:
+                    async for line_bytes in resp.content:
+                        line = line_bytes.decode("utf-8").strip()
+                        if not line:
                             continue
+                        if line.startswith("data:"):
+                            data = line[len("data:") :].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+
+                                # Handle usage if present (usually in the last chunk)
+                                if "usage" in chunk and chunk["usage"]:
+                                    yield {"event": "usage", "usage": chunk["usage"]}
+                                    continue
+
+                                choices = chunk.get("choices", [])
+                                if not choices:
+                                    continue
+                                choice = choices[0]
+                                finish_reason = choice.get("finish_reason")
+                                if finish_reason == "content_filter":
+                                    yield {
+                                        "event": "guardrail",
+                                        "reason": "content_filter",
+                                    }
+                                delta = choice.get("delta", {})
+                                if "role" in delta and delta["role"]:
+                                    assistant_message["role"] = delta["role"]
+
+                                content = delta.get("content")
+                                if content:
+                                    assistant_message["content"] += content
+                                    yield {"event": "content", "data": content}
+
+                                refusal = delta.get("refusal")
+                                if refusal:
+                                    yield {"event": "guardrail", "reason": "refusal"}
+
+                                tool_calls_delta = delta.get("tool_calls") or []
+                                for tool_call in tool_calls_delta:
+                                    idx = tool_call.get("index", 0)
+                                    existing = pending_tool_calls.setdefault(
+                                        idx,
+                                        {
+                                            "id": None,
+                                            "type": tool_call.get("type", "function"),
+                                            "function": {"name": "", "arguments": ""},
+                                        },
+                                    )
+                                    if tool_call.get("id"):
+                                        existing["id"] = tool_call["id"]
+                                    if tool_call.get("type"):
+                                        existing["type"] = tool_call["type"]
+
+                                    func = tool_call.get("function") or {}
+                                    if func.get("name"):
+                                        existing["function"]["name"] = func["name"]
+                                    if func.get("arguments"):
+                                        existing["function"]["arguments"] += func[
+                                            "arguments"
+                                        ]
+                            except Exception:
+                                continue
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Provider request timeout: provider=%s model=%s timeout_seconds=%s",
+                    provider_id,
+                    model,
+                    request_timeout_seconds,
+                )
+                raise
+            except aiohttp.ClientError:
+                logger.exception(
+                    "Provider transport error: provider=%s model=%s",
+                    provider_id,
+                    model,
+                )
+                raise
 
     tool_call_events = []
     if pending_tool_calls:
@@ -485,9 +585,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                 "type": call.get("type") or "function",
                 "function": {
                     "name": (call.get("function") or {}).get("name"),
-                    "arguments": (call.get("function") or {}).get(
-                        "arguments", ""
-                    ),
+                    "arguments": (call.get("function") or {}).get("arguments", ""),
                 },
             }
             for idx, call in sorted(pending_tool_calls.items())
@@ -508,6 +606,7 @@ async def websocket(request):
     await ws.prepare(request)
 
     serializer = URLSafeSerializer(SECRET_KEY)
+
     async def persist_guardrail_messages(
         *,
         user_text: str,
@@ -602,6 +701,9 @@ async def websocket(request):
                 assistant_message: Optional[dict] = None
                 pending_tool_results: List[dict] = []
                 used_chunks: List[dict] = []
+                sources: List[dict] = []
+                context_policy: dict[str, Any] = {}
+                coverage: dict[str, Any] = {}
                 messages: List[dict] = []
                 guardrail_reasons: set[str] = set()
                 request_status = "ok"
@@ -653,15 +755,21 @@ async def websocket(request):
                 skip_rag = is_trivial_query(user_text)
 
                 async with async_session_factory() as ctx_db:
-                    history, used_chunks = await get_context(
+                    context_result = await get_context(
                         db=ctx_db,
                         chat_id=chat_id_ctx.get(),
                         prompt=user_text,
+                        provider=gen_context.provider,
+                        model=gen_context.model,
                         vector_top_k=0 if skip_rag else 10,
                         ft_top_m=0 if skip_rag else 10,
                     )
 
-                messages = [dict(m._asdict()) for m in history]
+                used_chunks = context_result.used_chunks
+                sources = context_result.sources
+                context_policy = context_result.policy
+                coverage = context_result.coverage
+                messages = [dict(m._asdict()) for m in context_result.messages]
 
                 total_content = ""
 
@@ -787,7 +895,14 @@ async def websocket(request):
                         .values(
                             text=total_content,
                             role="assistant",
-                            full_context="",
+                            full_context=json.dumps(
+                                {
+                                    "policy": context_policy,
+                                    "coverage": coverage,
+                                    "sources": sources,
+                                },
+                                ensure_ascii=False,
+                            ),
                             chat_id=chat_id_ctx.get(),
                             user_uid=str(user_id_ctx.get()),
                             created_at=sa.func.now(),
@@ -795,9 +910,13 @@ async def websocket(request):
                             tokens=total_tokens,
                             provider=assistant_provider,
                             model=assistant_model,
-                            guardrail_triggered=_is_guardrail_blocked(guardrail_reasons),
+                            guardrail_triggered=_is_guardrail_blocked(
+                                guardrail_reasons
+                            ),
                             guardrail_stage=(
-                                "stream" if _is_guardrail_blocked(guardrail_reasons) else None
+                                "stream"
+                                if _is_guardrail_blocked(guardrail_reasons)
+                                else None
                             ),
                             guardrail_reasons=(
                                 sorted(guardrail_reasons) if guardrail_reasons else None
@@ -814,31 +933,16 @@ async def websocket(request):
                 serializer = URLSafeSerializer(SECRET_KEY)
                 signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
 
-                # Send sources logic here or reuse?
-                # The previous `ws.send_json` at line 511 was sent BEFORE DB insert.
-                # We should move it here OR send a separate "saved" event?
-                # The frontend expects "ok": True to finish streaming state.
-                # If we move it here, latency is slightly higher (DB insert).
-                # But we need the ID.
-
-                # Re-constructing sources logic briefly
-                sources = []
-                if used_chunks:
-                    seen_urls = set()
-                    for chunk in used_chunks:
-                        uri = chunk.get("uri")
-                        title = chunk.get("title")
-                        if uri and uri not in seen_urls:
-                            sources.append({"uri": uri, "title": title or uri})
-                            seen_urls.add(uri)
-
                 await ws.send_json(
                     {
                         "ok": True,
                         "content": "",
                         "partial": False,
                         "sources": sources,
-                        "msg_id": assistant_msg_id,  # Plain ID (maybe useful for JS internal, but less secure for public actions)
+                        "coverage": coverage,
+                        "policy": context_policy,
+                        "reason_code": context_policy.get("reason_code"),
+                        "msg_id": assistant_msg_id,
                         "signed_msg_id": signed_msg_id,
                     }
                 )
@@ -858,11 +962,15 @@ async def websocket(request):
             except GuardrailTripwireTriggered as e:
                 stage, reason = extract_tripwire_details(e)
                 request_status = (
-                    "guardrail_blocked_output" if stage == "output" else "guardrail_blocked_input"
+                    "guardrail_blocked_output"
+                    if stage == "output"
+                    else "guardrail_blocked_input"
                 )
                 guardrail_reasons.add("guardrail_tripwire")
                 guardrail_reasons.add(reason)
-                guardrail_reasons.add("output_blocked" if stage == "output" else "input_blocked")
+                guardrail_reasons.add(
+                    "output_blocked" if stage == "output" else "input_blocked"
+                )
                 _, assistant_msg_id = await persist_guardrail_messages(
                     user_text=user_text,
                     assistant_text=GUARDRAIL_USER_MESSAGE,
@@ -930,10 +1038,39 @@ async def chat_actions(request):
     if not token:
         raise web.HTTPForbidden(text="Missing CSRF Token")
 
-    # Verify secure ID
+    serializer = URLSafeSerializer(SECRET_KEY)
+
+    if action == "session":
+        try:
+            real_id = serializer.loads(item_id, salt="chat", max_age=86400)
+        except BadSignature:
+            raise web.HTTPForbidden(text="Invalid Chat ID")
+
+        try:
+            payload = await request.json()
+        except Exception:
+            form = await request.post()
+            payload = dict(form)
+
+        db = request["db"]
+        chat = await db.scalar(sa.select(Chat).where(Chat.id == str(real_id)))
+        if not chat:
+            raise web.HTTPNotFound(text="Chat not found")
+
+        chat.meta = merge_chat_meta(
+            chat.meta,
+            request,
+            device_fingerprint=payload.get("device_fingerprint"),
+            platform=payload.get("platform"),
+            language=payload.get("language"),
+            timezone_name=payload.get("timezone"),
+            screen=payload.get("screen"),
+        )
+        await db.commit()
+        return web.json_response({"ok": True})
+
+    # Verify secure message ID for message actions
     try:
-        serializer = URLSafeSerializer(SECRET_KEY)
-        # item_id should be signed
         real_id = serializer.loads(item_id, salt="chat_msg", max_age=86400)
     except BadSignature:
         raise web.HTTPForbidden(text="Invalid Item ID")

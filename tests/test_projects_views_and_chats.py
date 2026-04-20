@@ -92,7 +92,13 @@ async def test_chats_list_returns_active_chats(monkeypatch: pytest.MonkeyPatch) 
 @pytest.mark.asyncio
 async def test_history_list_builds_pagination_and_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc)
-    fake_chat = SimpleNamespace(id="c1", created_at=now, title="t", user_uid="u")
+    fake_chat = SimpleNamespace(
+        id="c1",
+        created_at=now,
+        title="t",
+        user_uid="u",
+        meta={},
+    )
 
     class _RowsResult:
         def all(self):
@@ -138,7 +144,7 @@ async def test_history_list_builds_pagination_and_filters(monkeypatch: pytest.Mo
 
 @pytest.mark.asyncio
 async def test_history_detail_masks_pii_and_maps_guardrail_labels(monkeypatch: pytest.MonkeyPatch) -> None:
-    chat = SimpleNamespace(id="chat-1", title="Demo")
+    chat = SimpleNamespace(id="chat-1", title="Demo", meta={})
     msgs = [
         SimpleNamespace(
             role="user",

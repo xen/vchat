@@ -1,0 +1,159 @@
+<div class="flex flex-col gap-6">
+    <div class="grid gap-4 lg:grid-cols-3">
+        <div class="card bg-base-200/40 border border-base-300 lg:col-span-2">
+            <div class="card-body gap-3">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h3 class="card-title text-base">{{ document.title or 'Без названия' }}</h3>
+                        {% if document.uri %}
+                        <p class="text-xs opacity-70 break-all">{{ document.uri }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="badge badge-outline">{{ document.status }}</div>
+                </div>
+
+                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-sm">
+                    <div class="rounded-box bg-base-100 p-3">
+                        <div class="text-xs opacity-60">Снипеты структуры</div>
+                        <div class="text-lg font-semibold">{{ document_structure|length }}</div>
+                    </div>
+                    <div class="rounded-box bg-base-100 p-3">
+                        <div class="text-xs opacity-60">Чанки</div>
+                        <div class="text-lg font-semibold">{{ document_chunks|length }}</div>
+                    </div>
+                    <div class="rounded-box bg-base-100 p-3">
+                        <div class="text-xs opacity-60">Таблицы</div>
+                        <div class="text-lg font-semibold">{{ document_extraction.table_count or 0 }}</div>
+                    </div>
+                    <div class="rounded-box bg-base-100 p-3">
+                        <div class="text-xs opacity-60">Слов</div>
+                        <div class="text-lg font-semibold">{{ document_extraction.word_count or 0 }}</div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2 text-xs">
+                    <span class="badge badge-outline">extractor: {{ document_extraction.extractor or 'unknown' }}</span>
+                    <span class="badge badge-outline">fallback: {{ 'yes' if document_extraction.fallback_used else 'no' }}</span>
+                    <span class="badge badge-outline">degraded: {{ 'yes' if document_extraction.degraded_mode else 'no' }}</span>
+                    {% if document.meta.doc_type %}
+                    <span class="badge badge-outline">doc_type: {{ document.meta.doc_type }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card bg-base-200/40 border border-base-300">
+            <div class="card-body gap-3">
+                <h3 class="card-title text-base">Outline</h3>
+                {% if document_outline %}
+                <div class="flex flex-col gap-2 text-sm">
+                    {% for item in document_outline %}
+                    <div class="rounded-box bg-base-100 px-3 py-2">
+                        <div class="text-xs opacity-60">H{{ item.level }}</div>
+                        <div class="font-medium">{{ item.content }}</div>
+                        {% if item.section_path %}
+                        <div class="text-xs opacity-70 mt-1">{{ item.section_path }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm opacity-60">Структура заголовков не найдена.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card bg-base-100 shadow border border-base-300">
+        <div class="card-body gap-4">
+            <div class="flex items-center justify-between gap-3">
+                <h3 class="card-title text-base">Снипеты структуры</h3>
+                <span class="text-xs opacity-60">Extraction pipeline blocks</span>
+            </div>
+            {% if document_structure %}
+            <div class="grid gap-3">
+                {% for block in document_structure %}
+                <div class="rounded-box border border-base-300 bg-base-200/30 p-4">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                        <span class="badge badge-primary badge-sm">{{ block.type }}</span>
+                        {% if block.level %}
+                        <span class="badge badge-outline badge-sm">H{{ block.level }}</span>
+                        {% endif %}
+                        {% if block.ordered is sameas true %}
+                        <span class="badge badge-outline badge-sm">ordered</span>
+                        {% elif block.ordered is sameas false %}
+                        <span class="badge badge-outline badge-sm">unordered</span>
+                        {% endif %}
+                        {% if block.section_path %}
+                        <span class="text-xs opacity-70">{{ block.section_path }}</span>
+                        {% endif %}
+                    </div>
+                    {% if block.items %}
+                    <div class="text-sm whitespace-pre-wrap">{{ block.items|join('\n') }}</div>
+                    {% else %}
+                    <div class="text-sm whitespace-pre-wrap break-words">{{ block.content }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-sm opacity-60">Структурные снипеты отсутствуют.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card bg-base-100 shadow border border-base-300">
+        <div class="card-body gap-4">
+            <div class="flex items-center justify-between gap-3">
+                <h3 class="card-title text-base">Материализованные чанки</h3>
+                <span class="text-xs opacity-60">Derived retrieval index</span>
+            </div>
+            {% if document_chunks %}
+            <div class="overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Тип</th>
+                            <th>Раздел</th>
+                            <th>Заголовок</th>
+                            <th>Токены</th>
+                            <th>Текст</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for chunk in document_chunks %}
+                        <tr>
+                            <td class="align-top">{{ chunk.chunk_ix }}</td>
+                            <td class="align-top"><span class="badge badge-outline badge-sm">{{ chunk.kind }}</span></td>
+                            <td class="align-top text-xs max-w-48 whitespace-pre-wrap">{{ chunk.section_path or '—' }}</td>
+                            <td class="align-top text-xs max-w-48 whitespace-pre-wrap">{{ chunk.header_text or '—' }}</td>
+                            <td class="align-top">{{ chunk.token_count or 0 }}</td>
+                            <td class="align-top">
+                                <div class="max-w-3xl whitespace-pre-wrap break-words text-xs">{{ chunk.text }}</div>
+                                {% if chunk.entity_terms %}
+                                <div class="mt-2 flex flex-wrap gap-1">
+                                    {% for term in chunk.entity_terms[:12] %}
+                                    <span class="badge badge-ghost badge-xs">{{ term }}</span>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-sm opacity-60">Чанки еще не построены.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card bg-base-100 shadow border border-base-300">
+        <div class="card-body gap-4">
+            <h3 class="card-title text-base">Нормализованное содержимое</h3>
+            <pre class="whitespace-pre-wrap break-words text-xs bg-base-200/40 rounded-box p-4 overflow-x-auto">{{ document.content }}</pre>
+        </div>
+    </div>
+</div>

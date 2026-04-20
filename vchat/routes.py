@@ -55,6 +55,12 @@ def setup_routes(app: web.Application) -> None:
     )
     add(
         "GET",
+        r"/document/{document_id:[0-9]+}",
+        projects.project_document_detail,
+        name="project_document_detail",
+    )
+    add(
+        "GET",
         r"/document/{document_id:[0-9]+}/content",
         projects.project_document_content,
         name="project_document_content",

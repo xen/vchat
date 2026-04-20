@@ -42,6 +42,21 @@ def test_mask_russian_pii_without_patterns_returns_original() -> None:
     assert masked == text
 
 
+def test_mask_russian_pii_uses_presidio_for_russian_patterns() -> None:
+    text = "Телефон: +7 999 123-45-67, паспорт: 12 34 567890"
+    masked, has_pii = guardrails.mask_russian_pii(text)
+    assert has_pii is True
+    assert masked.count("***") == 2
+    assert "+7 999 123-45-67" not in masked
+    assert "12 34 567890" not in masked
+
+
+def test_mask_russian_pii_keeps_original_when_presidio_finds_nothing() -> None:
+    masked, has_pii = guardrails.mask_russian_pii("Просто сообщение без PII")
+    assert has_pii is False
+    assert masked == "Просто сообщение без PII"
+
+
 def test_detect_russian_pii_reasons_passport_format() -> None:
     reasons = guardrails.detect_russian_pii_reasons("Серия и номер: 12 34 567890")
     assert "passport_ru" in reasons

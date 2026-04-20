@@ -95,6 +95,13 @@ def _load_config():
     merged_config = merge(default_config, local_config)
     if not merged_config.get("openai_api_key"):
         merged_config["openai_api_key"] = os.getenv("OPENAI_API_KEY")
+
+    if not merged_config.get("gigachat_api_key"):
+        merged_config["gigachat_api_key"] = (
+            os.getenv("GIGACHAT_API_KEY")
+            or os.getenv("GIGACHAT_AUTH_KEY")
+            or os.getenv("GIGACHAT_BASIC_AUTH")
+        )
     return merged_config
 
 

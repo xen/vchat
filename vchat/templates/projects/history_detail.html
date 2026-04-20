@@ -4,7 +4,7 @@
 <div class="flex flex-col gap-6 h-[calc(100vh-6rem)]">
     <!-- Header / Meta -->
     <div class="card bg-base-100 shadow shrink-0">
-        <div class="card-body flex-row items-center justify-between py-4">
+        <div class="card-body flex-col gap-4 py-4">
             <div class="flex items-center gap-4">
                 <a href="{{ url('project_history') }}" class="btn btn-sm btn-ghost gap-2">
                     <iconify-icon icon="lucide:arrow-left" class="size-5"></iconify-icon>
@@ -16,7 +16,36 @@
                     </div>
                 </div>
             </div>
-
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm">
+                <div class="rounded-box bg-base-200/40 p-3">
+                    <div class="text-xs opacity-60">Fingerprint</div>
+                    <div class="break-all font-medium">{{ chat_meta.device_fingerprint or '—' }}</div>
+                </div>
+                <div class="rounded-box bg-base-200/40 p-3">
+                    <div class="text-xs opacity-60">IP</div>
+                    <div class="break-all font-medium">{{ chat_meta.ip_address or '—' }}</div>
+                </div>
+                <div class="rounded-box bg-base-200/40 p-3">
+                    <div class="text-xs opacity-60">Браузер</div>
+                    <div class="font-medium">{{ chat_meta.browser or 'unknown' }}</div>
+                </div>
+                <div class="rounded-box bg-base-200/40 p-3">
+                    <div class="text-xs opacity-60">Устройство</div>
+                    <div class="font-medium">{{ chat_meta.device_type or 'unknown' }}</div>
+                </div>
+            </div>
+            {% if related_chats %}
+            <div class="flex flex-col gap-2">
+                <div class="text-sm font-medium">Другие чаты с тем же fingerprint</div>
+                <div class="flex flex-wrap gap-2">
+                    {% for related in related_chats %}
+                    <a href="{{ url('project_history_detail', chat_id=related.id) }}" class="btn btn-xs btn-outline">
+                        {{ related.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -53,6 +82,35 @@
                             {% if msg.guardrail_rules %}
                             <div class="text-base-content/80 mt-1">Правила: {{ msg.guardrail_rules|join(', ') }}</div>
                             {% endif %}
+                        </div>
+                        {% endif %}
+                        {% if msg.context_sources %}
+                        <div class="rounded border border-base-300 bg-base-100/70 px-3 py-3 text-xs">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="font-semibold opacity-80">Структурированные источники</div>
+                                {% if msg.reason_code %}
+                                <span class="badge badge-outline badge-xs">{{ msg.reason_code }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="mt-2 flex flex-col gap-2">
+                                {% for source in msg.context_sources %}
+                                <a
+                                    href="{{ source.uri }}"
+                                    target="_blank"
+                                    rel="noopener"
+                                    class="rounded-box border border-base-300 bg-base-100 px-3 py-2 hover:border-primary/40">
+                                    <div class="font-medium">{{ source.display_path or source.title or 'Источник' }}</div>
+                                    <div class="mt-1 flex flex-wrap gap-2 opacity-70">
+                                        {% if source.kind %}
+                                        <span class="badge badge-outline badge-xs">{{ source.kind }}</span>
+                                        {% endif %}
+                                        {% if source.section_path %}
+                                        <span>{{ source.section_path }}</span>
+                                        {% endif %}
+                                    </div>
+                                </a>
+                                {% endfor %}
+                            </div>
                         </div>
                         {% endif %}
 

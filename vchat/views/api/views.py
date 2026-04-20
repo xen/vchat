@@ -3,9 +3,9 @@ from urllib.parse import urljoin, urlparse
 
 import sqlalchemy as sa
 from aiohttp import web
-from docling.document_converter import DocumentConverter
 
 from jobs.embedder.tasks import index_document
+from vchat.document_pipeline import extract_url_document
 from vchat.document_types import guess_document_type
 from vchat.models import Chunk, Document, Source
 
@@ -77,48 +77,6 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
         return status, None, status
 
 
-async def _extract_content(url: str) -> tuple[str | None, dict[str, object], str | None]:
-    """Return markdown text, metadata and optional title."""
-    converter = DocumentConverter()
-
-    try:
-        result = await asyncio.to_thread(converter.convert, url)
-        markdown = result.document.export_to_markdown()
-        if markdown:
-            return markdown, {}, None
-    except Exception:
-        # Fallback to raw body below.
-        pass
-
-    from aiohttp import ClientSession, ClientTimeout
-
-    timeout = ClientTimeout(total=20)
-    async with ClientSession(timeout=timeout) as client:
-        async with client.get(url, allow_redirects=True) as resp:
-            content_type = resp.headers.get("Content-Type", "")
-            body = await resp.text(errors="ignore")
-
-    if not body.strip():
-        return None, {}, None
-
-    meta: dict[str, object] = {}
-    doc_type = guess_document_type(url, content_type)
-    if doc_type:
-        meta["doc_type"] = doc_type
-    if content_type:
-        meta["content_type"] = content_type
-    title = None
-    if "<title" in body.lower():
-        low = body.lower()
-        start = low.find("<title")
-        start = low.find(">", start)
-        end = low.find("</title>", start)
-        if start != -1 and end != -1:
-            title = body[start + 1 : end].strip()[:512]
-
-    return body, meta, title
-
-
 async def _delete_document_by_url(request: web.Request, url: str) -> int:
     db = request["db"]
     docs = (await db.execute(sa.select(Document).where(Document.uri == url))).scalars().all()
@@ -138,7 +96,10 @@ async def _delete_document_by_url(request: web.Request, url: str) -> int:
 async def _upsert_document(request: web.Request, source_id: int, url: str) -> tuple[str, int]:
     db = request["db"]
 
-    content, meta_from_fetch, title = await _extract_content(url)
+    try:
+        content, title, meta_from_fetch = await asyncio.to_thread(extract_url_document, url)
+    except Exception as exc:
+        raise web.HTTPInternalServerError(text=f"Failed to extract document content: {exc}")
     if not content:
         raise web.HTTPInternalServerError(text="Failed to extract document content")
 
@@ -154,8 +115,8 @@ async def _upsert_document(request: web.Request, source_id: int, url: str) -> tu
     document.content = content
     document.status = "indexed"
     document.hash_value = content
-    document.language = content
-    document.length = content
+    document.language = ""
+    document.length = len(content)
 
     meta = dict(document.meta or {})
     meta.update(meta_from_fetch)
@@ -166,7 +127,7 @@ async def _upsert_document(request: web.Request, source_id: int, url: str) -> tu
     document.meta = meta
 
     if title:
-        document.title = title
+        document.title = title[:512]
 
     await db.commit()
     await db.refresh(document)
