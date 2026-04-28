@@ -165,6 +165,8 @@ def generate_security_artifacts(security_dir: Path) -> None:
     sast = load_json(security_dir / "sast-semgrep.gitlab.json", {})
     osv = load_json(security_dir / "dependency-audit-osv.json", {})
     sbom = load_json(security_dir / "sbom.cyclonedx.json", {})
+    ruff = load_json(security_dir / "lint-ruff.json", [])
+    bandit = load_json(security_dir / "sast-bandit.json", {})
 
     licenses: dict[str, list[dict[str, str]]] = {}
     python_packages: list[dict[str, str]] = []
@@ -302,6 +304,20 @@ def generate_security_artifacts(security_dir: Path) -> None:
                 "report": "config-scan-trivy.sarif",
                 "format": "sarif",
             },
+            "lint-ruff": {
+                "exit_code": load_exitcode(security_dir, "lint-ruff"),
+                "report": "lint-ruff.json",
+                "format": "ruff-json",
+                "findings": len(ruff) if isinstance(ruff, list) else 0,
+            },
+            "sast-bandit": {
+                "exit_code": load_exitcode(security_dir, "sast-bandit"),
+                "report": "sast-bandit.json",
+                "format": "bandit-json",
+                "findings": len(bandit.get("results", []))
+                if isinstance(bandit, dict)
+                else 0,
+            },
         },
     }
     (security_dir / "security-summary.json").write_text(
@@ -330,6 +346,8 @@ def build_report(security_dir: Path, output: Path) -> None:
     gitleaks = load_json(security_dir / "secret-detection-gitleaks.sarif", {})
     trivy = load_json(security_dir / "config-scan-trivy.sarif", {})
     osv = load_json(security_dir / "dependency-audit-osv.json", {})
+    ruff = load_json(security_dir / "lint-ruff.json", [])
+    bandit = load_json(security_dir / "sast-bandit.json", {})
     proof = parse_proof(security_dir / "security-proof.txt")
 
     checks = summary.get("checks", {})
@@ -338,7 +356,11 @@ def build_report(security_dir: Path, output: Path) -> None:
         exit_code = info.get("exit_code", "-")
         status = "INFO"
         if isinstance(exit_code, int):
-            status = "PASS" if exit_code == 0 else "FAIL"
+            # For osv-scanner, exit code 1 means vulnerabilities found (not an error)
+            if name == "dependency-audit-osv" and exit_code == 1:
+                status = "INFO"
+            else:
+                status = "PASS" if exit_code == 0 else "FAIL"
         note = ""
         if name == "sast-semgrep":
             note = f"findings: {info.get('findings', 0)}"
@@ -399,6 +421,35 @@ def build_report(security_dir: Path, output: Path) -> None:
                 (item.get("message") or {}).get("text", "")[:220],
             ]
         )
+
+    ruff_rows: list[list[Any]] = []
+    if isinstance(ruff, list):
+        for item in ruff:
+            if not isinstance(item, dict):
+                continue
+            ruff_rows.append(
+                [
+                    item.get("code", "-"),
+                    item.get("message", "")[:200],
+                    item.get("filename", "-"),
+                    f"{item.get('location', {}).get('row', '-')}:{item.get('location', {}).get('column', '-')}",
+                ]
+            )
+
+    bandit_rows: list[list[Any]] = []
+    if isinstance(bandit, dict):
+        for item in bandit.get("results", []):
+            if not isinstance(item, dict):
+                continue
+            bandit_rows.append(
+                [
+                    item.get("test_id", "-"),
+                    (item.get("severity") or "UNKNOWN").upper(),
+                    item.get("filename", "-").replace("/src/", ""),
+                    item.get("line_number", "-"),
+                    (item.get("issue_text") or "")[:200],
+                ]
+            )
 
     license_rows: list[list[Any]] = []
     for item in license_summary.get("licenses", []):
@@ -473,21 +524,24 @@ def build_report(security_dir: Path, output: Path) -> None:
         )
     )
 
-    high_priority_rows = [
+    osv_all_rows = [
         [r["severity"], r["pkg"], r["version"], r["id"], r["summary"], r["source"]]
         for r in osv_rows
-        if r["severity"] in {"CRITICAL", "HIGH"}
-    ][:120]
+    ]
 
     total_semgrep = len(semgrep.get("vulnerabilities", []))
     total_gitleaks = len(gitleaks_rows)
     total_trivy = len(trivy_rows)
     total_osv = len(osv_rows)
+    total_ruff = len(ruff_rows)
+    total_bandit = len(bandit_rows)
 
     risk_score = (
         sum(WEIGHTS.get(row["severity"], 1) for row in osv_rows)
         + total_gitleaks * 4
         + total_trivy * 2
+        + total_bandit * 3
+        + total_ruff * 1
     )
     if risk_score >= 250:
         risk_band = "CRITICAL"
@@ -572,6 +626,8 @@ def build_report(security_dir: Path, output: Path) -> None:
         <div class='kpi'><div>Semgrep findings</div><div class='v'>{total_semgrep}</div></div>
         <div class='kpi'><div>Gitleaks findings</div><div class='v'>{total_gitleaks}</div></div>
         <div class='kpi'><div>Trivy findings</div><div class='v'>{total_trivy}</div></div>
+        <div class='kpi'><div>Ruff lint issues</div><div class='v'>{total_ruff}</div></div>
+        <div class='kpi'><div>Bandit security findings</div><div class='v'>{total_bandit}</div></div>
         <div class='kpi'><div>OSV vulnerabilities</div><div class='v'>{total_osv}</div></div>
         <div class='kpi'><div>Frontend critical (OSV)</div><div class='v'>{osv_frontend_critical}</div></div>
                 <div class='kpi'><div>Python packages (SBOM)</div><div class='v'>{python_license_summary.get("package_count", 0)}</div></div>
@@ -601,19 +657,29 @@ def build_report(security_dir: Path, output: Path) -> None:
     </section>
 
     <section class='card'>
-      <h2>5. OSV High Priority</h2>
-      <p>Showing up to 120 high-priority vulnerabilities (Critical + High).</p>
-      {table(["Severity", "Package", "Version", "Advisory", "Summary", "Source"], high_priority_rows)}
+      <h2>5. Ruff Lint Issues</h2>
+      {table(["Code", "Message", "File", "Location"], ruff_rows)}
+    </section>
+
+    <section class='card'>
+      <h2>6. Bandit Security Issues</h2>
+      {table(["Test ID", "Severity", "File", "Line", "Issue"], bandit_rows)}
     </section>
 
         <section class='card'>
-            <h2>6. Licenses</h2>
+            <h2>7. OSV All Severities</h2>
+            <p>Showing all vulnerabilities across Critical, High, Moderate, Low, and Unknown levels.</p>
+            {table(["Severity", "Package", "Version", "Advisory", "Summary", "Source"], osv_all_rows)}
+        </section>
+
+        <section class='card'>
+            <h2>8. Licenses</h2>
             <p>Detected package licenses from CycloneDX SBOM.</p>
             {table(["License", "Package count", "Sample packages"], license_rows)}
         </section>
 
         <section class='card'>
-            <h2>7. Python Dependency Licenses</h2>
+            <h2>9. Python Dependency Licenses</h2>
             <p>Licenses mapped specifically to Python packages (purl starts with pkg:pypi/).</p>
             {table(["License", "Python package count", "Sample Python packages"], python_license_rows)}
         </section>

@@ -77,6 +77,18 @@ run_step "config-scan-trivy" \
     --skip-dirs /src/frontend_chat/dist \
     --skip-dirs /src/security
 
+run_step "lint-ruff" \
+  python3 -m ruff check vchat tests \
+    --output-format json \
+    --exit-zero \
+    > "$out_dir/lint-ruff.json" || true
+
+run_step "sast-bandit" \
+  python3 -m bandit -r vchat \
+    -f json \
+    -o "$out_dir/sast-bandit.json" \
+    2>/dev/null || true
+
 python3 "$root_dir/bin/security-report.py" \
     --security-dir "$out_dir" \
     --output "$out_dir/security-report.html"
