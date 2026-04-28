@@ -60,12 +60,10 @@
                             </td>
                             <td>
                                 <div class="font-medium">
-                                    {% if source.reindex_period == 'weekly' %}
-                                        Еженедельная
-                                    {% elif source.reindex_period == 'monthly' %}
-                                        Ежемесячная
+                                    {% if source.reindex_cron == 'manual' %}
+                                        Ручной режим
                                     {% else %}
-                                        Ручная
+                                        {{ source.reindex_cron }}
                                     {% endif %}
                                 </div>
                             </td>
@@ -143,9 +141,12 @@
             </div>
             <div class="form-control w-full mb-4">
                 <label class="label">
-                        <span class="label-text">Переиндексация</span>
+                        <span class="label-text">Cron переиндексации (UTC)</span>
                 </label>
-                {{ form.reindex_period(class="select select-bordered w-full") }}
+                {{ form.reindex_cron(class="input input-bordered w-full", placeholder="0 3 * * 1") }}
+                <label class="label">
+                    <span class="label-text-alt">Пусто = ручной режим</span>
+                </label>
             </div>
 
             <!-- Site-specific fields -->

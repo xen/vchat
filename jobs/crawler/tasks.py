@@ -4,13 +4,18 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from celery.schedules import crontab
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from vchat.models.data import Settings, Source
-from vchat.source_settings import REINDEX_PERIOD_TO_DAYS
+from vchat.source_settings import (
+    DEFAULT_REINDEX_CRON,
+    is_manual_reindex,
+    normalize_reindex_cron,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -153,6 +158,23 @@ def _normalize_datetime(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
+def _cron_matches_now(cron_expression: str, now: datetime) -> bool:
+    parts = cron_expression.split(" ")
+    if len(parts) != 5:
+        return False
+
+    minute, hour, day_of_month, month_of_year, day_of_week = parts
+    schedule = crontab(
+        minute=minute,
+        hour=hour,
+        day_of_month=day_of_month,
+        month_of_year=month_of_year,
+        day_of_week=day_of_week,
+        nowfun=lambda: now,
+    )
+    return schedule.is_due(now - timedelta(seconds=60)).is_due
+
+
 @app.task(
     name="jobs.crawler.tasks.schedule_reindex_sources_task",
     queue="crawler",
@@ -166,26 +188,32 @@ def schedule_reindex_sources_task():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            sources = session.execute(
-                select(Source).where(
-                    Source.type != "upload",
-                    Source.reindex_period != "manual",
+            sources = (
+                session.execute(
+                    select(Source).where(
+                        Source.type != "upload",
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             for source in sources:
-                interval_days = REINDEX_PERIOD_TO_DAYS.get(source.reindex_period)
-                if not interval_days:
+                cron_expression = normalize_reindex_cron(
+                    getattr(source, "reindex_cron", None) or DEFAULT_REINDEX_CRON
+                )
+
+                if is_manual_reindex(cron_expression):
+                    continue
+
+                if not _cron_matches_now(cron_expression, now):
                     continue
 
                 last_reindex = _normalize_datetime(source.last_reindexed_at)
-                if last_reindex is None:
-                    queued_ids.append(source.id)
+                if last_reindex and (now - last_reindex) < timedelta(days=1):
                     continue
 
-                due_at = last_reindex + timedelta(days=interval_days)
-                if now >= due_at:
-                    queued_ids.append(source.id)
+                queued_ids.append(source.id)
     finally:
         engine.dispose()
 

@@ -83,14 +83,6 @@ source_type_enum = ENUM(
     create_type=False,
 )
 
-source_reindex_period_enum = ENUM(
-    "weekly",
-    "monthly",
-    "manual",
-    name="sourcereindexperiod",
-    create_type=False,
-)
-
 
 class Source(Base, Created, Updated):
     __tablename__ = "source"
@@ -100,11 +92,11 @@ class Source(Base, Created, Updated):
     title: Mapped[str] = mapped_column(sa.String(255), nullable=False, default="")
     uri: Mapped[str] = mapped_column(sa.String, nullable=False)
     config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    reindex_period: Mapped[str] = mapped_column(
-        source_reindex_period_enum,
+    reindex_cron: Mapped[str] = mapped_column(
+        sa.String(100),
         nullable=False,
-        default="manual",
-        server_default=sa.text("'manual'"),
+        default="0 3 * * 1",
+        server_default=sa.text("'0 3 * * 1'"),
     )
     last_reindexed_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True),

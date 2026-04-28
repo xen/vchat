@@ -31,11 +31,11 @@
 
                 <div class="form-control w-full">
                     <label class="label">
-                        <span class="label-text">{{ _('Переиндексация') }}</span>
+                        <span class="label-text">{{ _('Cron переиндексации (UTC)') }}</span>
                     </label>
-                    {{ form.reindex_period(class="select select-bordered w-full") }}
+                    {{ form.reindex_cron(class="input input-bordered w-full", placeholder="0 3 * * 1") }}
                     <label class="label">
-                        <span class="label-text-alt">{{ _('Ручная переиндексация выполняется только вручную через кнопку обхода.') }}</span>
+                        <span class="label-text-alt">{{ _('Формат: minute hour day month weekday. Пустое значение = ручной режим. Пример по умолчанию: 0 3 * * 1 (раз в неделю).') }}</span>
                     </label>
                 </div>
 

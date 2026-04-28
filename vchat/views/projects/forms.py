@@ -22,7 +22,10 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_USER_AGENT,
-    REINDEX_PERIOD_CHOICES,
+    DEFAULT_REINDEX_CRON,
+    is_manual_reindex,
+    normalize_reindex_cron,
+    validate_reindex_cron,
 )
 from vchat.settings import config
 
@@ -164,13 +167,26 @@ class SourceForm(Form):
         ],
         render_kw={"class": "select border w-full"},
     )
-    reindex_period = SelectField(
-        _("Reindexing"),
-        choices=list(REINDEX_PERIOD_CHOICES),
-        validators=[validators.DataRequired()],
-        default="manual",
-        render_kw={"class": "select border w-full"},
+    reindex_cron = StringField(
+        _("Reindexing Cron"),
+        validators=[validators.Optional(), validators.Length(max=100)],
+        default="",
+        render_kw={
+            "class": "input input-bordered w-full",
+            "placeholder": "0 3 * * 1",
+        },
     )
+
+    def validate_reindex_cron(self, field):
+        field.data = normalize_reindex_cron(field.data)
+        if is_manual_reindex(field.data):
+            return
+        if not validate_reindex_cron(field.data):
+            raise validators.ValidationError(
+                _(
+                    "Invalid cron expression. Use 5 fields: minute hour day month weekday"
+                )
+            )
 
     # S3 specific fields
     aws_access_key_id = StringField(
@@ -250,13 +266,27 @@ class SourceCrawlerSettingsForm(Form):
         csrf_class = SessionCSRF
         csrf_time_limit = timedelta(minutes=20)
 
-    reindex_period = SelectField(
-        _("Reindexing"),
-        choices=list(REINDEX_PERIOD_CHOICES),
-        validators=[validators.DataRequired()],
-        default="manual",
-        render_kw={"class": "select select-bordered w-full"},
+    reindex_cron = StringField(
+        _("Reindexing Cron"),
+        validators=[validators.Optional(), validators.Length(max=100)],
+        default="",
+        render_kw={
+            "class": "input input-bordered w-full",
+            "placeholder": "0 3 * * 1",
+        },
     )
+
+    def validate_reindex_cron(self, field):
+        field.data = normalize_reindex_cron(field.data)
+        if is_manual_reindex(field.data):
+            return
+        if not validate_reindex_cron(field.data):
+            raise validators.ValidationError(
+                _(
+                    "Invalid cron expression. Use 5 fields: minute hour day month weekday"
+                )
+            )
+
     concurrent_requests = IntegerField(
         _("Параллельные запросы (CONCURRENT_REQUESTS)"),
         validators=[validators.Optional(), validators.NumberRange(min=1, max=256)],

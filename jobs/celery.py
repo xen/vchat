@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import task_postrun
 
 from vchat.settings import config
@@ -45,10 +46,11 @@ app.conf.beat_schedule = {
     },
     "schedule_source_reindex": {
         "task": "jobs.crawler.tasks.schedule_reindex_sources_task",
-        "schedule": 604800.0,  # 7 days
+        "schedule": crontab(),
         "options": {"queue": "crawler"},
     },
 }
+
 
 @task_postrun.connect
 def run_gc(*_, **__):

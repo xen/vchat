@@ -6,7 +6,7 @@ import json
 from datetime import datetime, time, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
@@ -15,7 +15,7 @@ from aiohttp import web
 from aiohttp_session import get_session
 from aiohttp_tus.utils import parse_upload_metadata
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
-from passlib.hash import pbkdf2_sha512
+from passlib.context import CryptContext
 
 from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
 from jobs.embedder.tasks import (
@@ -46,6 +46,8 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_USER_AGENT,
+    MANUAL_REINDEX_MODE,
+    normalize_reindex_cron,
 )
 from vchat.settings import config
 from vchat.utils import admin_event, flash, login_required, meta
@@ -55,6 +57,7 @@ from vchat.views.admin import forms as admin_forms
 from . import forms
 
 logger = logging.getLogger(__name__)
+password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
 
 __all__ = [
     "index",
@@ -206,7 +209,7 @@ async def project_edit(request):
     data = await request.post()
 
     project = _project_context(request)
-    form_kwargs = {"meta": {"csrf_context": session}}
+    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
     if data:
         form_kwargs["formdata"] = data
     else:
@@ -279,7 +282,7 @@ async def project_source_settings(request):
         raise web.HTTPNotFound()
 
     session = await get_session(request)
-    form_kwargs = {"meta": {"csrf_context": session}}
+    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
     if request.method == "POST":
         data = await request.post()
         form_kwargs["formdata"] = data
@@ -288,7 +291,9 @@ async def project_source_settings(request):
         form_kwargs["data"] = {
             "type": source.type,
             "title": source.title,
-            "reindex_period": source.reindex_period,
+            "reindex_cron": ""
+            if source.reindex_cron == MANUAL_REINDEX_MODE
+            else source.reindex_cron,
             "url": source.uri if source.type in {"site", "sitemap", "list"} else "",
             "aws_access_key_id": source_config.get("aws_access_key_id", ""),
             "aws_secret_access_key": source_config.get("aws_secret_access_key", ""),
@@ -315,7 +320,7 @@ async def project_source_settings(request):
     if request.method == "POST" and form.validate():
         source_type = form.type.data
         source.title = form.title.data
-        source.reindex_period = form.reindex_period.data
+        source.reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
         source.updated_at = datetime.now(timezone.utc)
         source_config = dict(source.config or {})
         crawler_user_agent = (
@@ -388,7 +393,7 @@ async def project_topics(request):
     db_session = request["db"]
     session = await get_session(request)
 
-    form_kwargs = {"meta": {"csrf_context": session}}
+    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
     if request.method == "POST":
         data = await request.post()
         form_kwargs["formdata"] = data
@@ -486,7 +491,7 @@ async def project_action(request):
             User(
                 email=email,
                 name=(email.split("@", 1)[0] or email).strip()[:100],
-                password=pbkdf2_sha512.hash(form.password.data),
+                password=password_context.hash(form.password.data),
                 is_active=True,
             )
         )
@@ -516,7 +521,7 @@ async def project_action(request):
                     status=400,
                 )
 
-            user_obj.password = pbkdf2_sha512.hash(form.password.data)
+            user_obj.password = password_context.hash(form.password.data)
             await db_session.commit()
             await admin_event("user_update", request)
             await flash(request, _("Password updated"), "success")
@@ -663,7 +668,7 @@ async def project_action(request):
 
         title = form.title.data
         source_type = form.type.data
-        reindex_period = form.reindex_period.data
+        reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
         source_config = {}
 
         if source_type == "s3":
@@ -709,7 +714,7 @@ async def project_action(request):
             uri=uri,
             title=title,
             config=source_config,
-            reindex_period=reindex_period,
+            reindex_cron=reindex_cron,
         )
         db_session.add(source)
         await db_session.commit()
@@ -1534,7 +1539,9 @@ async def secure_download(request):
 
 
 async def on_upload(request: web.Request, resource: Any, source_path: Path) -> None:
-    db_session = request.get("db")
+    db_session = cast(Any, request.get("db"))
+    if db_session is None:
+        raise RuntimeError("Database session is not available in request context")
 
     metadata = parse_upload_metadata(resource.metadata_header or "")
 

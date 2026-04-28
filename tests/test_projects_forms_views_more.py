@@ -24,7 +24,9 @@ class _Req(dict):
         self.method = method
         self._post_data = post_data or {}
         self.path = path
-        self.app = app or _App({"project_edit": _Route("/edit"), "users": _Route("/users/")})
+        self.app = app or _App(
+            {"project_edit": _Route("/edit"), "users": _Route("/users/")}
+        )
         self.match_info = {"source_id": "10", "action": "", "item_id": "10"}
 
     async def post(self):
@@ -63,7 +65,9 @@ def _raw(func):
 
 
 @pytest.mark.asyncio
-async def test_project_edit_get_builds_form_with_initial_data(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_edit_get_builds_form_with_initial_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     db = _DB()
     req = _Req(method="GET")
     req["db"] = db
@@ -80,14 +84,18 @@ async def test_project_edit_get_builds_form_with_initial_data(monkeypatch: pytes
 
     monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(project_views.forms, "WorkspaceForm", _workspace_form)
-    monkeypatch.setattr(project_views, "_project_context", lambda _r: SimpleNamespace(
-        title="T",
-        system_prompt="SP",
-        agent_style="AS",
-        provider="openai",
-        model="gpt-4o-mini",
-        config={"agent_name": "Bot", "welcome_message": "Hi"},
-    ))
+    monkeypatch.setattr(
+        project_views,
+        "_project_context",
+        lambda _r: SimpleNamespace(
+            title="T",
+            system_prompt="SP",
+            agent_style="AS",
+            provider="openai",
+            model="gpt-4o-mini",
+            config={"agent_name": "Bot", "welcome_message": "Hi"},
+        ),
+    )
 
     payload = await _raw(project_views.project_edit)(req)
     assert "form" in payload
@@ -95,7 +103,9 @@ async def test_project_edit_get_builds_form_with_initial_data(monkeypatch: pytes
 
 
 @pytest.mark.asyncio
-async def test_project_edit_post_validates_and_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_edit_post_validates_and_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     db = _DB()
     req = _Req(method="POST", post_data={"title": "X"})
     req["db"] = db
@@ -127,9 +137,13 @@ async def test_project_edit_post_validates_and_redirects(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(project_views.forms, "WorkspaceForm", lambda **kwargs: _Form())
-    monkeypatch.setattr(project_views, "_project_context", lambda _r: SimpleNamespace(
-        title="", system_prompt="", agent_style="", provider="", model="", config={}
-    ))
+    monkeypatch.setattr(
+        project_views,
+        "_project_context",
+        lambda _r: SimpleNamespace(
+            title="", system_prompt="", agent_style="", provider="", model="", config={}
+        ),
+    )
     monkeypatch.setattr(project_views, "apply_settings_updates", _apply)
     monkeypatch.setattr(project_views, "flash", _flash)
 
@@ -149,13 +163,15 @@ async def test_project_source_settings_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_project_source_settings_post_site_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_source_settings_post_site_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = SimpleNamespace(
         id=10,
         type="site",
         title="Old",
         uri="https://old",
-        reindex_period="daily",
+        reindex_cron="0 3 * * 1",
         config={"rules": [{"type": "contains", "value": "x"}]},
         updated_at=None,
     )
@@ -164,7 +180,9 @@ async def test_project_source_settings_post_site_rules(monkeypatch: pytest.Monke
         method="POST",
         path="/source/10/settings",
         post_data=SimpleNamespace(
-            getall=lambda key, default=None: ["contains"] if key == "rule_type[]" else ["/private"],
+            getall=lambda key, default=None: ["contains"]
+            if key == "rule_type[]"
+            else ["/private"],
         ),
     )
     req["db"] = db
@@ -176,7 +194,7 @@ async def test_project_source_settings_post_site_rules(monkeypatch: pytest.Monke
     class _Form:
         type = SimpleNamespace(data="site")
         title = SimpleNamespace(data="New")
-        reindex_period = SimpleNamespace(data="weekly")
+        reindex_cron = SimpleNamespace(data="")
         url = SimpleNamespace(data="https://example.local")
         user_agent = SimpleNamespace(data="")
         concurrent_requests = SimpleNamespace(data=5)
@@ -203,21 +221,28 @@ async def test_project_source_settings_post_site_rules(monkeypatch: pytest.Monke
         flashes.append((msg, category))
 
     monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "SourceSettingsForm", lambda **kwargs: _Form())
+    monkeypatch.setattr(
+        project_views.forms, "SourceSettingsForm", lambda **kwargs: _Form()
+    )
     monkeypatch.setattr(project_views, "admin_event", _event)
     monkeypatch.setattr(project_views, "flash", _flash)
-    monkeypatch.setattr(project_views, "_project_context", lambda _r: SimpleNamespace(id="global"))
+    monkeypatch.setattr(
+        project_views, "_project_context", lambda _r: SimpleNamespace(id="global")
+    )
 
     with pytest.raises(web.HTTPFound):
         await _raw(project_views.project_source_settings)(req)
     assert db.commits == 1
     assert source.uri == "https://example.local"
+    assert source.reindex_cron == "manual"
     assert "rules" in source.config
     assert events == ["source_update"]
 
 
 @pytest.mark.asyncio
-async def test_project_topics_post_triggers_delete_event(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_topics_post_triggers_delete_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     req = _Req(method="POST", post_data={"topics": "", "intents": ""}, path="/topics")
     req["db"] = _DB()
     req["user"] = SimpleNamespace(id=1)
@@ -251,7 +276,9 @@ async def test_project_topics_post_triggers_delete_event(monkeypatch: pytest.Mon
     monkeypatch.setattr(project_views, "apply_settings_updates", _apply)
     monkeypatch.setattr(project_views, "admin_event", _event)
     monkeypatch.setattr(project_views, "flash", _flash)
-    monkeypatch.setattr(project_views, "_project_context", lambda _r: SimpleNamespace(id="global"))
+    monkeypatch.setattr(
+        project_views, "_project_context", lambda _r: SimpleNamespace(id="global")
+    )
 
     with pytest.raises(web.HTTPFound):
         await _raw(project_views.project_topics)(req)
