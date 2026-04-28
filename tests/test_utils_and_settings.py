@@ -89,9 +89,15 @@ async def test_flash_and_admin_event(monkeypatch: pytest.MonkeyPatch) -> None:
     assert db_added[0].event_name == "user_update"
     assert db_added[0].ip_address == "10.0.0.1"
 
+    req.path = "/files/10"
+    await utils.admin_event("file_update", req)
+    assert db_added[1].event_name == "file_update @ /files/10"
+
 
 @pytest.mark.asyncio
-async def test_login_required_redirects_when_unauthorized(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_login_required_redirects_when_unauthorized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _App(dict):
         def __init__(self):
             super().__init__()
@@ -158,7 +164,9 @@ def test_ai_provider_functions() -> None:
 def test_settings_yaml_load_and_validation() -> None:
     import io
 
-    loaded = settings.yaml_load(io.StringIO("flag: true\nraw: !env ${DOES_NOT_EXIST:-x}\n"))
+    loaded = settings.yaml_load(
+        io.StringIO("flag: true\nraw: !env ${DOES_NOT_EXIST:-x}\n")
+    )
     assert loaded["flag"] is True
     assert loaded["raw"] == "x"
 

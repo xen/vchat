@@ -1,8 +1,38 @@
 from typing import Any
+import logging
 
 from sentence_transformers import SentenceTransformer
 
 from vchat.settings import config
+
+
+def _ensure_default_rope_init_function() -> None:
+    """Backfill missing 'default' rope type for older/newer transformers variants."""
+    try:
+        from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+    except Exception:
+        return
+
+    if "default" in ROPE_INIT_FUNCTIONS:
+        return
+
+    fallback_key = None
+    for candidate in ("linear", "dynamic", "base", "standard"):
+        if candidate in ROPE_INIT_FUNCTIONS:
+            fallback_key = candidate
+            break
+
+    if fallback_key is None and ROPE_INIT_FUNCTIONS:
+        fallback_key = next(iter(ROPE_INIT_FUNCTIONS.keys()))
+
+    if fallback_key is None:
+        return
+
+    ROPE_INIT_FUNCTIONS["default"] = ROPE_INIT_FUNCTIONS[fallback_key]
+    logging.warning(
+        "ROPE_INIT_FUNCTIONS has no 'default'; aliased it to '%s' for model compatibility",
+        fallback_key,
+    )
 
 
 def _detect_best_device() -> str:
@@ -56,6 +86,7 @@ def load_embedding_model(
     device: str | None = None,
     tokenizer_kwargs: dict[str, Any] | None = None,
 ) -> SentenceTransformer:
+    _ensure_default_rope_init_function()
     resolved_device = resolve_embedding_device(device)
     return SentenceTransformer(
         config["embedding_model_dir"],

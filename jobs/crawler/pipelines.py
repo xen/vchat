@@ -2,7 +2,7 @@ import logging
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from vchat.document_pipeline import extract_url_document
+from vchat.document_pipeline import extract_url_document, normalize_title_candidate
 from vchat.document_types import guess_document_type
 from vchat.models.data import Document
 from vchat.settings import config
@@ -29,7 +29,9 @@ class DatabasePipeline:
         spider.logger.info(f"Pipeline received {url}")
 
         try:
-            markdown_content, normalized_title, extracted_meta = extract_url_document(url)
+            markdown_content, normalized_title, extracted_meta = extract_url_document(
+                url
+            )
         except Exception as exc:
             spider.logger.error("Extraction failed for %s: %s", url, exc, exc_info=True)
             return item
@@ -85,7 +87,9 @@ class DatabasePipeline:
                 if normalized_title:
                     document.title = normalized_title
                 elif item.get("title"):
-                    document.title = item["title"].strip()[:512]
+                    fallback_title = normalize_title_candidate(item.get("title"))
+                    if fallback_title:
+                        document.title = fallback_title
 
                 session.commit()
                 spider.logger.info("Indexed %s", url)

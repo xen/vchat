@@ -171,12 +171,33 @@ async def admin_event(event_name: str, request) -> None:
 
     from vchat.models import AdminEvent
 
+    normalized_event_name = (event_name or "").strip()[:128] or "unknown_event"
+
+    page_value = ""
+    referer = (request.headers.get("Referer") or "").strip()
+    if referer:
+        if referer.startswith("/"):
+            page_value = referer
+        else:
+            try:
+                referer_url = URL(referer)
+                page_value = referer_url.path_qs or referer_url.path or ""
+            except Exception:
+                page_value = ""
+    if not page_value:
+        page_value = str(
+            getattr(request, "path_qs", "") or getattr(request, "path", "") or ""
+        ).strip()
+
+    if page_value and page_value != "/":
+        normalized_event_name = f"{normalized_event_name} @ {page_value}"[:128]
+
     db.add(
         AdminEvent(
             user_id=user_id,
             user_email=user_email,
             ip_address=ip_address,
-            event_name=(event_name or "").strip()[:128] or "unknown_event",
+            event_name=normalized_event_name,
         )
     )
     await db.commit()

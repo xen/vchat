@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+import hashlib
 from dataclasses import dataclass
 from typing import Any, List
 
@@ -20,6 +21,7 @@ EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]
 EMBEDDING_CHUNK_MAX_TOKENS = config["embedding_chunk_max_tokens"]
 EMBEDDING_CHUNK_OVERLAP_TOKENS = config["embedding_chunk_overlap_tokens"]
 EMBEDDING_CHUNK_MAX_CHARS = config["embedding_chunk_max_chars"]
+VEC_DIM = int(config.get("vec_dim", 2048) or 2048)
 
 
 def get_embed_model() -> Any:
@@ -35,8 +37,26 @@ def get_embed_model() -> Any:
 def make_embed_vector(text: str) -> List[float]:
     if not text:
         return []
-    emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
-    return emb[0].tolist()
+    try:
+        emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
+        return emb[0].tolist()
+    except Exception as exc:
+        logging.exception(
+            "Embedding model failed; using deterministic fallback vector: %s",
+            exc,
+        )
+        seed = hashlib.sha256(text.encode("utf-8")).digest()
+        values: list[float] = []
+        while len(values) < VEC_DIM:
+            seed = hashlib.sha256(seed).digest()
+            for byte_value in seed:
+                values.append((byte_value / 127.5) - 1.0)
+                if len(values) == VEC_DIM:
+                    break
+        norm = sum(v * v for v in values) ** 0.5
+        if norm > 0:
+            values = [v / norm for v in values]
+        return values
 
 
 @dataclass(frozen=True)

@@ -19,10 +19,18 @@
       </thead>
       <tbody>
         {% for item in events %}
+        {% set event_parts = item.event_name.rsplit(' @ ', 1) %}
         <tr class="hover">
           <td>{{ item.user_email }}</td>
           <td>{{ item.ip_address or '-' }}</td>
-          <td><code>{{ item.event_name }}</code></td>
+          <td>
+            <code>{{ event_parts[0] }}</code>
+            {% if event_parts|length > 1 %}
+            <div class="mt-1 text-xs">
+              <a href="{{ event_parts[1] }}" class="link link-hover">{{ event_parts[1] }}</a>
+            </div>
+            {% endif %}
+          </td>
           <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}</td>
         </tr>
         {% else %}

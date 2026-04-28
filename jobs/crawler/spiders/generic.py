@@ -1,7 +1,9 @@
 from scrapy.linkextractors import LinkExtractor
 from scrapy.spiders import CrawlSpider, Rule
+from scrapy.http import Request
 
 from ..items import CrawledItem
+from ..seed_urls import iter_source_seed_urls
 import pycld2 as cld2
 from dateutil import parser as date_parser
 import json
@@ -78,6 +80,15 @@ class GenericSpider(CrawlSpider):
             ),
         )
         super().__init__(*args, **kwargs)
+
+    def start_requests(self):
+        yield from super().start_requests()
+
+        for seed_url in iter_source_seed_urls(
+            self.source_id,
+            exclude=self.start_urls,
+        ):
+            yield Request(seed_url, dont_filter=False)
 
     def parse_item(self, response):
         print(f"Crawling {response.url}")

@@ -1,10 +1,10 @@
 {% extends "admin.html" %}
 {% block content %}
-<div class="max-w-3xl">
+<div class="w-full max-w-none">
     <div class="mb-6 flex items-center justify-between gap-3">
         <div>
             <h1 class="text-xl font-semibold">{{ _('Настройки источника') }}</h1>
-            <p class="text-sm text-base-content/70">{{ source.title or source.uri }}</p>
+            <p class="text-sm text-base-content/70 break-all">{{ source.title or source.uri }}</p>
         </div>
         <a class="btn btn-ghost btn-sm" href="{{ url('project_edit_sources') }}">{{ _('Назад к источникам') }}</a>
     </div>
@@ -55,25 +55,25 @@
                     </div>
 
                     <h3 class="text-base font-semibold">{{ _('Правила индексации') }}</h3>
-                    <div class="text-sm space-y-2">
+                    <div class="text-sm space-y-2 break-words">
                         <div class="space-y-2">
                             <p>
                                 {{ _('Эти правила помогают исключать страницы из индекса и обхода, даже если URL есть в sitemap.xml или был найден роботом при переходе по ссылкам.') }}
                             </p>
                             <p>{{ _('Примеры исключения:') }}</p>
                             <ul class="list-disc pl-5 space-y-1">
-                                <li><strong>XPath Rule:</strong> <code>//a[contains(@href, "/private/")]</code> — {{ _('не переходить по ссылкам на приватные разделы.') }}</li>
-                                <li><strong>CSS Rule:</strong> <code>a[href*="/checkout"], a[href*="/cart"]</code> — {{ _('исключить служебные страницы корзины/оформления.') }}</li>
-                                <li><strong>Ignored Param:</strong> <code>utm_source</code>, <code>session_id</code> — {{ _('не создавать отдельные URL в обходе и индексе из-за параметров трекинга/сессии.') }}</li>
-                                <li><strong>URL Regex:</strong> <code>^https://example\\.com/(admin|internal|tmp)/</code> — {{ _('полностью исключить ветки URL из обхода и индексации.') }}</li>
+                                <li><strong>XPath Rule:</strong> <code class="break-all">//a[contains(@href, "/private/")]</code> — {{ _('не переходить по ссылкам на приватные разделы.') }}</li>
+                                <li><strong>CSS Rule:</strong> <code class="break-all">a[href*="/checkout"], a[href*="/cart"]</code> — {{ _('исключить служебные страницы корзины/оформления.') }}</li>
+                                <li><strong>Ignored Param:</strong> <code class="break-all">utm_source</code>, <code class="break-all">session_id</code> — {{ _('не создавать отдельные URL в обходе и индексе из-за параметров трекинга/сессии.') }}</li>
+                                <li><strong>URL Regex:</strong> <code class="break-all">^https://example\\.com/(admin|internal|tmp)/</code> — {{ _('полностью исключить ветки URL из обхода и индексации.') }}</li>
                             </ul>
                         </div>
                     </div>
                     <div id="index_rules_container">
                         {% if source.config and source.config.get('rules') %}
                             {% for rule in source.config.get('rules') %}
-                            <div class="flex gap-2 mb-2 items-end rule-row">
-                                <div class="form-control w-1/3">
+                            <div class="grid grid-cols-1 md:grid-cols-12 gap-2 mb-2 items-end rule-row">
+                                <div class="form-control md:col-span-4">
                                     <label class="label py-1">
                                         <span class="label-text-alt">{{ _('Тип правила') }}</span>
                                     </label>
@@ -84,13 +84,13 @@
                                         <option value="regex" {% if rule.type == 'regex' %}selected{% endif %}>URL Regex</option>
                                     </select>
                                 </div>
-                                <div class="form-control w-2/3">
+                                <div class="form-control md:col-span-7">
                                     <label class="label py-1">
                                         <span class="label-text-alt">{{ _('Значение') }}</span>
                                     </label>
                                     <input type="text" name="rule_value[]" value="{{ rule.value }}" class="input input-bordered input-sm w-full" placeholder="Значение">
                                 </div>
-                                <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error">
+                                <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error md:col-span-1 md:justify-self-end">
                                     <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
                                 </button>
                             </div>
@@ -163,9 +163,29 @@
                         <span class="label-text">{{ form.download_delay.label.text }}</span>
                     </label>
                     {{ form.download_delay }}
+                    <label class="label">
+                        <span class="label-text-alt">{{ _('Пауза между HTTP-запросами в секундах.') }}</span>
+                    </label>
                     {% if form.download_delay.errors %}
                         <div class="label">
                             {% for error in form.download_delay.errors %}
+                                <span class="label-text-alt text-error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-control w-full">
+                    <label class="label">
+                        <span class="label-text">{{ form.download_timeout.label.text }}</span>
+                    </label>
+                    {{ form.download_timeout }}
+                    <label class="label">
+                        <span class="label-text-alt">{{ _('Максимальное время ожидания ответа от сайта в секундах.') }}</span>
+                    </label>
+                    {% if form.download_timeout.errors %}
+                        <div class="label">
+                            {% for error in form.download_timeout.errors %}
                                 <span class="label-text-alt text-error">{{ error }}</span>
                             {% endfor %}
                         </div>
@@ -196,8 +216,8 @@
 </div>
 
 <template id="rule_template">
-    <div class="flex gap-2 mb-2 items-end rule-row">
-        <div class="form-control w-1/3">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-2 mb-2 items-end rule-row">
+        <div class="form-control md:col-span-4">
             <label class="label py-1">
                 <span class="label-text-alt">{{ _('Тип правила') }}</span>
             </label>
@@ -208,13 +228,13 @@
                 <option value="regex">URL Regex</option>
             </select>
         </div>
-        <div class="form-control w-2/3">
+        <div class="form-control md:col-span-7">
             <label class="label py-1">
                 <span class="label-text-alt">{{ _('Значение') }}</span>
             </label>
             <input type="text" name="rule_value[]" class="input input-bordered input-sm w-full" placeholder="Значение">
         </div>
-        <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error">
+        <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error md:col-span-1 md:justify-self-end">
             <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
         </button>
     </div>

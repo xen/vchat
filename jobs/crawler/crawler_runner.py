@@ -23,6 +23,7 @@ from jobs.crawler.spiders.sitemap import CustomSitemapSpider
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+    DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_CRAWLER_USER_AGENT,
 )
 
@@ -42,11 +43,7 @@ if len(sys.argv) > 4:
 
 config = {}
 if len(sys.argv) > 5:
-    try:
-        config = json.loads(sys.argv[5])
-    except json.JSONDecodeError:
-        print("Invalid config JSON")
-        config = {}
+    config = json.loads(sys.argv[5])
 
 if page_limit is not None and page_limit <= 0:
     print("max_pages must be a positive integer")
@@ -65,23 +62,13 @@ settings.set(
 concurrent_requests = config.get(
     "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
 )
-try:
-    settings.set("CONCURRENT_REQUESTS", max(1, int(concurrent_requests)))
-except (TypeError, ValueError):
-    print(
-        f"Ignoring invalid crawler_concurrent_requests={concurrent_requests!r}, "
-        f"using default={DEFAULT_CRAWLER_CONCURRENT_REQUESTS}"
-    )
-    settings.set("CONCURRENT_REQUESTS", DEFAULT_CRAWLER_CONCURRENT_REQUESTS)
+settings.set("CONCURRENT_REQUESTS", max(1, int(concurrent_requests)))
 download_delay = config.get("crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY)
-try:
-    settings.set("DOWNLOAD_DELAY", max(0.0, float(download_delay)))
-except (TypeError, ValueError):
-    print(
-        f"Ignoring invalid crawler_download_delay={download_delay!r}, "
-        f"using default={DEFAULT_CRAWLER_DOWNLOAD_DELAY}"
-    )
-    settings.set("DOWNLOAD_DELAY", DEFAULT_CRAWLER_DOWNLOAD_DELAY)
+settings.set("DOWNLOAD_DELAY", max(0.0, float(download_delay)))
+download_timeout = config.get(
+    "crawler_download_timeout", DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+)
+settings.set("DOWNLOAD_TIMEOUT", max(1.0, float(download_timeout)))
 if page_limit is not None:
     settings.set("CLOSESPIDER_ITEMCOUNT", page_limit)
     # For sitemap indexes, pagecount includes sitemap XML fetches and may stop

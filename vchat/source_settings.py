@@ -2,11 +2,13 @@ from celery.schedules import crontab
 
 
 DEFAULT_CRAWLER_USER_AGENT = (
-    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) "
-    "Gecko/20100101 Firefox/15.0.1 vChat Crawler"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36 vChat/1.0"
 )
 DEFAULT_CRAWLER_CONCURRENT_REQUESTS = 16
 DEFAULT_CRAWLER_DOWNLOAD_DELAY = 0.0
+DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT = 30.0
 
 DEFAULT_REINDEX_CRON = "0 3 * * 1"
 MANUAL_REINDEX_MODE = "manual"

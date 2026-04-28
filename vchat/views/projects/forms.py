@@ -21,6 +21,7 @@ from vchat.i18n import _
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+    DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_CRAWLER_USER_AGENT,
     DEFAULT_REINDEX_CRON,
     is_manual_reindex,
@@ -299,6 +300,12 @@ class SourceCrawlerSettingsForm(Form):
         default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
         render_kw={"class": "input input-bordered w-full", "step": "0.1"},
     )
+    download_timeout = FloatField(
+        _("Таймаут запроса (DOWNLOAD_TIMEOUT, сек)"),
+        validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
+        default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
+        render_kw={"class": "input input-bordered w-full", "step": "0.5"},
+    )
     user_agent = StringField(
         _("User Agent"),
         validators=[validators.Optional(), validators.Length(max=500)],
@@ -319,6 +326,12 @@ class SourceSettingsForm(SourceForm):
         validators=[validators.Optional(), validators.NumberRange(min=0, max=120)],
         default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
         render_kw={"class": "input input-bordered w-full", "step": "0.1"},
+    )
+    download_timeout = FloatField(
+        _("Таймаут запроса (DOWNLOAD_TIMEOUT, сек)"),
+        validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
+        default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
+        render_kw={"class": "input input-bordered w-full", "step": "0.5"},
     )
     user_agent = StringField(
         _("User Agent"),

@@ -176,7 +176,10 @@ window.useProjectDataTable = () => {
       accessorKey: "title",
       header: sortableHeader("Название"),
       cell: (info) => {
-        const title = escapeHtml(info.getValue().trim() || '[Без названия]')
+        const rawTitle = info.getValue()
+        const title = escapeHtml((rawTitle || '').trim() || '[Без названия]')
+        const docId = escapeHtml(info.row.original.id)
+        const detailHref = `/document/${docId}`
         const rawUri = info.row.original.uri || ""
         const href = rawUri ? escapeHtml(encodeURI(rawUri)) : ""
         const linkText = escapeHtml(rawUri)
@@ -186,7 +189,7 @@ window.useProjectDataTable = () => {
 
         return `
                     <div class="flex flex-col gap-0.5">
-                        <span class="font-medium text-xs truncate max-w-[320px]">${title}</span>
+                        <a class="font-medium text-xs truncate max-w-[320px] link link-hover" href="${detailHref}" title="Открыть структуру и чанки">${title}</a>
                         ${link}
                     </div>
                 `

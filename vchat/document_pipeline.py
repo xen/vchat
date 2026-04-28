@@ -16,6 +16,16 @@ from vchat.document_types import guess_document_type
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36 vChat/1.0"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.7,en;q=0.6",
+}
+
 _converter: DocumentConverter | None = None
 
 BOILERPLATE_TAGS = ("header", "footer", "nav", "aside")
@@ -285,16 +295,42 @@ def build_structure_from_markdown(
 
 
 def _coerce_title(candidate: str | None, structure: list[dict[str, Any]]) -> str | None:
-    if candidate:
-        cleaned = html.unescape(candidate).strip()
-        if cleaned:
-            return cleaned[:512]
+    normalized = normalize_title_candidate(candidate)
+    if normalized:
+        return normalized
     for block in structure:
         if block.get("type") == "heading":
-            value = (block.get("content") or "").strip()
+            value = normalize_title_candidate(block.get("content"))
             if value:
-                return value[:512]
+                return value
     return None
+
+
+def normalize_title_candidate(candidate: str | None) -> str | None:
+    if not candidate:
+        return None
+
+    cleaned = html.unescape(str(candidate))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return None
+
+    lowered = cleaned.lower()
+    bad_markers = (
+        "fatal error",
+        "traceback (most recent call last)",
+        "exception:",
+        "warning:",
+        "<script",
+    )
+    if any(marker in lowered for marker in bad_markers):
+        return None
+
+    # Guard against malformed HTML where <title> may absorb page body.
+    if len(cleaned) > 220 or len(cleaned.split()) > 30:
+        return None
+
+    return cleaned[:512]
 
 
 def build_document_payload(
@@ -451,7 +487,7 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
             doc_type=doc_type,
         )
 
-    response = requests.get(source_url, timeout=20)
+    response = requests.get(source_url, timeout=20, headers=DEFAULT_HTTP_HEADERS)
     response.raise_for_status()
     body = response.text
     content_type = response.headers.get("Content-Type")

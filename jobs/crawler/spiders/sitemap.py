@@ -1,6 +1,8 @@
+import scrapy
 from scrapy.spiders import SitemapSpider
 
 from ..items import CrawledItem
+from ..seed_urls import iter_source_seed_urls
 
 
 class CustomSitemapSpider(SitemapSpider):
@@ -24,6 +26,15 @@ class CustomSitemapSpider(SitemapSpider):
             self.sitemap_rules = [(r"", "parse_page")]
 
         super().__init__(*args, **kwargs)
+
+    def start_requests(self):
+        yield from super().start_requests()
+
+        for seed_url in iter_source_seed_urls(
+            self.source_id,
+            exclude=self.sitemap_urls,
+        ):
+            yield scrapy.Request(seed_url, callback=self.parse_page, dont_filter=False)
 
     def parse_page(self, response):
         item = CrawledItem()

@@ -1,6 +1,7 @@
 import scrapy
 
 from ..items import CrawledItem
+from ..seed_urls import iter_source_seed_urls
 
 
 class ListSpider(scrapy.Spider):
@@ -14,6 +15,12 @@ class ListSpider(scrapy.Spider):
 
     def start_requests(self):
         yield scrapy.Request(self.list_url, callback=self.parse_list)
+
+        for seed_url in iter_source_seed_urls(
+            self.source_id,
+            exclude=[self.list_url],
+        ):
+            yield scrapy.Request(seed_url, callback=self.parse_item, dont_filter=False)
 
     def parse_list(self, response):
         urls = response.text.splitlines()

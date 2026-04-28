@@ -4,6 +4,7 @@ import json
 from datetime import datetime, time, timezone
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import unquote, urlparse
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
@@ -42,6 +43,7 @@ from vchat.project_settings import (
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+    DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_CRAWLER_USER_AGENT,
     MANUAL_REINDEX_MODE,
     normalize_reindex_cron,
@@ -113,6 +115,31 @@ def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
             }
         )
     return sources
+
+
+def _display_document_title(title: str | None, uri: str | None) -> str:
+    cleaned = " ".join((title or "").split()).strip()
+    if cleaned:
+        lowered = cleaned.lower()
+        if (
+            len(cleaned) <= 220
+            and len(cleaned.split()) <= 30
+            and "fatal error" not in lowered
+            and "traceback (most recent call last)" not in lowered
+            and "exception:" not in lowered
+            and "warning:" not in lowered
+        ):
+            return cleaned
+
+    if uri:
+        parsed = urlparse(uri)
+        segment = unquote(parsed.path.rstrip("/").split("/")[-1]).strip()
+        if segment:
+            return segment
+        if parsed.netloc:
+            return parsed.netloc
+
+    return "Без названия"
 
 
 async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
@@ -359,6 +386,9 @@ async def project_source_settings(request):
             "download_delay": source_config.get(
                 "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
             ),
+            "download_timeout": source_config.get(
+                "crawler_download_timeout", DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+            ),
             "user_agent": source_config.get("crawler_user_agent")
             or DEFAULT_CRAWLER_USER_AGENT,
         }
@@ -384,10 +414,16 @@ async def project_source_settings(request):
             if form.download_delay.data is not None
             else DEFAULT_CRAWLER_DOWNLOAD_DELAY
         )
+        crawler_download_timeout = float(
+            form.download_timeout.data
+            if form.download_timeout.data is not None
+            else DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+        )
         crawler_settings = {
             "crawler_user_agent": crawler_user_agent,
             "crawler_concurrent_requests": crawler_concurrent_requests,
             "crawler_download_delay": crawler_download_delay,
+            "crawler_download_timeout": crawler_download_timeout,
         }
 
         if source_type == "s3":
@@ -917,8 +953,7 @@ async def project_documents_json(request):
         data.append(
             {
                 "id": str(doc.id),
-                "title": doc.title
-                or (doc.uri.split("/")[-1] if doc.uri else "Без названия"),
+                "title": _display_document_title(doc.title, doc.uri),
                 "source": (source.title or source.uri) if source else _("Файлы"),
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
