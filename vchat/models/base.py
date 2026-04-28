@@ -86,7 +86,10 @@ class Base(_Base):
 
     def asdict(self, *, columnwise: bool = False):
         if columnwise:
-            return {column.key: getattr(self, column.key) for column in self.__mapper__.columns}
+            return {
+                column.key: getattr(self, column.key)
+                for column in self.__mapper__.columns
+            }
 
         d = self.__dict__.copy()
         d.pop("_sa_instance_state", None)

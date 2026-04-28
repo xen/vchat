@@ -100,7 +100,9 @@ def build_outline(structure: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return outline
 
 
-def build_structure_from_markdown(markdown: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def build_structure_from_markdown(
+    markdown: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     lines = markdown.splitlines()
     blocks: list[dict[str, Any]] = []
     heading_stack: list[str] = []
@@ -486,7 +488,9 @@ def extract_docx_text(file_path: str) -> str:
     return "\n\n".join(paragraphs).strip()
 
 
-def extract_local_file_document(file_path: str) -> tuple[str, str | None, dict[str, Any]]:
+def extract_local_file_document(
+    file_path: str,
+) -> tuple[str, str | None, dict[str, Any]]:
     path = Path(file_path)
     suffix = path.suffix.lower()
     doc_type = guess_document_type(file_path, None)

@@ -19,7 +19,9 @@ class CreateUserForm(BaseForm):
     email = StringField(
         _("Email"),
         [
-            validators.Length(min=6, max=254, message=_("Length from 6 to 254 characters")),
+            validators.Length(
+                min=6, max=254, message=_("Length from 6 to 254 characters")
+            ),
             validators.Email(message=_("Enter a valid email")),
             validators.DataRequired(message=_("Required field")),
         ],
@@ -28,7 +30,9 @@ class CreateUserForm(BaseForm):
     password = PasswordField(
         _("Password"),
         [
-            validators.Length(min=6, max=35, message=_("Length from 6 to 35 characters")),
+            validators.Length(
+                min=6, max=35, message=_("Length from 6 to 35 characters")
+            ),
             validators.DataRequired(message=_("Required field")),
         ],
         render_kw={"placeholder": _("Password")},
@@ -39,7 +43,9 @@ class UserPasswordForm(BaseForm):
     password = PasswordField(
         _("New password"),
         [
-            validators.Length(min=6, max=35, message=_("Length from 6 to 35 characters")),
+            validators.Length(
+                min=6, max=35, message=_("Length from 6 to 35 characters")
+            ),
             validators.EqualTo("confirm", message=_("Passwords must match")),
             validators.DataRequired(message=_("Required field")),
         ],

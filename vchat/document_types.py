@@ -228,6 +228,7 @@ def guess_document_type(uri: str | None = None, content_type: str | None = None)
 
     return DEFAULT_DOCUMENT_TYPE
 
+
 def get_document_type_label(doc_type: str) -> str:
     """Return a human-readable label for a document type."""
 

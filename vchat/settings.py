@@ -10,9 +10,9 @@ __all__ = ("config",)
 # C loader is much faster than Python based loader, but it requires libyaml to be
 # installed into the system (or libyaml-dev)
 try:
-    YamlLoader = yaml.CLoader
+    YamlLoader = yaml.CSafeLoader
 except AttributeError:
-    YamlLoader = yaml.Loader
+    YamlLoader = yaml.SafeLoader
 
 
 class ValidationError(Exception):
@@ -63,7 +63,8 @@ def yaml_load(source, loader=YamlLoader):
     Loader.add_constructor("!env", construct_yaml_env)
 
     try:
-        return yaml.load(source, Loader)
+        # Loader subclasses SafeLoader/CSafeLoader and only adds scalar constructors.
+        return yaml.load(source, Loader)  # nosec B506
     finally:
         if hasattr(source, "close"):
             source.close()

@@ -49,7 +49,9 @@ def merge_with_defaults(values: dict[str, str | None]) -> dict[str, str | None]:
 async def load_settings_map() -> dict[str, str | None]:
     try:
         async with async_session_factory() as session:
-            rows = (await session.execute(sa.select(Settings.key, Settings.value))).all()
+            rows = (
+                await session.execute(sa.select(Settings.key, Settings.value))
+            ).all()
         values = {row.key: row.value for row in rows}
         return merge_with_defaults(values)
     except SQLAlchemyError:
@@ -96,10 +98,9 @@ async def upsert_settings(session, updates: dict[str, Any]) -> dict[str, str | N
     if not cleaned:
         return {}
 
-    stmt = insert(Settings).values([
-        {"key": key, "value": value}
-        for key, value in cleaned.items()
-    ])
+    stmt = insert(Settings).values(
+        [{"key": key, "value": value} for key, value in cleaned.items()]
+    )
     stmt = stmt.on_conflict_do_update(
         index_elements=[Settings.key],
         set_={"value": stmt.excluded.value},
@@ -111,7 +112,9 @@ async def upsert_settings(session, updates: dict[str, Any]) -> dict[str, str | N
         return {}
 
 
-async def apply_settings_updates(app, session, updates: dict[str, Any]) -> dict[str, str | None]:
+async def apply_settings_updates(
+    app, session, updates: dict[str, Any]
+) -> dict[str, str | None]:
     from vchat.app_keys import SETTINGS_KEY
 
     cleaned = await upsert_settings(session, updates)

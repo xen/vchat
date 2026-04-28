@@ -5046,8 +5046,7 @@ semchunk==2.2.2 \
     #   docling-core
 sentence-transformers==5.2.0 \
     --hash=sha256:aa57180f053687d29b08206766ae7db549be5074f61849def7b17bf0b8025ca2 \
-    --hash=sha256:acaeb38717de689f3dab45d5e5a02ebe2f75960a4764ea35fea65f58a4d3019f
-    # via -r requirements/requirements.txt
+    --hash=sha256:acaeb38717de689f3dab45d5e5a02ebe2f75960a4764ea35fea65f58a4d3019f \
     --hash=sha256:8218891d5e41b4ea8d61d2aed62ed10c80e39d9f2959d6f939efbf056857e050 \
     --hash=sha256:d72f8c61025b7d1d9e52510d03a6247b280094a327dd900d987717a4fce93412
     # via -r requirements/requirements.txt

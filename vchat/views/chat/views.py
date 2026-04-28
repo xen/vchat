@@ -537,7 +537,12 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                                         existing["function"]["arguments"] += func[
                                             "arguments"
                                         ]
-                            except Exception:
+                            except (
+                                json.JSONDecodeError,
+                                TypeError,
+                                KeyError,
+                                AttributeError,
+                            ):
                                 continue
             except asyncio.TimeoutError:
                 logger.error(

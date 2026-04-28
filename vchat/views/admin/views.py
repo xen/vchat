@@ -11,8 +11,10 @@ from . import forms
 
 async def _get_users(db_session) -> list[User]:
     return (
-        await db_session.execute(sa.select(User).order_by(User.id.desc()))
-    ).scalars().all()
+        (await db_session.execute(sa.select(User).order_by(User.id.desc())))
+        .scalars()
+        .all()
+    )
 
 
 @meta(title=_("Action Log"))
@@ -26,20 +28,26 @@ async def event_list(request):
         page = 1
     page = max(page, 1)
 
-    total_items = await request["db"].scalar(sa.select(sa.func.count(AdminEvent.id))) or 0
+    total_items = (
+        await request["db"].scalar(sa.select(sa.func.count(AdminEvent.id))) or 0
+    )
     total_pages = max((total_items + per_page - 1) // per_page, 1)
     if page > total_pages:
         page = total_pages
 
     offset = (page - 1) * per_page
     events = (
-        await request["db"].execute(
-            sa.select(AdminEvent)
-            .order_by(AdminEvent.created_at.desc(), AdminEvent.id.desc())
-            .limit(per_page)
-            .offset(offset)
+        (
+            await request["db"].execute(
+                sa.select(AdminEvent)
+                .order_by(AdminEvent.created_at.desc(), AdminEvent.id.desc())
+                .limit(per_page)
+                .offset(offset)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return {
         "events": events,
         "page": page,

@@ -6,7 +6,6 @@ import json
 import logging
 import re
 from dataclasses import asdict, dataclass, field
-from string import punctuation
 from typing import Any
 
 import sqlalchemy as sa
@@ -445,7 +444,15 @@ async def fulltext_supply(
         LIMIT :m
         """
     )
-    rows = (await db.execute(sql, {"q": query_text, "m": top_m, "table_mode": profile["table_mode"]})).mappings().all()
+    rows = (
+        (
+            await db.execute(
+                sql, {"q": query_text, "m": top_m, "table_mode": profile["table_mode"]}
+            )
+        )
+        .mappings()
+        .all()
+    )
     return [Snippet.from_mapping(dict(row)) for row in rows]
 
 
@@ -512,7 +519,9 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
     for snippet in ranked[:RERANK_LIMIT]:
         snippet_text = snippet.text or ""
         if snippet.kind in {"table", "table_rows"}:
-            snippet_text = re.sub(r"\n{3,}", "\n\n", snippet_text.replace("\r", "")).strip()
+            snippet_text = re.sub(
+                r"\n{3,}", "\n\n", snippet_text.replace("\r", "")
+            ).strip()
         else:
             snippet_text = sanitize_snippet_text(snippet_text)
         pairs.append((query, snippet_text))
@@ -537,14 +546,22 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
             boosted += 0.20
         if snippet.kind in {"section_summary", "summary"}:
             boosted += 0.05
-        rescored.append(Snippet(**{**asdict(snippet), "rerank_score": round(boosted, 6)}))
+        rescored.append(
+            Snippet(**{**asdict(snippet), "rerank_score": round(boosted, 6)})
+        )
 
     rescored.sort(key=lambda item: item.rerank_score or 0.0, reverse=True)
     out: list[Snippet] = []
     seen_by_source_ref: dict[tuple[str, Any], int] = {}
     for item in rescored:
         source = str(item.src or "unknown")
-        ref = item.document_id or item.chat_id or item.id or item.display_path or (item.text or "")[:200]
+        ref = (
+            item.document_id
+            or item.chat_id
+            or item.id
+            or item.display_path
+            or (item.text or "")[:200]
+        )
         key = (source, ref)
         current = seen_by_source_ref.get(key, 0)
         if current >= MAX_SNIPPETS_PER_SOURCE:
@@ -581,13 +598,18 @@ def build_context_from_snippets(
     snippet_tokens = 0
     for snippet in snippets:
         if snippet.kind in {"table", "table_rows"}:
-            clean = re.sub(r"\n{3,}", "\n\n", (snippet.text or "").replace("\r", "")).strip()
+            clean = re.sub(
+                r"\n{3,}", "\n\n", (snippet.text or "").replace("\r", "")
+            ).strip()
         else:
             clean = sanitize_snippet_text(snippet.text or "")
         if not clean:
             continue
         clean_tokens = provider.token_count(clean, model=model)
-        if snippet_tokens + clean_tokens > MAX_CONTEXT_SNIPPET_TOKENS and payload_snippets:
+        if (
+            snippet_tokens + clean_tokens > MAX_CONTEXT_SNIPPET_TOKENS
+            and payload_snippets
+        ):
             break
         snippet_tokens += clean_tokens
         payload_snippets.append(
@@ -607,7 +629,10 @@ def build_context_from_snippets(
             break
 
     if not payload_snippets:
-        return Msg(role="developer", content="[context]\n{\"type\":\"rag_context\",\"version\":1,\"snippets\":[]}")
+        return Msg(
+            role="developer",
+            content='[context]\n{"type":"rag_context","version":1,"snippets":[]}',
+        )
 
     payload = ContextPayload(snippets=payload_snippets)
     return Msg(
@@ -663,7 +688,9 @@ def _build_policy_and_coverage(
         "snippet_count": len(snippets),
         "source_count": len({snippet.uri for snippet in snippets if snippet.uri}),
         "section_count": len(coverage_refs),
-        "table_count": sum(1 for snippet in snippets if snippet.kind in {"table", "table_rows"}),
+        "table_count": sum(
+            1 for snippet in snippets if snippet.kind in {"table", "table_rows"}
+        ),
         "quote_ready": has_source_url and has_quote_candidate,
         "enumeration_coverage": has_enumeration_coverage,
     }
@@ -739,7 +766,9 @@ async def get_context(
 
     async with asyncio.TaskGroup() as task_group:
         vector_task = task_group.create_task(
-            vector_supply(db=db, chat_id=chat_id, query_vec=query_vec, top_k=vector_top_k)
+            vector_supply(
+                db=db, chat_id=chat_id, query_vec=query_vec, top_k=vector_top_k
+            )
         )
         ft_task = task_group.create_task(
             fulltext_supply(db=db, prompt_text=prompt, top_m=ft_top_m)

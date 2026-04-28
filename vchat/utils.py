@@ -165,7 +165,9 @@ async def admin_event(event_name: str, request) -> None:
     user_id = getattr(user, "id", None)
     user_email = getattr(user, "email", None) or "anonymous"
     forwarded_for = request.headers.get("X-Forwarded-For", "")
-    ip_address = (forwarded_for.split(",", 1)[0].strip() if forwarded_for else request.remote) or None
+    ip_address = (
+        forwarded_for.split(",", 1)[0].strip() if forwarded_for else request.remote
+    ) or None
 
     from vchat.models import AdminEvent
 
@@ -322,7 +324,8 @@ def paginator(total: int, request: aiohttp.web_request.Request) -> str:
     if paginator_item["next_page"] == paginator_item["prev_page"]:
         return ""
 
-    return Markup(
+    # Paginator HTML is rendered from a local Jinja template.
+    return Markup(  # nosec B704
         aiohttp_jinja2.render_string(
             "paginator.html",
             request,
@@ -342,9 +345,7 @@ async def run_command(command):
 async def get_all_users(db_session):
     from vchat.models import User
 
-    users = await db_session.execute(
-        sa.select(User).where(User.is_active.is_(True))
-    )
+    users = await db_session.execute(sa.select(User).where(User.is_active.is_(True)))
     return users.scalars().fetchall()
 
 
