@@ -186,7 +186,9 @@ async def history_list(request):
         )
         chat_vector = sa.func.to_tsvector("simple", chat_search_text)
         search_msg = sa.orm.aliased(ChatMsg)
-        msg_vector = sa.func.to_tsvector("simple", sa.func.coalesce(search_msg.text, ""))
+        msg_vector = sa.func.to_tsvector(
+            "simple", sa.func.coalesce(search_msg.text, "")
+        )
         search_in_messages = sa.exists(
             sa.select(sa.literal(1)).where(
                 search_msg.chat_id == Chat.id,
@@ -229,14 +231,19 @@ async def history_list(request):
     if created_to_exclusive is not None:
         total_query = total_query.where(Chat.created_at < created_to_exclusive)
     if fingerprint:
-        total_query = total_query.where(Chat.meta["device_fingerprint"].astext == fingerprint)
+        total_query = total_query.where(
+            Chat.meta["device_fingerprint"].astext == fingerprint
+        )
 
     if guardrail_filter:
         total_query = total_query.having(sa.func.count(guardrail_case) > 0)
 
-    total = await request["db"].scalar(
-        sa.select(sa.func.count()).select_from(total_query.subquery())
-    ) or 0
+    total = (
+        await request["db"].scalar(
+            sa.select(sa.func.count()).select_from(total_query.subquery())
+        )
+        or 0
+    )
 
     total_pages = (total + per_page - 1) // per_page if total else 0
     if total_pages and page > total_pages:
@@ -422,7 +429,9 @@ async def history_detail(request):
         )
         related_chats = (await request["db"].execute(related_stmt)).scalars().all()
 
-    def _legacy_guardrail_info(full_context: str | None) -> tuple[str | None, list[str]]:
+    def _legacy_guardrail_info(
+        full_context: str | None,
+    ) -> tuple[str | None, list[str]]:
         if not full_context or not full_context.startswith("guardrail_blocked"):
             return None, []
         marker, _, reasons_part = full_context.partition("|")
@@ -480,9 +489,15 @@ async def history_detail(request):
                 payload = None
             if isinstance(payload, dict):
                 msg.context_sources = [
-                    item for item in payload.get("sources", []) if isinstance(item, dict)
+                    item
+                    for item in payload.get("sources", [])
+                    if isinstance(item, dict)
                 ]
-                policy = payload.get("policy") if isinstance(payload.get("policy"), dict) else {}
+                policy = (
+                    payload.get("policy")
+                    if isinstance(payload.get("policy"), dict)
+                    else {}
+                )
                 msg.reason_code = policy.get("reason_code")
 
     return {

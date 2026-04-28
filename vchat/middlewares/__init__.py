@@ -68,7 +68,7 @@ async def error_middleware(
 
         # we don't handle this error
         raise
-    except Exception as ex:
+    except Exception:
         logger.info("Server Error", exc_info=True)
 
         return await handle_error(request, code=500)

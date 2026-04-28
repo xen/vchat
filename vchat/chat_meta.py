@@ -16,7 +16,9 @@ def extract_client_ip(request: web.Request) -> str | None:
         ip = forwarded.split(",")[0].strip()
         return ip or None
 
-    peername = request.transport.get_extra_info("peername") if request.transport else None
+    peername = (
+        request.transport.get_extra_info("peername") if request.transport else None
+    )
     if isinstance(peername, tuple) and peername:
         return str(peername[0])
     return None

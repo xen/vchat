@@ -5,7 +5,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from presidio_analyzer import AnalyzerEngine, Pattern, PatternRecognizer, RecognizerRegistry
+from presidio_analyzer import (
+    AnalyzerEngine,
+    Pattern,
+    PatternRecognizer,
+    RecognizerRegistry,
+)
 from presidio_analyzer.context_aware_enhancers import ContextAwareEnhancer
 from presidio_analyzer.nlp_engine import NlpArtifacts, NlpEngine
 from presidio_anonymizer import AnonymizerEngine
@@ -151,9 +156,7 @@ def _get_guardrails_client_class() -> Any | None:
     return client_class
 
 
-def get_guardrails_client(
-    *, api_key: str, base_url: str
-) -> Any | None:
+def get_guardrails_client(*, api_key: str, base_url: str) -> Any | None:
     if not _enabled("openai_guardrails_enabled", True):
         return None
 
@@ -200,9 +203,7 @@ def extract_tripwire_details(exc: Any) -> tuple[str, str]:
     return stage, name
 
 
-_RU_PHONE_RE = re.compile(
-    r"(?:\+7|8)\s*\(?\d{3}\)?[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}"
-)
+_RU_PHONE_RE = re.compile(r"(?:\+7|8)\s*\(?\d{3}\)?[\s-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}")
 _RU_PASSPORT_RE = re.compile(r"\b\d{2}\s+\d{2}\s+\d{6}\b")
 _RU_INN_RE = re.compile(r"\b(?:\d{10}|\d{12})\b")
 _RU_SNILS_RE = re.compile(r"\b\d{3}-?\d{3}-?\d{3}\s?\d{2}\b")

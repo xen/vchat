@@ -18,7 +18,11 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
 from passlib.hash import pbkdf2_sha512
 
 from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
-from jobs.embedder.tasks import index_project, refresh_project_index, refresh_source_index
+from jobs.embedder.tasks import (
+    index_project,
+    refresh_project_index,
+    refresh_source_index,
+)
 from jobs.suggestions import generate_project_topics
 from vchat.ai_providers import (
     DEFAULT_OPENAI_MODEL,
@@ -120,17 +124,29 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         raise web.HTTPNotFound()
 
     chunk_rows = (
-        await db.execute(
-            sa.select(Chunk)
-            .where(Chunk.document_id == document.id)
-            .order_by(Chunk.chunk_ix.asc(), Chunk.id.asc())
+        (
+            await db.execute(
+                sa.select(Chunk)
+                .where(Chunk.document_id == document.id)
+                .order_by(Chunk.chunk_ix.asc(), Chunk.id.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     raw_meta = document.meta if isinstance(document.meta, dict) else {}
-    structure = raw_meta.get("structure") if isinstance(raw_meta.get("structure"), list) else []
-    outline = raw_meta.get("outline") if isinstance(raw_meta.get("outline"), list) else []
-    extraction = raw_meta.get("extraction") if isinstance(raw_meta.get("extraction"), dict) else {}
+    structure = (
+        raw_meta.get("structure") if isinstance(raw_meta.get("structure"), list) else []
+    )
+    outline = (
+        raw_meta.get("outline") if isinstance(raw_meta.get("outline"), list) else []
+    )
+    extraction = (
+        raw_meta.get("extraction")
+        if isinstance(raw_meta.get("extraction"), dict)
+        else {}
+    )
 
     return {
         "project": _project_context(request),
@@ -149,7 +165,8 @@ def _project_context(request) -> SimpleNamespace:
         title=settings.get("project.title") or "vchat",
         provider=settings.get("project.provider") or "openai",
         model=settings.get("project.model") or DEFAULT_OPENAI_MODEL,
-        system_prompt=settings.get("project.system_prompt") or forms.DEFAULT_SYSTEM_PROMPT,
+        system_prompt=settings.get("project.system_prompt")
+        or forms.DEFAULT_SYSTEM_PROMPT,
         agent_style=settings.get("project.agent_style") or "",
         config={
             "agent_name": settings.get("project.agent_name") or "",
@@ -276,7 +293,9 @@ async def project_source_settings(request):
             "aws_access_key_id": source_config.get("aws_access_key_id", ""),
             "aws_secret_access_key": source_config.get("aws_secret_access_key", ""),
             "bucket_name": source_config.get("bucket_name", ""),
-            "endpoint_url": source_config.get("endpoint_url", "https://s3.amazonaws.com"),
+            "endpoint_url": source_config.get(
+                "endpoint_url", "https://s3.amazonaws.com"
+            ),
             "region": source_config.get("region", "us-east-1"),
             "prefix": source_config.get("prefix", ""),
             "google_drive_folder_id": source_config.get("folder_id", ""),
@@ -287,7 +306,8 @@ async def project_source_settings(request):
             "download_delay": source_config.get(
                 "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
             ),
-            "user_agent": source_config.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT,
+            "user_agent": source_config.get("crawler_user_agent")
+            or DEFAULT_CRAWLER_USER_AGENT,
         }
 
     form = forms.SourceSettingsForm(**form_kwargs)
@@ -298,7 +318,9 @@ async def project_source_settings(request):
         source.reindex_period = form.reindex_period.data
         source.updated_at = datetime.now(timezone.utc)
         source_config = dict(source.config or {})
-        crawler_user_agent = (form.user_agent.data or "").strip() or DEFAULT_CRAWLER_USER_AGENT
+        crawler_user_agent = (
+            form.user_agent.data or ""
+        ).strip() or DEFAULT_CRAWLER_USER_AGENT
         crawler_concurrent_requests = int(
             form.concurrent_requests.data
             if form.concurrent_requests.data is not None
@@ -426,8 +448,10 @@ async def project_action(request):
         data = await request.post()
         form = admin_forms.CreateUserForm(data, meta={"csrf_context": session})
         users = (
-            await db_session.execute(sa.select(User).order_by(User.id.desc()))
-        ).scalars().all()
+            (await db_session.execute(sa.select(User).order_by(User.id.desc())))
+            .scalars()
+            .all()
+        )
 
         if not form.validate():
             return aiohttp_jinja2.render_template(
@@ -473,7 +497,9 @@ async def project_action(request):
 
     if action == "user_password":
         target_user_id = int(item_id)
-        user_obj = await db_session.scalar(sa.select(User).where(User.id == target_user_id))
+        user_obj = await db_session.scalar(
+            sa.select(User).where(User.id == target_user_id)
+        )
         if not user_obj:
             raise web.HTTPNotFound()
 
@@ -523,7 +549,9 @@ async def project_action(request):
             await flash(request, message, "error")
             raise web.HTTPFound(request.app.router["users"].url_for())
 
-        user_obj = await db_session.scalar(sa.select(User).where(User.id == target_user_id))
+        user_obj = await db_session.scalar(
+            sa.select(User).where(User.id == target_user_id)
+        )
         if not user_obj:
             raise web.HTTPNotFound()
 
@@ -598,7 +626,9 @@ async def project_action(request):
         )
 
     if action == "delete_document":
-        document = await db_session.scalar(sa.select(Document).where(Document.id == int(item_id)))
+        document = await db_session.scalar(
+            sa.select(Document).where(Document.id == int(item_id))
+        )
         if not document:
             raise web.HTTPNotFound(text="Document not found")
         await db_session.delete(document)
@@ -608,7 +638,9 @@ async def project_action(request):
         return response
 
     if action == "ignore_document":
-        document = await db_session.scalar(sa.select(Document).where(Document.id == int(item_id)))
+        document = await db_session.scalar(
+            sa.select(Document).where(Document.id == int(item_id))
+        )
         if not document:
             raise web.HTTPNotFound(text="Document not found")
         data = await request.post()
@@ -688,7 +720,9 @@ async def project_action(request):
         return response
 
     if action == "delete_source":
-        source = await db_session.scalar(sa.select(Source).where(Source.id == int(item_id)))
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
         if not source:
             raise web.HTTPNotFound()
         await db_session.delete(source)
@@ -697,17 +731,23 @@ async def project_action(request):
         return web.Response(text="", status=200)
 
     if action == "rebuild_source":
-        source = await db_session.scalar(sa.select(Source).where(Source.id == int(item_id)))
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
         if not source:
             raise web.HTTPNotFound()
-        await db_session.execute(sa.delete(Document).where(Document.source_id == source.id))
+        await db_session.execute(
+            sa.delete(Document).where(Document.source_id == source.id)
+        )
         await db_session.commit()
         await admin_event("source_reindex_request", request)
         crawl_source_task.delay(source.id)
         return web.Response(text="ok")
 
     if action == "crawl_source":
-        source = await db_session.scalar(sa.select(Source).where(Source.id == int(item_id)))
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
         if not source:
             raise web.HTTPNotFound()
         crawl_source_task.delay(source.id)
@@ -715,12 +755,18 @@ async def project_action(request):
         return web.Response(text="ok", status=200)
 
     if action == "refresh_source_index":
-        source = await db_session.scalar(sa.select(Source).where(Source.id == int(item_id)))
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
         if not source:
             raise web.HTTPNotFound()
         refresh_source_index.delay(source.id)
         await admin_event("source_reindex_request", request)
-        await flash(request, _("Update task started for %(title)s", title=source.title or source.uri), "success")
+        await flash(
+            request,
+            _("Update task started for %(title)s", title=source.title or source.uri),
+            "success",
+        )
         return web.Response(text="ok", status=200)
 
     if action == "crawl_all":
@@ -741,17 +787,21 @@ async def project_action(request):
     if action == "rebuild_uploads":
         legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
         document_ids = (
-            await db_session.execute(
-                sa.select(Document.id)
-                .where(
-                    sa.or_(
-                        Document.source_id.is_(None),
-                        Document.source_id.in_(legacy_upload_source_ids),
+            (
+                await db_session.execute(
+                    sa.select(Document.id)
+                    .where(
+                        sa.or_(
+                            Document.source_id.is_(None),
+                            Document.source_id.in_(legacy_upload_source_ids),
+                        )
                     )
+                    .order_by(Document.id.asc())
                 )
-                .order_by(Document.id.asc())
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for document_id in document_ids:
             crawl_file_task.delay(document_id)
         await flash(request, _("Upload index rebuild started"), "success")
@@ -764,7 +814,9 @@ async def project_action(request):
                 Document.id == file_id,
                 sa.or_(
                     Document.source_id.is_(None),
-                    Document.source_id.in_(sa.select(Source.id).where(Source.type == "upload")),
+                    Document.source_id.in_(
+                        sa.select(Source.id).where(Source.type == "upload")
+                    ),
                 ),
             )
         )
@@ -862,7 +914,8 @@ async def project_documents_json(request):
         data.append(
             {
                 "id": str(doc.id),
-                "title": doc.title or (doc.uri.split("/")[-1] if doc.uri else "Без названия"),
+                "title": doc.title
+                or (doc.uri.split("/")[-1] if doc.uri else "Без названия"),
                 "source": (source.title or source.uri) if source else _("Файлы"),
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
                 "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
@@ -896,7 +949,9 @@ async def project_stats(request):
 
     chats_query = (
         sa.select(
-            sa.func.date_trunc("day", sa.func.timezone(tz_name, Chat.created_at)).label("day"),
+            sa.func.date_trunc("day", sa.func.timezone(tz_name, Chat.created_at)).label(
+                "day"
+            ),
             sa.func.count(Chat.id).label("count"),
             sa.func.count(sa.distinct(Chat.user_uid)).label("users"),
         )
@@ -908,7 +963,9 @@ async def project_stats(request):
 
     msgs_query = (
         sa.select(
-            sa.func.date_trunc("day", sa.func.timezone(tz_name, ChatMsg.created_at)).label("day"),
+            sa.func.date_trunc(
+                "day", sa.func.timezone(tz_name, ChatMsg.created_at)
+            ).label("day"),
             sa.func.count(ChatMsg.id).label("count"),
             sa.func.sum(sa.func.jsonb_array_length(ChatMsg.used_chunks)).label("hits"),
             sa.func.sum(ChatMsg.tokens).label("tokens"),
@@ -921,7 +978,9 @@ async def project_stats(request):
 
     votes_query = (
         sa.select(
-            sa.func.date_trunc("day", sa.func.timezone(tz_name, ChatMsg.created_at)).label("day"),
+            sa.func.date_trunc(
+                "day", sa.func.timezone(tz_name, ChatMsg.created_at)
+            ).label("day"),
             sa.func.coalesce(
                 sa.func.sum(sa.case((ChatMsg.vote.is_(True), 1), else_=0)),
                 0,
@@ -962,7 +1021,9 @@ async def project_stats(request):
         token_breakdown.append(
             {
                 "provider": provider_key,
-                "provider_label": provider_labels.get(provider_key, provider_key.capitalize()),
+                "provider_label": provider_labels.get(
+                    provider_key, provider_key.capitalize()
+                ),
                 "model": model_name,
                 "model_label": model_labels.get((provider_key, model_name), model_name),
                 "tokens": row.tokens or 0,
@@ -1045,7 +1106,9 @@ async def project_stats(request):
         sa.select(
             Source.id,
             sa.func.count(Chunk.id).label("chunk_count"),
-            sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label("chunk_storage"),
+            sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label(
+                "chunk_storage"
+            ),
         )
         .select_from(Source)
         .outerjoin(Document, Document.source_id == Source.id)
@@ -1071,7 +1134,9 @@ async def project_stats(request):
         await db.execute(
             sa.select(
                 sa.func.count(Chunk.id).label("chunk_count"),
-                sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label("chunk_storage"),
+                sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label(
+                    "chunk_storage"
+                ),
             )
             .select_from(Document)
             .outerjoin(Chunk, Chunk.document_id == Document.id)
@@ -1202,12 +1267,16 @@ async def project_chat(request):
     payload = serializer.dumps([request["user"].id, chat.id], salt="vchat")
     signed_chat_id = serializer.dumps(chat.id, salt="chat")
     history_rows = (
-        await request["db"].execute(
-            sa.select(ChatMsg)
-            .where(ChatMsg.chat_id == chat.id)
-            .order_by(ChatMsg.created_at.asc(), ChatMsg.id.asc())
+        (
+            await request["db"].execute(
+                sa.select(ChatMsg)
+                .where(ChatMsg.chat_id == chat.id)
+                .order_by(ChatMsg.created_at.asc(), ChatMsg.id.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     initial_messages = []
     for row in history_rows:
         signed_msg_id = None
@@ -1255,7 +1324,9 @@ async def project_integration(request):
     secret = get_setting(request.app, "project.secret", "") or ""
     if not secret:
         secret = secrets.token_urlsafe(32)
-        await apply_settings_updates(request.app, request["db"], {"project.secret": secret})
+        await apply_settings_updates(
+            request.app, request["db"], {"project.secret": secret}
+        )
         await request["db"].commit()
 
     return {"project": _project_context(request), "project_secret": secret}
@@ -1277,7 +1348,9 @@ async def _render_public_chat(request):
         import hashlib
         import hmac
 
-        expected_sign = hmac.new(secret.encode("utf-8"), user_uid.encode("utf-8"), hashlib.sha256).hexdigest()
+        expected_sign = hmac.new(
+            secret.encode("utf-8"), user_uid.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
         if not hmac.compare_digest(expected_sign, sign):
             return web.HTTPForbidden(text="Invalid signature")
 
@@ -1412,8 +1485,7 @@ async def secure_download(request):
     db_session = request["db"]
 
     document = await db_session.scalar(
-        sa.select(Document)
-        .where(
+        sa.select(Document).where(
             Document.id == file_id,
             sa.or_(
                 Document.source_id.is_(None),

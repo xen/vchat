@@ -5,7 +5,14 @@ import os
 from collections.abc import Iterable
 
 from aiohttp import web
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, REGISTRY, generate_latest, multiprocess
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    REGISTRY,
+    generate_latest,
+    multiprocess,
+)
 
 logger = logging.getLogger("vchat.metrics")
 
@@ -83,8 +90,7 @@ def record_chat_request(
     status_label = _safe_label(status, "unknown")
 
     reasons = {
-        _normalize_guardrail_reason(reason)
-        for reason in (guardrail_reasons or [])
+        _normalize_guardrail_reason(reason) for reason in (guardrail_reasons or [])
     }
 
     guardrail_label = "true" if reasons else "false"

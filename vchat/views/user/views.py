@@ -10,7 +10,9 @@ __all__ = [
 ]
 
 
-async def _forward_notifications(ws: web.WebSocketResponse, request: web.Request) -> None:
+async def _forward_notifications(
+    ws: web.WebSocketResponse, request: web.Request
+) -> None:
     user = request["user"]
     channel = f"user_{user.id}"
     pubsub = request.app[REDIS_KEY].pubsub()
@@ -51,7 +53,11 @@ async def notify_ws(request: web.Request) -> web.WebSocketResponse:
     forward_task = asyncio.create_task(_forward_notifications(ws, request))
     try:
         async for message in ws:
-            if message.type in (web.WSMsgType.CLOSE, web.WSMsgType.CLOSED, web.WSMsgType.ERROR):
+            if message.type in (
+                web.WSMsgType.CLOSE,
+                web.WSMsgType.CLOSED,
+                web.WSMsgType.ERROR,
+            ):
                 break
     finally:
         forward_task.cancel()

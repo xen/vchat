@@ -1,4 +1,4 @@
-.PHONY: clean setup run db lint user \
+.PHONY: clean setup run db lint user security-check \
         ensure-pip pip-compile autoupgrade \
         celery revision downgrade deploy \
 		frontend embedder docs
@@ -43,8 +43,8 @@ pip-compile: ensure-pip  ## compile dependencies
 pip-linux: ## compile dependencies inside Linux container so darwin-only wheel dependencies (ocrmac etc.) are skipped
 	docker build -t pusk-pip-compile -f docker/pip-compile.Dockerfile .
 	docker run --rm -v $(PWD):/workspace -w /workspace pusk-pip-compile sh -c "\
-		pip-compile --generate-hashes --unsafe-package pip requirements/requirements.in -o requirements/requirements.txt && \
-		pip-compile --generate-hashes --unsafe-package pip requirements/dev.in -o requirements/dev.txt"
+		pip-compile --generate-hashes --unsafe-package pip --unsafe-package torch --unsafe-package torchvision --unsafe-package torchaudio requirements/requirements.in -o requirements/requirements.txt && \
+		pip-compile --generate-hashes --unsafe-package pip --unsafe-package torch --unsafe-package torchvision --unsafe-package torchaudio requirements/dev.in -o requirements/dev.txt"
 	make setup
 
 autoupgrade: ensure-pip ## upgrade dependencies
@@ -69,6 +69,9 @@ lint: venv/bin/activate ## run linter
 	. venv/bin/activate && pre-commit run --hook-stage manual --files vchat jobs entry.py
 	. venv/bin/activate && ruff check --fix vchat jobs entry.py
 # 	. venv/bin/activate && mypy vchat jobs entry.py
+
+security-check: ## run local Docker-based security checks
+	./bin/security-check.sh
 
 frontend: venv/bin/activate ## build frontend
 	cd frontend && make deploy

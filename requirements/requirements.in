@@ -1,10 +1,9 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.1
-torchvision==0.19.1
-torchaudio==2.4.1
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
 celery
 
-aiohttp
+aiohttp>=3.13.3
 aiohttp-jinja2==1.6
 prometheus-client
 gunicorn
@@ -39,7 +38,8 @@ pycld2
 transformers
 sentence-transformers
 pgvector
-nemoguardrails[all]==0.18.0
+presidio-anonymizer>=2.2.362
+uuid6==2025.0.1
 annoy==1.17.3; sys_platform == "linux"
 pypdf
 python-docx
@@ -59,11 +59,11 @@ aiohttp_tus
 # markdown
 Markdown==3.4.3
 Pygments==2.14.0
-pymdown-extensions==9.11
+pymdown-extensions>=10.0  # HIGH: GHSA-jh85-wwv9-24hv file inclusion fix
 
 # web parsing
-scrapy
-docling[rapidocr]
+scrapy>=2.14.2            # HIGH: GHSA-cwxj-rr6w-m6w7 arbitrary module import fix
+docling[rapidocr]>=2.91.0
 # selenium
 # selenium-wire
 # news-please==1.5.35
@@ -71,7 +71,18 @@ beautifulsoup4
 requests
 html2text
 boto3  # For S3 document crawling
+tornado>=6.5.5  # HIGH: GHSA-fqwm-6jpj-5wxc cookie injection fix
+urllib3>=2.6.3  # HIGH: GHSA-38jv-5279-wg99 decompression bomb fix
 
+# Security pins for HIGH vulnerabilities
+cryptography>=46.0.5      # HIGH: GHSA-r6ph-v2qm-q3c2 subgroup attack fix
+lxml>=6.1.0               # HIGH: GHSA-vfmq-68hx-4jfw XXE fix
+orjson>=3.11.6            # HIGH: GHSA-hx9q-6w63-j58v recursion depth fix
+pillow>=12.2.0            # HIGH: PSD OOB write + FITS gzip bomb fixes
+protobuf>=6.33.5          # HIGH: GHSA-7gcm-g887-7qv7 JSON recursion fix
+pyasn1>=0.6.2             # HIGH: GHSA-63vm-454h-vhhq DoS fixes
+pyopenssl>=26.0.0         # HIGH: GHSA-5pwr-322w-8jr4 buffer overflow fix
+simpleeval>=1.0.5         # HIGH: GHSA-44vg-5wv2-h2hg module leak fix
 
 # i18n
 Babel

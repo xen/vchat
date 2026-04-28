@@ -48,7 +48,9 @@ def _pick_source_for_host(host: str, source_rows: list[tuple[int, str]]) -> int 
 
 async def _get_source_hosts(request: web.Request) -> list[tuple[int, str]]:
     rows = (
-        await request["db"].execute(sa.select(Source.id, Source.uri).where(Source.uri.isnot(None)))
+        await request["db"].execute(
+            sa.select(Source.id, Source.uri).where(Source.uri.isnot(None))
+        )
     ).all()
 
     source_hosts: list[tuple[int, str]] = []
@@ -79,7 +81,11 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
 
 async def _delete_document_by_url(request: web.Request, url: str) -> int:
     db = request["db"]
-    docs = (await db.execute(sa.select(Document).where(Document.uri == url))).scalars().all()
+    docs = (
+        (await db.execute(sa.select(Document).where(Document.uri == url)))
+        .scalars()
+        .all()
+    )
     if not docs:
         return 0
 
@@ -93,13 +99,19 @@ async def _delete_document_by_url(request: web.Request, url: str) -> int:
     return deleted
 
 
-async def _upsert_document(request: web.Request, source_id: int, url: str) -> tuple[str, int]:
+async def _upsert_document(
+    request: web.Request, source_id: int, url: str
+) -> tuple[str, int]:
     db = request["db"]
 
     try:
-        content, title, meta_from_fetch = await asyncio.to_thread(extract_url_document, url)
+        content, title, meta_from_fetch = await asyncio.to_thread(
+            extract_url_document, url
+        )
     except Exception as exc:
-        raise web.HTTPInternalServerError(text=f"Failed to extract document content: {exc}")
+        raise web.HTTPInternalServerError(
+            text=f"Failed to extract document content: {exc}"
+        )
     if not content:
         raise web.HTTPInternalServerError(text="Failed to extract document content")
 

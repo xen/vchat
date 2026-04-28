@@ -17,3 +17,6 @@ include = ["vchat*", "jobs*"]
 
 [tool.ruff.lint]
 ignore = ["E712", "E402"]
+
+[tool.uv.pip]
+index-strategy = "unsafe-best-match"

@@ -1,6 +1,7 @@
 import aiohttp_jinja2
 from aiohttp import web
 
+
 async def healthcheck(request):
     await request["db"].execute("select 1;")
     return web.HTTPFound(request.app.router["project_view"].url_for())
