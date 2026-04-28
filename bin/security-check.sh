@@ -46,6 +46,7 @@ run_step "secret-detection-gitleaks" \
 run_step "dependency-audit-osv" \
   docker_run ghcr.io/google/osv-scanner:latest \
     scan source -r /src \
+    --config /src/osv-scanner.toml \
     --format json \
     --output-file /src/security/dependency-audit-osv.json \
     --experimental-exclude node_modules \

@@ -1078,15 +1078,14 @@ faust-cchardet==2.1.19 \
     --hash=sha256:fd76c4c39fde29d8d8a0a79d63c15cd698d79a6cd21350f27a55c5f700ae37a0 \
     --hash=sha256:fef6c9217e5fde444cec776aaf0d99b397dc59b6e379cdad86eb6c21c6844e8c
     # via -r requirements/requirements.txt
-filelock==3.20.0 \
-    --hash=sha256:339b4732ffda5cd79b13f4e2711a31b0365ce445d95d243bb996273d072546a2 \
-    --hash=sha256:711e943b4ec6be42e1d4e6690b48dc175c822967466bb31c0c293f34334c13f4
+filelock==3.29.0 \
+    --hash=sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90 \
+    --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258
     # via
     #   -r requirements/requirements.txt
     #   huggingface-hub
     #   tldextract
     #   torch
-    #   transformers
     #   virtualenv
 filetype==1.2.0 \
     --hash=sha256:66b56cd6474bf41d8c54660347d37afcc3f7d1970648de365c102ef77548aadb \
@@ -1461,6 +1460,7 @@ httpx==0.28.1 \
     # via
     #   -r requirements/requirements.txt
     #   docling
+    #   huggingface-hub
     #   mcp
     #   openai
 httpx-sse==0.4.3 \
@@ -1469,9 +1469,9 @@ httpx-sse==0.4.3 \
     # via
     #   -r requirements/requirements.txt
     #   mcp
-huggingface-hub==0.36.0 \
-    --hash=sha256:47b3f0e2539c39bf5cde015d63b72ec49baff67b6931c3d97f3f84532e2b8d25 \
-    --hash=sha256:7bcc9ad17d5b3f07b57c78e79d527102d08313caa278a641993acddcb894548d
+huggingface-hub==1.5.0 \
+    --hash=sha256:c9c0b3ab95a777fc91666111f3b3ede71c0cdced3614c553a64e98920585c4ee \
+    --hash=sha256:f281838db29265880fb543de7a23b0f81d3504675de82044307ea3c6c62f799d
     # via
     #   -r requirements/requirements.txt
     #   accelerate
@@ -1916,15 +1916,15 @@ lxml==6.1.0 \
     #   python-docx
     #   python-pptx
     #   scrapy
-mako==1.3.10 \
-    --hash=sha256:99579a6f39583fa7e5630a28c3c1f440e4e97a414b80372649c0ce338da2ea28 \
-    --hash=sha256:baef24a52fc4fc514a0887ac600f9f1cff3d82c61d4d700a1fa84d597b88db59
+mako==1.3.12 \
+    --hash=sha256:8f61569480282dbf557145ce441e4ba888be453c30989f879f0d652e39f53ea9 \
+    --hash=sha256:9f778e93289bd410bb35daadeb4fc66d95a746f0b75777b942088b7fd7af550a
     # via
     #   -r requirements/requirements.txt
     #   alembic
-markdown==3.4.3 \
-    --hash=sha256:065fd4df22da73a625f14890dd77eb8040edcbd68794bcd35943be14490608b2 \
-    --hash=sha256:8bf101198e004dc93e84a12a7395e31aac6a9c9942848ae1d99b9d72cf9b3520
+markdown==3.10.2 \
+    --hash=sha256:994d51325d25ad8aa7ce4ebaec003febcce822c3f8c911e3b17c52f7f589f950 \
+    --hash=sha256:e91464b71ae3ee7afd3017d9f358ef0baf158fd9a298db92f1d4761133824c36
     # via
     #   -r requirements/requirements.txt
     #   pymdown-extensions
@@ -3532,9 +3532,9 @@ pydispatcher==2.0.7 \
     # via
     #   -r requirements/requirements.txt
     #   scrapy
-pygments==2.14.0 \
-    --hash=sha256:b3ed06a9e8ac9a9aae5a6f5dbe78a8a58655d17b43b93c078f094ddc476ae297 \
-    --hash=sha256:fa7bd7bd2771287c0de303af8bfdfc731f51bd2c6a47ab69d117138893b82717
+pygments==2.20.0 \
+    --hash=sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f \
+    --hash=sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176
     # via
     #   -r requirements/requirements.txt
     #   mpire
@@ -3551,9 +3551,9 @@ pylatexenc==2.10 \
     # via
     #   -r requirements/requirements.txt
     #   docling
-pymdown-extensions==10.4 \
-    --hash=sha256:bc46f11749ecd4d6b71cf62396104b4a200bad3498cb0f5dad1b8502fe461a35 \
-    --hash=sha256:cfc28d6a09d19448bcbf8eee3ce098c7d17ff99f7bd3069db4819af181212037
+pymdown-extensions==10.21.2 \
+    --hash=sha256:5c0fd2a2bea14eb39af8ff284f1066d898ab2187d81b889b75d46d4348c01638 \
+    --hash=sha256:c3f55a5b8a1d0edf6699e35dcbea71d978d34ff3fa79f3d807b8a5b3fa90fbdc
     # via -r requirements/requirements.txt
 pymorphy3==2.0.6 \
     --hash=sha256:0254317c02ce3ea17e080b7fc9d675e44662b3a5296bae68605b7a41d25b36c3 \
@@ -3573,9 +3573,9 @@ pyopenssl==26.1.0 \
     # via
     #   -r requirements/requirements.txt
     #   scrapy
-pypdf==6.4.1 \
-    --hash=sha256:1782ee0766f0b77defc305f1eb2bafe738a2ef6313f3f3d2ee85b4542ba7e535 \
-    --hash=sha256:36eb0b52730fc3077d2b8d4122751e696d46af9ef9e5383db492df1ab0cc4647
+pypdf==6.10.2 \
+    --hash=sha256:7d09ce108eff6bf67465d461b6ef352dcb8d84f7a91befc02f904455c6eea11d \
+    --hash=sha256:aa53be9826655b51c96741e5d7983ca224d898ac0a77896e64636810517624aa
     # via -r requirements/requirements.txt
 pypdfium2==4.30.0 \
     --hash=sha256:0dfa61421b5eb68e1188b0b2231e7ba35735aef2d867d86e48ee6cab6975195e \
@@ -3648,9 +3648,9 @@ python-docx==1.2.0 \
     # via
     #   -r requirements/requirements.txt
     #   docling
-python-dotenv==1.2.1 \
-    --hash=sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6 \
-    --hash=sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61
+python-dotenv==1.2.2 \
+    --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a \
+    --hash=sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3
     # via
     #   -r requirements/requirements.txt
     #   pydantic-settings
@@ -3908,20 +3908,18 @@ regex==2025.11.3 \
     #   presidio-analyzer
     #   tiktoken
     #   transformers
-requests==2.32.5 \
-    --hash=sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6 \
-    --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
+requests==2.33.1 \
+    --hash=sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517 \
+    --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
     # via
     #   -r requirements/requirements.txt
     #   docling
-    #   huggingface-hub
     #   openai-agents
     #   rapidocr
     #   requests-file
     #   spacy
     #   tiktoken
     #   tldextract
-    #   transformers
     #   weasel
     #   webdriver-manager
 requests-file==3.0.1 \
@@ -4745,9 +4743,9 @@ tqdm==4.67.1 \
     #   sentence-transformers
     #   spacy
     #   transformers
-transformers==4.57.3 \
-    --hash=sha256:c77d353a4851b1880191603d36acb313411d3577f6e2897814f333841f7003f4 \
-    --hash=sha256:df4945029aaddd7c09eec5cad851f30662f8bd1746721b34cc031d70c65afebc
+transformers==5.7.0 \
+    --hash=sha256:869660cd8fc92badc041f5551bf755a42f4b9558c93341bf3fa3eeed7065079c \
+    --hash=sha256:a9d35cf39804e3456c1f9bc1a79ad5ffa878640a61f51f66f71c97f4b4e2ce10
     # via
     #   -r requirements/requirements.txt
     #   docling-core
@@ -4866,6 +4864,8 @@ typer==0.19.2 \
     #   -r requirements/requirements.txt
     #   docling
     #   docling-core
+    #   huggingface-hub
+    #   transformers
 typer-slim==0.20.0 \
     --hash=sha256:9fc6607b3c6c20f5c33ea9590cbeb17848667c51feee27d9e314a579ab07d1a3 \
     --hash=sha256:f42a9b7571a12b97dddf364745d29f12221865acef7a2680065f9bb29c7dc89d
