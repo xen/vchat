@@ -4,12 +4,12 @@ import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp import web
 from aiohttp_session import get_session, new_session
-from passlib.hash import pbkdf2_sha512
+from passlib.context import CryptContext
 
+from vchat.app_keys import REDIS_KEY
 from vchat.i18n import _
 from vchat.models import User
 from vchat.utils import (
-    DELAY_PROTECTION,
     admin_event,
     login_required,
     meta,
@@ -23,6 +23,11 @@ __all__ = [
 ]
 
 
+LOGIN_FAILURE_DELAY_SECONDS = 3
+LOGIN_CHECK_LOCK_TTL_SECONDS = LOGIN_FAILURE_DELAY_SECONDS
+password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
+
+
 @meta(title=_("Login to vchat"))
 @aiohttp_jinja2.template("auth/login.html")
 async def login(request):
@@ -31,11 +36,23 @@ async def login(request):
     form = forms.LoginForm(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
+        normalized_email = (form.email.data or "").strip().lower()
+        lock_key = f"auth:login_check_lock:{normalized_email}"
+
+        if await request.app[REDIS_KEY].exists(lock_key):
+            form.email.errors.append(
+                _("Too many login attempts. Try again in a few seconds")
+            )
+            return {"form": form}
+
+        await request.app[REDIS_KEY].set(lock_key, "1", ex=LOGIN_CHECK_LOCK_TTL_SECONDS)
+
         record = await request["db"].execute(
-            sa.select(User).where(User.email == form.email.data.lower())
+            sa.select(User).where(User.email == normalized_email)
         )
         user = record.scalar()
         if not user:
+            await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
             form.email.errors.append(_("Email or password is incorrect"))
             return {"form": form}
         if user.is_active is False:
@@ -46,9 +63,8 @@ async def login(request):
                 )
             )
             return {"form": form}
-        if not pbkdf2_sha512.verify(form.password.data, user.password):
-            # Delay brute force
-            await asyncio.sleep(DELAY_PROTECTION)
+        if not password_context.verify(form.password.data, user.password):
+            await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
             form.email.errors.append(_("Wrong email or password"))
             return {"form": form}
         # Save to aoihttp session

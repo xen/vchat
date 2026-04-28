@@ -19,7 +19,16 @@ class _App(dict):
 
 
 class _Request(dict):
-    def __init__(self, *, path="/", method="GET", app=None, headers=None, query=None, post_data=None):
+    def __init__(
+        self,
+        *,
+        path="/",
+        method="GET",
+        app=None,
+        headers=None,
+        query=None,
+        post_data=None,
+    ):
         super().__init__()
         self.path = path
         self.method = method
@@ -43,7 +52,9 @@ class _Route:
 
 
 @pytest.mark.asyncio
-async def test_meta_middleware_and_handle_error(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_meta_middleware_and_handle_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     request = _Request()
 
     async def _handler(req):
@@ -56,7 +67,9 @@ async def test_meta_middleware_and_handle_error(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         mdw.aiohttp_jinja2,
         "render_template",
-        lambda tpl, req, ctx, status=200: web.Response(text=f"{tpl}:{status}", status=status),
+        lambda tpl, req, ctx, status=200: web.Response(
+            text=f"{tpl}:{status}", status=status
+        ),
     )
     err_resp = await mdw.handle_error(_Request(), 404)
     assert err_resp.status == 404
@@ -87,7 +100,9 @@ async def test_flash_and_force_https_middlewares() -> None:
         async def delete(self, key):
             assert key == "message_1"
 
-    app = _App({REDIS_KEY: _Redis(), CONFIG_KEY: {"public_url": "https://local.vchat.com"}})
+    app = _App(
+        {REDIS_KEY: _Redis(), CONFIG_KEY: {"public_url": "https://local.vchat.com"}}
+    )
     request = _Request(app=app)
     request["user"] = SimpleNamespace(id=1)
 
@@ -158,17 +173,27 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class _Record:
         def scalar(self):
-            return SimpleNamespace(id=5, is_active=True, password="hash", email="user@example.com")
+            return SimpleNamespace(
+                id=5, is_active=True, password="hash", email="user@example.com"
+            )
 
     class _DB:
         async def execute(self, stmt):
             _ = stmt
             return _Record()
 
+    class _Redis:
+        async def exists(self, _key):
+            return 0
+
+        async def set(self, *args, **kwargs):
+            _ = args, kwargs
+            return True
+
     login_router = {"index": _Route("/"), "login": _Route("/login/")}
     request = _Request(
         method="POST",
-        app=_App({"_": 1}, router=login_router),
+        app=_App({"_": 1, REDIS_KEY: _Redis()}, router=login_router),
         post_data={"email": "user@example.com", "password": "pass"},
         query={},
     )
@@ -186,7 +211,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_views.forms, "LoginForm", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
-    monkeypatch.setattr(auth_views.pbkdf2_sha512, "verify", lambda raw, hashed: True)
+    monkeypatch.setattr(auth_views.password_context, "verify", lambda raw, hashed: True)
     monkeypatch.setattr(auth_views, "admin_event", _admin_event)
 
     # strip decorators (meta + template)
@@ -204,7 +229,9 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(auth_views, "get_session", _logout_session)
     logout_fn = auth_views.logout.__wrapped__.__wrapped__
-    request2 = _Request(method="GET", app=_App({"_": 1}, router={"login": _Route("/login/")}))
+    request2 = _Request(
+        method="GET", app=_App({"_": 1}, router={"login": _Route("/login/")})
+    )
     request2["user"] = SimpleNamespace(id=5)
     logout_resp = await logout_fn(request2)
     assert isinstance(logout_resp, web.HTTPFound)
@@ -212,7 +239,9 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_ws_sends_pending_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_notify_ws_sends_pending_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     holder = {}
 
     class _Redis:
@@ -256,3 +285,141 @@ async def test_notify_ws_sends_pending_messages(monkeypatch: pytest.MonkeyPatch)
     notify_fn = user_views.notify_ws.__wrapped__
     await notify_fn(request)
     assert holder["ws"].sent == ['{"type":"flash","body":"ok"}']
+
+
+@pytest.mark.asyncio
+async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Field:
+        def __init__(self, data):
+            self.data = data
+            self.errors = []
+
+    class _Form:
+        def __init__(self, data, meta):
+            _ = meta
+            self.email = _Field(data.get("email", "user@example.com"))
+            self.password = _Field(data.get("password", "wrong"))
+            self.csrf_token = _Field("csrf")
+
+        def validate(self):
+            return True
+
+    class _Record:
+        def scalar(self):
+            return SimpleNamespace(
+                id=5, is_active=True, password="hash", email="user@example.com"
+            )
+
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            return _Record()
+
+    class _Redis:
+        async def exists(self, _key):
+            return 0
+
+        async def set(self, *args, **kwargs):
+            _ = args, kwargs
+            return True
+
+    delays = []
+
+    async def _sleep(seconds):
+        delays.append(seconds)
+
+    async def _get_session(_request):
+        return {}
+
+    request = _Request(
+        method="POST",
+        app=_App(
+            {REDIS_KEY: _Redis()},
+            router={"index": _Route("/"), "login": _Route("/login/")},
+        ),
+        post_data={"email": "user@example.com", "password": "wrong"},
+    )
+    request["db"] = _DB()
+
+    monkeypatch.setattr(auth_views.forms, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(
+        auth_views.password_context, "verify", lambda raw, hashed: False
+    )
+
+    login_fn = auth_views.login.__wrapped__.__wrapped__
+    payload = await login_fn(request)
+    assert isinstance(payload, dict)
+    assert delays == [3]
+    assert payload["form"].email.errors
+
+
+@pytest.mark.asyncio
+async def test_login_redis_lock_blocks_parallel_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Field:
+        def __init__(self, data):
+            self.data = data
+            self.errors = []
+
+    class _Form:
+        def __init__(self, data, meta):
+            _ = meta
+            self.email = _Field(data.get("email", "user@example.com"))
+            self.password = _Field(data.get("password", "wrong"))
+            self.csrf_token = _Field("csrf")
+
+        def validate(self):
+            return True
+
+    redis_calls = {}
+
+    class _Redis:
+        async def exists(self, key):
+            redis_calls["exists_key"] = key
+            return 1
+
+        async def set(self, *args, **kwargs):
+            _ = args, kwargs
+            raise AssertionError(
+                "set should not be called when lock key already exists"
+            )
+
+        async def delete(self, _key):
+            raise AssertionError("delete must not be called when lock was not acquired")
+
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            raise AssertionError("DB should not be queried when lock is already held")
+
+    delays = []
+
+    async def _sleep(seconds):
+        delays.append(seconds)
+
+    async def _get_session(_request):
+        return {}
+
+    request = _Request(
+        method="POST",
+        app=_App(
+            {REDIS_KEY: _Redis()},
+            router={"index": _Route("/"), "login": _Route("/login/")},
+        ),
+        post_data={"email": "user@example.com", "password": "wrong"},
+    )
+    request["db"] = _DB()
+
+    monkeypatch.setattr(auth_views.forms, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
+
+    login_fn = auth_views.login.__wrapped__.__wrapped__
+    payload = await login_fn(request)
+    assert isinstance(payload, dict)
+    assert delays == []
+    assert payload["form"].email.errors
+    assert redis_calls["exists_key"] == "auth:login_check_lock:user@example.com"
