@@ -22,10 +22,6 @@
 @import "./plugins/select.css";
 @import "./plugins/text-editor.css"; */
 
-@import "@uppy/core/css/style.min.css";
-@import "@uppy/drag-drop/css/style.min.css";
-@import "@uppy/dashboard/css/style.css";
-
 @import "./styles.css";
 
 /****  Plugins  ****/

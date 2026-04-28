@@ -34,9 +34,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <!-- End Google Tag Manager (noscript) -->
 {% endif %}
 
-<div class="size-full">
+<div class="h-screen w-full overflow-hidden">
   {% block fullbody %}
-    <div class="flex">
+    <div class="flex h-screen">
       <input type="checkbox" id="layout-sidebar-toggle-trigger" class="hidden" aria-label="{{ _('Переключить боковую панель') }}" />
       <input type="checkbox" id="layout-sidebar-hover-trigger" class="hidden" aria-label="{{ _('Компактная боковая панель') }}" />
       <div id="layout-sidebar-hover" class="bg-base-300 h-screen w-1"></div>
@@ -46,7 +46,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
       <label for="layout-sidebar-toggle-trigger" id="layout-sidebar-backdrop"></label>
 
-      <div class="flex h-screen min-w-0 grow flex-col overflow-auto">
+      <div class="flex h-screen min-w-0 grow flex-col overflow-y-auto overflow-x-hidden">
         {% include "include/admin/header.html" with context %}
         <div id="layout-content">
           {% block content %}{% endblock %}

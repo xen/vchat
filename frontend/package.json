@@ -26,12 +26,6 @@
   },
   "dependencies": {
     "@tanstack/table-core": "^8.11.6",
-    "@uppy/core": "^5.1.1",
-    "@uppy/dashboard": "^5.0.4",
-    "@uppy/drag-drop": "^5.0.2",
-    "@uppy/locales": "^5.0.1",
-    "@uppy/status-bar": "^5.0.2",
-    "@uppy/tus": "^5.0.2",
     "alpinejs": "^3.15.2",
     "chart.js": "^4.5.1",
     "htmx.org": "^2.0.8",

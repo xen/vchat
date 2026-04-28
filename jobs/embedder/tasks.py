@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.embeddings import load_embedding_model
+from vchat.embeddings import load_embedding_model, resolve_embedding_device
 from vchat.models import ChatMsg, Chunk, Document, Source
 from vchat.settings import config
 
@@ -25,9 +25,10 @@ EMBEDDING_CHUNK_MAX_CHARS = config["embedding_chunk_max_chars"]
 def get_embed_model() -> Any:
     global _embed_model
     if _embed_model is None:
-        logging.info("Loading embedding model.")
-        _embed_model = load_embedding_model(device="cpu")
-        logging.info("Embedding model loaded.")
+        resolved_device = resolve_embedding_device()
+        logging.info("Loading embedding model on device: %s", resolved_device)
+        _embed_model = load_embedding_model(device=resolved_device)
+        logging.info("Embedding model loaded on device: %s", resolved_device)
     return _embed_model
 
 

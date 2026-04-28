@@ -1,25 +1,22 @@
 import logging
-import os
 import secrets
-import shutil
 import json
 from datetime import datetime, time, timezone
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp import web
 from aiohttp_session import get_session
-from aiohttp_tus.utils import parse_upload_metadata
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
 from passlib.context import CryptContext
 
-from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
+from jobs.crawler import crawl_all_sources_task, crawl_source_task
 from jobs.embedder.tasks import (
     index_project,
+    index_document,
     refresh_project_index,
     refresh_source_index,
 )
@@ -69,15 +66,13 @@ __all__ = [
     "project_document_content",
     "project_document_detail",
     "project_documents_json",
-    "project_files_json",
     "project_chat",
     "project_stats",
     "project_topics",
     "project_integration",
     "public_widget_chat",
     "project_files",
-    "secure_download",
-    "on_upload",
+    "file_document",
 ]
 
 
@@ -191,6 +186,59 @@ def _get_topics(request) -> list[str]:
 def _get_intents(request) -> list[str]:
     intents = get_setting_json(request.app, "project.intents", [])
     return intents if isinstance(intents, list) else []
+
+
+async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
+    chunk_counts = (
+        sa.select(
+            Chunk.document_id.label("document_id"),
+            sa.func.count(Chunk.id).label("chunk_count"),
+        )
+        .group_by(Chunk.document_id)
+        .subquery()
+    )
+    size_bytes_expr = sa.func.coalesce(
+        sa.cast(sa.func.octet_length(Document.content), sa.BigInteger),
+        sa.cast(Document._length, sa.BigInteger),
+        sa.literal(0, type_=sa.BigInteger),
+    ).label("size_bytes")
+
+    rows = (
+        await db_session.execute(
+            sa.select(Document, size_bytes_expr, chunk_counts.c.chunk_count)
+            .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
+            .where(Document.source_id.is_(None), Document.uri.is_(None))
+            .order_by(Document.updated_at.desc(), Document.created_at.desc())
+        )
+    ).all()
+
+    result: list[dict[str, Any]] = []
+    for doc, size_bytes, chunk_count in rows:
+        raw_meta = doc.meta if isinstance(doc.meta, dict) else {}
+        author_name = raw_meta.get("author_name")
+        if not isinstance(author_name, str) or not author_name.strip():
+            author_email = raw_meta.get("author_email")
+            if isinstance(author_email, str) and author_email.strip():
+                author_name = author_email
+            else:
+                author_name = "-"
+
+        updated_value = doc.updated_at or doc.created_at
+        updated_display = (
+            updated_value.astimezone().strftime("%d.%m.%Y %H:%M")
+            if updated_value
+            else "-"
+        )
+        result.append(
+            {
+                "document": doc,
+                "size_bytes": int(size_bytes or 0),
+                "chunk_count": int(chunk_count or 0),
+                "author_display": author_name,
+                "updated_display": updated_display,
+            }
+        )
+    return result
 
 
 @meta(title=_("Страницы"))
@@ -787,56 +835,6 @@ async def project_action(request):
     if action == "index_project":
         index_project.delay()
         await flash(request, _("Full rebuild task started"), "success")
-        return web.Response(text="ok", status=200)
-
-    if action == "rebuild_uploads":
-        legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
-        document_ids = (
-            (
-                await db_session.execute(
-                    sa.select(Document.id)
-                    .where(
-                        sa.or_(
-                            Document.source_id.is_(None),
-                            Document.source_id.in_(legacy_upload_source_ids),
-                        )
-                    )
-                    .order_by(Document.id.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for document_id in document_ids:
-            crawl_file_task.delay(document_id)
-        await flash(request, _("Upload index rebuild started"), "success")
-        return web.Response(text="ok", status=200)
-
-    if action == "delete_file":
-        file_id = int(item_id)
-        document = await db_session.scalar(
-            sa.select(Document).where(
-                Document.id == file_id,
-                sa.or_(
-                    Document.source_id.is_(None),
-                    Document.source_id.in_(
-                        sa.select(Source.id).where(Source.type == "upload")
-                    ),
-                ),
-            )
-        )
-        if not document:
-            raise web.HTTPNotFound()
-
-        if document.uri and os.path.exists(document.uri):
-            try:
-                os.remove(document.uri)
-            except OSError as e:
-                logger.error("Error deleting file %s: %s", document.uri, e)
-
-        await db_session.delete(document)
-        await db_session.commit()
-        await admin_event("file_delete", request)
         return web.Response(text="ok", status=200)
 
     raise web.HTTPBadRequest(text="Unknown action")
@@ -1438,153 +1436,96 @@ async def public_widget_chat(request):
 @aiohttp_jinja2.template("projects/files.html")
 async def project_files(request):
     db_session = request["db"]
-    legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
+    if request.method == "POST":
+        await request.post()
+        user = request["user"]
+        author_name = (getattr(user, "name", "") or "").strip()
+        author_email = (getattr(user, "email", "") or "").strip()
+        if not author_name:
+            author_name = author_email or f"user-{getattr(user, 'id', '')}"
 
-    has_documents = bool(
-        await db_session.scalar(
-            sa.select(sa.func.count(Document.id)).where(
-                sa.or_(
-                    Document.source_id.is_(None),
-                    Document.source_id.in_(legacy_upload_source_ids),
-                )
-            )
+        content = ""
+        document = Document(
+            source_id=None,
+            title=None,
+            uri=None,
+            content=content,
+            hash_value=content,
+            meta={
+                "doc_type": "markdown",
+                "content_type": "text/markdown",
+                "author_id": getattr(user, "id", None),
+                "author_name": author_name,
+                "author_email": author_email,
+            },
+            status="added",
         )
-    )
+        document.length = len(content)
+        db_session.add(document)
+        await db_session.flush()
+        # Default title is the document numeric ID.
+        document.title = str(document.id)
+        await db_session.commit()
+        await admin_event("file_create", request)
+        location = request.app.router["file_document"].url_for(
+            document_id=str(document.id)
+        )
+        raise web.HTTPFound(location=location)
+
+    files_rows = await _files_rows(db_session)
 
     return {
         "project": _project_context(request),
-        "has_documents": has_documents,
+        "files_rows": files_rows,
+        "current_document": None,
     }
 
 
+@meta(title=_("Files"))
 @login_required()
-async def project_files_json(request):
-    legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
-    chunk_counts = (
-        sa.select(
-            Chunk.document_id.label("document_id"),
-            sa.func.count(Chunk.id).label("chunk_count"),
-        )
-        .group_by(Chunk.document_id)
-        .subquery()
-    )
-    size_bytes_expr = sa.func.coalesce(
-        sa.cast(sa.func.octet_length(Document.content), sa.BigInteger),
-        sa.cast(Document._length, sa.BigInteger),
-        sa.literal(0, type_=sa.BigInteger),
-    ).label("size_bytes")
-
-    rows = (
-        await request["db"].execute(
-            sa.select(Document, size_bytes_expr, chunk_counts.c.chunk_count)
-            .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-            .where(
-                sa.or_(
-                    Document.source_id.is_(None),
-                    Document.source_id.in_(legacy_upload_source_ids),
-                )
-            )
-            .order_by(Document.created_at.desc())
-        )
-    ).all()
-
-    data = []
-    for doc, size_bytes, chunk_count in rows:
-        raw_meta = doc.meta if isinstance(doc.meta, dict) else {}
-        meta_payload = dict(raw_meta)
-        doc_type_value = meta_payload.get("doc_type")
-        if not isinstance(doc_type_value, str) or not doc_type_value:
-            doc_type_value = "file"
-        meta_payload.setdefault("doc_type", doc_type_value)
-        data.append(
-            {
-                "id": str(doc.id),
-                "title": doc.title or meta_payload.get("filename") or "Без названия",
-                "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                "size_bytes": int(size_bytes or 0),
-                "chunk_count": int(chunk_count or 0),
-                "document_type": doc_type_value,
-                "meta": meta_payload,
-            }
-        )
-
-    return web.json_response(data)
-
-
-@login_required()
-async def secure_download(request):
-    file_id = int(request.match_info.get("file_id"))
+@aiohttp_jinja2.template("projects/files.html")
+async def file_document(request):
     db_session = request["db"]
+    document_id = int(request.match_info["document_id"])
 
     document = await db_session.scalar(
         sa.select(Document).where(
-            Document.id == file_id,
-            sa.or_(
-                Document.source_id.is_(None),
-                Document.source_id.in_(
-                    sa.select(Source.id).where(Source.type == "upload")
-                ),
-            ),
+            Document.id == document_id,
+            Document.source_id.is_(None),
+            Document.uri.is_(None),
         )
     )
-
     if not document:
         raise web.HTTPNotFound()
 
-    file_path = document.uri
-    if not os.path.exists(file_path):
-        raise web.HTTPNotFound(text="File not found on disk")
+    if request.method == "POST":
+        data = await request.post()
+        action = str(data.get("action") or "save")
+        if action == "delete":
+            await db_session.delete(document)
+            await db_session.commit()
+            await admin_event("file_delete", request)
+            raise web.HTTPFound(location=request.app.router["project_files"].url_for())
 
-    return web.FileResponse(file_path)
+        content = str(data.get("content") or "")
+        document.content = content
+        document.hash_value = content
+        document.length = len(content)
+        document.status = "added"
+        document.updated_at = datetime.now(timezone.utc)
+        await db_session.execute(
+            sa.delete(Chunk).where(Chunk.document_id == document.id)
+        )
+        await db_session.commit()
+        index_document.delay(document.id)
+        await admin_event("file_update", request)
+        await flash(request, _("Файл сохранен"), "success")
+        raise web.HTTPFound(location=request.path)
 
+    files_rows = await _files_rows(db_session)
 
-async def on_upload(request: web.Request, resource: Any, source_path: Path) -> None:
-    db_session = cast(Any, request.get("db"))
-    if db_session is None:
-        raise RuntimeError("Database session is not available in request context")
-
-    metadata = parse_upload_metadata(resource.metadata_header or "")
-
-    def _decode_meta(value: Any | None, default: str = "") -> str:
-        if value is None:
-            return default
-        if isinstance(value, bytes):
-            value = value.decode("utf-8", errors="ignore")
-        if isinstance(value, str):
-            return value or default
-        return str(value)
-
-    filename_meta = _decode_meta(metadata.get("filename"))
-    original_filename = filename_meta or resource.file_name or "unknown"
-    ext = Path(original_filename).suffix
-
-    document = Document(
-        source_id=None,
-        title=original_filename,
-        uri="",
-        content="",
-        hash_value="",
-        meta={
-            "filename": original_filename,
-            "content_type": _decode_meta(metadata.get("filetype")),
-            "doc_type": "file",
-        },
-        status="added",
-    )
-    db_session.add(document)
-    await db_session.flush()
-
-    uploads_dir = Path("media/uploads")
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-    new_filename = f"{document.id}{ext}"
-    target_path = uploads_dir / new_filename
-
-    shutil.move(str(source_path), str(target_path))
-
-    document.uri = str(target_path)
-    document.hash_value = str(target_path)
-    document.length = 0
-
-    await db_session.commit()
-    await admin_event("file_upload", request)
-    crawl_file_task.delay(document.id)
+    return {
+        "project": _project_context(request),
+        "files_rows": files_rows,
+        "current_document": document,
+    }

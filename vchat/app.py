@@ -7,7 +7,6 @@ import jinja2
 from aiohttp import web
 from aiohttp.helpers import DEBUG
 from aiohttp.web_app import Application
-from aiohttp_tus import setup_tus
 from itsdangerous import URLSafeTimedSerializer
 from jinja2 import Environment
 from redis.asyncio import from_url as redis_from_url
@@ -23,7 +22,6 @@ from vchat.i18n import _
 from vchat.metrics import validate_multiprocess_setup
 from vchat.project_settings import init_settings_cache
 from vchat.utils import (
-    login_required,
     make_full_url,
     paginator,
     protect,
@@ -59,22 +57,6 @@ async def create_app() -> Application:
     app[SIGNER_KEY] = URLSafeTimedSerializer(config["secret_key"])
     app[SETTINGS_KEY] = {}
     await init_settings_cache(app)
-
-    # Setup aiotus
-    # Ensure upload directory exists
-    # We need a place to store uploads. Let's use 'media/uploads'
-    upload_dir = Path("media/uploads")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    from vchat.views.projects import on_upload
-
-    setup_tus(
-        app,
-        upload_path=upload_dir,
-        upload_url=r"/uploads/",
-        upload_resource_name="tus_upload",
-        decorator=login_required(),
-        on_upload_done=on_upload,
-    )
 
     # Setup base Jinja2
     aiohttp_jinja2.setup(

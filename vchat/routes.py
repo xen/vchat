@@ -66,14 +66,14 @@ def setup_routes(app: web.Application) -> None:
         name="project_document_content",
     )
     add("GET", "/stats", projects.project_stats, name="project_stats")
-    add("GET", "/files", projects.project_files, name="project_files")
-    add("GET", "/files/json", projects.project_files_json, name="project_files_json")
+    add("*", "/files", projects.project_files, name="project_files")
     add(
-        "GET",
-        r"/files/{file_id:[0-9]+}",
-        projects.secure_download,
-        name="secure_download",
+        "*",
+        r"/file/{document_id:[0-9]+}",
+        projects.file_document,
+        name="file_document",
     )
+
     add(
         "*",
         "/actions/{action}/{item_id}",
