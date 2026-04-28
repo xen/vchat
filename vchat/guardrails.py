@@ -346,7 +346,23 @@ def _detect_russian_pii_reasons(text: str) -> set[str]:
 
 
 def detect_russian_pii_reasons(text: str) -> set[str]:
-    return _detect_russian_pii_reasons(text)
+    reasons = _detect_russian_pii_reasons(text)
+    regex_map = {
+        "phone_number_ru": _RU_PHONE_RE,
+        "passport_ru": _RU_PASSPORT_RE,
+        "inn_ru": _RU_INN_RE,
+        "snils_ru": _RU_SNILS_RE,
+        "oms_ru": _RU_OMS_RE,
+    }
+    for reason, pattern in regex_map.items():
+        try:
+            if pattern.search(text):
+                reasons.add(reason)
+        except Exception:
+            continue
+    if reasons:
+        reasons.add("russian_pii")
+    return reasons
 
 
 def mask_russian_pii(text: str) -> tuple[str, bool]:

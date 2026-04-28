@@ -54,14 +54,19 @@ class ChunkData:
 def chunk_text_word_window(
     text: str,
     *,
-    max_tokens: int = EMBEDDING_CHUNK_MAX_TOKENS,
-    overlap: int = EMBEDDING_CHUNK_OVERLAP_TOKENS,
+    max_tokens: int | None = None,
+    overlap: int | None = None,
 ) -> List[ChunkData]:
     """
     Split text into overlapping windows by whitespace tokens.
     Returns list of tuples: (chunk_ix, start_offset, end_offset, chunk_text),
     where offsets are token-based indices in the original token list.
     """
+    if max_tokens is None:
+        max_tokens = EMBEDDING_CHUNK_MAX_TOKENS
+    if overlap is None:
+        overlap = EMBEDDING_CHUNK_OVERLAP_TOKENS
+
     tokenizer = get_embed_model().tokenizer
     tokens = text.split()
     n = len(tokens)
@@ -191,13 +196,17 @@ def split_table_rows(table_text: str, max_tokens: int) -> list[str]:
                 truncation=False,
             )["input_ids"]
         )
-        bucket_tokens = len(
-            tokenizer(
-                "\n".join(bucket),
-                add_special_tokens=False,
-                truncation=False,
-            )["input_ids"]
-        ) if bucket else 0
+        bucket_tokens = (
+            len(
+                tokenizer(
+                    "\n".join(bucket),
+                    add_special_tokens=False,
+                    truncation=False,
+                )["input_ids"]
+            )
+            if bucket
+            else 0
+        )
         if bucket and head_tokens + bucket_tokens + row_tokens > max_tokens:
             parts.append("\n".join(head + bucket))
             bucket = [row]
@@ -247,9 +256,14 @@ def _collect_entity_terms(
 def chunk_document_text(
     text: str,
     *,
-    max_tokens: int = EMBEDDING_CHUNK_MAX_TOKENS,
-    overlap: int = EMBEDDING_CHUNK_OVERLAP_TOKENS,
+    max_tokens: int | None = None,
+    overlap: int | None = None,
 ) -> list[ChunkData]:
+    if max_tokens is None:
+        max_tokens = EMBEDDING_CHUNK_MAX_TOKENS
+    if overlap is None:
+        overlap = EMBEDDING_CHUNK_OVERLAP_TOKENS
+
     chunks: list[ChunkData] = []
     lines = text.splitlines()
     blocks: list[tuple[str, str, str | None, str | None]] = []
@@ -282,7 +296,11 @@ def chunk_document_text(
             index += 1
             continue
 
-        if index + 1 < len(lines) and "|" in line and is_table_separator(lines[index + 1]):
+        if (
+            index + 1 < len(lines)
+            and "|" in line
+            and is_table_separator(lines[index + 1])
+        ):
             block = "\n".join(text_lines).strip()
             if block:
                 blocks.append(
@@ -335,11 +353,15 @@ def chunk_document_text(
 
         if kind == "table":
             table_lines = [line for line in block.splitlines() if line.strip()]
-            column_names = [
-                cell.strip()
-                for cell in table_lines[0].strip("|").split("|")
-                if cell.strip()
-            ] if table_lines else []
+            column_names = (
+                [
+                    cell.strip()
+                    for cell in table_lines[0].strip("|").split("|")
+                    if cell.strip()
+                ]
+                if table_lines
+                else []
+            )
             table_header = " | ".join(column_names) or header_text
             projection_lines = []
             if section_path:
@@ -408,7 +430,9 @@ def chunk_document_text(
             truncation=False,
         )["input_ids"]
         if len(block_tokens) > 24:
-            summary_text = " ".join(block.split()[: min(len(block.split()), 120)]).strip()
+            summary_text = " ".join(
+                block.split()[: min(len(block.split()), 120)]
+            ).strip()
             summary_text = (
                 f"Section: {section_path}\nSummary: {summary_text}"
                 if section_path
@@ -605,9 +629,7 @@ def _process_next_pending_chunk(session: Session) -> bool:
     return True
 
 
-def _index_document_chunks(
-    session: Session, doc: Document
-) -> bool:
+def _index_document_chunks(session: Session, doc: Document) -> bool:
     chunk_count = _materialize_document_chunks(session, doc)
     if chunk_count == 0:
         return False
@@ -702,10 +724,7 @@ def index_project():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = (
-                select(Document.id)
-                .where(Document.is_ignored == False)
-            )
+            stmt = select(Document.id).where(Document.is_ignored == False)
             doc_ids = session.execute(stmt).scalars().all()
     finally:
         engine.dispose()
@@ -751,8 +770,7 @@ def refresh_project_index():
 
             ignored_doc_ids = (
                 session.execute(
-                    sa.select(Document.id)
-                    .where(Document.is_ignored == True)
+                    sa.select(Document.id).where(Document.is_ignored == True)
                 )
                 .scalars()
                 .all()

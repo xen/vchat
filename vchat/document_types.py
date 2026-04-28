@@ -189,7 +189,7 @@ def guess_document_type(uri: str | None = None, content_type: str | None = None)
         if extension in _EXTENSION_TO_TYPE:
             return _EXTENSION_TO_TYPE[extension]
         if not content_type:
-            guessed_content_type, _ = mimetypes.guess_type(uri)
+            guessed_content_type = mimetypes.guess_type(uri)[0]
             if guessed_content_type:
                 content_type = guessed_content_type
 

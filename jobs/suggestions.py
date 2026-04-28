@@ -156,7 +156,7 @@ def generate_project_topics():
                 return
 
             num_clusters = min(8, len(embeddings))
-            centroids, _ = kmeans(embeddings.astype(float), num_clusters)
+            centroids = kmeans(embeddings.astype(float), num_clusters)[0]
             chunks = _fetch_representative_chunks_for_centroids(session, centroids)
             summary = summarize_clustered_topics(settings_map, chunks)
 

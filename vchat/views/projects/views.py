@@ -486,7 +486,7 @@ async def project_action(request):
             User(
                 email=email,
                 name=(email.split("@", 1)[0] or email).strip()[:100],
-                password=pbkdf2_sha512.encrypt(form.password.data),
+                password=pbkdf2_sha512.hash(form.password.data),
                 is_active=True,
             )
         )
@@ -516,7 +516,7 @@ async def project_action(request):
                     status=400,
                 )
 
-            user_obj.password = pbkdf2_sha512.encrypt(form.password.data)
+            user_obj.password = pbkdf2_sha512.hash(form.password.data)
             await db_session.commit()
             await admin_event("user_update", request)
             await flash(request, _("Password updated"), "success")
@@ -1046,22 +1046,49 @@ async def project_stats(request):
 
     for row in chats_res:
         d = row.day.strftime("%Y-%m-%d")
-        if d in stats:
-            stats[d]["chats"] = row.count
-            stats[d]["users"] = row.users
+        if d not in stats:
+            stats[d] = {
+                "chats": 0,
+                "users": 0,
+                "messages": 0,
+                "hits": 0,
+                "tokens": 0,
+                "likes": 0,
+                "dislikes": 0,
+            }
+        stats[d]["chats"] = row.count
+        stats[d]["users"] = row.users
 
     for row in msgs_res:
         d = row.day.strftime("%Y-%m-%d")
-        if d in stats:
-            stats[d]["messages"] = row.count
-            stats[d]["hits"] = row.hits or 0
-            stats[d]["tokens"] = row.tokens or 0
+        if d not in stats:
+            stats[d] = {
+                "chats": 0,
+                "users": 0,
+                "messages": 0,
+                "hits": 0,
+                "tokens": 0,
+                "likes": 0,
+                "dislikes": 0,
+            }
+        stats[d]["messages"] = row.count
+        stats[d]["hits"] = row.hits or 0
+        stats[d]["tokens"] = row.tokens or 0
 
     for row in votes_res:
         d = row.day.strftime("%Y-%m-%d")
-        if d in stats:
-            stats[d]["likes"] = row.likes or 0
-            stats[d]["dislikes"] = row.dislikes or 0
+        if d not in stats:
+            stats[d] = {
+                "chats": 0,
+                "users": 0,
+                "messages": 0,
+                "hits": 0,
+                "tokens": 0,
+                "likes": 0,
+                "dislikes": 0,
+            }
+        stats[d]["likes"] = row.likes or 0
+        stats[d]["dislikes"] = row.dislikes or 0
 
     labels = sorted(stats.keys())
     data_chats = [stats[d]["chats"] for d in labels]

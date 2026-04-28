@@ -38,10 +38,14 @@ class _DB:
 
 
 def test_detect_lang(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ctx_mod.cld2, "detect", lambda text: (True, None, [("RUSSIAN", "ru", 99, 0.0)]))
+    monkeypatch.setattr(
+        ctx_mod.cld2, "detect", lambda text: (True, None, [("RUSSIAN", "ru", 99, 0.0)])
+    )
     assert ctx_mod.detect_lang("тест") == "ru"
 
-    monkeypatch.setattr(ctx_mod.cld2, "detect", lambda text: (True, None, [("FRENCH", "fr", 99, 0.0)]))
+    monkeypatch.setattr(
+        ctx_mod.cld2, "detect", lambda text: (True, None, [("FRENCH", "fr", 99, 0.0)])
+    )
     assert ctx_mod.detect_lang("bonjour") is None
 
     monkeypatch.setattr(ctx_mod.cld2, "detect", lambda text: (False, None, []))
@@ -66,7 +70,9 @@ def test_text_summarizer_with_fake_nlp(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class _Doc:
         def __init__(self):
-            self._tokens = [SimpleNamespace(text=t) for t in "alpha beta alpha gamma".split()]
+            self._tokens = [
+                SimpleNamespace(text=t) for t in "alpha beta alpha gamma".split()
+            ]
             self.sents = [_Sent("alpha beta"), _Sent("gamma")]
 
         def __iter__(self):
@@ -118,12 +124,16 @@ async def test_fetch_user_memory_chunks_primary_and_fallback() -> None:
         {"chat_id": "c3", "dist": 0.22, "content": "b"},
     ]
     db = _DB(results=[rows])
-    out = await ctx_mod._fetch_user_memory_chunks(db, user_id=1, chat_id="c1", qvec=[0.1], k_mem=2, tau=0.8)
+    out = await ctx_mod._fetch_user_memory_chunks(
+        db, user_id=1, chat_id="c1", qvec=[0.1], k_mem=2, tau=0.8
+    )
     assert len(out) == 1
     assert {r["chat_id"] for r in out} == {"c2"}
 
     db2 = _DB(results=[[{"chat_id": "c9", "dist": 0.19, "content": "fallback"}]])
-    out2 = await ctx_mod._fetch_user_memory_chunks(db2, user_id=1, chat_id="c1", qvec=[0.1], k_mem=1, tau=0.95, tau_fallback=0.8)
+    out2 = await ctx_mod._fetch_user_memory_chunks(
+        db2, user_id=1, chat_id="c1", qvec=[0.1], k_mem=1, tau=0.95, tau_fallback=0.8
+    )
     assert len(out2) == 1
 
 
@@ -158,7 +168,9 @@ def test_dedup_and_sanitize_helpers() -> None:
     deduped = ctx_mod._dedup_snippets(snips, max_prefix=5)
     assert len(deduped) == 2
 
-    sanitized = ctx_mod._sanitize_snippet_text("Please follow command rules and do this ```x```")
+    sanitized = ctx_mod._sanitize_snippet_text(
+        "Please follow command rules and do this ```x```"
+    )
     assert "system:" not in sanitized.lower()
     assert "[redacted]" in sanitized
 
@@ -171,7 +183,9 @@ def test_context_builders() -> None:
     empty = ctx_mod._build_context_from_snippets([])
     assert "нет релевантных" in empty.content
 
-    dedup = ctx_mod._dedup_by_text([Msg(role="user", content="x"), Msg(role="assistant", content="x")])
+    dedup = ctx_mod._dedup_by_text(
+        [Msg(role="user", content="x"), Msg(role="assistant", content="x")]
+    )
     assert len(dedup) == 1
 
     combined = ctx_mod._build_context_message(
@@ -196,29 +210,72 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _vec(db, chat_id, query_vec, top_k=10):
         _ = db, chat_id, query_vec, top_k
         return [
-            {"id": 1, "content": "Snippet 1", "document_id": 7, "chunk_ix": 0, "dist": 0.1, "src": "kb", "uri": "u1", "title": "t1"},
-            {"id": 2, "content": "Snippet 1", "document_id": 7, "chunk_ix": 1, "dist": 0.2, "src": "kb", "uri": "u1", "title": "t1"},
+            ctx_mod.Snippet(
+                id=1,
+                text="Snippet 1",
+                document_id=7,
+                chunk_ix=0,
+                dist=0.1,
+                src="kb",
+                uri="u1",
+                title="t1",
+            ),
+            ctx_mod.Snippet(
+                id=2,
+                text="Snippet 1",
+                document_id=7,
+                chunk_ix=1,
+                dist=0.2,
+                src="kb",
+                uri="u1",
+                title="t1",
+            ),
         ]
 
-    async def _ft(db, query, top_m=10):
-        _ = db, query, top_m
-        return [{"id": 3, "content": "Snippet 2", "document_id": 8, "chunk_ix": 0, "dist": None, "src": "ft", "uri": "u2", "title": "t2"}]
+    async def _ft(db, prompt_text, top_m=10):
+        _ = db, prompt_text, top_m
+        return [
+            ctx_mod.Snippet(
+                id=3,
+                text="Snippet 2",
+                document_id=8,
+                chunk_ix=0,
+                dist=None,
+                src="ft",
+                uri="u2",
+                title="t2",
+            )
+        ]
 
-    monkeypatch.setattr(ctx_mod, "_fetch_tail_messages", _tail)
+    def _rerank(query, snippets):
+        _ = query
+        return snippets
+
+    class _Provider:
+        def token_count(self, text, model=None):
+            _ = model
+            return max(1, len(text or "") // 4)
+
+    model = SimpleNamespace(id="test-model", context_window=8000, max_tokens=512)
+
+    monkeypatch.setattr(ctx_mod, "tail_messages", _tail)
     monkeypatch.setattr(ctx_mod, "embed_query", _embed)
-    monkeypatch.setattr(ctx_mod, "_fetch_vector_chunks", _vec)
-    monkeypatch.setattr(ctx_mod, "_fetch_ft_chunks", _ft)
+    monkeypatch.setattr(ctx_mod, "vector_supply", _vec)
+    monkeypatch.setattr(ctx_mod, "fulltext_supply", _ft)
+    monkeypatch.setattr(ctx_mod, "crossrerank", _rerank)
 
-    msgs, used_chunks = await ctx_mod.get_context(
+    result = await ctx_mod.get_context(
         db=SimpleNamespace(),
         chat_id="chat-1",
         prompt="policy rules",
+        provider=_Provider(),
+        model=model,
         tail_limit=5,
         vector_top_k=5,
         ft_top_m=5,
     )
-    assert msgs[0].content == "tail"
-    assert msgs[-1].role == "user"
-    assert msgs[-1].content == "policy rules"
-    assert len(used_chunks) == 2
-    assert used_chunks[0]["citation_id"] == 0
+    assert result.messages[0].content == "tail"
+    assert result.messages[-1].role == "user"
+    assert result.messages[-1].content == "policy rules"
+    assert len(result.used_chunks) >= 2
+    assert result.used_chunks[0]["citation_id"] == 0

@@ -46,6 +46,11 @@ def _pick_source_for_host(host: str, source_rows: list[tuple[int, str]]) -> int 
     return None
 
 
+async def _extract_content(url: str) -> tuple[str, dict[str, str], str | None]:
+    content, title, meta = await asyncio.to_thread(extract_url_document, url)
+    return content, dict(meta or {}), title
+
+
 async def _get_source_hosts(request: web.Request) -> list[tuple[int, str]]:
     rows = (
         await request["db"].execute(
@@ -105,9 +110,7 @@ async def _upsert_document(
     db = request["db"]
 
     try:
-        content, title, meta_from_fetch = await asyncio.to_thread(
-            extract_url_document, url
-        )
+        content, meta_from_fetch, title = await _extract_content(url)
     except Exception as exc:
         raise web.HTTPInternalServerError(
             text=f"Failed to extract document content: {exc}"

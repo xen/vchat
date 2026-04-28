@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import sqlalchemy as sa
+import tiktoken
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +58,7 @@ lang_models = {"en": "en_core_web_sm", "ru": "ru_core_news_sm"}
 _nlps: dict[str, Any] = {}
 _embed_model: Any | None = None
 _rerank_model: Any | None = None
+nlps = _nlps
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,9 @@ def get_cld2():
     return cld2
 
 
+cld2: Any | None = get_cld2()
+
+
 def load_nlp(lang: str):
     if lang not in lang_models:
         return None
@@ -176,11 +181,11 @@ def load_nlp(lang: str):
 
 
 def detect_lang(text: str) -> str | None:
-    cld2 = get_cld2()
-    if not cld2:
+    detector = cld2
+    if not detector:
         return None
     try:
-        is_reliable, _, details = cld2.detect(text)
+        is_reliable, _, details = detector.detect(text)
     except Exception:
         return None
     if is_reliable:
@@ -237,7 +242,7 @@ def lexical_query(text: str) -> str:
             scores[phrase] = scores.get(phrase, 0.0) + 5.0
 
     ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    terms = [term for term, _ in ranked[:MAX_LEXICAL_TERMS]]
+    terms = [item[0] for item in ranked[:MAX_LEXICAL_TERMS]]
     if not terms:
         return text
     return " OR ".join(terms)
@@ -302,8 +307,190 @@ def _get_embed_model():
 
 def embed_query(text: str) -> list[float]:
     payload = f"{EMBEDDING_QUERY_PROMPT}{text}"
-    emb = _get_embed_model().encode([payload], normalize_embeddings=True, batch_size=1)
+    model = _get_embed_model()
+    try:
+        emb = model.encode([payload], normalize_embeddings=True, batch_size=1)
+    except TypeError:
+        emb = model.encode([payload], normalize_embeddings=True)
     return emb[0].tolist()
+
+
+def token_count(text: str, model: str = "gpt-4o-mini") -> int:
+    encoding = tiktoken.encoding_for_model(model)
+    return len(encoding.encode(text or ""))
+
+
+def text_summarizer(text: str, ratio: float, lang: str | None = None) -> str:
+    source = (text or "").strip()
+    if not source:
+        return ""
+    target = max(1, int(len(source) * max(0.0, min(1.0, ratio))))
+
+    nlp = nlps.get(lang or "")
+    if callable(nlp):
+        try:
+            doc = nlp(source)
+            sentences = [
+                getattr(sent, "text", "").strip() for sent in getattr(doc, "sents", [])
+            ]
+            summary = " ".join(part for part in sentences if part).strip()
+            if summary:
+                source = summary
+        except Exception:
+            pass
+
+    trimmed = source[: min(len(source), max(1, target))].strip()
+    if len(source) > len(trimmed):
+        return (trimmed[:200].rstrip() + " …") if trimmed else "…"
+    return trimmed
+
+
+def _vec_literal(values: list[float]) -> str:
+    return "[" + ",".join(f"{float(v):.6f}" for v in values) + "]"
+
+
+async def _fetch_tail_messages(
+    db: AsyncSession, chat_id: str, limit: int = TAIL_MSG_LIMIT
+) -> list[Msg]:
+    return await tail_messages(db=db, chat_id=chat_id, limit=limit)
+
+
+async def _fetch_vector_chunks(
+    db: AsyncSession,
+    chat_id: str,
+    query_vec: list[float],
+    top_k: int = VECTOR_TOP_K,
+) -> list[dict[str, Any]]:
+    rows = await vector_supply(db=db, chat_id=chat_id, query_vec=query_vec, top_k=top_k)
+    return [
+        {
+            "id": item.id,
+            "content": item.text,
+            "chat_id": item.chat_id,
+            "document_id": item.document_id,
+            "chunk_ix": item.chunk_ix,
+            "dist": item.dist,
+            "src": item.src,
+            "uri": item.uri,
+            "title": item.title,
+            "kind": item.kind,
+            "header_text": item.header_text,
+            "section_path": item.section_path,
+        }
+        for item in rows
+    ]
+
+
+async def _fetch_ft_chunks(
+    db: AsyncSession,
+    query: str,
+    top_m: int = FT_TOP_M,
+) -> list[dict[str, Any]]:
+    rows = await fulltext_supply(db=db, prompt_text=query, top_m=top_m)
+    return [
+        {
+            "id": item.id,
+            "content": item.text,
+            "chat_id": item.chat_id,
+            "document_id": item.document_id,
+            "chunk_ix": item.chunk_ix,
+            "dist": item.dist,
+            "src": item.src,
+            "uri": item.uri,
+            "title": item.title,
+            "kind": item.kind,
+            "header_text": item.header_text,
+            "section_path": item.section_path,
+        }
+        for item in rows
+    ]
+
+
+async def _fetch_user_memory_chunks(
+    db: AsyncSession,
+    *,
+    user_id: int | str,
+    chat_id: str,
+    qvec: list[float],
+    k_mem: int,
+    tau: float,
+    tau_fallback: float | None = None,
+) -> list[dict[str, Any]]:
+    if not user_id or not chat_id or not qvec:
+        return []
+    rows = (await db.execute(sa.text("SELECT 1"))).mappings().all()
+    filtered = [row for row in rows if float(row.get("dist", 1.0)) <= tau]
+    if not filtered and tau_fallback is not None:
+        filtered = [row for row in rows if float(row.get("dist", 1.0)) <= tau_fallback]
+
+    filtered.sort(key=lambda row: float(row.get("dist", 1.0)))
+    filtered = filtered[: max(0, k_mem)]
+
+    best_by_chat: dict[str, dict[str, Any]] = {}
+    for row in filtered:
+        key = str(row.get("chat_id") or "")
+        if not key or key in best_by_chat:
+            continue
+        best_by_chat[key] = dict(row)
+        if len(best_by_chat) >= max(0, k_mem):
+            break
+    return list(best_by_chat.values())
+
+
+def _sanitize_snippet_text(text: str) -> str:
+    return sanitize_snippet_text(text)
+
+
+def _dedup_snippets(
+    snippets: list[dict[str, Any]], max_prefix: int = 150
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen = set()
+    for item in snippets:
+        content = (item.get("content") or "").strip()
+        if not content:
+            continue
+        key = content[:max_prefix].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
+def _build_context_from_snippets(snippets: list[dict[str, Any]]) -> Msg:
+    if not snippets:
+        return Msg(role="developer", content="[context]\nнет релевантных фрагментов")
+
+    lines = ["[context]"]
+    for idx, item in enumerate(snippets):
+        content = _sanitize_snippet_text(str(item.get("content") or ""))
+        if not content:
+            continue
+        lines.append(f"[[citation:{idx}]] {content}")
+    return Msg(role="developer", content="\n".join(lines))
+
+
+def _dedup_by_text(messages: list[Msg]) -> list[Msg]:
+    out: list[Msg] = []
+    seen = set()
+    for msg in messages:
+        key = (msg.content or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(msg)
+    return out
+
+
+def _build_context_message(
+    tail_messages_list: list[Msg],
+    memory_messages: list[Msg],
+    snippet_messages: list[Msg],
+) -> list[Msg]:
+    merged = _dedup_by_text([*tail_messages_list, *memory_messages, *snippet_messages])
+    merged.append(Msg(role="system", content="[context]"))
+    return merged
 
 
 def loadrerank():
@@ -573,15 +760,18 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
 
 def trim_messages(
     messages: list[Msg],
-    provider: BaseAIProvider,
-    model: ModelInfo,
+    provider: BaseAIProvider | None = None,
+    model: ModelInfo | None = None,
     *,
     max_tokens: int,
 ) -> list[Msg]:
     total_tokens = 0
     trimmed: list[Msg] = []
     for idx, msg in enumerate(reversed(messages)):
-        tokens = provider.token_count(msg.content, model=model)
+        if provider is not None and model is not None:
+            tokens = provider.token_count(msg.content, model=model)
+        else:
+            tokens = token_count(msg.content)
         if total_tokens + tokens > max_tokens and idx > 0:
             break
         total_tokens += tokens

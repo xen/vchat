@@ -93,7 +93,7 @@ async def history_list(request):
     date_to_raw = request.query.get("date_to", "").strip()
     guardrail_reason = request.query.get("guardrail_reason", "").strip()
     fingerprint = request.query.get("fingerprint", "").strip()
-    valid_guardrail_reasons = {key for key, _ in GUARDRAIL_FILTER_OPTIONS}
+    valid_guardrail_reasons = {item[0] for item in GUARDRAIL_FILTER_OPTIONS}
     if guardrail_reason not in valid_guardrail_reasons:
         guardrail_reason = ""
     guardrail_filter = request.query.get("guardrail", "").strip() == "1" or bool(

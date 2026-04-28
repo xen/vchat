@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections import deque, namedtuple
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import aiohttp
@@ -97,7 +98,9 @@ class _FakeRedis:
 
 
 def _make_request() -> Any:
-    payload = URLSafeSerializer(chat_views.SECRET_KEY).dumps([1, "chat-1"], salt="vchat")
+    payload = URLSafeSerializer(chat_views.SECRET_KEY).dumps(
+        [1, "chat-1"], salt="vchat"
+    )
     return type(
         "Request",
         (),
@@ -108,7 +111,9 @@ def _make_request() -> Any:
     )()
 
 
-def _patch_websocket(monkeypatch: pytest.MonkeyPatch, incoming: list[_WsMessage]) -> dict[str, Any]:
+def _patch_websocket(
+    monkeypatch: pytest.MonkeyPatch, incoming: list[_WsMessage]
+) -> dict[str, Any]:
     holder: dict[str, Any] = {}
 
     class _FakeWebSocketResponse:
@@ -177,7 +182,10 @@ async def test_live_recommendations_are_relevant_to_document_context() -> None:
     assert all(len(s.strip()) >= 10 for s in suggestions)
 
     keywords = ("отпуск", "перенос", "handbook", "pto")
-    assert any(any(word in suggestion.lower() for word in keywords) for suggestion in suggestions)
+    assert any(
+        any(word in suggestion.lower() for word in keywords)
+        for suggestion in suggestions
+    )
 
 
 @pytest.mark.asyncio
@@ -203,7 +211,9 @@ async def test_live_websocket_user_mentions_document_gets_recommendations_and_so
 
     monkeypatch.setattr(chat_views, "async_session_factory", _FakeSessionFactory(state))
     monkeypatch.setattr(chat_views, "redis", _FakeRedis())
-    monkeypatch.setattr(chat_views, "build_generation_context", lambda app: _live_generation_context())
+    monkeypatch.setattr(
+        chat_views, "build_generation_context", lambda app: _live_generation_context()
+    )
 
     async def _input_ok(*, text: str, provider: Any) -> GuardrailDecision:
         _ = text, provider
@@ -218,17 +228,34 @@ async def test_live_websocket_user_mentions_document_gets_recommendations_and_so
 
     _HistoryMessage = namedtuple("_HistoryMessage", ["role", "content"])
 
-    async def _context(*, db: Any, chat_id: str, prompt: str, vector_top_k: int, ft_top_m: int):
-        _ = db, chat_id, prompt, vector_top_k, ft_top_m
-        return (
-            [_HistoryMessage("user", "Где описан перенос отпуска?")],
-            [
+    async def _context(
+        *,
+        db: Any,
+        chat_id: str,
+        prompt: str,
+        provider: Any,
+        model: Any,
+        vector_top_k: int,
+        ft_top_m: int,
+    ):
+        _ = db, chat_id, prompt, provider, model, vector_top_k, ft_top_m
+        return SimpleNamespace(
+            messages=[_HistoryMessage("user", "Где описан перенос отпуска?")],
+            used_chunks=[
                 {
                     "uri": "https://docs.example.local/employee-handbook/pto-transfer",
                     "title": "Employee Handbook: Перенос отпуска",
                     "chunk_id": 7,
                 }
             ],
+            sources=[
+                {
+                    "uri": "https://docs.example.local/employee-handbook/pto-transfer",
+                    "title": "Employee Handbook: Перенос отпуска",
+                }
+            ],
+            policy={},
+            coverage={},
         )
 
     async def _run_task_noop(*args, **kwargs) -> None:

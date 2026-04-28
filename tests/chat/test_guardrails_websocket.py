@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from collections import namedtuple
+from types import SimpleNamespace
 from typing import Any
 
 import aiohttp
@@ -119,7 +120,9 @@ class _FakeContext:
 
 
 def _make_request() -> Any:
-    payload = URLSafeSerializer(chat_views.SECRET_KEY).dumps([1, "chat-1"], salt="vchat")
+    payload = URLSafeSerializer(chat_views.SECRET_KEY).dumps(
+        [1, "chat-1"], salt="vchat"
+    )
     return type(
         "Request",
         (),
@@ -130,7 +133,9 @@ def _make_request() -> Any:
     )()
 
 
-def _patch_websocket(monkeypatch: pytest.MonkeyPatch, incoming: list[_WsMessage]) -> dict[str, Any]:
+def _patch_websocket(
+    monkeypatch: pytest.MonkeyPatch, incoming: list[_WsMessage]
+) -> dict[str, Any]:
     holder: dict[str, Any] = {}
 
     class _FakeWebSocketResponse:
@@ -168,7 +173,9 @@ def _patch_websocket(monkeypatch: pytest.MonkeyPatch, incoming: list[_WsMessage]
     return holder
 
 
-def _setup_common(monkeypatch: pytest.MonkeyPatch) -> tuple[dict[str, Any], _FakeRedis, list[dict[str, Any]]]:
+def _setup_common(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[dict[str, Any], _FakeRedis, list[dict[str, Any]]]:
     state = {
         "chat_exists": "chat-1",
         "next_insert_id": 0,
@@ -192,7 +199,11 @@ def _setup_common(monkeypatch: pytest.MonkeyPatch) -> tuple[dict[str, Any], _Fak
         _ = args, kwargs
 
     monkeypatch.setattr(chat_views, "run_task", _fake_run_task)
-    monkeypatch.setattr(chat_views, "build_generation_context", lambda app: _FakeContext(_FakeProvider(), _FakeModel()))
+    monkeypatch.setattr(
+        chat_views,
+        "build_generation_context",
+        lambda app: _FakeContext(_FakeProvider(), _FakeModel()),
+    )
 
     async def _fake_metrics(**kwargs) -> None:
         metrics_calls.append(kwargs)
@@ -205,7 +216,9 @@ def _setup_common(monkeypatch: pytest.MonkeyPatch) -> tuple[dict[str, Any], _Fak
 
 
 @pytest.mark.asyncio
-async def test_websocket_blocks_input_by_guardrail(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_websocket_blocks_input_by_guardrail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     state, _redis, metrics_calls = _setup_common(monkeypatch)
     holder = _patch_websocket(
         monkeypatch,
@@ -242,14 +255,19 @@ async def test_websocket_blocks_input_by_guardrail(monkeypatch: pytest.MonkeyPat
     assistant_insert = state["chat_msg_inserts"][-1]
     assert assistant_insert["guardrail_triggered"] is True
     assert assistant_insert["guardrail_stage"] == "input"
-    assert set(assistant_insert["guardrail_reasons"]) == {"passport_ru", "input_blocked"}
+    assert set(assistant_insert["guardrail_reasons"]) == {
+        "passport_ru",
+        "input_blocked",
+    }
 
     assert metrics_calls
     assert metrics_calls[-1]["status"] == "guardrail_blocked_input"
 
 
 @pytest.mark.asyncio
-async def test_websocket_blocks_output_by_guardrail(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_websocket_blocks_output_by_guardrail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     state, _redis, metrics_calls = _setup_common(monkeypatch)
     holder = _patch_websocket(
         monkeypatch,
@@ -271,14 +289,35 @@ async def test_websocket_blocks_output_by_guardrail(monkeypatch: pytest.MonkeyPa
             message="blocked",
         )
 
-    async def _context(*, db: Any, chat_id: str, prompt: str, vector_top_k: int, ft_top_m: int):
-        _ = db, chat_id, prompt, vector_top_k, ft_top_m
-        return [], []
+    async def _context(
+        *,
+        db: Any,
+        chat_id: str,
+        prompt: str,
+        provider: Any,
+        model: Any,
+        vector_top_k: int,
+        ft_top_m: int,
+    ):
+        _ = db, chat_id, prompt, provider, model, vector_top_k, ft_top_m
+        return SimpleNamespace(
+            messages=[],
+            used_chunks=[],
+            sources=[],
+            policy={},
+            coverage={},
+        )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):
         _ = messages, ctx
         yield {"event": "content", "data": "Ответ с номером +7 999 123 45 67"}
-        yield {"event": "assistant_message", "message": {"role": "assistant", "content": "Ответ с номером +7 999 123 45 67"}}
+        yield {
+            "event": "assistant_message",
+            "message": {
+                "role": "assistant",
+                "content": "Ответ с номером +7 999 123 45 67",
+            },
+        }
 
     monkeypatch.setattr(chat_views, "check_input_guardrails", _input_ok)
     monkeypatch.setattr(chat_views, "check_output_guardrails", _output_block)
@@ -295,14 +334,19 @@ async def test_websocket_blocks_output_by_guardrail(monkeypatch: pytest.MonkeyPa
     assistant_insert = state["chat_msg_inserts"][-1]
     assert assistant_insert["guardrail_triggered"] is True
     assert assistant_insert["guardrail_stage"] == "output"
-    assert set(assistant_insert["guardrail_reasons"]) == {"output_blocked", "phone_number_ru"}
+    assert set(assistant_insert["guardrail_reasons"]) == {
+        "output_blocked",
+        "phone_number_ru",
+    }
 
     assert metrics_calls
     assert metrics_calls[-1]["status"] == "guardrail_blocked_output"
 
 
 @pytest.mark.asyncio
-async def test_websocket_no_guardrail_for_regular_message(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_websocket_no_guardrail_for_regular_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     state, _redis, metrics_calls = _setup_common(monkeypatch)
     holder = _patch_websocket(
         monkeypatch,
@@ -320,15 +364,33 @@ async def test_websocket_no_guardrail_for_regular_message(monkeypatch: pytest.Mo
         _ = text, provider
         return GuardrailDecision(allowed=True)
 
-    async def _context(*, db: Any, chat_id: str, prompt: str, vector_top_k: int, ft_top_m: int):
-        _ = db, chat_id, prompt, vector_top_k, ft_top_m
-        return [], []
+    async def _context(
+        *,
+        db: Any,
+        chat_id: str,
+        prompt: str,
+        provider: Any,
+        model: Any,
+        vector_top_k: int,
+        ft_top_m: int,
+    ):
+        _ = db, chat_id, prompt, provider, model, vector_top_k, ft_top_m
+        return SimpleNamespace(
+            messages=[],
+            used_chunks=[],
+            sources=[],
+            policy={},
+            coverage={},
+        )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):
         _ = messages, ctx
         yield {"event": "content", "data": "Привет! Чем помочь?"}
         yield {"event": "usage", "usage": {"total_tokens": 12}}
-        yield {"event": "assistant_message", "message": {"role": "assistant", "content": "Привет! Чем помочь?"}}
+        yield {
+            "event": "assistant_message",
+            "message": {"role": "assistant", "content": "Привет! Чем помочь?"},
+        }
 
     monkeypatch.setattr(chat_views, "check_input_guardrails", _input_ok)
     monkeypatch.setattr(chat_views, "check_output_guardrails", _output_ok)
@@ -340,7 +402,10 @@ async def test_websocket_no_guardrail_for_regular_message(monkeypatch: pytest.Mo
     ws = holder["ws"]
 
     assert any(item.get("partial") is True for item in ws.sent_json)
-    assert any(item.get("partial") is False and item.get("guardrail") is not True for item in ws.sent_json)
+    assert any(
+        item.get("partial") is False and item.get("guardrail") is not True
+        for item in ws.sent_json
+    )
     assert all(item.get("guardrail") is not True for item in ws.sent_json)
 
     assistant_insert = state["chat_msg_inserts"][-1]
@@ -353,12 +418,17 @@ async def test_websocket_no_guardrail_for_regular_message(monkeypatch: pytest.Mo
 
 
 @pytest.mark.asyncio
-async def test_websocket_returns_document_recommendations_and_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_websocket_returns_document_recommendations_and_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     state, _redis, metrics_calls = _setup_common(monkeypatch)
     holder = _patch_websocket(
         monkeypatch,
         [
-            _WsMessage(type=aiohttp.WSMsgType.TEXT, data="Покажи раздел про отпуск из employee-handbook"),
+            _WsMessage(
+                type=aiohttp.WSMsgType.TEXT,
+                data="Покажи раздел про отпуск из employee-handbook",
+            ),
             _WsMessage(type=aiohttp.WSMsgType.ERROR, data=None),
         ],
     )
@@ -373,19 +443,36 @@ async def test_websocket_returns_document_recommendations_and_sources(monkeypatc
 
     _HistoryMessage = namedtuple("_HistoryMessage", ["role", "content"])
 
-    async def _context(*, db: Any, chat_id: str, prompt: str, vector_top_k: int, ft_top_m: int):
-        _ = db, vector_top_k, ft_top_m
+    async def _context(
+        *,
+        db: Any,
+        chat_id: str,
+        prompt: str,
+        provider: Any,
+        model: Any,
+        vector_top_k: int,
+        ft_top_m: int,
+    ):
+        _ = db, provider, model, vector_top_k, ft_top_m
         assert chat_id == "chat-1"
         assert "employee-handbook" in prompt
-        return (
-            [_HistoryMessage("user", prompt)],
-            [
+        return SimpleNamespace(
+            messages=[_HistoryMessage("user", prompt)],
+            used_chunks=[
                 {
                     "uri": "https://docs.example.local/employee-handbook/pto",
                     "title": "Employee Handbook: Paid Time Off",
                     "chunk_id": 101,
                 }
             ],
+            sources=[
+                {
+                    "uri": "https://docs.example.local/employee-handbook/pto",
+                    "title": "Employee Handbook: Paid Time Off",
+                }
+            ],
+            policy={},
+            coverage={},
         )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):
@@ -437,7 +524,10 @@ async def test_websocket_returns_document_recommendations_and_sources(monkeypatc
     ]
 
     assistant_insert = state["chat_msg_inserts"][-1]
-    assert assistant_insert["used_chunks"][0]["uri"] == "https://docs.example.local/employee-handbook/pto"
+    assert (
+        assistant_insert["used_chunks"][0]["uri"]
+        == "https://docs.example.local/employee-handbook/pto"
+    )
     assert assistant_insert["tokens"] == 48
 
     assert metrics_calls
@@ -445,12 +535,17 @@ async def test_websocket_returns_document_recommendations_and_sources(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_websocket_deduplicates_source_links_for_same_document(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_websocket_deduplicates_source_links_for_same_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _state, _redis, _metrics_calls = _setup_common(monkeypatch)
     holder = _patch_websocket(
         monkeypatch,
         [
-            _WsMessage(type=aiohttp.WSMsgType.TEXT, data="Найди контакт службы ИБ в политике безопасности"),
+            _WsMessage(
+                type=aiohttp.WSMsgType.TEXT,
+                data="Найди контакт службы ИБ в политике безопасности",
+            ),
             _WsMessage(type=aiohttp.WSMsgType.ERROR, data=None),
         ],
     )
@@ -465,11 +560,20 @@ async def test_websocket_deduplicates_source_links_for_same_document(monkeypatch
 
     _HistoryMessage = namedtuple("_HistoryMessage", ["role", "content"])
 
-    async def _context(*, db: Any, chat_id: str, prompt: str, vector_top_k: int, ft_top_m: int):
-        _ = db, chat_id, prompt, vector_top_k, ft_top_m
-        return (
-            [_HistoryMessage("user", "Контакты ИБ")],
-            [
+    async def _context(
+        *,
+        db: Any,
+        chat_id: str,
+        prompt: str,
+        provider: Any,
+        model: Any,
+        vector_top_k: int,
+        ft_top_m: int,
+    ):
+        _ = db, chat_id, prompt, provider, model, vector_top_k, ft_top_m
+        return SimpleNamespace(
+            messages=[_HistoryMessage("user", "Контакты ИБ")],
+            used_chunks=[
                 {
                     "uri": "https://kb.example.local/security-policy",
                     "title": "Политика информационной безопасности",
@@ -481,6 +585,14 @@ async def test_websocket_deduplicates_source_links_for_same_document(monkeypatch
                     "chunk_id": 2,
                 },
             ],
+            sources=[
+                {
+                    "uri": "https://kb.example.local/security-policy",
+                    "title": "Политика информационной безопасности",
+                }
+            ],
+            policy={},
+            coverage={},
         )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):
