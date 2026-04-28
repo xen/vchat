@@ -206,5 +206,7 @@ async def get_gigachat_access_token(
             timeout_seconds=float(oauth_timeout_seconds),
         )
         _token_cache = token
-        logger.debug("GigaChat OAuth token refreshed; expires_at=%s", token.expires_at)
+        logger.debug(
+            "GigaChat OAuth session refreshed; expires_at=%s", token.expires_at
+        )
         return token.access_token

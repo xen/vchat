@@ -52,6 +52,7 @@ junit-py*.xml
 .cache
 nosetests.xml
 coverage.xml
+security/
 *,cover
 .hypothesis/
 .python-version
