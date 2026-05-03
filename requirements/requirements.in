@@ -12,6 +12,7 @@ expandvars
 itsdangerous
 Jinja2==3.1.6
 passlib
+bonsai
 psycopg[binary,pool]
 redis
 python-dotenv>=1.2.2
