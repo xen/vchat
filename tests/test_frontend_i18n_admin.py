@@ -90,13 +90,13 @@ async def test_admin_event_list_pagination(monkeypatch: pytest.MonkeyPatch) -> N
     events = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
     db = _FakeDb([2], events=events)
     async def _fake_session(_request):
-        return {"staff_id": 1}
+        return {"user_id": 1}
 
     monkeypatch.setattr(vchat_utils, "get_session", _fake_session)
     request = _FakeRequest({
         "db": db,
         "user": SimpleNamespace(id=1),
-        "auth_session": {"staff_id": 1},
+        "auth_session": {"user_id": 1},
         "rel_url": SimpleNamespace(query={"page": "1"}),
         "path": "/events/",
         "app": SimpleNamespace(router=_FakeRouter({"login": _FakeRouterItem("/login/")})),
@@ -116,7 +116,7 @@ async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -
         return users
 
     async def _fake_get_session(_request):
-        return {"staff_id": 1}
+        return {"user_id": 1}
 
     monkeypatch.setattr(admin_views, "_get_users", _fake_get_users)
     monkeypatch.setattr(admin_views, "get_session", _fake_get_session)
@@ -126,7 +126,7 @@ async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -
     request = _FakeRequest({
         "db": SimpleNamespace(),
         "user": SimpleNamespace(id=1),
-        "auth_session": {"staff_id": 1},
+        "auth_session": {"user_id": 1},
         "path": "/users/",
         "app": SimpleNamespace(router=_FakeRouter({"login": _FakeRouterItem("/login/")})),
     })

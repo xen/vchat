@@ -127,8 +127,9 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
             return SimpleNamespace(id=7, email="u@example.com")
 
     class _ExecuteResult:
-        def scalars(self):
-            return _Scalars()
+    class _ExecuteResult:
+        def scalar(self):
+            return 7
 
     class _DB:
         async def execute(self, stmt):
@@ -140,18 +141,19 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
             self["invalidated"] = True
 
     async def _get_session(_request):
-        return _Session(staff_id=7)
+        return _Session(user_id=7)
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
 
     request = _Request(path="/dashboard")
-    request["db"] = _DB()
+    db = _DB()
+    request["db"] = db
 
     async def _handler(req):
-        return web.Response(text=req["user"].email)
+        return web.Response(text=str(req["user"].id))
 
     resp = await mdw.auth_middleware(request, _handler)
-    assert resp.text == "u@example.com"
+    assert resp.text == "7"
 
 
 @pytest.mark.asyncio
@@ -197,7 +199,8 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
         post_data={"email": "user@example.com", "password": "pass"},
         query={},
     )
-    request["db"] = _DB()
+    db = _DB()
+    request["db"] = db
 
     async def _get_session(_request):
         return {}
@@ -219,6 +222,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     login_resp = await login_fn(request)
     assert isinstance(login_resp, web.HTTPFound)
     assert str(login_resp.location) == "/"
+    assert request["user"].id == 5
 
     class _LogoutSession(dict):
         def invalidate(self):
@@ -285,6 +289,54 @@ async def test_notify_ws_sends_pending_messages(
     notify_fn = user_views.notify_ws.__wrapped__
     await notify_fn(request)
     assert holder["ws"].sent == ['{"type":"flash","body":"ok"}']
+
+
+@pytest.mark.asyncio
+async def test_notify_ws_ignores_pending_redis_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    holder = {}
+
+    class _Redis:
+        async def lrange(self, key, _start, _end):
+            assert key == "flash_toast_42"
+            raise user_views.RedisError("down")
+
+        async def delete(self, key):
+            raise AssertionError(f"unexpected delete for {key}")
+
+    class _FakeWS:
+        def __init__(self):
+            self.sent = []
+            holder["ws"] = self
+
+        async def prepare(self, request):
+            _ = request
+            return self
+
+        async def send_str(self, payload):
+            self.sent.append(payload)
+
+        async def close(self):
+            return None
+
+        def __aiter__(self):
+            async def _gen():
+                yield SimpleNamespace(type=web.WSMsgType.ERROR)
+
+            return _gen()
+
+    async def _forward(ws, request):
+        _ = ws, request
+
+    monkeypatch.setattr(user_views.web, "WebSocketResponse", _FakeWS)
+    monkeypatch.setattr(user_views, "_forward_notifications", _forward)
+
+    request = _Request(app=_App({REDIS_KEY: _Redis()}))
+    request["user"] = SimpleNamespace(id=42)
+    notify_fn = user_views.notify_ws.__wrapped__
+    await notify_fn(request)
+    assert holder["ws"].sent == []
 
 
 @pytest.mark.asyncio

@@ -127,14 +127,14 @@ async def auth_middleware(
         request["auth_session"] = await get_session(request)
         request["user"] = None
 
-        user_id = request["auth_session"].get("staff_id")
+        user_id = request["auth_session"].get("user_id")
         if user_id is not None:
             result = await request["db"].execute(
-                sa.select(User).where(User.id == user_id)
+                sa.select(User.id).where(User.id == user_id)
             )
-            user = result.scalars().first()
-            if user:
-                request["user"] = user
+            found_id = result.scalar()
+            if found_id:
+                request["user"] = UserInfo(id=found_id)
             else:
                 request["auth_session"].invalidate()
     except Exception as e:
@@ -144,6 +144,7 @@ async def auth_middleware(
     return await handler(request)
 
 
+UserInfo = namedtuple("UserInfo", ["id"])
 Msg_type = namedtuple("Msg", ["status", "message"])
 
 

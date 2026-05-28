@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <title>{% block title %}{%if page_title %}{{ page_title }}{%else%}{{ meta.title }}{%endif%}{% endblock %} — vchat</title>
+  {% block meta -%}
+    {% if meta.description %}<meta name="description" content="{{ meta.description }}">{% endif %}
+    {% if meta.author %}<meta name="author" content="{{ meta.author }}">{% endif %}
+  {% endblock -%}
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+  <link rel="icon" type="image/png" href="/static/favicon.ico">
+  <link href="/static/assets/app.css?v={{ static_version }}" rel="stylesheet" type="text/css">
+
+  {% block extramedia %}{% endblock %}
+  <script>
+    try {
+      const config = JSON.parse(localStorage.getItem("CONF"));
+      if (config && config.theme && config.theme !== "system") {
+        document.documentElement.setAttribute("data-theme", config.theme);
+      }
+    } catch (e) {}
+  </script>
+
+</head>
+<body {% block body_id %}{% endblock %}>
+{% if not debug %}
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-K7593Q73"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+{% endif %}
+
+<div class="h-screen w-full overflow-hidden">
+  {% block content %}{% endblock %}
+</div>
+
+{% block extra_bottom %}{% endblock %}
+</body>
+</html>

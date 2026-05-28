@@ -194,6 +194,42 @@ async def test_user_forward_notifications_covers_message_paths() -> None:
     assert pubsub.unsub == "user_7"
 
 
+@pytest.mark.asyncio
+async def test_user_forward_notifications_handles_redis_disconnect() -> None:
+    closed = []
+
+    class _PubSub:
+        async def subscribe(self, channel):
+            self.channel = channel
+
+        async def listen(self):
+            raise user_views.RedisError("boom")
+            yield
+
+        async def unsubscribe(self, channel):
+            raise user_views.RedisError(f"unsubscribe {channel}")
+
+        async def close(self):
+            raise user_views.RedisError("close")
+
+    request = _Req(
+        {
+            "user": SimpleNamespace(id=9),
+            "app": {user_views.REDIS_KEY: SimpleNamespace(pubsub=lambda: _PubSub())},
+        }
+    )
+
+    class _WS:
+        closed = False
+
+        async def close(self):
+            closed.append(True)
+            self.closed = True
+
+    await user_views._forward_notifications(_WS(), request)  # type: ignore[arg-type]
+    assert closed == [True]
+
+
 async def _awaitable_append(items: list[str], payload: str):
     items.append(payload)
     await asyncio.sleep(0)

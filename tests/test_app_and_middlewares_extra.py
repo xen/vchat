@@ -220,7 +220,6 @@ async def test_init_jinja_and_create_app(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(app_mod, "validate_multiprocess_setup", lambda: None)
     monkeypatch.setattr(app_mod, "redis_from_url", lambda _url: _Redis())
     monkeypatch.setattr(app_mod, "get_middlewares", lambda _cfg: [])
-    monkeypatch.setattr(app_mod, "setup_tus", lambda *args, **kwargs: None)
     monkeypatch.setattr(app_mod, "init_settings_cache", _init_settings_cache)
     monkeypatch.setattr(app_mod.aiohttp_jinja2, "setup", lambda *args, **kwargs: None)
     monkeypatch.setattr(app_mod.aiohttp_jinja2, "get_env", lambda app: _Env())

@@ -114,16 +114,13 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
             return self._user
 
     class FakeExecResult:
-        def __init__(self, user):
-            self._user = user
-
-        def scalars(self):
-            return FakeScalar(self._user)
+        def scalar(self):
+            return 10
 
     class FakeDB:
         async def execute(self, stmt):
             assert isinstance(stmt, sa.sql.Select)
-            return FakeExecResult(SimpleNamespace(id=10, email="u@example"))
+            return FakeExecResult()
 
     class FakeAuthSession(dict):
         invalidated = False
@@ -131,7 +128,7 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
         def invalidate(self):
             self.invalidated = True
 
-    session = FakeAuthSession(staff_id=10)
+    session = FakeAuthSession(user_id=10)
 
     async def _get_session(_request):
         return session

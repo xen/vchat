@@ -1,6 +1,9 @@
 import asyncio
 import contextlib
+import logging
+
 from aiohttp import web
+from redis.exceptions import RedisError
 
 from vchat.app_keys import REDIS_KEY
 from vchat.utils import login_required
@@ -9,15 +12,16 @@ __all__ = [
     "notify_ws",
 ]
 
+logger = logging.getLogger(__name__)
+
 
 async def _forward_notifications(
     ws: web.WebSocketResponse, request: web.Request
 ) -> None:
-    user = request["user"]
-    channel = f"user_{user.id}"
+    channel = f"user_{request['user'].id}"
     pubsub = request.app[REDIS_KEY].pubsub()
-    await pubsub.subscribe(channel)
     try:
+        await pubsub.subscribe(channel)
         async for message in pubsub.listen():
             if message.get("type") != "message":
                 continue
@@ -27,9 +31,15 @@ async def _forward_notifications(
             if not data:
                 continue
             await ws.send_str(data)
+    except RedisError as exc:
+        logger.warning("Notifications stream unavailable for %s: %s", channel, exc)
+        if not getattr(ws, "closed", False):
+            await ws.close()
     finally:
-        await pubsub.unsubscribe(channel)
-        await pubsub.close()
+        with contextlib.suppress(RedisError):
+            await pubsub.unsubscribe(channel)
+        with contextlib.suppress(RedisError):
+            await pubsub.close()
 
 
 @login_required()
@@ -37,13 +47,16 @@ async def notify_ws(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    user = request["user"]
     redis = request.app[REDIS_KEY]
-    key = f"flash_toast_{user.id}"
+    key = f"flash_toast_{request['user'].id}"
 
     # Drain pending flash messages for redirects/page reloads.
-    pending_messages = await redis.lrange(key, 0, -1)
-    await redis.delete(key)
+    try:
+        pending_messages = await redis.lrange(key, 0, -1)
+        await redis.delete(key)
+    except RedisError as exc:
+        logger.warning("Pending notifications unavailable for %s: %s", key, exc)
+        pending_messages = []
     for payload in pending_messages:
         if isinstance(payload, bytes):
             payload = payload.decode("utf-8", errors="ignore")
@@ -61,7 +74,7 @@ async def notify_ws(request: web.Request) -> web.WebSocketResponse:
                 break
     finally:
         forward_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
+        with contextlib.suppress(asyncio.CancelledError, RedisError):
             await forward_task
         await ws.close()
 

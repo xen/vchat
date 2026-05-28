@@ -76,7 +76,7 @@ async def test_project_edit_get_builds_form_with_initial_data(
     captured = {}
 
     async def _session(_request):
-        return {"staff_id": 1}
+        return {"user_id": 1}
 
     def _workspace_form(**kwargs):
         captured.update(kwargs)
@@ -113,7 +113,7 @@ async def test_project_edit_post_validates_and_redirects(
     req.app = _App({"project_edit": _Route("/edit")})
 
     async def _session(_request):
-        return {"staff_id": 1}
+        return {"user_id": 1}
 
     class _Form:
         title = SimpleNamespace(data="T")
@@ -189,7 +189,7 @@ async def test_project_source_settings_post_site_rules(
     req["user"] = SimpleNamespace(id=1)
 
     async def _session(_request):
-        return {"staff_id": 1}
+        return {"user_id": 1}
 
     class _Form:
         type = SimpleNamespace(data="site")
@@ -250,7 +250,7 @@ async def test_project_topics_post_triggers_delete_event(
     req["user"] = SimpleNamespace(id=1)
 
     async def _session(_request):
-        return {"staff_id": 1}
+        return {"user_id": 1}
 
     class _Form:
         topics = SimpleNamespace(data="")
