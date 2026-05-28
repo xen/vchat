@@ -35,7 +35,7 @@ openai
 openai-guardrails
 spacy
 pycld2
-transformers>=4.58.0,<5
+transformers>=4.44.0,<5
 sentence-transformers
 einops
 pgvector

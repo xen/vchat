@@ -17,6 +17,8 @@ from vchat.utils import (
 
 from vchat.middlewares import UserInfo
 
+from . import forms
+
 __all__ = [
     "login",
     "logout",

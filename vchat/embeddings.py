@@ -6,33 +6,49 @@ from sentence_transformers import SentenceTransformer
 from vchat.settings import config
 
 
-def _ensure_default_rope_init_function() -> None:
-    """Backfill missing 'default' rope type for older/newer transformers variants."""
+def _patch_transformers_compat() -> None:
+    """Patch transformers API changes that break Giga-Embeddings-instruct model loading."""
     try:
         from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+        import transformers.modeling_utils as mu
     except Exception:
         return
 
-    if "default" in ROPE_INIT_FUNCTIONS:
-        return
+    # 1. Inject missing 'default' RoPE — models with rope_scaling=None need standard
+    #    unscaled positional encoding; newer transformers removed 'default' from the registry.
+    if "default" not in ROPE_INIT_FUNCTIONS:
+        def _default_rope(config, device=None, seq_len=None, **kwargs):
+            import torch
 
-    fallback_key = None
-    for candidate in ("linear", "dynamic", "base", "standard"):
-        if candidate in ROPE_INIT_FUNCTIONS:
-            fallback_key = candidate
-            break
+            base = getattr(config, "rope_theta", 10000.0)
+            partial = getattr(config, "partial_rotary_factor", 1.0)
+            head_dim = getattr(
+                config,
+                "head_dim",
+                config.hidden_size // config.num_attention_heads,
+            )
+            dim = int(head_dim * partial)
+            inv_freq = 1.0 / (
+                base
+                ** (torch.arange(0, dim, 2, dtype=torch.int64).float().to(device) / dim)
+            )
+            return inv_freq, 1.0
 
-    if fallback_key is None and ROPE_INIT_FUNCTIONS:
-        fallback_key = next(iter(ROPE_INIT_FUNCTIONS.keys()))
+        ROPE_INIT_FUNCTIONS["default"] = _default_rope
+        logging.warning("ROPE_INIT_FUNCTIONS: injected 'default' (standard unscaled RoPE)")
 
-    if fallback_key is None:
-        return
+    # 2. Guard _move_missing_keys_from_meta_to_device against models that don't have
+    #    all_tied_weights_keys set (GigarEmbedModel sub-model init ordering issue).
+    original_move = getattr(mu.PreTrainedModel, "_move_missing_keys_from_meta_to_device", None)
+    if original_move and not getattr(original_move, "_patched_compat", False):
+        def _safe_move(self, *args, **kwargs):
+            if not hasattr(self, "all_tied_weights_keys"):
+                self.all_tied_weights_keys = getattr(self, "_tied_weights_keys", None) or {}
+            return original_move(self, *args, **kwargs)
 
-    ROPE_INIT_FUNCTIONS["default"] = ROPE_INIT_FUNCTIONS[fallback_key]
-    logging.warning(
-        "ROPE_INIT_FUNCTIONS has no 'default'; aliased it to '%s' for model compatibility",
-        fallback_key,
-    )
+        _safe_move._patched_compat = True
+        mu.PreTrainedModel._move_missing_keys_from_meta_to_device = _safe_move
+        logging.warning("PreTrainedModel: patched _move_missing_keys_from_meta_to_device for all_tied_weights_keys")
 
 
 def _detect_best_device() -> str:
@@ -86,7 +102,7 @@ def load_embedding_model(
     device: str | None = None,
     tokenizer_kwargs: dict[str, Any] | None = None,
 ) -> SentenceTransformer:
-    _ensure_default_rope_init_function()
+    _patch_transformers_compat()
     resolved_device = resolve_embedding_device(device)
     return SentenceTransformer(
         config["embedding_model_dir"],

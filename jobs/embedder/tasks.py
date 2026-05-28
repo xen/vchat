@@ -5,6 +5,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, List
 
+import redis
 import sqlalchemy as sa
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -14,6 +15,10 @@ from jobs.db import create_sync_engine
 from vchat.embeddings import load_embedding_model, resolve_embedding_device
 from vchat.models import ChatMsg, Chunk, Document, Source
 from vchat.settings import config
+
+REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
+EMBED_STATS_KEY = "vchat:embed:chunk_durations"
+EMBED_STATS_MAX = 500  # сколько последних замеров хранить
 
 # Lazy, per-process singleton
 _embed_model = None
@@ -651,6 +656,17 @@ def _process_next_pending_chunk(session: Session) -> bool:
         duration,
         remaining,
     )
+
+    try:
+        r = redis.from_url(REDIS_URL)
+        pipe = r.pipeline()
+        pipe.lpush(EMBED_STATS_KEY, f"{duration:.4f}")
+        pipe.ltrim(EMBED_STATS_KEY, 0, EMBED_STATS_MAX - 1)
+        pipe.execute()
+        r.close()
+    except Exception:
+        logging.debug("Failed to write embed timing to Redis", exc_info=True)
+
     return True
 
 

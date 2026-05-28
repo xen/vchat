@@ -66,6 +66,7 @@ def setup_routes(app: web.Application) -> None:
         name="project_document_content",
     )
     add("GET", "/stats", projects.project_stats, name="project_stats")
+    add("GET", "/progress", projects.project_progress, name="project_progress")
     add("*", "/files", projects.project_files, name="project_files")
     add(
         "*",

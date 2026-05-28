@@ -30,7 +30,7 @@ from vchat.ai_providers import (
     is_provider_available,
     resolve_ai_settings,
 )
-from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
@@ -75,7 +75,10 @@ __all__ = [
     "public_widget_chat",
     "project_files",
     "file_document",
+    "project_progress",
 ]
+
+EMBED_STATS_KEY = "vchat:embed:chunk_durations"
 
 
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
@@ -1563,4 +1566,136 @@ async def file_document(request):
         "project": _project_context(request),
         "files_rows": files_rows,
         "current_document": document,
+    }
+
+
+@meta(title=_("Прогресс индексации"))
+@login_required()
+@aiohttp_jinja2.template("projects/progress.html")
+async def project_progress(request):
+    db_session = request["db"]
+    r = request.app[REDIS_KEY]
+
+    # ---- Статистика по документам из БД ----
+    chunk_counts_sq = (
+        sa.select(
+            Chunk.document_id,
+            sa.func.count(Chunk.id).label("chunk_count"),
+        )
+        .where(Chunk.document_id.isnot(None))
+        .group_by(Chunk.document_id)
+        .subquery()
+    )
+
+    overall_row = (
+        await db_session.execute(
+            sa.select(
+                sa.func.count(Document.id).label("total"),
+                sa.func.count(Document.id)
+                .filter(sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0)
+                .label("done"),
+            )
+            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.document_id == Document.id)
+            .where(Document.is_ignored.is_(False))
+            .where(Document.source_id.isnot(None))
+        )
+    ).one()
+
+    total_docs = overall_row.total or 0
+    done_docs = overall_row.done or 0
+    remaining_docs = total_docs - done_docs
+    pct = round(done_docs / total_docs * 100) if total_docs else 0
+
+    # Статистика по источникам
+    source_rows = (
+        await db_session.execute(
+            sa.select(
+                Source.id,
+                Source.title,
+                Source.type,
+                sa.func.count(Document.id).label("total"),
+                sa.func.count(Document.id)
+                .filter(sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0)
+                .label("done"),
+            )
+            .outerjoin(
+                Document,
+                sa.and_(
+                    Document.source_id == Source.id,
+                    Document.is_ignored.is_(False),
+                ),
+            )
+            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.document_id == Document.id)
+            .group_by(Source.id, Source.title, Source.type)
+            .order_by(Source.id)
+        )
+    ).all()
+
+    sources = []
+    for row in source_rows:
+        src_total = row.total or 0
+        src_done = row.done or 0
+        src_remaining = src_total - src_done
+        src_pct = round(src_done / src_total * 100) if src_total else 0
+        sources.append(
+            {
+                "id": row.id,
+                "title": row.title,
+                "type": row.type,
+                "total": src_total,
+                "done": src_done,
+                "remaining": src_remaining,
+                "pct": src_pct,
+            }
+        )
+
+    # ---- Среднее время обработки из Redis ----
+    raw_times = await r.lrange(EMBED_STATS_KEY, 0, -1)
+    durations = []
+    for v in raw_times:
+        try:
+            durations.append(float(v))
+        except (ValueError, TypeError):
+            pass
+
+    avg_chunk_sec = sum(durations) / len(durations) if durations else None
+
+    avg_chunks_row = (
+        await db_session.execute(
+            sa.select(sa.func.avg(chunk_counts_sq.c.chunk_count)).select_from(
+                chunk_counts_sq
+            )
+        )
+    ).scalar()
+    avg_chunks_per_doc = float(avg_chunks_row) if avg_chunks_row else None
+
+    avg_doc_sec = None
+    eta_sec = None
+    if avg_chunk_sec is not None and avg_chunks_per_doc:
+        avg_doc_sec = avg_chunk_sec * avg_chunks_per_doc
+        eta_sec = avg_doc_sec * remaining_docs
+
+    def fmt_duration(sec):
+        if sec is None:
+            return None
+        sec = int(sec)
+        if sec < 60:
+            return f"{sec}с"
+        if sec < 3600:
+            return f"{sec // 60}м {sec % 60}с"
+        h = sec // 3600
+        m = (sec % 3600) // 60
+        return f"{h}ч {m}м"
+
+    return {
+        "project": _project_context(request),
+        "total_docs": total_docs,
+        "done_docs": done_docs,
+        "remaining_docs": remaining_docs,
+        "pct": pct,
+        "sources": sources,
+        "avg_doc_sec": round(avg_doc_sec, 1) if avg_doc_sec else None,
+        "avg_doc_fmt": fmt_duration(avg_doc_sec),
+        "eta_fmt": fmt_duration(eta_sec),
+        "samples": len(durations),
     }
