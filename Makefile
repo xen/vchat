@@ -83,6 +83,7 @@ deploy: venv/bin/activate  ## deploy on server project
 	  echo "Installing Linux-specific requirements..."; \
 	  . venv/bin/activate && uv pip install -r requirements/req_linux.txt --link-mode=copy; \
 	fi
+	. venv/bin/activate && python entry.py --model
 	. venv/bin/activate && alembic upgrade head
 
 tunnel:  ## make tunnel to prod database, use `psql postgresql://localhost:54327 -d vchat` to connect
