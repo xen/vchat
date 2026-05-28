@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+import jinja2
 import pytest
 from aiohttp import web
 
@@ -57,6 +58,38 @@ class _Req(dict):
             return self[name]
         except KeyError as exc:
             raise AttributeError(name) from exc
+
+
+def test_document_content_template_renders_structure_items() -> None:
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(
+            str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
+        )
+    )
+    template = env.get_template("projects/document_content.html")
+    rendered = template.render(
+        document=SimpleNamespace(
+            title="Doc",
+            uri=None,
+            status="indexed",
+            meta={},
+            content="body",
+        ),
+        document_structure=[
+            {
+                "type": "list",
+                "level": None,
+                "ordered": False,
+                "section_path": "",
+                "items": ["one", "two"],
+                "content": "",
+            }
+        ],
+        document_outline=[],
+        document_extraction={},
+        document_chunks=[],
+    )
+    assert "one\ntwo" in rendered
 
 
 @pytest.mark.asyncio

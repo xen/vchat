@@ -15,7 +15,7 @@ from vchat.utils import (
     meta,
 )
 
-from . import forms
+from vchat.middlewares import UserInfo
 
 __all__ = [
     "login",
@@ -73,8 +73,8 @@ async def login(request):
         # to guard against Session Fixation attacks!
 
         session = await new_session(request)
-        session["staff_id"] = user.id
-        request["user"] = user
+        session["user_id"] = user.id
+        request["user"] = UserInfo(id=user.id)
         await admin_event("user_login", request)
 
         target = "index"

@@ -88,8 +88,8 @@
                         <span class="text-xs opacity-70">{{ block.section_path }}</span>
                         {% endif %}
                     </div>
-                    {% if block.items %}
-                    <div class="text-sm whitespace-pre-wrap">{{ block.items|join('\n') }}</div>
+                    {% if block.get('items') %}
+                    <div class="text-sm whitespace-pre-wrap">{{ block.get('items')|join('\n') }}</div>
                     {% else %}
                     <div class="text-sm whitespace-pre-wrap break-words">{{ block.content }}</div>
                     {% endif %}
