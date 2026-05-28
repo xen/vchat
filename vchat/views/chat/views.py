@@ -1035,9 +1035,7 @@ async def websocket(request):
                     chunks_count=len(used_chunks),
                     response_size=len(total_content.encode("utf-8")),
                     response_chars=len(total_content),
-                    guardrail_status=(
-                        "blocked" if guardrail_blocked else "passed"
-                    ),
+                    guardrail_status=("blocked" if guardrail_blocked else "passed"),
                     guardrail_triggered=guardrail_blocked,
                     guardrail_reasons=(
                         sorted(guardrail_reasons) if guardrail_reasons else []

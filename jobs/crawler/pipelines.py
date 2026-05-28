@@ -99,7 +99,7 @@ class DatabasePipeline:
                     index_document.delay(document.id)
                 except Exception as embed_exc:
                     spider.logger.error(
-                        f"Failed to schedule chunking for %s: %s",
+                        "Failed to schedule chunking for %s: %s",
                         url,
                         embed_exc,
                         exc_info=True,
