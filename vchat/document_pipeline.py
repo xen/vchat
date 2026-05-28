@@ -391,7 +391,8 @@ def _strip_boilerplate(soup: BeautifulSoup) -> int:
     return removed
 
 
-def _html_to_markdown_like(body: str) -> tuple[str, str | None, int]:
+def _html_to_markdown_like(body: str, all_docs_markdown: list[str] = None) -> tuple[str, str | None, int, list[str]]:
+    from vchat.document_shingles import find_repeated_shingles, remove_shingles
     soup = BeautifulSoup(body, "html.parser")
     boilerplate_removed = _strip_boilerplate(soup)
     title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
@@ -457,7 +458,12 @@ def _html_to_markdown_like(body: str) -> tuple[str, str | None, int]:
             continue
         lines.append(text)
         lines.append("")
-    return normalize_markdown("\n".join(lines)), title, boilerplate_removed
+    markdown = normalize_markdown("\n".join(lines))
+    removed_shingles = []
+    if all_docs_markdown:
+        shingles = find_repeated_shingles(all_docs_markdown + [markdown], k=10, min_freq=0.5)
+        markdown, removed_shingles = remove_shingles(markdown, shingles)
+    return markdown, title, boilerplate_removed, removed_shingles
 
 
 def _docling_markdown_from_source(source: str) -> tuple[str | None, str | None]:
@@ -491,7 +497,9 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
     response.raise_for_status()
     body = response.text
     content_type = response.headers.get("Content-Type")
-    markdown, fallback_title, removed = _html_to_markdown_like(body)
+    # TODO: собрать all_docs_markdown для шинглового анализа (эвристика)
+    all_docs_markdown = []  # Для MVP: пусто, внедрить сборку при батч-обработке
+    markdown, fallback_title, removed, removed_shingles = _html_to_markdown_like(body, all_docs_markdown=all_docs_markdown)
     normalized, normalized_title, meta = build_document_payload(
         content=markdown,
         title=fallback_title,
@@ -502,6 +510,10 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
         doc_type=doc_type,
     )
     meta["extraction"]["boilerplate_removed_count"] = removed
+    # Визуализация удалённых шинглов для шаблона
+    if removed_shingles:
+        from vchat.document_shingles import visualize_removed_blocks
+        meta["removed_shingles"] = visualize_removed_blocks(removed_shingles)
     return normalized, normalized_title, meta
 
 

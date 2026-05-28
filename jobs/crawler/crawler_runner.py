@@ -5,6 +5,7 @@ Usage: python -m jobs.crawler.crawler_runner <url> <source_id> [page_limit]
 """
 
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -26,6 +27,9 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_CRAWLER_USER_AGENT,
 )
+from vchat.logging_utils import configure_json_logging
+
+configure_json_logging(logging.INFO)
 
 if len(sys.argv) < 3:
     print(

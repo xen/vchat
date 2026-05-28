@@ -12,12 +12,14 @@ from passlib.hash import pbkdf2_sha512
 
 from vchat.app import create_app
 from vchat.db import async_session_factory
+from vchat.logging_utils import configure_json_logging
 from vchat.models import User
 from vchat.settings import config
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logging.getLogger("aiohttp").setLevel(logging.INFO)
+configure_json_logging(logging.INFO)
 
 try:
     import uvloop

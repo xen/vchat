@@ -27,7 +27,8 @@ VEC_DIM = int(config.get("vec_dim", 2048) or 2048)
 def get_embed_model() -> Any:
     global _embed_model
     if _embed_model is None:
-        resolved_device = resolve_embedding_device()
+        # Жёстко форсируем CPU для embedder worker
+        resolved_device = resolve_embedding_device("cpu")
         logging.info("Loading embedding model on device: %s", resolved_device)
         _embed_model = load_embedding_model(device=resolved_device)
         logging.info("Embedding model loaded on device: %s", resolved_device)
@@ -623,9 +624,12 @@ def _process_next_pending_chunk(session: Session) -> bool:
         chunk_size,
     )
 
+
     vec = make_embed_vector(chunk.text)
     chunk.embedding = vec
     session.flush()
+    # Идемпотентность: коммитим каждый чанк сразу
+    session.commit()
 
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(

@@ -22,9 +22,9 @@ except ImportError:
     pass
 
 # Enable or disable extensions
-# EXTENSIONS = {
-#    "scrapy.extensions.telnet.TelnetConsole": None,
-# }
+EXTENSIONS = {
+    "jobs.crawler.logging.CrawlerRequestLogExtension": 500,
+}
 
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 # CONCURRENT_REQUESTS = 32

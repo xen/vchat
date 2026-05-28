@@ -75,23 +75,24 @@
                 {% for block in document_structure %}
                 <div class="rounded-box border border-base-300 bg-base-200/30 p-4">
                     <div class="flex flex-wrap items-center gap-2 mb-2">
-                        <span class="badge badge-primary badge-sm">{{ block.type }}</span>
-                        {% if block.level %}
-                        <span class="badge badge-outline badge-sm">H{{ block.level }}</span>
+                        <span class="badge badge-primary badge-sm">{{ block.get('type') }}</span>
+                        {% if block.get('level') %}
+                        <span class="badge badge-outline badge-sm">H{{ block.get('level') }}</span>
                         {% endif %}
-                        {% if block.ordered is sameas true %}
+                        {% if block.get('ordered') is sameas true %}
                         <span class="badge badge-outline badge-sm">ordered</span>
-                        {% elif block.ordered is sameas false %}
+                        {% elif block.get('ordered') is sameas false %}
                         <span class="badge badge-outline badge-sm">unordered</span>
                         {% endif %}
-                        {% if block.section_path %}
-                        <span class="text-xs opacity-70">{{ block.section_path }}</span>
+                        {% if block.get('section_path') %}
+                        <span class="text-xs opacity-70">{{ block.get('section_path') }}</span>
                         {% endif %}
                     </div>
-                    {% if block.items %}
-                    <div class="text-sm whitespace-pre-wrap">{{ block.items|join('\n') }}</div>
+                    {% set block_items = block.get('items') %}
+                    {% if block_items and block_items is sequence and block_items is not string %}
+                    <div class="text-sm whitespace-pre-wrap">{{ block_items|join('\n') }}</div>
                     {% else %}
-                    <div class="text-sm whitespace-pre-wrap break-words">{{ block.content }}</div>
+                    <div class="text-sm whitespace-pre-wrap break-words">{{ block.get('content') }}</div>
                     {% endif %}
                 </div>
                 {% endfor %}
@@ -130,7 +131,21 @@
                             <td class="align-top text-xs max-w-48 whitespace-pre-wrap">{{ chunk.header_text or '—' }}</td>
                             <td class="align-top">{{ chunk.token_count or 0 }}</td>
                             <td class="align-top">
-                                <div class="max-w-3xl whitespace-pre-wrap break-words text-xs">{{ chunk.text }}</div>
+                                <div class="max-w-3xl whitespace-pre-wrap break-words text-xs">
+                                    {{ chunk.text }}
+                                    {% if loop.index0 > 0 and document_chunks[loop.index0-1].end_offset is not none and chunk.start_offset is not none %}
+                                        {% set overlap = document_chunks[loop.index0-1].end_offset - chunk.start_offset %}
+                                        {% if overlap > 0 %}
+                                            <div class="mt-1 text-amber-700 text-xs">overlap с предыдущим: {{ overlap }} символов</div>
+                                        {% endif %}
+                                    {% endif %}
+                                    {% if loop.index0 < document_chunks|length - 1 and chunk.end_offset is not none and document_chunks[loop.index0+1].start_offset is not none %}
+                                        {% set overlap_next = chunk.end_offset - document_chunks[loop.index0+1].start_offset %}
+                                        {% if overlap_next > 0 %}
+                                            <div class="mt-1 text-amber-700 text-xs">overlap со следующим: {{ overlap_next }} символов</div>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
                                 {% if chunk.entity_terms %}
                                 <div class="mt-2 flex flex-wrap gap-1">
                                     {% for term in chunk.entity_terms[:12] %}
@@ -153,6 +168,11 @@
     <div class="card bg-base-100 shadow border border-base-300">
         <div class="card-body gap-4">
             <h3 class="card-title text-base">Нормализованное содержимое</h3>
+            {% if document.meta.removed_shingles %}
+                <div class="mb-2">
+                    {{ document.meta.removed_shingles|safe }}
+                </div>
+            {% endif %}
             <pre class="whitespace-pre-wrap break-words text-xs bg-base-200/40 rounded-box p-4 overflow-x-auto">{{ document.content }}</pre>
         </div>
     </div>

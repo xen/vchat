@@ -1,9 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-DEPLOY_HOST="vchat.com"
 DEPLOY_PATH="/var/www/vchat"
-PORT="${PORT:-9000}"
+PORT="9001"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 NGINX_SITE="/etc/nginx/sites-available/vchat"
 NGINX_SITE_LINK="/etc/nginx/sites-enabled/vchat"
@@ -30,6 +29,36 @@ make frontend
 
 echo "Deploying backend (make deploy)..."
 make deploy
+
+mkdir -p "$DEPLOY_PATH/data" "$DEPLOY_PATH/media" "$DEPLOY_PATH/static"
+
+APP_PYTHON="$DEPLOY_PATH/venv/bin/python"
+PUBLIC_URL="$("$APP_PYTHON" - <<'PY'
+from vchat.settings import config
+
+print(config.get("public_url", "").rstrip("/"))
+PY
+)"
+
+if [ -z "$PUBLIC_URL" ]; then
+  echo "public_url must be set in configuration."
+  exit 1
+fi
+
+DEPLOY_HOST="$(PUBLIC_URL="$PUBLIC_URL" python3 - <<'PY'
+from urllib.parse import urlparse
+import os
+
+public_url = os.environ["PUBLIC_URL"]
+host = urlparse(public_url).hostname
+print(host or "")
+PY
+)"
+
+if [ -z "$DEPLOY_HOST" ]; then
+  echo "Failed to derive deployment host from public_url=$PUBLIC_URL"
+  exit 1
+fi
 
 mkdir -p "$SYSTEMD_DIR"
 
@@ -85,13 +114,13 @@ EOF
 cat <<EOF | sudo tee "$NGINX_SITE" >/dev/null
 server {
     listen 80;
-    server_name $DEPLOY_HOST www.$DEPLOY_HOST;
-    return 301 https://www.$DEPLOY_HOST\$request_uri;
+    server_name $DEPLOY_HOST;
+    return 301 https://$DEPLOY_HOST\$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name $DEPLOY_HOST www.$DEPLOY_HOST;
+    server_name $DEPLOY_HOST;
 
     ssl_certificate /etc/letsencrypt/live/$DEPLOY_HOST/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DEPLOY_HOST/privkey.pem;
@@ -160,4 +189,4 @@ echo "journalctl --user -u vchat-celery.service -f"
 echo "journalctl --user -u vchat-embedder.service -f"
 
 echo "Deployment of vchat completed."
-echo "Application is available at https://www.vchat.com/"
+echo "Application is available at $PUBLIC_URL/"

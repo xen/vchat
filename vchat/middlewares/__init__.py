@@ -185,11 +185,8 @@ async def force_https_location_middleware(request, handler):
 
 
 def get_middlewares(config):
-    ORIGINS = [
-        "https://www.vchat.com",
-        "https://vchat.com",
-        "https://local.vchat.com",
-    ]
+    configured_origins = config.get("allowed_origins") or [config.get("public_url", "")]
+    origins = tuple(origin for origin in configured_origins if origin)
     CORS_METHODS = ("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD")
     CORS_EXPOSE_HEADERS = (
         "tus-resumable",
@@ -202,7 +199,7 @@ def get_middlewares(config):
     access_control_middleware = (
         cors_middleware(
             allow_all=True,
-            origins=ORIGINS,
+            origins=origins,
             # allow_credentials=True,
             allow_methods=CORS_METHODS,
             expose_headers=CORS_EXPOSE_HEADERS,

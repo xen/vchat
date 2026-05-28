@@ -6,6 +6,7 @@ from vchat.document_pipeline import extract_url_document, normalize_title_candid
 from vchat.document_types import guess_document_type
 from vchat.models.data import Document
 from vchat.settings import config
+from jobs.embedder.tasks import index_document
 
 
 class DatabasePipeline:
@@ -93,6 +94,16 @@ class DatabasePipeline:
 
                 session.commit()
                 spider.logger.info("Indexed %s", url)
+                # Вызов Celery-задачи для создания чанков
+                try:
+                    index_document.delay(document.id)
+                except Exception as embed_exc:
+                    spider.logger.error(
+                        f"Failed to schedule chunking for %s: %s",
+                        url,
+                        embed_exc,
+                        exc_info=True,
+                    )
         except Exception as e:
             spider.logger.error(f"Error processing {url}: {e}", exc_info=True)
 

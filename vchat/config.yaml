@@ -9,7 +9,7 @@ mode: production
 max_upload_size: 5242880 # 5 MB
 enable_https_middleware: true # Enable HTTPS middleware on production
 cookie_name: USER
-# Should be set to ".vchat.com" at production
+# Should be overridden in local.yaml at production
 cookie_domain: ".vchat.com"
 # Should be set to true at production
 cookie_secure: true
@@ -35,6 +35,10 @@ time_zone: Europe/Moscow
 
 public_url: "https://www.vchat.com"
 public_cdn: "https://www.vchat.com" # for near future
+allowed_origins:
+  - "https://www.vchat.com"
+  - "https://vchat.com"
+  - "https://local.vchat.com"
 media_prefix: "/media"
 media_root: "media"
 post_per_page: 10

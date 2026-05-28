@@ -10,13 +10,12 @@ stages:
   - test
   - deploy
 
-before_script:
-  - make setup
-
 ruff lint:
   stage: test
   cache:
     <<: *commit_cache
+  before_script:
+    - make setup
   allow_failure: true
   script:
     - . venv/bin/activate && ruff check vchat/ --output-format=gitlab > code-quality-report.json
@@ -28,6 +27,8 @@ ruff format:
   stage: test
   cache:
     <<: *commit_cache
+  before_script:
+    - make setup
   script:
     - . venv/bin/activate && ruff format --diff vchat/
 
@@ -43,19 +44,26 @@ bandit:
   stage: test
   cache:
     <<: *commit_cache
+  before_script:
+    - make setup
   allow_failure: true
   script:
     - . venv/bin/activate && bandit -r vchat/ --quiet
 
 .deploy_script: &deploy_script |
+  mkdir -p ~/.ssh
+  chmod 700 ~/.ssh
+  ssh-keyscan -H cdn.okumy.com >> ~/.ssh/known_hosts 2>/dev/null || true
   ssh "deploy@cdn.okumy.com" <<EOF
     set -e
     PROJ_DIR="/var/www/vchat"
     echo "Deployment path: \$PROJ_DIR"
-    cd "\$PROJ_DIR"
-    if [ ! -d .git ]; then
-      git clone git@venv.dev:vchat/pusk.git .
+    if [ ! -d "\$PROJ_DIR/.git" ]; then
+      mkdir -p "\$PROJ_DIR"
+      cd "\$PROJ_DIR"
+      git clone git@venv.dev:vbudushee/vchat.git .
     else
+      cd "\$PROJ_DIR"
       git reset --hard
       git pull origin master
     fi
@@ -66,6 +74,9 @@ bandit:
 # Additional deploy_new job
 deploy:
   stage: deploy
+  before_script: []
+  variables:
+    GIT_STRATEGY: none
   script: *deploy_script
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'

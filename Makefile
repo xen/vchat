@@ -57,7 +57,7 @@ celery: venv/bin/activate ## start celery (vchat + crawler queues)
 	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery,crawler
 
 embedder: venv/bin/activate ## start dedicated embedder worker
-	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=solo
+	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=prefork --concurrency=1 --max-tasks-per-child=1 -n vchat-embedder@%h
 
 celery_stop: venv/bin/activate ## stop celery
 	. venv/bin/activate && celery -A jobs.celery control shutdown

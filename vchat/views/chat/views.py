@@ -30,6 +30,7 @@ from vchat.guardrails import (
     extract_tripwire_details,
     get_guardrails_client,
 )
+from vchat.logging_utils import log_json
 from vchat.metrics import record_chat_request
 from vchat.models import Chat, ChatMsg
 from vchat.project_settings import get_setting, get_setting_json
@@ -253,6 +254,7 @@ async def generate_suggestions(
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vchat.chat")
+request_logger = logging.getLogger("vchat.chat.requests")
 
 # Configuration from settings
 OPENAI_API_KEY = config.get("openai_api_key")
@@ -702,17 +704,20 @@ async def websocket(request):
             if not user_text:
                 continue
 
+            assistant_provider = None
+            assistant_model = None
+            guardrail_reasons: set[str] = set()
+            request_status = "ok"
+            total_tokens = 0
+            used_chunks: List[dict] = []
+            total_content = ""
+            messages: List[dict] = []
             try:
                 assistant_message: Optional[dict] = None
                 pending_tool_results: List[dict] = []
-                used_chunks: List[dict] = []
                 sources: List[dict] = []
                 context_policy: dict[str, Any] = {}
                 coverage: dict[str, Any] = {}
-                messages: List[dict] = []
-                guardrail_reasons: set[str] = set()
-                request_status = "ok"
-                total_tokens = 0
 
                 gen_context = build_generation_context(request.app)
                 assistant_provider = gen_context.provider_id
@@ -775,8 +780,6 @@ async def websocket(request):
                 context_policy = context_result.policy
                 coverage = context_result.coverage
                 messages = [dict(m._asdict()) for m in context_result.messages]
-
-                total_content = ""
 
                 while True:
                     async for event in ai_chat_stream(messages, gen_context):
@@ -1013,6 +1016,41 @@ async def websocket(request):
                     {"ok": False, "error": type(e).__name__, "detail": str(e)}
                 )
             finally:
+                guardrail_blocked = _is_guardrail_blocked(guardrail_reasons)
+                prompt_text_parts = [
+                    str(message.get("content") or "")
+                    for message in messages
+                    if isinstance(message, dict)
+                ] or [user_text]
+                prompt_size = sum(
+                    len(part.encode("utf-8")) for part in prompt_text_parts
+                )
+                prompt_chars = sum(len(part) for part in prompt_text_parts)
+                log_json(
+                    request_logger,
+                    "chat_user_request",
+                    provider=assistant_provider,
+                    model=assistant_model,
+                    tokens=total_tokens,
+                    chunks_count=len(used_chunks),
+                    response_size=len(total_content.encode("utf-8")),
+                    response_chars=len(total_content),
+                    guardrail_status=(
+                        "blocked" if guardrail_blocked else "passed"
+                    ),
+                    guardrail_triggered=guardrail_blocked,
+                    guardrail_reasons=(
+                        sorted(guardrail_reasons) if guardrail_reasons else []
+                    ),
+                    prompt_size=prompt_size,
+                    prompt_chars=prompt_chars,
+                    user_prompt_size=len(user_text.encode("utf-8")),
+                    user_prompt_chars=len(user_text),
+                    messages_count=len(messages),
+                    status=request_status,
+                    chat_id=chat_id_ctx.get(None),
+                    user_id=str(user_id_ctx.get(None)),
+                )
                 try:
                     record_chat_request(
                         provider=assistant_provider,
