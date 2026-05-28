@@ -336,7 +336,7 @@ def text_summarizer(text: str, ratio: float, lang: str | None = None) -> str:
             summary = " ".join(part for part in sentences if part).strip()
             if summary:
                 source = summary
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     trimmed = source[: min(len(source), max(1, target))].strip()

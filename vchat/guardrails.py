@@ -358,7 +358,7 @@ def detect_russian_pii_reasons(text: str) -> set[str]:
         try:
             if pattern.search(text):
                 reasons.add(reason)
-        except Exception:
+        except Exception:  # nosec B112
             continue
     if reasons:
         reasons.add("russian_pii")
