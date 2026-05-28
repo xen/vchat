@@ -45,7 +45,18 @@ def make_embed_vector(text: str) -> List[float]:
     if not text:
         return []
     try:
-        emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
+        import torch
+        # Force math-backend SDPA on CPU to avoid NaN from CUDA-only kernels
+        ctx: Any
+        try:
+            from torch.nn.attention import sdpa_kernel, SDPBackend
+            ctx = sdpa_kernel([SDPBackend.MATH])
+        except Exception:
+            ctx = torch.backends.cuda.sdp_kernel(
+                enable_flash=False, enable_math=True, enable_mem_efficient=False
+            )
+        with ctx:
+            emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
         vec = emb[0].tolist()
         if any(math.isnan(v) for v in vec):
             raise ValueError("embedding model returned NaN vector")

@@ -97,6 +97,37 @@ def resolve_embedding_device(preferred: str | None = None) -> str:
     return _detect_best_device()
 
 
+def patch_gigar_embed_cpu_forward(st_model: SentenceTransformer) -> None:
+    """Patch GigarEmbedModel.forward to run under CPU bfloat16 autocast.
+
+    The model's forward() hard-codes torch.autocast('cuda', bfloat16), which is a
+    no-op on CPU.  MLA attention then runs in fp32 and produces all-NaN output.
+    Wrapping with autocast('cpu', bfloat16) forces bf16 computation on CPU too.
+    """
+    try:
+        import torch
+        inner = st_model._first_module()
+        cls = inner.__class__
+        if cls.__name__ != "GigarEmbedModel":
+            return
+        orig = cls.forward
+        if getattr(orig, "_patched_cpu_autocast", False):
+            return
+
+        def patched_forward(self, *args, **kwargs):
+            with torch.autocast("cpu", dtype=torch.bfloat16):
+                return orig(self, *args, **kwargs)
+
+        patched_forward._patched_cpu_autocast = True
+        cls.forward = patched_forward
+        logging.warning(
+            "GigarEmbedModel: patched forward() with CPU bfloat16 autocast"
+            " (no CUDA — fp32 MLA attention produces NaN)"
+        )
+    except Exception:
+        pass
+
+
 def load_embedding_model(
     *,
     device: str | None = None,
@@ -104,9 +135,26 @@ def load_embedding_model(
 ) -> SentenceTransformer:
     _patch_transformers_compat()
     resolved_device = resolve_embedding_device(device)
-    return SentenceTransformer(
+
+    # Load weights in bfloat16 on CPU: halves memory vs fp32 and ensures the
+    # numerical regime matches what patch_gigar_embed_cpu_forward enforces.
+    model_kwargs: dict[str, Any] = {}
+    if resolved_device == "cpu":
+        try:
+            import torch
+            model_kwargs["torch_dtype"] = torch.bfloat16
+        except Exception:
+            pass
+
+    st_model = SentenceTransformer(
         config["embedding_model_dir"],
         device=resolved_device,
         tokenizer_kwargs=tokenizer_kwargs or {"padding_side": "left"},
         trust_remote_code=True,
+        model_kwargs=model_kwargs or None,
     )
+
+    if resolved_device == "cpu":
+        patch_gigar_embed_cpu_forward(st_model)
+
+    return st_model
