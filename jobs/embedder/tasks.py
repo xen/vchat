@@ -1,4 +1,5 @@
 import logging
+import math
 import re
 import time
 import hashlib
@@ -45,7 +46,10 @@ def make_embed_vector(text: str) -> List[float]:
         return []
     try:
         emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
-        return emb[0].tolist()
+        vec = emb[0].tolist()
+        if any(math.isnan(v) for v in vec):
+            raise ValueError("embedding model returned NaN vector")
+        return vec
     except Exception as exc:
         logging.exception(
             "Embedding model failed; using deterministic fallback vector: %s",
