@@ -23,7 +23,6 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_CRAWLER_USER_AGENT,
-    DEFAULT_REINDEX_CRON,
     is_manual_reindex,
     normalize_reindex_cron,
     validate_reindex_cron,
