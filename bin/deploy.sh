@@ -104,7 +104,7 @@ ExecStart=$DEPLOY_PATH/venv/bin/celery -A jobs.celery worker --loglevel=INFO -Q 
 Environment=TOKENIZERS_PARALLELISM=false
 Environment=OMP_NUM_THREADS=1
 Environment=MKL_NUM_THREADS=1
-MemoryMax=4G
+MemoryMax=2G
 Restart=always
 
 [Install]

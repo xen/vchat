@@ -219,7 +219,7 @@ class Chunk(Base, Created, Updated):
     )
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     fts: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(2048), nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
 
 
 class Settings(Base):
