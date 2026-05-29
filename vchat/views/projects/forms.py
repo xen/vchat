@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 from wtforms import (
-    FloatField,
     Form,
     IntegerField,
     SelectField,
@@ -152,21 +151,6 @@ class SourceForm(Form):
         render_kw={"class": "form-control"},
         description=_("Source title. If empty, domain will be used."),
     )
-    type = SelectField(
-        _("Type"),
-        choices=[
-            ("", ""),
-            ("site", "Site"),
-            ("sitemap", "Sitemap"),
-            ("list", "List"),
-            ("s3", "S3"),
-            ("google_drive", "Google Drive"),
-        ],
-        validators=[
-            validators.DataRequired(),
-        ],
-        render_kw={"class": "select border w-full"},
-    )
     reindex_cron = StringField(
         _("Reindexing Cron"),
         validators=[validators.Optional(), validators.Length(max=100)],
@@ -187,59 +171,6 @@ class SourceForm(Form):
                     "Invalid cron expression. Use 5 fields: minute hour day month weekday"
                 )
             )
-
-    # S3 specific fields
-    aws_access_key_id = StringField(
-        _("AWS Access Key ID"),
-        validators=[validators.Optional()],
-        render_kw={"class": "input input-bordered w-full"},
-    )
-    aws_secret_access_key = StringField(
-        _("AWS Secret Access Key"),
-        validators=[validators.Optional()],
-        render_kw={"class": "input input-bordered w-full", "type": "password"},
-    )
-    bucket_name = StringField(
-        _("Bucket Name"),
-        validators=[validators.Optional()],
-        render_kw={"class": "input input-bordered w-full"},
-    )
-    endpoint_url = StringField(
-        _("Endpoint URL"),
-        validators=[validators.Optional()],
-        render_kw={
-            "class": "input input-bordered w-full",
-            "placeholder": "https://s3.amazonaws.com",
-        },
-        default="https://s3.amazonaws.com",
-        description=_(
-            "S3 endpoint URL (leave default for AWS, change for MinIO, DigitalOcean Spaces, etc.)"
-        ),
-    )
-    region = StringField(
-        _("Region"),
-        validators=[validators.Optional()],
-        render_kw={"class": "input input-bordered w-full"},
-        default="us-east-1",
-    )
-    prefix = StringField(
-        _("Prefix"),
-        validators=[validators.Optional()],
-        render_kw={"class": "input input-bordered w-full"},
-        description=_("Optional path prefix in bucket"),
-    )
-
-    # Google Drive specific fields
-    google_drive_folder_id = StringField(
-        _("Folder ID"),
-        validators=[validators.Optional()],
-        render_kw={"class": "input input-bordered w-full", "readonly": True},
-    )
-    google_drive_folder_name = StringField(
-        _("Folder Name"),
-        validators=[validators.Optional()],
-        render_kw={"class": "input input-bordered w-full", "readonly": True},
-    )
 
 
 class InviteUserForm(Form):
@@ -293,17 +224,17 @@ class SourceCrawlerSettingsForm(Form):
         default=DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
         render_kw={"class": "input input-bordered w-full"},
     )
-    download_delay = FloatField(
+    download_delay = IntegerField(
         _("Задержка между запросами (DOWNLOAD_DELAY)"),
         validators=[validators.Optional(), validators.NumberRange(min=0, max=120)],
         default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
-        render_kw={"class": "input input-bordered w-full", "step": "0.1"},
+        render_kw={"class": "input input-bordered w-full"},
     )
-    download_timeout = FloatField(
+    download_timeout = IntegerField(
         _("Таймаут запроса (DOWNLOAD_TIMEOUT, сек)"),
         validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
-        render_kw={"class": "input input-bordered w-full", "step": "0.5"},
+        render_kw={"class": "input input-bordered w-full"},
     )
     user_agent = StringField(
         _("User Agent"),
@@ -320,17 +251,17 @@ class SourceSettingsForm(SourceForm):
         default=DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
         render_kw={"class": "input input-bordered w-full"},
     )
-    download_delay = FloatField(
+    download_delay = IntegerField(
         _("Задержка между запросами (DOWNLOAD_DELAY)"),
         validators=[validators.Optional(), validators.NumberRange(min=0, max=120)],
         default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
-        render_kw={"class": "input input-bordered w-full", "step": "0.1"},
+        render_kw={"class": "input input-bordered w-full"},
     )
-    download_timeout = FloatField(
+    download_timeout = IntegerField(
         _("Таймаут запроса (DOWNLOAD_TIMEOUT, сек)"),
         validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
-        render_kw={"class": "input input-bordered w-full", "step": "0.5"},
+        render_kw={"class": "input input-bordered w-full"},
     )
     user_agent = StringField(
         _("User Agent"),

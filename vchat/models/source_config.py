@@ -30,24 +30,41 @@ class CrawlerRule:
 class SourceConfig:
     crawler_user_agent: str = DEFAULT_CRAWLER_USER_AGENT
     crawler_concurrent_requests: int = DEFAULT_CRAWLER_CONCURRENT_REQUESTS
-    crawler_download_delay: float = DEFAULT_CRAWLER_DOWNLOAD_DELAY
-    crawler_download_timeout: float = DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+    crawler_download_delay: int = DEFAULT_CRAWLER_DOWNLOAD_DELAY
+    crawler_download_timeout: int = DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
     rules: list[CrawlerRule] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> SourceConfig:
         if not d:
             return cls()
+        concurrent_requests_raw = d.get("crawler_concurrent_requests")
+        download_delay_raw = d.get("crawler_download_delay")
+        download_timeout_raw = d.get("crawler_download_timeout")
         rules = [
             CrawlerRule.from_dict(r)
             for r in (d.get("rules") or [])
             if r.get("type") and r.get("value")
         ]
         return cls(
-            crawler_user_agent=str(d.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT),
-            crawler_concurrent_requests=int(d.get("crawler_concurrent_requests") or DEFAULT_CRAWLER_CONCURRENT_REQUESTS),
-            crawler_download_delay=float(d.get("crawler_download_delay") or DEFAULT_CRAWLER_DOWNLOAD_DELAY),
-            crawler_download_timeout=float(d.get("crawler_download_timeout") or DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT),
+            crawler_user_agent=str(
+                d.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT
+            ),
+            crawler_concurrent_requests=int(
+                DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+                if concurrent_requests_raw is None
+                else concurrent_requests_raw
+            ),
+            crawler_download_delay=int(
+                DEFAULT_CRAWLER_DOWNLOAD_DELAY
+                if download_delay_raw is None
+                else download_delay_raw
+            ),
+            crawler_download_timeout=int(
+                DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+                if download_timeout_raw is None
+                else download_timeout_raw
+            ),
             rules=rules,
         )
 

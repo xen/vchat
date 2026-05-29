@@ -337,7 +337,6 @@ async def project_edit_sources(request):
 
     stmt = (
         sa.select(Source, sa.func.count(Document.id).label("doc_count"))
-        .where(Source.type != "upload")
         .outerjoin(Document, Document.source_id == Source.id)
         .group_by(Source.id)
         .order_by(Source.created_at.desc())
@@ -356,7 +355,7 @@ async def project_source_settings(request):
     source_id = int(request.match_info.get("source_id"))
     db_session = request["db"]
     source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
-    if not source or source.type == "upload":
+    if not source:
         raise web.HTTPNotFound()
 
     session = await get_session(request)
@@ -365,105 +364,53 @@ async def project_source_settings(request):
         data = await request.post()
         form_kwargs["formdata"] = data
     else:
-        source_config = source.config or {}
+        cfg = source.config
         form_kwargs["data"] = {
-            "type": source.type,
             "title": source.title,
             "reindex_cron": ""
             if source.reindex_cron == MANUAL_REINDEX_MODE
             else source.reindex_cron,
-            "url": source.uri if source.type in {"site", "sitemap", "list"} else "",
-            "aws_access_key_id": source_config.get("aws_access_key_id", ""),
-            "aws_secret_access_key": source_config.get("aws_secret_access_key", ""),
-            "bucket_name": source_config.get("bucket_name", ""),
-            "endpoint_url": source_config.get(
-                "endpoint_url", "https://s3.amazonaws.com"
-            ),
-            "region": source_config.get("region", "us-east-1"),
-            "prefix": source_config.get("prefix", ""),
-            "google_drive_folder_id": source_config.get("folder_id", ""),
-            "google_drive_folder_name": source_config.get("folder_name", ""),
-            "concurrent_requests": source_config.get(
-                "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
-            ),
-            "download_delay": source_config.get(
-                "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
-            ),
-            "download_timeout": source_config.get(
-                "crawler_download_timeout", DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
-            ),
-            "user_agent": source_config.get("crawler_user_agent")
-            or DEFAULT_CRAWLER_USER_AGENT,
+            "url": source.uri,
+            "concurrent_requests": cfg.crawler_concurrent_requests,
+            "download_delay": cfg.crawler_download_delay,
+            "download_timeout": cfg.crawler_download_timeout,
+            "user_agent": cfg.crawler_user_agent,
         }
 
     form = forms.SourceSettingsForm(**form_kwargs)
 
     if request.method == "POST" and form.validate():
-        source_type = form.type.data
+        from vchat.models.source_config import CrawlerRule, SourceConfig
+
         source.title = form.title.data
         source.reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
         source.updated_at = datetime.now(timezone.utc)
-        source_config = dict(source.config or {})
-        crawler_user_agent = (
-            form.user_agent.data or ""
-        ).strip() or DEFAULT_CRAWLER_USER_AGENT
-        crawler_concurrent_requests = int(
-            form.concurrent_requests.data
-            if form.concurrent_requests.data is not None
-            else DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+        source.uri = form.url.data
+        rule_types = data.getall("rule_type[]", [])
+        rule_values = data.getall("rule_value[]", [])
+        rules = [
+            CrawlerRule(type=rt, value=rv.strip())
+            for rt, rv in zip(rule_types, rule_values)
+            if rv.strip()
+        ]
+        source.config = SourceConfig(
+            crawler_user_agent=(form.user_agent.data or "").strip()
+            or DEFAULT_CRAWLER_USER_AGENT,
+            crawler_concurrent_requests=int(
+                form.concurrent_requests.data or DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+            ),
+            crawler_download_delay=int(
+                form.download_delay.data
+                if form.download_delay.data is not None
+                else DEFAULT_CRAWLER_DOWNLOAD_DELAY
+            ),
+            crawler_download_timeout=int(
+                form.download_timeout.data
+                if form.download_timeout.data is not None
+                else DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+            ),
+            rules=rules,
         )
-        crawler_download_delay = float(
-            form.download_delay.data
-            if form.download_delay.data is not None
-            else DEFAULT_CRAWLER_DOWNLOAD_DELAY
-        )
-        crawler_download_timeout = float(
-            form.download_timeout.data
-            if form.download_timeout.data is not None
-            else DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
-        )
-        crawler_settings = {
-            "crawler_user_agent": crawler_user_agent,
-            "crawler_concurrent_requests": crawler_concurrent_requests,
-            "crawler_download_delay": crawler_download_delay,
-            "crawler_download_timeout": crawler_download_timeout,
-        }
-
-        if source_type == "s3":
-            new_config = {
-                "aws_access_key_id": form.aws_access_key_id.data,
-                "aws_secret_access_key": form.aws_secret_access_key.data,
-                "bucket_name": form.bucket_name.data,
-                "endpoint_url": form.endpoint_url.data or "",
-                "region": form.region.data or "us-east-1",
-                "prefix": form.prefix.data or "",
-            }
-            new_config.update(crawler_settings)
-            source.config = new_config
-            source.uri = f"s3://{form.bucket_name.data}"
-        elif source_type == "google_drive":
-            new_config = {
-                "folder_id": form.google_drive_folder_id.data,
-                "folder_name": form.google_drive_folder_name.data,
-            }
-            new_config.update(crawler_settings)
-            source.config = new_config
-            source.uri = f"gdrive://{form.google_drive_folder_id.data}"
-        else:
-            source.uri = form.url.data
-            rule_types = data.getall("rule_type[]", [])
-            rule_values = data.getall("rule_value[]", [])
-            rules = []
-            for r_type, r_value in zip(rule_types, rule_values):
-                if r_value.strip():
-                    rules.append({"type": r_type, "value": r_value.strip()})
-            new_config = source_config.copy()
-            new_config.update(crawler_settings)
-            if rules:
-                new_config["rules"] = rules
-            else:
-                new_config.pop("rules", None)
-            source.config = new_config
 
         await db_session.commit()
         await admin_event("source_update", request)
@@ -753,54 +700,24 @@ async def project_action(request):
         if not form.validate():
             return web.Response(text="Error", status=400)
 
-        title = form.title.data
-        source_type = form.type.data
+        from urllib.parse import urlparse
+        from vchat.models.source_config import CrawlerRule, SourceConfig
+
+        uri = form.url.data
+        parsed_uri = urlparse(uri)
+        title = parsed_uri.netloc or parsed_uri.path
         reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
-        source_config = {}
-
-        if source_type == "s3":
-            source_config = {
-                "aws_access_key_id": form.aws_access_key_id.data,
-                "aws_secret_access_key": form.aws_secret_access_key.data,
-                "bucket_name": form.bucket_name.data,
-                "endpoint_url": form.endpoint_url.data or "",
-                "region": form.region.data or "us-east-1",
-                "prefix": form.prefix.data or "",
-            }
-            uri = f"s3://{form.bucket_name.data}"
-            if not title:
-                title = form.bucket_name.data
-        elif source_type == "google_drive":
-            source_config = {
-                "folder_id": form.google_drive_folder_id.data,
-                "folder_name": form.google_drive_folder_name.data,
-            }
-            if session.get("google_refresh_token"):
-                source_config["refresh_token"] = session.get("google_refresh_token")
-            uri = f"gdrive://{form.google_drive_folder_id.data}"
-            if not title:
-                title = form.google_drive_folder_name.data or "Google Drive"
-        else:
-            uri = form.url.data
-            if not title:
-                from urllib.parse import urlparse
-
-                parsed_uri = urlparse(form.url.data)
-                title = parsed_uri.netloc or parsed_uri.path
-            rule_types = data.getall("rule_type[]", [])
-            rule_values = data.getall("rule_value[]", [])
-            rules = []
-            for r_type, r_value in zip(rule_types, rule_values):
-                if r_value.strip():
-                    rules.append({"type": r_type, "value": r_value.strip()})
-            if rules:
-                source_config["rules"] = rules
-
+        rule_types = data.getall("rule_type[]", [])
+        rule_values = data.getall("rule_value[]", [])
+        rules = [
+            CrawlerRule(type=rt, value=rv.strip())
+            for rt, rv in zip(rule_types, rule_values)
+            if rv.strip()
+        ]
         source = Source(
-            type=source_type,
             uri=uri,
             title=title,
-            config=source_config,
+            config=SourceConfig(rules=rules),
             reindex_cron=reindex_cron,
         )
         db_session.add(source)
@@ -887,9 +804,7 @@ async def project_view(request):
     sources = (
         (
             await db_session.execute(
-                sa.select(Source)
-                .where(Source.type != "upload")
-                .order_by(Source.title.asc(), Source.created_at.asc())
+                sa.select(Source).order_by(Source.title.asc(), Source.created_at.asc())
             )
         )
         .scalars()
@@ -945,7 +860,6 @@ async def project_documents_json(request):
             )
             .join(Source, Document.source_id == Source.id)
             .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-            .where(Source.type != "upload")
             .order_by(Document.created_at.desc())
         )
     ).all()
@@ -1173,14 +1087,13 @@ async def project_stats(request):
     source_docs_query = (
         sa.select(
             Source.id,
-            Source.type,
             Source.title,
             sa.func.count(Document.id).label("doc_count"),
             sa.func.coalesce(sa.func.sum(Document._length), 0).label("data_volume"),
         )
         .select_from(Source)
         .outerjoin(Document, Document.source_id == Source.id)
-        .group_by(Source.id, Source.type, Source.title)
+        .group_by(Source.id, Source.title)
         .order_by(Source.title)
     )
     source_docs_res = (await db.execute(source_docs_query)).all()
@@ -1199,18 +1112,12 @@ async def project_stats(request):
         .group_by(Source.id)
     )
     source_chunks_res = (await db.execute(source_chunks_query)).all()
-    legacy_upload_source_ids = sa.select(Source.id).where(Source.type == "upload")
     files_docs_row = (
         await db.execute(
             sa.select(
                 sa.func.count(Document.id).label("doc_count"),
                 sa.func.coalesce(sa.func.sum(Document._length), 0).label("data_volume"),
-            ).where(
-                sa.or_(
-                    Document.source_id.is_(None),
-                    Document.source_id.in_(legacy_upload_source_ids),
-                )
-            )
+            ).where(Document.source_id.is_(None))
         )
     ).one()
     files_chunks_row = (
@@ -1223,12 +1130,7 @@ async def project_stats(request):
             )
             .select_from(Document)
             .outerjoin(Chunk, Chunk.document_id == Document.id)
-            .where(
-                sa.or_(
-                    Document.source_id.is_(None),
-                    Document.source_id.in_(legacy_upload_source_ids),
-                )
-            )
+            .where(Document.source_id.is_(None))
         )
     ).one()
 
@@ -1243,11 +1145,10 @@ async def project_stats(request):
         chunk_data = chunks_by_source.get(row.id)
         chunk_count = chunk_data.chunk_count if chunk_data else 0
         chunk_storage = chunk_data.chunk_storage if chunk_data else 0
-        source_title = _("Файлы") if row.type == "upload" else row.title
         source_stats.append(
             {
                 "id": row.id,
-                "title": source_title,
+                "title": row.title,
                 "doc_count": row.doc_count,
                 "data_volume": row.data_volume,
                 "chunk_count": chunk_count,
@@ -1627,7 +1528,6 @@ async def project_progress(request):
             sa.select(
                 Source.id,
                 Source.title,
-                Source.type,
                 sa.func.count(Document.id).label("total"),
                 sa.func.count(Document.id)
                 .filter(sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0)
@@ -1641,7 +1541,7 @@ async def project_progress(request):
                 ),
             )
             .outerjoin(chunk_counts_sq, chunk_counts_sq.c.document_id == Document.id)
-            .group_by(Source.id, Source.title, Source.type)
+            .group_by(Source.id, Source.title)
             .order_by(Source.id)
         )
     ).all()
@@ -1656,7 +1556,6 @@ async def project_progress(request):
             {
                 "id": row.id,
                 "title": row.title,
-                "type": row.type,
                 "total": src_total,
                 "done": src_done,
                 "remaining": src_remaining,

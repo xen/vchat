@@ -5,6 +5,7 @@ Revises: e4f5a6b7c8d9
 Create Date: 2026-05-29 15:30:00.000000
 
 """
+
 from __future__ import annotations
 
 from typing import Sequence, Union
@@ -35,21 +36,21 @@ def upgrade() -> None:
     bind = op.get_bind()
 
     # 1. Remove unknown top-level keys from config
-    known = "{" + ",".join(f'"{k}"' for k in _KNOWN_KEYS) + "}"
+    known = "ARRAY[" + ", ".join(f"'{k}'" for k in _KNOWN_KEYS) + "]"
     bind.execute(
         sa.text(f"""
             UPDATE source
             SET config = (
                 SELECT jsonb_object_agg(key, value)
                 FROM jsonb_each(config)
-                WHERE key = ANY(ARRAY{known}::text[])
+                WHERE key = ANY({known}::text[])
             )
             WHERE config IS NOT NULL AND config != '{{}}'::jsonb
         """)
     )
 
     # 2. Remove rules with invalid type or missing value
-    valid_types = "{" + ",".join(f'"{t}"' for t in _VALID_RULE_TYPES) + "}"
+    valid_types = "ARRAY[" + ", ".join(f"'{t}'" for t in _VALID_RULE_TYPES) + "]"
     bind.execute(
         sa.text(f"""
             UPDATE source
@@ -61,7 +62,7 @@ def upgrade() -> None:
                         SELECT jsonb_agg(rule)
                         FROM jsonb_array_elements(config->'rules') AS rule
                         WHERE
-                            rule->>'type' = ANY(ARRAY{valid_types}::text[])
+                            rule->>'type' = ANY({valid_types}::text[])
                             AND (rule->>'value') IS NOT NULL
                             AND (rule->>'value') != ''
                     ),
@@ -82,9 +83,7 @@ def upgrade() -> None:
     )
 
     # 4. Ensure config is never NULL
-    bind.execute(
-        sa.text("UPDATE source SET config = '{}'::jsonb WHERE config IS NULL")
-    )
+    bind.execute(sa.text("UPDATE source SET config = '{}'::jsonb WHERE config IS NULL"))
 
 
 def downgrade() -> None:

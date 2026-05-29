@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Standalone script to run Scrapy crawler.
-Usage: python -m jobs.crawler.crawler_runner <url> <source_id> [page_limit]
+Usage: python -m jobs.crawler.crawler_runner <url> <source_id> [config_json]
 """
 
 import json
@@ -19,8 +19,6 @@ from scrapy.settings import Settings
 
 from jobs.crawler import settings as my_settings
 from jobs.crawler.spiders.generic import GenericSpider
-from jobs.crawler.spiders.list import ListSpider
-from jobs.crawler.spiders.sitemap import CustomSitemapSpider
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
@@ -33,29 +31,18 @@ configure_json_logging(logging.INFO)
 
 if len(sys.argv) < 3:
     print(
-        "Usage: python -m jobs.crawler.crawler_runner <url> <source_id> [page_limit] [source_type] [config_json]"
+        "Usage: python -m jobs.crawler.crawler_runner <url> <source_id> [config_json]"
     )
     sys.exit(1)
 
 url = sys.argv[1]
 source_id = int(sys.argv[2])
-page_limit = int(sys.argv[3]) if len(sys.argv) > 3 else None
-
-source_type = "site"
-if len(sys.argv) > 4:
-    source_type = sys.argv[4]
 
 config = {}
-if len(sys.argv) > 5:
-    config = json.loads(sys.argv[5])
+if len(sys.argv) > 3:
+    config = json.loads(sys.argv[3])
 
-if page_limit is not None and page_limit <= 0:
-    print("max_pages must be a positive integer")
-    sys.exit(1)
-
-print(
-    f"Starting crawler for URL: {url}, Source ID: {source_id}, Max pages: {page_limit}, Type: {source_type}"
-)
+print(f"Starting crawler for URL: {url}, Source ID: {source_id}")
 
 settings = Settings()
 settings.setmodule(my_settings)
@@ -68,27 +55,14 @@ concurrent_requests = config.get(
 )
 settings.set("CONCURRENT_REQUESTS", max(1, int(concurrent_requests)))
 download_delay = config.get("crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY)
-settings.set("DOWNLOAD_DELAY", max(0.0, float(download_delay)))
+settings.set("DOWNLOAD_DELAY", max(0, int(float(download_delay))))
 download_timeout = config.get(
     "crawler_download_timeout", DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
 )
-settings.set("DOWNLOAD_TIMEOUT", max(1.0, float(download_timeout)))
-if page_limit is not None:
-    settings.set("CLOSESPIDER_ITEMCOUNT", page_limit)
-    # For sitemap indexes, pagecount includes sitemap XML fetches and may stop
-    # before enough actual content pages are processed.
-    if source_type != "sitemap":
-        settings.set("CLOSESPIDER_PAGECOUNT", page_limit)
+settings.set("DOWNLOAD_TIMEOUT", max(1, int(float(download_timeout))))
 
 process = CrawlerProcess(settings)
-
-spider_cls = GenericSpider
-if source_type == "sitemap":
-    spider_cls = CustomSitemapSpider
-elif source_type == "list":
-    spider_cls = ListSpider
-
-process.crawl(spider_cls, url=url, source_id=source_id, config=config)
+process.crawl(GenericSpider, url=url, source_id=source_id, config=config)
 process.start()  # This blocks until crawling is finished
 
 print(f"Crawling completed for source {source_id}")

@@ -16,6 +16,7 @@ from vchat.source_settings import (
 # CrawlerRule
 # ---------------------------------------------------------------------------
 
+
 class TestCrawlerRule:
     def test_round_trip(self):
         rule = CrawlerRule(type="xpath", value="//a[@class='nav']")
@@ -35,6 +36,7 @@ class TestCrawlerRule:
 # SourceConfig.from_dict
 # ---------------------------------------------------------------------------
 
+
 class TestSourceConfigFromDict:
     def test_empty_none(self):
         cfg = SourceConfig.from_dict(None)
@@ -48,69 +50,84 @@ class TestSourceConfigFromDict:
         assert SourceConfig.from_dict({}) == SourceConfig()
 
     def test_reads_known_fields(self):
-        cfg = SourceConfig.from_dict({
-            "crawler_user_agent": "Bot/1.0",
-            "crawler_concurrent_requests": 4,
-            "crawler_download_delay": 1.5,
-            "crawler_download_timeout": 60.0,
-        })
+        cfg = SourceConfig.from_dict(
+            {
+                "crawler_user_agent": "Bot/1.0",
+                "crawler_concurrent_requests": 4,
+                "crawler_download_delay": 1,
+                "crawler_download_timeout": 60,
+            }
+        )
         assert cfg.crawler_user_agent == "Bot/1.0"
         assert cfg.crawler_concurrent_requests == 4
-        assert cfg.crawler_download_delay == 1.5
-        assert cfg.crawler_download_timeout == 60.0
+        assert cfg.crawler_download_delay == 1
+        assert cfg.crawler_download_timeout == 60
 
     def test_parses_rules(self):
-        cfg = SourceConfig.from_dict({
-            "rules": [
-                {"type": "xpath", "value": "//a"},
-                {"type": "css", "value": "a.nav"},
-            ]
-        })
+        cfg = SourceConfig.from_dict(
+            {
+                "rules": [
+                    {"type": "xpath", "value": "//a"},
+                    {"type": "css", "value": "a.nav"},
+                ]
+            }
+        )
         assert len(cfg.rules) == 2
         assert cfg.rules[0] == CrawlerRule(type="xpath", value="//a")
         assert cfg.rules[1] == CrawlerRule(type="css", value="a.nav")
 
     def test_skips_rules_with_empty_value(self):
-        cfg = SourceConfig.from_dict({
-            "rules": [
-                {"type": "xpath", "value": ""},
-                {"type": "css", "value": "a.nav"},
-            ]
-        })
+        cfg = SourceConfig.from_dict(
+            {
+                "rules": [
+                    {"type": "xpath", "value": ""},
+                    {"type": "css", "value": "a.nav"},
+                ]
+            }
+        )
         assert len(cfg.rules) == 1
         assert cfg.rules[0].type == "css"
 
     def test_skips_rules_with_missing_type(self):
-        cfg = SourceConfig.from_dict({
-            "rules": [{"value": "//a"}, {"type": "css", "value": "a"}]
-        })
+        cfg = SourceConfig.from_dict(
+            {"rules": [{"value": "//a"}, {"type": "css", "value": "a"}]}
+        )
         assert len(cfg.rules) == 1
 
     def test_ignores_unknown_keys(self):
-        cfg = SourceConfig.from_dict({
-            "crawler_user_agent": "Bot",
-            "aws_access_key_id": "should-be-gone",
-            "folder_id": "should-be-gone",
-            "start_pages": ["https://example.com"],
-            "sitemaps": ["https://example.com/sitemap.xml"],
-        })
+        cfg = SourceConfig.from_dict(
+            {
+                "crawler_user_agent": "Bot",
+                "aws_access_key_id": "should-be-gone",
+                "folder_id": "should-be-gone",
+                "start_pages": ["https://example.com"],
+                "sitemaps": ["https://example.com/sitemap.xml"],
+            }
+        )
         assert cfg.crawler_user_agent == "Bot"
         assert not hasattr(cfg, "aws_access_key_id")
         assert not hasattr(cfg, "start_pages")
         assert not hasattr(cfg, "sitemaps")
 
     def test_falls_back_to_defaults_on_null_values(self):
-        cfg = SourceConfig.from_dict({
-            "crawler_user_agent": None,
-            "crawler_concurrent_requests": None,
-        })
+        cfg = SourceConfig.from_dict(
+            {
+                "crawler_user_agent": None,
+                "crawler_concurrent_requests": None,
+            }
+        )
         assert cfg.crawler_user_agent == DEFAULT_CRAWLER_USER_AGENT
         assert cfg.crawler_concurrent_requests == DEFAULT_CRAWLER_CONCURRENT_REQUESTS
+
+    def test_preserves_zero_delay(self):
+        cfg = SourceConfig.from_dict({"crawler_download_delay": 0})
+        assert cfg.crawler_download_delay == 0
 
 
 # ---------------------------------------------------------------------------
 # SourceConfig.to_dict
 # ---------------------------------------------------------------------------
+
 
 class TestSourceConfigToDict:
     def test_no_rules_key_when_empty(self):
@@ -140,20 +157,23 @@ class TestSourceConfigToDict:
         original = SourceConfig(
             crawler_user_agent="Agent/2",
             crawler_concurrent_requests=8,
-            crawler_download_delay=0.5,
-            crawler_download_timeout=15.0,
+            crawler_download_delay=1,
+            crawler_download_timeout=15,
             rules=[CrawlerRule(type="regex", value="^https://")],
         )
         assert SourceConfig.from_dict(original.to_dict()) == original
 
     def test_json_serialisable(self):
-        d = SourceConfig(rules=[CrawlerRule(type="param", value="utm_source")]).to_dict()
+        d = SourceConfig(
+            rules=[CrawlerRule(type="param", value="utm_source")]
+        ).to_dict()
         json.dumps(d)  # must not raise
 
 
 # ---------------------------------------------------------------------------
 # Source model property
 # ---------------------------------------------------------------------------
+
 
 class _SourceStub:
     """Minimal stub that replicates Source.config property without SQLAlchemy."""
@@ -182,16 +202,20 @@ class TestSourceModelConfig:
         assert s._config["crawler_user_agent"] == "TestBot"
 
     def test_getter_reads_stored_dict(self):
-        s = _SourceStub({"crawler_user_agent": "StoredBot", "crawler_concurrent_requests": 2})
+        s = _SourceStub(
+            {"crawler_user_agent": "StoredBot", "crawler_concurrent_requests": 2}
+        )
         assert s.config.crawler_user_agent == "StoredBot"
         assert s.config.crawler_concurrent_requests == 2
 
     def test_old_s3_keys_ignored(self):
-        s = _SourceStub({
-            "aws_access_key_id": "AKIAIOSFODNN7EXAMPLE",
-            "bucket_name": "my-bucket",
-            "crawler_user_agent": "Bot",
-        })
+        s = _SourceStub(
+            {
+                "aws_access_key_id": "AKIAIOSFODNN7EXAMPLE",
+                "bucket_name": "my-bucket",
+                "crawler_user_agent": "Bot",
+            }
+        )
         cfg = s.config
         assert cfg.crawler_user_agent == "Bot"
         assert not hasattr(cfg, "aws_access_key_id")
@@ -204,6 +228,7 @@ class TestSourceModelConfig:
 # ---------------------------------------------------------------------------
 # Crawler tasks payload
 # ---------------------------------------------------------------------------
+
 
 class TestCrawlerTasksPayload:
     def test_payload_contains_start_pages_and_sitemaps(self):

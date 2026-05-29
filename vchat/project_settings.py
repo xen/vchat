@@ -16,7 +16,6 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "project.agent_style": "",
     "project.provider": "gigachat",
     "project.model": "gigachat-pro",
-    "project.crawl_page_limit": "100",
     "project.agent_name": "",
     "project.welcome_message": "",
     "project.secret": "",

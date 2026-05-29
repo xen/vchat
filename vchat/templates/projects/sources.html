@@ -33,7 +33,6 @@
                     <thead>
                         <tr>
                             <th>Название</th>
-                            <th>Тип</th>
                             <th>URL</th>
                             <th>Документы</th>
                             <th>Переиндексация</th>
@@ -46,11 +45,6 @@
                         <tr class="hover:bg-base-200/40 cursor-pointer *:text-nowrap">
                             <td>
                                 <div class="font-medium">{{ source.title }}</div>
-                            </td>
-                            <td>
-                                <span class="badge badge-sm badge-ghost">
-                                    {{ source.type }}
-                                </span>
                             </td>
                             <td>
                                 <div class="font-medium">{{ source.uri }}</div>
@@ -69,8 +63,8 @@
                             </td>
                             <td>
                                 <div class="font-medium">
-                                    {% if source.config and source.config.get('rules') %}
-                                        {{ source.config.get('rules')|length }}
+                                    {% if source.config.rules %}
+                                        {{ source.config.rules|length }}
                                     {% else %}
                                         0
                                     {% endif %}
@@ -109,7 +103,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center text-base-content/60 py-8">
+                            <td colspan="6" class="text-center text-base-content/60 py-8">
                                 Источники не найдены.
                             </td>
                         </tr>
@@ -141,12 +135,6 @@
 
             <div class="form-control w-full mb-4">
                 <label class="label">
-                        <span class="label-text">Тип</span>
-                </label>
-                {{ form.type(class="select select-bordered w-full", id="source_type_select") }}
-            </div>
-            <div class="form-control w-full mb-4">
-                <label class="label">
                         <span class="label-text">Cron переиндексации (UTC)</span>
                 </label>
                 {{ form.reindex_cron(class="input input-bordered w-full", placeholder="0 3 * * 1") }}
@@ -154,79 +142,6 @@
                     <span class="label-text-alt">Пусто = ручной режим</span>
                 </label>
             </div>
-
-            <!-- S3-specific fields -->
-            <div id="s3_fields" class="source-type-fields" style="display: none;">
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">AWS Access Key ID</span>
-                    </label>
-                    {{ form.aws_access_key_id }}
-                </div>
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">AWS Secret Access Key</span>
-                    </label>
-                    {{ form.aws_secret_access_key }}
-                </div>
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">Bucket name</span>
-                    </label>
-                    {{ form.bucket_name }}
-                </div>
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">Endpoint URL</span>
-                    </label>
-                    {{ form.endpoint_url }}
-                    <label class="label">
-                        <span class="label-text-alt">По умолчанию: AWS S3. Для MinIO, DigitalOcean Spaces и других укажите свой endpoint.</span>
-                    </label>
-                </div>
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">Регион</span>
-                    </label>
-                    {{ form.region }}
-                </div>
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">Префикс</span>
-                        <span class="label-text-alt">Необязательно</span>
-                    </label>
-                    {{ form.prefix }}
-                </div>
-            </div>
-
-            <!-- Google Drive-specific fields -->
-            <div id="google_drive_fields" class="source-type-fields" style="display: none;">
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">Папка Google Drive</span>
-                    </label>
-
-                    <div id="gdrive_auth_section">
-                        <div class="alert alert-info">
-                            <span>Авторизация Google Drive отключена в режиме single-project. Настройте OAuth глобально и обновите список папок ниже.</span>
-                        </div>
-                    </div>
-
-                    <div id="gdrive_folder_section" style="display: none;">
-                        <select id="gdrive_folder_select" class="select select-bordered w-full mb-2">
-                            <option value="" disabled selected>Выберите папку</option>
-                        </select>
-                        <button type="button" onclick="refreshGoogleFolders()" class="btn btn-ghost btn-xs">
-                            <iconify-icon icon="lucide:refresh-cw" class="size-3"></iconify-icon>
-                            Обновить папки
-                        </button>
-                    </div>
-
-                    {{ form.google_drive_folder_id(type="hidden") }}
-                    {{ form.google_drive_folder_name(type="hidden") }}
-                </div>
-            </div>
-
 
             <div class="modal-action">
                 <button type="submit" class="btn btn-primary">Добавить источник</button>
@@ -240,28 +155,6 @@
 </dialog>
 
 <script>
-    const typeSelect = document.getElementById('source_type_select');
-    const siteFields = document.getElementById('site_fields');
-    const s3Fields = document.getElementById('s3_fields');
-    const googleDriveFields = document.getElementById('google_drive_fields');
-
-    function updateFieldsVisibility() {
-        const selectedType = typeSelect.value;
-        if (selectedType === 's3') {
-            siteFields.style.display = 'none';
-            s3Fields.style.display = 'block';
-            googleDriveFields.style.display = 'none';
-        } else if (selectedType === 'google_drive') {
-            siteFields.style.display = 'none';
-            s3Fields.style.display = 'none';
-            googleDriveFields.style.display = 'block';
-        } else {
-            siteFields.style.display = 'block';
-            s3Fields.style.display = 'none';
-            googleDriveFields.style.display = 'none';
-        }
-    }
-
     const addSourceForm = document.getElementById('add_source_form');
     const addSourceErrors = document.getElementById('add_source_errors');
 
@@ -287,37 +180,6 @@
         addSourceErrors.classList.add('hidden');
         addSourceErrors.innerHTML = '';
     });
-
-    document.addEventListener('DOMContentLoaded', function() {
-        typeSelect.addEventListener('change', updateFieldsVisibility);
-        updateFieldsVisibility();
-
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('google_auth_success') === 'true') {
-            add_source_modal.showModal();
-            typeSelect.value = 'google_drive';
-            updateFieldsVisibility();
-            fetchGoogleFolders();
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-        document.getElementById('gdrive_folder_select').addEventListener('change', function(e) {
-            const selectedOption = e.target.options[e.target.selectedIndex];
-            document.querySelector('[name="google_drive_folder_id"]').value = e.target.value;
-            document.querySelector('[name="google_drive_folder_name"]').value = selectedOption.text;
-        });
-    });
-
-    async function fetchGoogleFolders() {
-        const authSection = document.getElementById('gdrive_auth_section');
-        const folderSection = document.getElementById('gdrive_folder_section');
-        const select = document.getElementById('gdrive_folder_select');
-        select.innerHTML = '<option value="" disabled selected>Папки Google Drive недоступны</option>';
-        authSection.style.display = 'block';
-        folderSection.style.display = 'none';
-    }
-
-    window.refreshGoogleFolders = fetchGoogleFolders;
 </script>
 
 {% endblock %}

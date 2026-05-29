@@ -6,6 +6,7 @@ import pytest
 from aiohttp import web
 from yarl import URL
 
+from vchat.models.source_config import CrawlerRule
 from vchat.views.projects import views as project_views
 
 
@@ -198,8 +199,8 @@ async def test_project_source_settings_post_site_rules(
         url = SimpleNamespace(data="https://example.local")
         user_agent = SimpleNamespace(data="")
         concurrent_requests = SimpleNamespace(data=5)
-        download_delay = SimpleNamespace(data=0.2)
-        download_timeout = SimpleNamespace(data=20.0)
+        download_delay = SimpleNamespace(data=1)
+        download_timeout = SimpleNamespace(data=20)
         aws_access_key_id = SimpleNamespace(data="")
         aws_secret_access_key = SimpleNamespace(data="")
         bucket_name = SimpleNamespace(data="")
@@ -236,8 +237,9 @@ async def test_project_source_settings_post_site_rules(
     assert db.commits == 1
     assert source.uri == "https://example.local"
     assert source.reindex_cron == "manual"
-    assert source.config.get("crawler_download_timeout") == 20.0
-    assert "rules" in source.config
+    assert source.config.crawler_download_delay == 1
+    assert source.config.crawler_download_timeout == 20
+    assert source.config.rules == [CrawlerRule(type="contains", value="/private")]
     assert events == ["source_update"]
 
 

@@ -72,26 +72,22 @@ class ChatMsg(Base):
     )
 
 
-source_type_enum = ENUM(
-    "site",
-    "sitemap",
-    "list",
-    "s3",
-    "google_drive",
-    "upload",
-    name="sourcetype",
-    create_type=False,
-)
-
-
 class Source(Base, Created, Updated):
     __tablename__ = "source"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
-    type: Mapped[str] = mapped_column(source_type_enum, nullable=False)
     title: Mapped[str] = mapped_column(sa.String(255), nullable=False, default="")
     uri: Mapped[str] = mapped_column(sa.String, nullable=False)
-    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    _config: Mapped[dict] = mapped_column("config", JSONB, nullable=False, default=dict)
+
+    @property
+    def config(self) -> "SourceConfig":
+        from .source_config import SourceConfig
+        return SourceConfig.from_dict(self._config)
+
+    @config.setter
+    def config(self, value: "SourceConfig") -> None:
+        self._config = value.to_dict()
     reindex_cron: Mapped[str] = mapped_column(
         sa.String(100),
         nullable=False,

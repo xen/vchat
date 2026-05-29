@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.models.data import Settings, Source
+from vchat.models.data import Source
 from vchat.source_settings import (
     DEFAULT_REINDEX_CRON,
     is_manual_reindex,
@@ -35,58 +35,24 @@ def crawl_source_task(source_id: int):
                 print(f"Source {source_id} not found")
                 return
 
-            crawl_page_limit_value = session.execute(
-                select(Settings.value).where(Settings.key == "project.crawl_page_limit")
-            ).scalar_one_or_none()
-            try:
-                crawl_page_limit = int(crawl_page_limit_value or 100)
-            except (TypeError, ValueError):
-                crawl_page_limit = 100
-
-            source_type = source.type
             url = source.uri
             source_title = source.title
-            source_config = dict(source.config or {})
+            crawler_payload = source.config.to_dict()
+            crawler_payload["start_pages"] = list(source.start_pages or [])
+            crawler_payload["sitemaps"] = list(source.sitemaps or [])
     finally:
         engine.dispose()
 
-    # Route to appropriate crawler based on source type
-    if source_type == "s3":
-        # Use S3 crawler
-        print(f"Using S3 crawler for source {source_id}")
-        runner_cmd = [
-            sys.executable,
-            "-m",
-            "jobs.crawler.s3_crawler",
-            str(source_id),
-        ]
-    elif source_type == "google_drive":
-        # Use Google Drive crawler
-        print(f"Using Google Drive crawler for source {source_id}")
-        runner_cmd = [
-            sys.executable,
-            "-m",
-            "jobs.crawler.google_drive_crawler",
-            str(source_id),
-        ]
-    else:
-        # Use Scrapy crawler for site/custom sources
-        print(
-            f"Using Scrapy crawler for source [{source_id}]: '{source_title}' ({url})"
-        )
-
-        config_json = json.dumps(source_config)
-        runner_cmd = [
-            sys.executable,
-            "-m",
-            "jobs.crawler.crawler_runner",
-            url,
-            str(source_id),
-            str(crawl_page_limit),
-            source_type,
-            config_json,
-        ]
-        print(f"Indexing source {source_id} complete")
+    print(f"Using Scrapy crawler for source [{source_id}]: '{source_title}' ({url})")
+    config_json = json.dumps(crawler_payload)
+    runner_cmd = [
+        sys.executable,
+        "-m",
+        "jobs.crawler.crawler_runner",
+        url,
+        str(source_id),
+        config_json,
+    ]
 
     result = subprocess.run(
         runner_cmd,
@@ -130,7 +96,7 @@ def crawl_all_sources_task():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = select(Source).where(Source.type != "upload")
+            stmt = select(Source)
             sources = session.execute(stmt).scalars().all()
 
             if not sources:
@@ -190,9 +156,7 @@ def schedule_reindex_sources_task():
         with Session(bind=engine) as session:
             sources = (
                 session.execute(
-                    select(Source).where(
-                        Source.type != "upload",
-                    )
+                    select(Source)
                 )
                 .scalars()
                 .all()

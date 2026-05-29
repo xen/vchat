@@ -23,14 +23,6 @@
 
                 <div class="form-control w-full">
                     <label class="label">
-                        <span class="label-text">{{ _('Тип') }}</span>
-                    </label>
-                    {{ form.type(class="select select-bordered w-full", id="source_type_select", disabled=True) }}
-                    <input type="hidden" name="type" value="{{ source.type }}">
-                </div>
-
-                <div class="form-control w-full">
-                    <label class="label">
                         <span class="label-text">{{ _('Cron переиндексации (UTC)') }}</span>
                     </label>
                     {{ form.reindex_cron(class="input input-bordered w-full", placeholder="0 3 * * 1") }}
@@ -68,8 +60,8 @@
                         </div>
                     </div>
                     <div id="index_rules_container">
-                        {% if source.config and source.config.get('rules') %}
-                            {% for rule in source.config.get('rules') %}
+                        {% if source.config.rules %}
+                            {% for rule in source.config.rules %}
                             <div class="grid grid-cols-1 md:grid-cols-12 gap-2 mb-2 items-end rule-row">
                                 <div class="form-control md:col-span-4">
                                     <label class="label py-1">
@@ -99,47 +91,6 @@
                         <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
                         {{ _('Добавить правило') }}
                     </button>
-                </div>
-
-                <div id="s3_fields" class="space-y-5" style="display:none;">
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('AWS Access Key ID') }}</span></label>
-                        {{ form.aws_access_key_id }}
-                    </div>
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('AWS Secret Access Key') }}</span></label>
-                        {{ form.aws_secret_access_key }}
-                    </div>
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('Имя бакета') }}</span></label>
-                        {{ form.bucket_name }}
-                    </div>
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('URL эндпоинта') }}</span></label>
-                        {{ form.endpoint_url }}
-                    </div>
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('Регион') }}</span></label>
-                        {{ form.region }}
-                    </div>
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('Префикс') }}</span></label>
-                        {{ form.prefix }}
-                    </div>
-                </div>
-
-                <div id="google_drive_fields" class="space-y-5" style="display:none;">
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('ID папки') }}</span></label>
-                        {{ form.google_drive_folder_id }}
-                    </div>
-                    <div class="form-control w-full">
-                        <label class="label"><span class="label-text">{{ _('Название папки') }}</span></label>
-                        {{ form.google_drive_folder_name }}
-                    </div>
-                    <div class="text-xs text-base-content/60">
-                        {{ _('Чтобы изменить папку, создайте новый источник.') }}
-                    </div>
                 </div>
 
                 <div class="form-control w-full">
@@ -239,29 +190,8 @@
 </template>
 
 <script>
-    const typeSelect = document.getElementById('source_type_select');
-    const siteFields = document.getElementById('site_fields');
-    const s3Fields = document.getElementById('s3_fields');
-    const googleDriveFields = document.getElementById('google_drive_fields');
     const rulesContainer = document.getElementById('index_rules_container');
     const ruleTemplate = document.getElementById('rule_template');
-
-    function updateFieldsVisibility() {
-        const selectedType = typeSelect.value;
-        if (selectedType === 's3') {
-            siteFields.style.display = 'none';
-            s3Fields.style.display = 'block';
-            googleDriveFields.style.display = 'none';
-        } else if (selectedType === 'google_drive') {
-            siteFields.style.display = 'none';
-            s3Fields.style.display = 'none';
-            googleDriveFields.style.display = 'block';
-        } else {
-            siteFields.style.display = 'block';
-            s3Fields.style.display = 'none';
-            googleDriveFields.style.display = 'none';
-        }
-    }
 
     function addIndexRule() {
         const clone = ruleTemplate.content.cloneNode(true);
@@ -269,6 +199,5 @@
     }
 
     window.addIndexRule = addIndexRule;
-    document.addEventListener('DOMContentLoaded', updateFieldsVisibility);
 </script>
 {% endblock %}
