@@ -34,9 +34,7 @@
                         <span class="label-text">{{ _('Cron переиндексации (UTC)') }}</span>
                     </label>
                     {{ form.reindex_cron(class="input input-bordered w-full", placeholder="0 3 * * 1") }}
-                    <label class="label">
-                        <span class="label-text-alt">{{ _('Формат: minute hour day month weekday. Пустое значение = ручной режим. Пример по умолчанию: 0 3 * * 1 (раз в неделю).') }}</span>
-                    </label>
+                    <p class="text-xs text-base-content/60 mt-1">{{ _('Формат: minute hour day month weekday. Пустое значение = ручной режим. Пример по умолчанию: 0 3 * * 1 (раз в неделю).') }}</p>
                 </div>
 
                 <div id="site_fields" class="space-y-5">
