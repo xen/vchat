@@ -80,12 +80,15 @@
                 <div x-show="loading" class="flex justify-center items-center h-40">
                     <span class="loading loading-spinner loading-lg text-primary"></span>
                 </div>
-                <table class="table" x-show="!loading">
+                <table class="table w-full" style="table-layout:fixed" x-show="!loading">
                     <thead x-ref="documentsHead">
                         <template x-for="headerGroup in headerGroups" :key="headerGroup.id">
                             <tr>
                                 <template x-for="header in headerGroup.headers" :key="header.id">
-                                    <th x-html="flexRender(header.column.columnDef.header, header.getContext())"></th>
+                                    <th
+                                        x-bind:style="header.column.columnDef.meta?.thStyle"
+                                        x-html="flexRender(header.column.columnDef.header, header.getContext())"
+                                    ></th>
                                 </template>
                             </tr>
                         </template>
@@ -101,7 +104,11 @@
                         <template x-for="row in visibleRows" :key="row.id">
                             <tr :class="row.original?.is_ignored ? 'bg-base-200/50 opacity-60' : ''">
                                 <template x-for="cell in row.getVisibleCells()" :key="cell.id">
-                                    <td x-html="flexRender(cell.column.columnDef.cell, cell.getContext())"></td>
+                                    <td
+                                        x-bind:style="cell.column.columnDef.meta?.tdStyle"
+                                        x-bind:class="cell.column.columnDef.meta?.tdClass"
+                                        x-html="flexRender(cell.column.columnDef.cell, cell.getContext())"
+                                    ></td>
                                 </template>
                             </tr>
                         </template>

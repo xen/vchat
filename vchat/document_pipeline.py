@@ -335,6 +335,11 @@ def normalize_title_candidate(candidate: str | None) -> str | None:
     if len(cleaned) > 220 or len(cleaned.split()) > 30:
         return None
 
+    # Reject URL slugs: all-lowercase ASCII with no spaces (e.g. Docling's document.name).
+    # Mixed-case strings like "Python" or "HTML5" are legitimate titles and pass through.
+    if len(cleaned) >= 4 and re.fullmatch(r"[a-z][a-z0-9\-_]*", cleaned):
+        return None
+
     return cleaned[:512]
 
 
@@ -478,10 +483,10 @@ def _docling_markdown_from_source(source: str) -> tuple[str | None, str | None]:
     try:
         result = get_docling_converter().convert(source)
         markdown = result.document.export_to_markdown()
-        title = None
-        if hasattr(result.document, "name"):
-            title = getattr(result.document, "name")
-        return markdown or None, title
+        # document.name is the URL slug or filename — not a human-readable title.
+        # For URLs we return None so _coerce_title picks the first heading instead.
+        # For local files the caller supplies path.name as fallback.
+        return markdown or None, None
     except Exception:
         logger.exception("Docling extraction failed for %s", source)
         return None, None
@@ -489,11 +494,21 @@ def _docling_markdown_from_source(source: str) -> tuple[str | None, str | None]:
 
 def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, Any]]:
     doc_type = guess_document_type(source_url, "text/html")
-    markdown, title = _docling_markdown_from_source(source_url)
+
+    # Fetch the page once to get the HTML <title> tag (the authoritative page title)
+    # and keep the body for the BeautifulSoup fallback if Docling fails.
+    response = requests.get(source_url, timeout=20, headers=DEFAULT_HTTP_HEADERS)
+    response.raise_for_status()
+    body = response.text
+    content_type = response.headers.get("Content-Type")
+    soup = BeautifulSoup(body, "html.parser")
+    html_title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
+
+    markdown, _ = _docling_markdown_from_source(source_url)
     if markdown:
         return build_document_payload(
             content=markdown,
-            title=title,
+            title=html_title,
             extractor="docling",
             fallback_used=False,
             degraded_mode=False,
@@ -501,18 +516,14 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
             doc_type=doc_type,
         )
 
-    response = requests.get(source_url, timeout=20, headers=DEFAULT_HTTP_HEADERS)
-    response.raise_for_status()
-    body = response.text
-    content_type = response.headers.get("Content-Type")
     # TODO: собрать all_docs_markdown для шинглового анализа (эвристика)
     all_docs_markdown = []  # Для MVP: пусто, внедрить сборку при батч-обработке
-    markdown, fallback_title, removed, removed_shingles = _html_to_markdown_like(
+    markdown, _, removed, removed_shingles = _html_to_markdown_like(
         body, all_docs_markdown=all_docs_markdown
     )
     normalized, normalized_title, meta = build_document_payload(
         content=markdown,
-        title=fallback_title,
+        title=html_title,
         extractor="beautifulsoup",
         fallback_used=True,
         degraded_mode=False,
@@ -520,7 +531,6 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
         doc_type=doc_type,
     )
     meta["extraction"]["boilerplate_removed_count"] = removed
-    # Визуализация удалённых шинглов для шаблона
     if removed_shingles:
         meta["removed_shingles"] = visualize_removed_blocks(removed_shingles)
     return normalized, normalized_title, meta

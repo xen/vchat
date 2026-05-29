@@ -131,7 +131,7 @@ window.useProjectDataTable = () => {
   const sortableHeader = (label) => ({ column }) => {
     const title = escapeHtml(label)
     if (!column.getCanSort?.()) {
-      return `<span class="text-xs uppercase tracking-wide">${title}</span>`
+      return `<span class="text-xs text-base-content/70">${title}</span>`
     }
 
     const sortState = column.getIsSorted?.()
@@ -145,41 +145,66 @@ window.useProjectDataTable = () => {
     return `
             <button
                 type="button"
-                class="flex items-center gap-1 text-xs uppercase tracking-wide"
+                class="flex items-center gap-1 text-xs text-base-content/70"
                 data-sort-column="${escapeHtml(column.id)}"
                 aria-label="Сортировать по: ${title}"
             >
                 <span>${title}</span>
-                <span class="text-[10px] text-base-content/60">${icon}</span>
+                <span class="text-[10px] text-base-content/40">${icon}</span>
             </button>
         `
   }
 
+  const formatShortDate = (isoStr) => {
+    if (!isoStr) return ''
+    const d = new Date(isoStr)
+    if (!Number.isFinite(d.getTime())) return ''
+    const day = d.getDate().toString().padStart(2, '0')
+    const month = (d.getMonth() + 1).toString().padStart(2, '0')
+    const year = d.getFullYear().toString().slice(2)
+    return `${day}.${month}.${year}`
+  }
+
+  const statusDotClass = (status, chunkCount) => {
+    if (Number(chunkCount) > 0) return 'inline-block size-1.5 rounded-full bg-success shrink-0'
+    const s = typeof status === 'string' ? status.trim().toLowerCase() : ''
+    if (s === 'added' || s === 'indexed') return 'inline-block size-1.5 rounded-full bg-warning shrink-0'
+    return 'inline-block size-1.5 rounded-full bg-base-300 shrink-0'
+  }
+
   const columns = [
     {
-      id: "document_type",
-      accessorFn: (row) => resolveDocumentType(row?.document_type),
-      header: sortableHeader("Тип"),
+      id: "actions",
+      header: "",
+      meta: { thStyle: 'width:80px', tdStyle: 'padding-right:4px' },
       cell: (info) => {
-        const typeKey = info.getValue() || 'other'
-        const metadata = DOCUMENT_TYPE_META[typeKey] || DOCUMENT_TYPE_META.other
-        const rawLabel = metadata.label || typeKey
-        const label = escapeHtml(rawLabel)
-        const labelInitial = rawLabel ? rawLabel.charAt(0) : '?'
-        const iconClass = metadata.icon ? `${metadata.icon}` : ''
-        const icon = iconClass
-          ? `<iconify-icon icon="${iconClass}" class="size-5" aria-hidden="true"></iconify-icon>`
-          : `<span class="text-xs font-semibold" aria-hidden="true">${escapeHtml(labelInitial)}</span>`
+        const docId = info.row.original.id
+        const isIgnored = Boolean(info.row.original.is_ignored)
+        const toggleTitle = isIgnored ? "Вернуть в индекс" : "Игнорировать"
+        const toggleValue = isIgnored ? "false" : "true"
+        const toggleIcon = isIgnored ? "lucide:eye" : "lucide:eye-off"
+        const toggleClass = isIgnored
+          ? "btn btn-ghost btn-xs px-1 text-success"
+          : "btn btn-ghost btn-xs px-1 text-base-content/40"
 
         return `
-                    <div class="flex items-center justify-center" title="${label}">
-                        ${icon}
-                        <span class="sr-only">${label}</span>
-                    </div>
-                `
+          <div class="flex items-center">
+            <button type="button" class="btn btn-ghost btn-xs px-1"
+              data-doc-action="view" data-doc-id="${docId}" title="Открыть содержимое">
+              <iconify-icon icon="lucide:eye" class="size-3.5"></iconify-icon>
+            </button>
+            <button type="button" class="${toggleClass}"
+              data-doc-action="toggle-ignore" data-doc-id="${docId}"
+              data-doc-ignore-value="${toggleValue}" title="${toggleTitle}">
+              <iconify-icon icon="${toggleIcon}" class="size-3.5"></iconify-icon>
+            </button>
+            <button type="button" class="btn btn-ghost btn-xs px-1 text-error/50 hover:text-error"
+              data-doc-action="delete" data-doc-id="${docId}" title="Удалить">
+              <iconify-icon icon="lucide:trash-2" class="size-3.5"></iconify-icon>
+            </button>
+          </div>`
       },
-      enableSorting: true,
-      sortingFn: compareStrings,
+      enableSorting: false,
     },
     {
       accessorKey: "title",
@@ -188,139 +213,54 @@ window.useProjectDataTable = () => {
         const rawTitle = info.getValue()
         const title = escapeHtml((rawTitle || '').trim() || '[Без названия]')
         const docId = escapeHtml(info.row.original.id)
-        const detailHref = `/document/${docId}`
+        const uri = escapeHtml(info.row.original.uri || '')
+        const dateStr = escapeHtml(formatShortDate(info.row.original.created_at))
+        const dotClass = statusDotClass(info.row.original.status, info.row.original.chunk_count)
 
         return `
-                    <div class="flex flex-col gap-0.5">
-                        <a class="font-medium text-xs truncate max-w-[320px] link link-hover" href="${detailHref}" title="Открыть структуру и чанки">${title}</a>
-                    </div>
-                `
+          <div class="overflow-hidden">
+            <a class="font-medium text-sm link link-hover block truncate"
+              href="/document/${docId}" title="${title}">${title}</a>
+            <div class="flex items-center gap-1.5 text-xs text-base-content/40 mt-0.5">
+              ${uri ? `<a href="${uri}" target="_blank" rel="noopener" class="truncate min-w-0 hover:text-base-content/70 transition-colors">${uri}</a>` : ''}
+              <span class="shrink-0 flex items-center gap-1 ml-auto pl-2">
+                <span class="${dotClass}" title="${escapeHtml(info.row.original.status || '')}"></span>
+                ${dateStr}
+              </span>
+            </div>
+          </div>`
       },
       enableSorting: true,
     },
     {
       accessorKey: "source",
-      header: sortableHeader("Источник"),
-      cell: (info) => {
-        const value = escapeHtml(info.getValue() || '')
-        return `<div class="text-sm opacity-70 truncate max-w-[200px]" title="${value}">${value || '-'}</div>`
-      },
-      enableSorting: true,
-      sortingFn: compareStrings,
+      header: "",
+      cell: () => '',
+      enableSorting: false,
       filterFn: (row, columnId, filterValue) => {
         if (!filterValue) return true
-        const value = (row.getValue(columnId) ?? '').toString()
-        return value === filterValue
+        return (row.getValue(columnId) ?? '').toString() === filterValue
       },
-    },
-    {
-      accessorKey: "created_at",
-      header: sortableHeader("Проиндексировано"),
-      cell: (info) => {
-        if (!info.getValue()) return '-'
-        const date = new Date(info.getValue())
-        return `<div class="text-sm opacity-70">${date.toLocaleDateString()}</div>`
-      },
-      enableSorting: true,
-      sortingFn: compareIsoDates,
-    },
-    {
-      accessorKey: "updated_at",
-      header: sortableHeader("Обновлено"),
-      cell: (info) => {
-        const val = info.getValue()
-        if (!val) return '-'
-        const date = new Date(val)
-        return `<div class="text-sm opacity-70">${date.toLocaleDateString()}</div>`
-      },
-      enableSorting: true,
-      sortingFn: compareIsoDates,
     },
     {
       id: "size_chunks",
-      header: sortableHeader("Размер/чанки"),
+      header: sortableHeader("Размер"),
+      meta: { thStyle: 'width:120px', tdStyle: 'padding-left:12px' },
       accessorFn: (row) => Number(row?.size_bytes ?? 0),
       cell: (info) => {
         const bytes = Number(info.row.original.size_bytes || 0)
         const chunkCount = Number(info.row.original.chunk_count || 0)
         const human = escapeHtml(formatBytes(bytes))
-        const tooltip = escapeHtml(`${bytes} bytes`)
-        const chunkLabel = escapeHtml(`${chunkCount} ${chunkCount === 1 ? 'чанк' : 'чанков'}`)
-
+        const chunkLabel = escapeHtml(`${chunkCount} чанк${chunkCount === 1 ? '' : chunkCount >= 2 && chunkCount <= 4 ? 'а' : 'ов'}`)
         return `
-                    <div class="flex flex-col gap-0.5 text-sm">
-                        <span class="font-medium" title="${tooltip}">${human}</span>
-                        <span class="opacity-70">${chunkLabel}</span>
-                    </div>
-                `
+          <div class="text-xs whitespace-nowrap">
+            <div class="font-medium">${human}</div>
+            <div class="opacity-50">${chunkLabel}</div>
+          </div>`
       },
       enableSorting: true,
       sortingFn: compareNumbers,
     },
-    {
-      accessorKey: "status",
-      header: sortableHeader("Статус"),
-      cell: (info) => {
-        const status = formatDocumentStatus(info.getValue())
-        return `<span class="${status.className}">${escapeHtml(status.label)}</span>`
-      },
-      enableSorting: true,
-      sortingFn: compareStrings,
-    },
-    {
-      id: "view",
-      header: "",
-      cell: (info) => `
-                <div class="flex justify-center">
-                    <button
-                        type="button"
-                        class="btn btn-ghost btn-xs"
-                        data-doc-action="view"
-                        data-doc-id="${info.row.original.id}"
-                        title="Открыть содержимое документа"
-                    >
-                        <iconify-icon icon="lucide:eye" class="size-4"></iconify-icon>
-                    </button>
-                </div>
-            `,
-      enableSorting: false,
-    },
-    {
-      accessorKey: "actions",
-      header: "Действия",
-      cell: (info) => {
-        const docId = info.row.original.id
-        const isIgnored = Boolean(info.row.original.is_ignored)
-        const toggleLabel = isIgnored ? "Вернуть в индекс" : "Игнорировать"
-        const toggleValue = isIgnored ? "false" : "true"
-        const toggleClass = isIgnored
-          ? "btn btn-xs btn-outline btn-success"
-          : "btn btn-xs btn-outline btn-warning"
-
-        return `
-                    <div class="flex flex-wrap items-center gap-1">
-                        <button
-                            type="button"
-                            class="${toggleClass}"
-                            data-doc-action="toggle-ignore"
-                            data-doc-id="${docId}"
-                            data-doc-ignore-value="${toggleValue}"
-                        >
-                            ${toggleLabel}
-                        </button>
-                        <button
-                            type="button"
-                            class="btn btn-xs btn-outline btn-error"
-                            data-doc-action="delete"
-                            data-doc-id="${docId}"
-                        >
-                            Удалить
-                        </button>
-                    </div>
-                `
-      },
-      enableSorting: false,
-    }
   ]
 
   return {
@@ -356,6 +296,7 @@ window.useProjectDataTable = () => {
         globalFilter: "",
         sorting: [],
         columnFilters: [],
+        columnVisibility: { source: false },
       }
 
       this.initFromUrl()

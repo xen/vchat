@@ -34,10 +34,34 @@
     <div class="flex-none"></div>
   </header>
 
-  <!-- Chat Log -->
-  <main id="log" class="flex-1 overflow-y-auto w-full p-4 space-y-4 scroll-smooth">
-    <!-- Messages will appear here -->
-  </main>
+  <!-- Chat area + sidebar side by side -->
+  <div style="flex: 1; display: flex; overflow: hidden;">
+    <main id="log" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+      <!-- Messages will appear here -->
+    </main>
+
+    <!-- Sources Sidebar (part of layout, not overlay) -->
+    <aside id="sources-sidebar"
+      class="bg-base-100 border-l border-base-200"
+      style="width: 0; min-width: 0; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; user-select: none;">
+      <!-- Resize handle -->
+      <div id="sources-sidebar-resizer"
+           style="position: absolute; top: 0; left: 0; width: 4px; height: 100%; cursor: col-resize;"
+           ></div>
+      <div style="flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; min-width: 14rem;"
+           class="border-b border-base-200">
+        <span class="font-semibold text-sm">{{ _('Источники') }}</span>
+        <button id="sources-sidebar-close" class="btn btn-ghost btn-xs btn-square">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div id="sources-sidebar-list"
+           style="flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.875rem; user-select: text; min-width: 14rem;">
+      </div>
+    </aside>
+  </div>
 
   <!-- Footer Input -->
   <div class="flex-none w-full bg-base-100 p-4 border-t border-base-200">
@@ -74,6 +98,69 @@
     let ws;
     let currentBotBubble = null;
 
+    const sidebarEl = document.getElementById('sources-sidebar');
+    const sidebarListEl = document.getElementById('sources-sidebar-list');
+    const sidebarCloseEl = document.getElementById('sources-sidebar-close');
+    const sidebarResizerEl = document.getElementById('sources-sidebar-resizer');
+
+    let sidebarOpen = false;
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function setSidebarContent(sources) {
+      sidebarListEl.innerHTML = sources.map((s) => {
+        const title = escapeHtml(s.title || '{{ _("Источник") }}');
+        const href = escapeHtml(s.uri || '#');
+        return `<a href="${href}" target="_blank" rel="noopener" style="color: var(--color-primary, #6366f1); word-break: break-word; line-height: 1.4; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${title}</a>`;
+      }).join('');
+    }
+
+    const SIDEBAR_WIDTH = Math.max(224, Math.round(window.innerWidth * 0.33));
+
+    function openSidebar(sources) {
+      setSidebarContent(sources);
+      if (!sidebarOpen) {
+        sidebarOpen = true;
+        sidebarEl.style.transition = 'none';
+        sidebarEl.style.width = '0';
+        requestAnimationFrame(() => {
+          sidebarEl.style.transition = 'width 0.2s ease-in-out';
+          sidebarEl.style.width = SIDEBAR_WIDTH + 'px';
+        });
+      }
+    }
+
+    function closeSidebar() {
+      sidebarOpen = false;
+      sidebarEl.style.transition = 'width 0.2s ease-in-out';
+      sidebarEl.style.width = '0';
+    }
+
+    sidebarCloseEl.addEventListener('click', closeSidebar);
+
+    // Resize: drag left edge to change sidebar width
+    sidebarResizerEl.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      sidebarEl.style.transition = 'none';
+      const startX = e.clientX;
+      const startW = sidebarEl.getBoundingClientRect().width;
+      const vw = window.innerWidth;
+
+      function onMove(e) {
+        const delta = startX - e.clientX;
+        const newW = Math.min(Math.max(startW + delta, 224), vw * 0.6);
+        sidebarEl.style.width = newW + 'px';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
     function wsUrl() {
       const payload = '{{ payload }}';
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -88,57 +175,71 @@
       statusEl.innerHTML = `<span class="badge badge-xs ${badgeClass} mr-1"></span> ${text}`;
     }
 
-    function renderSourcesHtml(sources = [], reasonCode = null) {
-      if ((!sources || sources.length === 0) && !reasonCode) {
-        return '';
-      }
-      const sourceCards = (sources || []).map((source) => {
-        const citationId = source.citation_id ?? '';
-        const title = source.display_path || source.title || '{{ _("Источник") }}';
-        const metaParts = [source.kind, source.section_path].filter(Boolean);
-        const metaHtml = metaParts.length
-          ? `<div class="mt-1 text-[0.7rem] opacity-70">${metaParts.join(' · ')}</div>`
-          : '';
-        const href = source.uri || '#';
-        return `
-          <a
-            href="${href}"
-            target="_blank"
-            rel="noopener"
-            class="source-item rounded-box border border-base-content/10 bg-base-100/60 px-3 py-2 hover:border-primary/40 transition-colors"
-            data-id="${citationId}">
-            <div class="font-medium">${title}</div>
-            ${metaHtml}
-          </a>
-        `;
-      }).join('');
-      const reasonBadge = reasonCode
-        ? `<span class="badge badge-outline badge-xs">${reasonCode}</span>`
-        : '';
-      return `
-        <div data-structured-context="true">
-          <div class="divider my-2 opacity-40"></div>
-          <div class="flex flex-col gap-2 text-xs">
-            <div class="flex items-center justify-between gap-2">
-              <div class="font-bold opacity-70">{{ _('Источники') }}</div>
-              ${reasonBadge}
-            </div>
-            <div class="grid gap-2">${sourceCards}</div>
-          </div>
-        </div>
-      `;
-    }
-
     function attachStructuredContext(bubble, sources = [], reasonCode = null) {
       if (!bubble) {
         return;
       }
       bubble.querySelectorAll('[data-structured-context="true"]').forEach((node) => node.remove());
-      const html = renderSourcesHtml(sources, reasonCode);
-      if (!html) {
+
+      if (sources && sources.length > 0) {
+        const citationMap = {};
+        for (const s of sources) {
+          if (s.citation_id !== undefined && s.citation_id !== null) {
+            citationMap[String(s.citation_id)] = s;
+          }
+        }
+        bubble.querySelectorAll('.citation-btn').forEach((btn) => {
+          const src = citationMap[btn.dataset.id];
+          if (src?.uri) {
+            const a = document.createElement('a');
+            a.href = src.uri;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.className = btn.className;
+            a.dataset.id = btn.dataset.id;
+            a.innerHTML = btn.innerHTML;
+            a.classList.remove('citation-btn');
+            a.classList.add('citation-link');
+            btn.replaceWith(a);
+          }
+        });
+      }
+
+      if (!sources || sources.length === 0) {
         return;
       }
-      bubble.insertAdjacentHTML('beforeend', html);
+
+      const seen = new Set();
+      const unique = sources.filter((s) => {
+        const key = s.uri || s.title;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (unique.length === 0) {
+        return;
+      }
+
+      const count = unique.length;
+      const label = count === 1
+        ? '{{ _("1 источник") }}'
+        : count < 5
+          ? `${count} {{ _("источника") }}`
+          : `${count} {{ _("источников") }}`;
+
+      const wrapper = document.createElement('div');
+      wrapper.setAttribute('data-structured-context', 'true');
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.style.cssText = 'display: inline-flex; align-items: center; gap: 0.375rem; margin-top: 0.5rem; padding: 0.25rem 0.75rem; font-size: 0.75rem; border-radius: 9999px; border: 1.5px solid rgba(0,0,0,0.3); background: transparent; cursor: pointer; transition: border-color 0.15s, background 0.15s;';
+      btn.onmouseenter = () => { btn.style.background = 'rgba(0,0,0,0.05)'; btn.style.borderColor = 'rgba(0,0,0,0.5)'; };
+      btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.borderColor = 'rgba(0,0,0,0.3)'; };
+      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" style="width:0.875rem;height:0.875rem;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span>${label}</span>`;
+      btn.addEventListener('click', () => openSidebar(unique));
+
+      wrapper.appendChild(btn);
+      bubble.appendChild(wrapper);
     }
 
     function ensureVoteArea(chatDiv, msgId, signedMsgId, vote = null) {

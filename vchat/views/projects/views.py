@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import secrets
 import json
 import hashlib
@@ -127,6 +128,13 @@ def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
             }
         )
     return sources
+
+
+_SLUG_RE = re.compile(r"^[a-z][a-z0-9\-_]*$")
+
+
+def _is_slug_title(title: str | None) -> bool:
+    return bool(title and len(title) >= 4 and _SLUG_RE.fullmatch(title))
 
 
 def _display_document_title(title: str | None, uri: str | None) -> str:
@@ -954,6 +962,7 @@ async def project_documents_json(request):
             {
                 "id": str(document_id),
                 "title": _display_document_title(title, uri),
+                "uri": uri or "",
                 "source": source_title or source_uri or _("Файлы"),
                 "created_at": created_at.isoformat() if created_at else None,
                 "updated_at": updated_at.isoformat() if updated_at else None,
@@ -1346,6 +1355,29 @@ async def project_chat(request):
                 "sources": _message_sources(row),
             }
         )
+
+    # Refresh stale slug-titles from the document table
+    slug_uris = {
+        src["uri"]
+        for msg in initial_messages
+        for src in msg.get("sources") or []
+        if src.get("uri") and _is_slug_title(src.get("title"))
+    }
+    if slug_uris:
+        fresh_rows = (
+            await request["db"].execute(
+                sa.select(Document.uri, Document.title).where(
+                    Document.uri.in_(slug_uris)
+                )
+            )
+        ).all()
+        uri_title_map = {r.uri: r.title for r in fresh_rows if r.title}
+        for msg in initial_messages:
+            for src in msg.get("sources") or []:
+                fresh = uri_title_map.get(src.get("uri"))
+                if fresh:
+                    src["title"] = fresh
+                    src["display_path"] = fresh
 
     project = _project_context(request)
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)

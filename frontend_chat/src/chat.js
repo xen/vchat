@@ -90,16 +90,9 @@ document.addEventListener("click", (event) => {
         return;
     }
 
-    const id = target.dataset.id;
-    const citationEvent = new CustomEvent("citation-click", { detail: { id } });
-    document.dispatchEvent(citationEvent);
-
-    const sourceElement = document.querySelector(`.source-item[data-id="${id}"]`);
-    if (sourceElement instanceof HTMLElement) {
-        sourceElement.scrollIntoView({ behavior: "smooth", block: "center" });
-        sourceElement.classList.add("ring", "ring-primary");
-        window.setTimeout(() => {
-            sourceElement.classList.remove("ring", "ring-primary");
-        }, 2000);
+    const bubble = target.closest(".chat-bubble");
+    const toggle = bubble?.querySelector("[data-structured-context='true'] button");
+    if (toggle instanceof HTMLElement) {
+        toggle.click();
     }
 });
