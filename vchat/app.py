@@ -18,6 +18,7 @@ from vchat.app_keys import (
     SETTINGS_KEY,
     SIGNER_KEY,
 )
+from vchat.db import engine
 from vchat.i18n import _
 from vchat.metrics import validate_multiprocess_setup
 from vchat.project_settings import init_settings_cache
@@ -92,8 +93,6 @@ async def create_app() -> Application:
         await app[REDIS_KEY].aclose()
 
     async def dispose_db(app):
-        from vchat.db import engine
-
         await engine.dispose()
 
     app.on_cleanup.append(close_redis)

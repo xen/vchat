@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 from pathlib import Path
@@ -54,8 +55,6 @@ app.conf.beat_schedule = {
 
 @task_postrun.connect
 def run_gc(*_, **__):
-    import gc
-
     gc.collect()
 
 

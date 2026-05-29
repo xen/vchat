@@ -1,7 +1,10 @@
 import logging
 import secrets
 import json
-from datetime import datetime, time, timezone
+import hashlib
+import hmac
+import uuid
+from datetime import datetime, time, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -35,6 +38,7 @@ from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
 from vchat.models import Chat, ChatMsg, Chunk, Document, Source, User
+from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
     get_setting,
@@ -380,8 +384,6 @@ async def project_source_settings(request):
     form = forms.SourceSettingsForm(**form_kwargs)
 
     if request.method == "POST" and form.validate():
-        from vchat.models.source_config import CrawlerRule, SourceConfig
-
         source.title = form.title.data
         source.reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
         source.updated_at = datetime.now(timezone.utc)
@@ -700,9 +702,6 @@ async def project_action(request):
         if not form.validate():
             return web.Response(text="Error", status=400)
 
-        from urllib.parse import urlparse
-        from vchat.models.source_config import CrawlerRule, SourceConfig
-
         uri = form.url.data
         parsed_uri = urlparse(uri)
         title = parsed_uri.netloc or parsed_uri.path
@@ -907,8 +906,6 @@ async def project_documents_json(request):
 @aiohttp_jinja2.template("projects/stats.html")
 async def project_stats(request):
     db = request["db"]
-
-    from datetime import timedelta
 
     tz_name = config.get("time_zone") or "UTC"
     app_tz = ZoneInfo(tz_name)
@@ -1323,15 +1320,10 @@ async def _render_public_chat(request):
     sign = request.query.get("sign", "")
 
     if not user_uid:
-        import uuid
-
         user_uid = f"guest_{uuid.uuid4().hex[:8]}"
 
     secret = get_setting(request.app, "project.secret", "") or ""
     if sign and secret:
-        import hashlib
-        import hmac
-
         expected_sign = hmac.new(
             secret.encode("utf-8"), user_uid.encode("utf-8"), hashlib.sha256
         ).hexdigest()

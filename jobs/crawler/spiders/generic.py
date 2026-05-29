@@ -1,12 +1,14 @@
+import json
+from urllib.parse import urlparse
+
+import pycld2 as cld2
+from dateutil import parser as date_parser
 from scrapy.linkextractors import LinkExtractor
-from scrapy.spiders import CrawlSpider, Rule
 from scrapy.http import Request
+from scrapy.spiders import CrawlSpider, Rule
 
 from ..items import CrawledItem
 from ..seed_urls import iter_source_seed_urls
-import pycld2 as cld2
-from dateutil import parser as date_parser
-import json
 
 
 class GenericSpider(CrawlSpider):
@@ -44,9 +46,6 @@ class GenericSpider(CrawlSpider):
         ignored_params = [
             r["value"] for r in self.config.get("rules", []) if r["type"] == "param"
         ]
-
-        # Strict domain matching
-        from urllib.parse import urlparse
 
         source_hostname = urlparse(url).hostname if url else None
 

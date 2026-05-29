@@ -2,7 +2,7 @@ import asyncio
 from urllib.parse import urljoin, urlparse
 
 import sqlalchemy as sa
-from aiohttp import web
+from aiohttp import ClientSession, ClientTimeout, web
 
 from jobs.embedder.tasks import index_document
 from vchat.document_pipeline import extract_url_document
@@ -68,8 +68,6 @@ async def _get_source_hosts(request: web.Request) -> list[tuple[int, str]]:
 
 async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
     """Return: (status_code, redirect_location, final_status_if_followed)."""
-    from aiohttp import ClientSession, ClientTimeout
-
     timeout = ClientTimeout(total=20)
     async with ClientSession(timeout=timeout) as client:
         async with client.get(url, allow_redirects=False) as resp:

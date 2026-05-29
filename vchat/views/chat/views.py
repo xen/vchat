@@ -30,6 +30,7 @@ from vchat.guardrails import (
     extract_tripwire_details,
     get_guardrails_client,
 )
+from vchat.gigachat_oauth import get_gigachat_access_token
 from vchat.logging_utils import log_json
 from vchat.metrics import record_chat_request
 from vchat.models import Chat, ChatMsg
@@ -183,8 +184,6 @@ async def generate_suggestions(
         async with aiohttp.ClientSession() as session:
             request_timeout_seconds = 10.0
             if ctx.provider_id == "gigachat":
-                from vchat.gigachat_oauth import get_gigachat_access_token
-
                 api_key = await get_gigachat_access_token(
                     session,
                     basic_auth_key=api_key,
@@ -431,8 +430,6 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
         async with aiohttp.ClientSession() as session:
             request_timeout_seconds = 60.0
             if provider_id == "gigachat":
-                from vchat.gigachat_oauth import get_gigachat_access_token
-
                 api_key = await get_gigachat_access_token(
                     session,
                     basic_auth_key=api_key,

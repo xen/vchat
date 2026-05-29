@@ -18,6 +18,7 @@ from vchat.embeddings import load_embedding_model
 from vchat.models import ChatMsg
 from vchat.settings import config
 
+from . import retrieval_config as rcnf
 from ._types import Msg
 
 logger = logging.getLogger(__name__)
@@ -33,11 +34,11 @@ TAIL_MSG_LIMIT = 5
 VECTOR_TOP_K = 10
 FT_TOP_M = 10
 MAX_LEXICAL_TERMS = 8
-VECTOR_MAX_DIST = 0.78
+VECTOR_MAX_DIST = 0.68
 MAX_CONTEXT_SNIPPET_TOKENS = 5000
 MAX_INPUT_CONTEXT_TOKENS = 10000
 CONTEXT_SAFETY_MARGIN = 1024
-RERANK_LIMIT = 24
+RERANK_LIMIT = 48
 RRF_K = 60
 RERANK_MODEL = cfg.get(
     "reranker_model_id", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
@@ -112,6 +113,7 @@ class Snippet:
     entity_terms: list[str] | None = None
     token_count: int | None = None
     rerank_score: float | None = None
+    retrieval_origins: list[str] | None = None
 
     @classmethod
     def from_mapping(cls, row: dict[str, Any]) -> "Snippet":
@@ -498,14 +500,28 @@ def loadrerank():
     if _rerank_model is not None:
         return _rerank_model
     try:
+        import sys
+
+        import torch
         from sentence_transformers import CrossEncoder  # type: ignore[import]
+
+        forced = cfg.get("reranker_device", "").strip().lower()
+        if forced:
+            device = forced
+        elif sys.platform == "darwin" and torch.backends.mps.is_available():
+            device = "mps"
+        elif sys.platform.startswith("linux") and torch.cuda.is_available():
+            device = "cuda"
+        else:
+            device = "cpu"
 
         _rerank_model = CrossEncoder(
             RERANK_MODEL,
-            device="cpu",
+            device=device,
             max_length=512,
             local_files_only=True,
         )
+        logger.info("Rerank model loaded on device=%s", device)
     except Exception:
         logger.exception("Cross-encoder reranker is unavailable")
         _rerank_model = False
@@ -646,6 +662,7 @@ async def fulltext_supply(
 def reciprocal_rank_fusion(rankings: list[list[Snippet]]) -> list[Snippet]:
     fused: dict[tuple[Any, ...], Snippet] = {}
     scores: dict[tuple[Any, ...], float] = {}
+    origins: dict[tuple[Any, ...], list[str]] = {}
 
     for ranking in rankings:
         for rank, snippet in enumerate(ranking, start=1):
@@ -663,6 +680,10 @@ def reciprocal_rank_fusion(rankings: list[list[Snippet]]) -> list[Snippet]:
             )
             if key not in fused:
                 fused[key] = snippet
+                origins[key] = []
+            bucket = origins[key]
+            if snippet.src and snippet.src not in bucket:
+                bucket.append(snippet.src)
             scores[key] = scores.get(key, 0.0) + 1.0 / (RRF_K + rank)
 
     ranked: list[Snippet] = []
@@ -672,6 +693,7 @@ def reciprocal_rank_fusion(rankings: list[list[Snippet]]) -> list[Snippet]:
                 **{
                     **asdict(snippet),
                     "rerank_score": round(scores[key], 6),
+                    "retrieval_origins": origins[key] or None,
                 }
             )
         )
@@ -723,16 +745,36 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
     for snippet, score in zip(ranked[:RERANK_LIMIT], scores, strict=True):
         boosted = float(score)
         header_text = (snippet.header_text or "").lower()
+        section_path = (snippet.section_path or "").lower()
         entity_terms = [term.lower() for term in (snippet.entity_terms or [])]
+        snippet_text_lower = (snippet.text or "").lower()
+
+        overlap = 0
         for term in profile["lexical_terms"]:
             if term in header_text:
-                boosted += 0.15
+                boosted += rcnf.RERANK_FIELD_WEIGHTS["header_text"]
+                overlap += 1
+            if term in section_path:
+                boosted += rcnf.RERANK_FIELD_WEIGHTS["section_path"]
+                overlap += 1
             if term in entity_terms:
-                boosted += 0.10
-        if profile["table_mode"] and snippet.kind in {"table", "table_rows"}:
-            boosted += 0.20
-        if snippet.kind in {"section_summary", "summary"}:
-            boosted += 0.05
+                boosted += rcnf.RERANK_FIELD_WEIGHTS["entity_terms"]
+                overlap += 1
+            if term in snippet_text_lower:
+                overlap += 1
+
+        if overlap:
+            boosted += min(overlap, 4) * rcnf.RERANK_OVERLAP_WEIGHT
+
+        if profile["table_mode"] and snippet.kind in rcnf.RERANK_TABLE_MODE_BONUS:
+            boosted += rcnf.RERANK_TABLE_MODE_BONUS[snippet.kind]
+
+        if snippet.kind in rcnf.RERANK_KIND_BONUS:
+            boosted += rcnf.RERANK_KIND_BONUS[snippet.kind]
+
+        if snippet.kind in {"section_summary", "summary"} and overlap == 0:
+            boosted -= rcnf.RERANK_SUMMARY_ZERO_OVERLAP_PENALTY
+
         rescored.append(
             Snippet(**{**asdict(snippet), "rerank_score": round(boosted, 6)})
         )
@@ -740,7 +782,18 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
     rescored.sort(key=lambda item: item.rerank_score or 0.0, reverse=True)
     out: list[Snippet] = []
     seen_by_source_ref: dict[tuple[str, Any], int] = {}
+    seen_content_refs: set[tuple[Any, ...]] = set()
     for item in rescored:
+        content_key = (
+            item.document_id,
+            item.kind,
+            item.section_path,
+            (item.text or "").strip().lower()[:180],
+        )
+        if content_key in seen_content_refs:
+            continue
+        seen_content_refs.add(content_key)
+
         source = str(item.src or "unknown")
         ref = (
             item.document_id

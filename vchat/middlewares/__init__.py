@@ -11,7 +11,7 @@ from aiohttp.web_middlewares import normalize_path_middleware
 from aiohttp_session import get_session, session_middleware
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
-from vchat.app_keys import REDIS_KEY
+from vchat.app_keys import CONFIG_KEY, REDIS_KEY
 from vchat.db import async_session_factory
 from vchat.i18n import _
 from vchat.models import User
@@ -176,8 +176,6 @@ async def force_https_location_middleware(request, handler):
     response = await handler(request)
     location = response.headers.get("Location")
     if location and location.startswith("http://"):
-        from vchat.app_keys import CONFIG_KEY
-
         config = request.app[CONFIG_KEY]
         public_url = config.get("public_url", "")
         if public_url.startswith("https://"):

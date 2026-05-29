@@ -12,6 +12,11 @@ import requests
 from bs4 import BeautifulSoup
 from docling.document_converter import DocumentConverter
 
+from vchat.document_shingles import (
+    find_repeated_shingles,
+    remove_shingles,
+    visualize_removed_blocks,
+)
 from vchat.document_types import guess_document_type
 
 logger = logging.getLogger(__name__)
@@ -394,8 +399,6 @@ def _strip_boilerplate(soup: BeautifulSoup) -> int:
 def _html_to_markdown_like(
     body: str, all_docs_markdown: list[str] = None
 ) -> tuple[str, str | None, int, list[str]]:
-    from vchat.document_shingles import find_repeated_shingles, remove_shingles
-
     soup = BeautifulSoup(body, "html.parser")
     boilerplate_removed = _strip_boilerplate(soup)
     title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
@@ -519,8 +522,6 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
     meta["extraction"]["boilerplate_removed_count"] = removed
     # Визуализация удалённых шинглов для шаблона
     if removed_shingles:
-        from vchat.document_shingles import visualize_removed_blocks
-
         meta["removed_shingles"] = visualize_removed_blocks(removed_shingles)
     return normalized, normalized_title, meta
 

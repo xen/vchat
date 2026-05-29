@@ -6,6 +6,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
+from vchat.app_keys import SETTINGS_KEY
 from vchat.db import async_session_factory
 from vchat.models import Settings
 from vchat.utils import json
@@ -58,14 +59,10 @@ async def load_settings_map() -> dict[str, str | None]:
 
 
 async def init_settings_cache(app) -> None:
-    from vchat.app_keys import SETTINGS_KEY
-
     app[SETTINGS_KEY] = await load_settings_map()
 
 
 def get_setting(app, key: str, default: str | None = None) -> str | None:
-    from vchat.app_keys import SETTINGS_KEY
-
     settings = app.get(SETTINGS_KEY, {})
     if key in settings:
         return settings[key]
@@ -114,8 +111,6 @@ async def upsert_settings(session, updates: dict[str, Any]) -> dict[str, str | N
 async def apply_settings_updates(
     app, session, updates: dict[str, Any]
 ) -> dict[str, str | None]:
-    from vchat.app_keys import SETTINGS_KEY
-
     cleaned = await upsert_settings(session, updates)
     cache = dict(app.get(SETTINGS_KEY, {}))
     cache.update(cleaned)

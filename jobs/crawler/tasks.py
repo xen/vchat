@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
+from jobs.embedder.tasks import refresh_project_index
 from vchat.models.data import Source
 from vchat.source_settings import (
     DEFAULT_REINDEX_CRON,
@@ -73,9 +74,6 @@ def crawl_source_task(source_id: int):
                     session.commit()
         finally:
             engine.dispose()
-
-        # Chain refresh_project_index
-        from jobs.embedder.tasks import refresh_project_index
 
         print("Triggering refresh_project_index")
         refresh_project_index.delay()

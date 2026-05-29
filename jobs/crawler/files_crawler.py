@@ -1,5 +1,6 @@
 import logging
 import sys
+import traceback
 from pathlib import Path
 
 from sqlalchemy import select
@@ -78,8 +79,6 @@ def crawl_file_task(file_id: int):
 
             except Exception as exc:
                 logger.exception("Error processing document %s", doc.id)
-                import traceback
-
                 traceback.print_exc()
                 session.rollback()
                 _ensure_meta(doc)
