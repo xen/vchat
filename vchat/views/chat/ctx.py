@@ -302,14 +302,63 @@ def queryprofile(text: str) -> dict[str, Any]:
 def _get_embed_model():
     global _embed_model
     if _embed_model is None:
-        logger.info("Loading embedding model for retrieval")
-        _embed_model = load_embedding_model(device="cpu")
+        _embed_model = load_embedding_model()
     return _embed_model
 
 
+def _truncate_embedding_payload(text: str, model: Any) -> str:
+    payload = text or ""
+    max_seq_length = int(
+        cfg.get("embedding_max_seq_length") or getattr(model, "max_seq_length", 0) or 0
+    )
+    tokenizer = getattr(model, "tokenizer", None)
+    if not payload or max_seq_length <= 0 or tokenizer is None:
+        return payload
+
+    try:
+        encoded = tokenizer(
+            payload,
+            add_special_tokens=False,
+            truncation=True,
+            max_length=max_seq_length,
+        )
+    except TypeError:
+        return payload
+    except Exception:
+        logger.exception("Failed to truncate embedding payload")
+        return payload
+
+    input_ids = None
+    if isinstance(encoded, dict):
+        input_ids = encoded.get("input_ids")
+    else:
+        input_ids = getattr(encoded, "input_ids", None)
+
+    if not input_ids:
+        return payload
+    if input_ids and isinstance(input_ids[0], list):
+        input_ids = input_ids[0]
+
+    try:
+        truncated = tokenizer.decode(
+            input_ids,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
+        )
+    except TypeError:
+        try:
+            truncated = tokenizer.decode(input_ids, skip_special_tokens=True)
+        except Exception:
+            return payload
+    except Exception:
+        return payload
+
+    return (truncated or payload).strip()
+
+
 def embed_query(text: str) -> list[float]:
-    payload = f"{EMBEDDING_QUERY_PROMPT}{text}"
     model = _get_embed_model()
+    payload = _truncate_embedding_payload(f"{EMBEDDING_QUERY_PROMPT}{text}", model)
     try:
         emb = model.encode([payload], normalize_embeddings=True, batch_size=1)
     except TypeError:
