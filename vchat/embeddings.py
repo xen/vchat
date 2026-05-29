@@ -57,7 +57,11 @@ def load_embedding_model(
     tokenizer_kwargs: dict[str, Any] | None = None,
 ) -> SentenceTransformer:
     resolved_device = resolve_embedding_device(device)
-    logging.info("Loading embedding model %s on %s", config["embedding_model_dir"], resolved_device)
+    logging.info(
+        "Loading embedding model %s on %s",
+        config["embedding_model_dir"],
+        resolved_device,
+    )
     return SentenceTransformer(
         config["embedding_model_dir"],
         device=resolved_device,
