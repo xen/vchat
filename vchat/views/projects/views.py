@@ -1661,16 +1661,17 @@ async def project_progress(request):
         src_done = row.done or 0
         src_remaining = src_total - src_done
         src_pct = round(src_done / src_total * 100) if src_total else 0
-        sources.append(
-            {
-                "id": row.id,
-                "title": row.title,
-                "total": src_total,
-                "done": src_done,
-                "remaining": src_remaining,
-                "pct": src_pct,
-            }
-        )
+        if src_remaining > 0:
+            sources.append(
+                {
+                    "id": row.id,
+                    "title": row.title,
+                    "total": src_total,
+                    "done": src_done,
+                    "remaining": src_remaining,
+                    "pct": src_pct,
+                }
+            )
 
     # ---- Среднее время обработки из Redis ----
     raw_times = await r.lrange(EMBED_STATS_KEY, 0, -1)

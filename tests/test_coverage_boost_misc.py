@@ -99,6 +99,7 @@ def test_guardrails_reason_detection_branches(monkeypatch: pytest.MonkeyPatch) -
 
 def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(embeddings.config, "embedding_model_dir", "data")
+    monkeypatch.setitem(embeddings.config, "embedding_max_seq_length", 123)
     calls = {}
 
     class _FakeST:
@@ -112,9 +113,13 @@ def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
     model = embeddings.load_embedding_model(device="cpu")
     assert isinstance(model, _FakeST)
     assert calls["model_path"] == "data"
+    assert calls["tokenizer_kwargs"] == {"truncation": True, "max_length": 123}
+    assert model.max_seq_length == 123
 
 
-def test_openai_guardrails_cache_and_extract(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_openai_guardrails_cache_and_extract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     _ = tmp_path
     monkeypatch.setitem(guardrails.config, "openai_guardrails_enabled", True)
     monkeypatch.setattr(guardrails, "_cached_client", None)

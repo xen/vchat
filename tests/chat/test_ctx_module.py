@@ -116,6 +116,33 @@ def test_embed_query_and_vec_literal(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ctx_mod._vec_literal([0.1234567, 1.0]) == "[0.123457,1.000000]"
 
 
+def test_embed_query_prepends_prompt_and_encodes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = {}
+
+    class _Vec:
+        def __init__(self, values):
+            self._values = values
+
+        def tolist(self):
+            return list(self._values)
+
+    class _Emb:
+        def encode(self, texts, normalize_embeddings=True, batch_size=1):
+            _ = normalize_embeddings, batch_size
+            seen["payload"] = texts[0]
+            return [_Vec([0.4, 0.5])]
+
+    monkeypatch.setattr(ctx_mod, "_embed_model", _Emb())
+
+    vec = ctx_mod.embed_query("hello world")
+
+    assert vec == [0.4, 0.5]
+    assert seen["payload"].endswith("hello world")
+    assert ctx_mod.EMBEDDING_QUERY_PROMPT in seen["payload"]
+
+
 @pytest.mark.asyncio
 async def test_fetch_user_memory_chunks_primary_and_fallback() -> None:
     rows = [

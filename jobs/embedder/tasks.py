@@ -33,11 +33,8 @@ VEC_DIM = int(config.get("vec_dim", 2048) or 2048)
 def get_embed_model() -> Any:
     global _embed_model
     if _embed_model is None:
-        # Жёстко форсируем CPU для embedder worker
-        resolved_device = resolve_embedding_device("cpu")
-        logging.info("Loading embedding model on device: %s", resolved_device)
+        resolved_device = resolve_embedding_device()
         _embed_model = load_embedding_model(device=resolved_device)
-        logging.info("Embedding model loaded on device: %s", resolved_device)
     return _embed_model
 
 
@@ -110,25 +107,28 @@ def chunk_text_word_window(
     while i < n:
         token = tokens[i]
         if len(token) > EMBEDDING_CHUNK_MAX_CHARS:
-            for start in range(0, len(token), EMBEDDING_CHUNK_MAX_CHARS):
-                piece = token[start : start + EMBEDDING_CHUNK_MAX_CHARS]
-                chunks.append(
-                    ChunkData(
-                        index=ix,
-                        start=i,
-                        end=i + 1,
-                        text=piece,
-                        kind="text",
-                        token_count=len(
-                            tokenizer(
-                                piece,
-                                add_special_tokens=False,
-                                truncation=False,
-                            )["input_ids"]
-                        ),
+            token_ids = tokenizer(token, add_special_tokens=False, truncation=False)[
+                "input_ids"
+            ]
+            for id_start in range(0, len(token_ids), max_tokens):
+                piece_ids = token_ids[id_start : id_start + max_tokens]
+                piece = tokenizer.decode(
+                    piece_ids,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=False,
+                ).strip()
+                if piece:
+                    chunks.append(
+                        ChunkData(
+                            index=ix,
+                            start=i,
+                            end=i + 1,
+                            text=piece,
+                            kind="text",
+                            token_count=len(piece_ids),
+                        )
                     )
-                )
-                ix += 1
+                    ix += 1
             i += 1
             continue
 
@@ -405,7 +405,14 @@ def chunk_document_text(
                 )
             if len(table_lines) > 2:
                 projection_lines.append("Preview rows:")
-                projection_lines.extend(table_lines[2 : min(len(table_lines), 5)])
+                for row in table_lines[2 : min(len(table_lines), 5)]:
+                    candidate = "\n".join([*projection_lines, row])
+                    candidate_ids = tokenizer(
+                        candidate, add_special_tokens=False, truncation=False
+                    )["input_ids"]
+                    if len(candidate_ids) > max_tokens:
+                        break
+                    projection_lines.append(row)
             projection_text = "\n".join(projection_lines).strip()
             projection_terms = entity_terms[:]
             for column_name in column_names:
@@ -592,10 +599,13 @@ def _materialize_document_chunks(
 
     doc.status = "added"
     session.commit()
+    # Освобождаем все вставленные Chunk ORM-объекты из identity map.
+    # chunk_document_text() уже вернул список ChunkData, они не нужны дальше.
+    session.expunge_all()
     return len(chunks)
 
 
-def _process_next_pending_chunk(session: Session) -> bool:
+def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> bool:
     stmt = (
         select(Chunk)
         .where(Chunk.embedding.is_(None))
@@ -611,6 +621,7 @@ def _process_next_pending_chunk(session: Session) -> bool:
         logging.warning("Chunk %s has no document reference, deleting", chunk.id)
         session.delete(chunk)
         session.commit()
+        session.expunge_all()
         return True
 
     doc = session.get(Document, chunk.document_id)
@@ -622,19 +633,25 @@ def _process_next_pending_chunk(session: Session) -> bool:
         )
         session.delete(chunk)
         session.commit()
+        session.expunge_all()
         return True
 
-    chunk_size = len(chunk.text or "")
+    # Снимаем скалярные значения до commit/expunge, чтобы не обращаться к
+    # detached-объектам после очистки identity map.
+    chunk_id = chunk.id
+    chunk_doc_id = chunk.document_id
+    chunk_ix = chunk.chunk_ix
+    chunk_text = chunk.text
+    chunk_size = len(chunk_text or "")
     start_time = time.monotonic()
     logging.info(
         "Embedding chunk doc_id=%s ix=%s size=%s chars",
-        chunk.document_id,
-        chunk.chunk_ix,
+        chunk_doc_id,
+        chunk_ix,
         chunk_size,
     )
 
-
-    vec = make_embed_vector(chunk.text)
+    vec = make_embed_vector(chunk_text)
     chunk.embedding = vec
     session.flush()
     # Идемпотентность: коммитим каждый чанк сразу
@@ -642,32 +659,39 @@ def _process_next_pending_chunk(session: Session) -> bool:
 
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(
-            Chunk.document_id == chunk.document_id,
+            Chunk.document_id == chunk_doc_id,
             Chunk.embedding.is_(None),
         )
     ).scalar_one()
 
     if remaining == 0:
-        doc.status = "indexed"
+        # UPDATE без загрузки объекта в identity map
+        session.execute(
+            sa.update(Document)
+            .where(Document.id == chunk_doc_id)
+            .values(status="indexed")
+        )
+        session.commit()
 
-    session.commit()
+    # Очищаем identity map: без этого Session накапливает все Chunk/Document
+    # за всё время задачи, что даёт линейный рост памяти.
+    session.expunge_all()
+
     duration = time.monotonic() - start_time
     logging.info(
         "Embedded chunk %s (doc_id=%s ix=%s) in %.2fs; %s remaining",
-        chunk.id,
-        chunk.document_id,
-        chunk.chunk_ix,
+        chunk_id,
+        chunk_doc_id,
+        chunk_ix,
         duration,
         remaining,
     )
 
     try:
-        r = redis.from_url(REDIS_URL)
-        pipe = r.pipeline()
+        pipe = redis_client.pipeline()
         pipe.lpush(EMBED_STATS_KEY, f"{duration:.4f}")
         pipe.ltrim(EMBED_STATS_KEY, 0, EMBED_STATS_MAX - 1)
         pipe.execute()
-        r.close()
     except Exception:
         logging.debug("Failed to write embed timing to Redis", exc_info=True)
 
@@ -753,11 +777,13 @@ def index_document(document_id: int):
 def pending_chunks():
     engine = create_sync_engine()
     processed = 0
+    redis_client = redis.from_url(REDIS_URL)
     try:
         with Session(bind=engine) as session:
-            while _process_next_pending_chunk(session):
+            while _process_next_pending_chunk(session, redis_client=redis_client):
                 processed += 1
     finally:
+        redis_client.close()
         engine.dispose()
 
     logging.info("Processed %s pending chunks", processed)

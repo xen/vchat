@@ -57,14 +57,22 @@ def load_embedding_model(
     tokenizer_kwargs: dict[str, Any] | None = None,
 ) -> SentenceTransformer:
     resolved_device = resolve_embedding_device(device)
+    max_seq_length = int(config.get("embedding_max_seq_length") or 0)
+    effective_tokenizer_kwargs = dict(tokenizer_kwargs or {})
+    if max_seq_length > 0:
+        effective_tokenizer_kwargs.setdefault("truncation", True)
+        effective_tokenizer_kwargs.setdefault("max_length", max_seq_length)
     logging.info(
         "Loading embedding model %s on %s",
         config["embedding_model_dir"],
         resolved_device,
     )
-    return SentenceTransformer(
+    model = SentenceTransformer(
         config["embedding_model_dir"],
         device=resolved_device,
-        tokenizer_kwargs=tokenizer_kwargs or None,
+        tokenizer_kwargs=effective_tokenizer_kwargs or None,
         trust_remote_code=True,
     )
+    if max_seq_length > 0:
+        model.max_seq_length = max_seq_length
+    return model

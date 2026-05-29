@@ -3,6 +3,9 @@
         celery revision downgrade deploy \
 		frontend embedder docs
 
+EMBEDDER_POOL ?= solo
+EMBEDDER_CONCURRENCY ?= 1
+
 venv/bin/activate:
 	uv venv venv --python=python3.11
 
@@ -57,7 +60,7 @@ celery: venv/bin/activate ## start celery (vchat + crawler queues)
 	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery,crawler
 
 embedder: venv/bin/activate ## start dedicated embedder worker
-	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=prefork --concurrency=1 --max-tasks-per-child=1 -n vchat-embedder@%h
+	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n vchat-embedder@%h
 
 celery_stop: venv/bin/activate ## stop celery
 	. venv/bin/activate && celery -A jobs.celery control shutdown
