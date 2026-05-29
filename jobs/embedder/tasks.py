@@ -6,6 +6,7 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, List
 
+import torch
 import redis
 import sqlalchemy as sa
 from sqlalchemy import delete, select
@@ -656,6 +657,13 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
     session.flush()
     # Идемпотентность: коммитим каждый чанк сразу
     session.commit()
+
+    # Освобождаем MPS/CUDA кэш после каждого чанка — без этого PyTorch
+    # накапливает Metal-буферы до исчерпания памяти при длинных циклах.
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+    elif torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(
