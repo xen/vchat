@@ -922,19 +922,26 @@ async def project_documents_json(request):
         .subquery()
     )
 
-    size_bytes_expr = sa.func.coalesce(
-        sa.cast(sa.func.octet_length(Document.content), sa.BigInteger),
-        sa.cast(Document._length, sa.BigInteger),
-        sa.literal(0, type_=sa.BigInteger),
-    ).label("size_bytes")
+    size_bytes_expr = sa.cast(Document._length, sa.BigInteger).label("size_bytes")
+    doc_type_expr = sa.func.nullif(Document.meta["doc_type"].astext, "").label(
+        "document_type"
+    )
 
     documents = (
         await request["db"].execute(
             sa.select(
-                Document,
-                Source,
+                Document.id,
+                Document.title,
+                Document.uri,
+                Document.created_at,
+                Document.updated_at,
+                Document.status,
+                Document.is_ignored,
+                Source.title.label("source_title"),
+                Source.uri.label("source_uri"),
                 size_bytes_expr,
                 chunk_counts.c.chunk_count,
+                doc_type_expr,
             )
             .join(Source, Document.source_id == Source.id)
             .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
@@ -944,29 +951,37 @@ async def project_documents_json(request):
     ).all()
 
     data = []
-    for doc, source, size_bytes, chunk_count in documents:
-        raw_meta = doc.meta if isinstance(doc.meta, dict) else {}
-        meta_payload = dict(raw_meta)
-
-        doc_type_value = meta_payload.get("doc_type")
-        if not isinstance(doc_type_value, str) or not doc_type_value:
-            doc_type_value = DEFAULT_DOCUMENT_TYPE
-        meta_payload.setdefault("doc_type", doc_type_value)
-
+    for (
+        document_id,
+        title,
+        uri,
+        created_at,
+        updated_at,
+        status,
+        is_ignored,
+        source_title,
+        source_uri,
+        size_bytes,
+        chunk_count,
+        document_type,
+    ) in documents:
+        doc_type_value = (
+            document_type
+            if isinstance(document_type, str) and document_type
+            else DEFAULT_DOCUMENT_TYPE
+        )
         data.append(
             {
-                "id": str(doc.id),
-                "title": _display_document_title(doc.title, doc.uri),
-                "source": (source.title or source.uri) if source else _("Файлы"),
-                "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
-                "status": doc.status,
-                "is_ignored": doc.is_ignored,
-                "uri": doc.uri,
+                "id": str(document_id),
+                "title": _display_document_title(title, uri),
+                "source": source_title or source_uri or _("Файлы"),
+                "created_at": created_at.isoformat() if created_at else None,
+                "updated_at": updated_at.isoformat() if updated_at else None,
+                "status": status,
+                "is_ignored": is_ignored,
                 "size_bytes": int(size_bytes or 0),
                 "chunk_count": int(chunk_count or 0),
                 "document_type": doc_type_value,
-                "meta": meta_payload,
             }
         )
 

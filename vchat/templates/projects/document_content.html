@@ -88,14 +88,9 @@
                         <span class="text-xs opacity-70">{{ block.get('section_path') }}</span>
                         {% endif %}
                     </div>
-<<<<<<< HEAD
                     {% set block_items = block.get('items') %}
                     {% if block_items and block_items is sequence and block_items is not string %}
                     <div class="text-sm whitespace-pre-wrap">{{ block_items|join('\n') }}</div>
-=======
-                    {% if block.get('items') %}
-                    <div class="text-sm whitespace-pre-wrap">{{ block.get('items')|join('\n') }}</div>
->>>>>>> agents/fix-vchat-backend-errors
                     {% else %}
                     <div class="text-sm whitespace-pre-wrap break-words">{{ block.get('content') }}</div>
                     {% endif %}

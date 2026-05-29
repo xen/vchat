@@ -271,13 +271,35 @@ async def test_project_documents_json_serializes_rows() -> None:
         meta={"doc_type": "html"},
     )
     req = _Request(action="noop")
-    req["db"] = _DB(execute_rows=[[(doc, source, 123, 2)]])
+    req["db"] = _DB(
+        execute_rows=[
+            [
+                (
+                    doc.id,
+                    doc.title,
+                    doc.uri,
+                    doc.created_at,
+                    doc.updated_at,
+                    doc.status,
+                    doc.is_ignored,
+                    source.title,
+                    source.uri,
+                    123,
+                    2,
+                    "html",
+                )
+            ]
+        ]
+    )
     req["user"] = SimpleNamespace(id=1)
     raw = project_views.project_documents_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
     assert '"id": "5"' in resp.text
     assert '"source": "Source A"' in resp.text
+    assert '"document_type": "html"' in resp.text
+    assert '"meta"' not in resp.text
+    assert '"uri"' not in resp.text
 
 
 @pytest.mark.asyncio

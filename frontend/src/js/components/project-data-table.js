@@ -74,13 +74,9 @@ const DOCUMENT_TYPE_META = {
   other: { label: 'Другое', icon: 'lucide:file' },
 }
 
-const resolveDocumentType = (meta, fallback) => {
-  const rawMetaType = meta && typeof meta.doc_type === 'string' ? meta.doc_type.trim() : ''
-  if (rawMetaType) {
-    return rawMetaType
-  }
-  if (typeof fallback === 'string') {
-    const trimmed = fallback.trim()
+const resolveDocumentType = (value) => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
     if (trimmed) {
       return trimmed
     }
@@ -88,11 +84,24 @@ const resolveDocumentType = (meta, fallback) => {
   return 'other'
 }
 
-const normalizeMeta = (value) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
+const formatDocumentStatus = (value) => {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (normalized === 'indexed') {
+    return {
+      label: 'Индексирован',
+      className: 'badge badge-success badge-sm badge-soft',
+    }
   }
-  return { ...value }
+  if (normalized === 'added') {
+    return {
+      label: 'В очереди',
+      className: 'badge badge-warning badge-sm badge-soft',
+    }
+  }
+  return {
+    label: normalized || 'unknown',
+    className: 'badge badge-outline badge-sm',
+  }
 }
 
 const compareIsoDates = (rowA, rowB, columnId) => {
@@ -149,7 +158,7 @@ window.useProjectDataTable = () => {
   const columns = [
     {
       id: "document_type",
-      accessorFn: (row) => resolveDocumentType(row?.meta, row?.document_type),
+      accessorFn: (row) => resolveDocumentType(row?.document_type),
       header: sortableHeader("Тип"),
       cell: (info) => {
         const typeKey = info.getValue() || 'other'
@@ -180,17 +189,10 @@ window.useProjectDataTable = () => {
         const title = escapeHtml((rawTitle || '').trim() || '[Без названия]')
         const docId = escapeHtml(info.row.original.id)
         const detailHref = `/document/${docId}`
-        const rawUri = info.row.original.uri || ""
-        const href = rawUri ? escapeHtml(encodeURI(rawUri)) : ""
-        const linkText = escapeHtml(rawUri)
-        const link = rawUri
-          ? `<a class="text-xs text-primary truncate max-w-[320px]" href="${href}" target="_blank" rel="noopener noreferrer">${linkText}</a>`
-          : ""
 
         return `
                     <div class="flex flex-col gap-0.5">
                         <a class="font-medium text-xs truncate max-w-[320px] link link-hover" href="${detailHref}" title="Открыть структуру и чанки">${title}</a>
-                        ${link}
                     </div>
                 `
       },
@@ -254,6 +256,16 @@ window.useProjectDataTable = () => {
       },
       enableSorting: true,
       sortingFn: compareNumbers,
+    },
+    {
+      accessorKey: "status",
+      header: sortableHeader("Статус"),
+      cell: (info) => {
+        const status = formatDocumentStatus(info.getValue())
+        return `<span class="${status.className}">${escapeHtml(status.label)}</span>`
+      },
+      enableSorting: true,
+      sortingFn: compareStrings,
     },
     {
       id: "view",
@@ -461,25 +473,11 @@ window.useProjectDataTable = () => {
         .then(jsonData => {
           this.data = Array.isArray(jsonData)
             ? jsonData.map(item => {
-              const {
-                meta: rawMeta,
-                document_type: rawDocumentType,
-                document_type_label: _unusedDocumentTypeLabel,
-                ...rest
-              } = item || {}
-
-              const meta = normalizeMeta(rawMeta)
-              const resolvedType = resolveDocumentType(meta, rawDocumentType)
-              if (typeof meta.doc_type !== 'string' || !meta.doc_type.trim()) {
-                meta.doc_type = resolvedType
-              }
-
               return {
-                ...rest,
-                document_type: resolvedType,
-                meta,
-                size_bytes: Number(rest?.size_bytes ?? 0),
-                chunk_count: Number(rest?.chunk_count ?? 0),
+                ...(item || {}),
+                document_type: resolveDocumentType(item?.document_type),
+                size_bytes: Number(item?.size_bytes ?? 0),
+                chunk_count: Number(item?.chunk_count ?? 0),
               }
             })
             : []

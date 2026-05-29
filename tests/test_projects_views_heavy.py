@@ -141,7 +141,24 @@ async def test_project_documents_and_files_json(monkeypatch: pytest.MonkeyPatch)
 
     db_docs = _DB(
         execute_results=[
-            _Resp(all_rows=[(doc, source, 120, 2)]),
+            _Resp(
+                all_rows=[
+                    (
+                        doc.id,
+                        doc.title,
+                        doc.uri,
+                        doc.created_at,
+                        doc.updated_at,
+                        doc.status,
+                        doc.is_ignored,
+                        source.title,
+                        source.uri,
+                        120,
+                        2,
+                        "html",
+                    )
+                ]
+            ),
         ]
     )
     req_docs = _Req(db=db_docs)
@@ -149,6 +166,8 @@ async def test_project_documents_and_files_json(monkeypatch: pytest.MonkeyPatch)
     docs_resp = await docs_fn(req_docs)
     assert docs_resp.status == 200
     assert b'"document_type": "html"' in docs_resp.body
+    assert b'"meta"' not in docs_resp.body
+    assert b'"uri"' not in docs_resp.body
 
     file_doc = SimpleNamespace(
         id=5,
