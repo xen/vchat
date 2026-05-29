@@ -11,6 +11,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, Created, Updated, generate_uuid7
 
+from .source_config import SourceConfig
+
 
 class Chat(Base, Created, Updated):
     __tablename__ = "chat"
@@ -82,12 +84,24 @@ class Source(Base, Created, Updated):
 
     @property
     def config(self) -> "SourceConfig":
-        from .source_config import SourceConfig
         return SourceConfig.from_dict(self._config)
 
     @config.setter
     def config(self, value: "SourceConfig") -> None:
         self._config = value.to_dict()
+
+    start_pages: Mapped[list[str]] = mapped_column(
+        sa.ARRAY(sa.Text),
+        nullable=False,
+        default=list,
+        server_default=sa.text("'{}'"),
+    )
+    sitemaps: Mapped[list[str]] = mapped_column(
+        sa.ARRAY(sa.Text),
+        nullable=False,
+        default=list,
+        server_default=sa.text("'{}'"),
+    )
     reindex_cron: Mapped[str] = mapped_column(
         sa.String(100),
         nullable=False,
