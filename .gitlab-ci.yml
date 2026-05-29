@@ -64,8 +64,8 @@ bandit:
       git clone git@venv.dev:vbudushee/vchat.git .
     else
       cd "\$PROJ_DIR"
-      git reset --hard
-      git pull origin master
+      git fetch origin
+      git reset --hard origin/master
     fi
     source ~/.profile
     ./bin/deploy.sh
