@@ -66,4 +66,5 @@ def load_embedding_model(
         config["embedding_model_dir"],
         device=resolved_device,
         tokenizer_kwargs=tokenizer_kwargs or None,
+        trust_remote_code=True,
     )

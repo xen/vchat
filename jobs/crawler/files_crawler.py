@@ -75,7 +75,9 @@ def crawl_file_task(file_id: int):
                 session.commit()
 
                 index_document.delay(doc.id)
-                logger.info("Normalized file document %s and scheduled indexing", doc.id)
+                logger.info(
+                    "Normalized file document %s and scheduled indexing", doc.id
+                )
 
             except Exception as exc:
                 logger.exception("Error processing document %s", doc.id)

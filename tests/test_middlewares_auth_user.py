@@ -122,14 +122,14 @@ async def test_flash_and_force_https_middlewares() -> None:
 
 @pytest.mark.asyncio
 async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Scalars:
+    class _ExecuteResult:
         def first(self):
-            return SimpleNamespace(id=7, email="u@example.com")
-
-    class _ExecuteResult:
-    class _ExecuteResult:
-        def scalar(self):
-            return 7
+            return SimpleNamespace(
+                id=7,
+                email="u@example.com",
+                name="User Seven",
+                is_active=True,
+            )
 
     class _DB:
         async def execute(self, stmt):
@@ -150,10 +150,10 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
     request["db"] = db
 
     async def _handler(req):
-        return web.Response(text=str(req["user"].id))
+        return web.Response(text=req["user"].email)
 
     resp = await mdw.auth_middleware(request, _handler)
-    assert resp.text == "7"
+    assert resp.text == "u@example.com"
 
 
 @pytest.mark.asyncio
@@ -176,7 +176,11 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Record:
         def scalar(self):
             return SimpleNamespace(
-                id=5, is_active=True, password="hash", email="user@example.com"
+                id=5,
+                is_active=True,
+                password="hash",
+                email="user@example.com",
+                name="User",
             )
 
     class _DB:

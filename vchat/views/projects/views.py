@@ -1,10 +1,12 @@
 import logging
+import os
 import secrets
 import json
 import hashlib
 import hmac
 import uuid
 from datetime import datetime, time, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -17,7 +19,7 @@ from aiohttp_session import get_session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
 from passlib.context import CryptContext
 
-from jobs.crawler import crawl_all_sources_task, crawl_source_task
+from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
 from jobs.embedder.tasks import (
     index_project,
     index_document,
@@ -72,6 +74,7 @@ __all__ = [
     "project_document_content",
     "project_document_detail",
     "project_documents_json",
+    "project_files_json",
     "project_chat",
     "project_stats",
     "project_topics",
@@ -80,6 +83,8 @@ __all__ = [
     "project_files",
     "file_document",
     "project_progress",
+    "secure_download",
+    "on_upload",
 ]
 
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
@@ -257,7 +262,9 @@ async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
             else:
                 author_name = "-"
 
-        updated_value = doc.updated_at or doc.created_at
+        updated_value = getattr(doc, "updated_at", None) or getattr(
+            doc, "created_at", None
+        )
         updated_display = (
             updated_value.astimezone().strftime("%d.%m.%Y %H:%M")
             if updated_value
@@ -273,6 +280,37 @@ async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def _file_row_to_payload(row: dict[str, Any]) -> dict[str, Any]:
+    document = row["document"]
+    raw_meta = document.meta if isinstance(document.meta, dict) else {}
+    document_type = raw_meta.get("doc_type")
+    if not isinstance(document_type, str) or not document_type:
+        document_type = DEFAULT_DOCUMENT_TYPE
+    title = _display_document_title(
+        document.title,
+        getattr(document, "uri", None) or raw_meta.get("filename"),
+    )
+    return {
+        "id": str(document.id),
+        "title": title,
+        "created_at": (
+            document.created_at.isoformat()
+            if getattr(document, "created_at", None)
+            else None
+        ),
+        "updated_at": (
+            document.updated_at.isoformat()
+            if getattr(document, "updated_at", None)
+            else None
+        ),
+        "size_bytes": int(row.get("size_bytes") or 0),
+        "chunk_count": int(row.get("chunk_count") or 0),
+        "author_display": row.get("author_display") or "-",
+        "updated_display": row.get("updated_display") or "-",
+        "document_type": document_type,
+    }
 
 
 @meta(title=_("Страницы"))
@@ -695,6 +733,20 @@ async def project_action(request):
         response.headers["HX-Trigger"] = "project-documents:refresh"
         return response
 
+    if action == "delete_file":
+        document = await db_session.scalar(
+            sa.select(Document).where(Document.id == int(item_id))
+        )
+        if not document:
+            raise web.HTTPNotFound(text="Document not found")
+        file_path = getattr(document, "uri", None)
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        await db_session.delete(document)
+        await db_session.commit()
+        await admin_event("file_delete", request)
+        return web.Response(text="", status=200)
+
     if action == "add_source":
         data = await request.post()
         session = await get_session(request)
@@ -790,6 +842,21 @@ async def project_action(request):
     if action == "index_project":
         index_project.delay()
         await flash(request, _("Full rebuild task started"), "success")
+        return web.Response(text="ok", status=200)
+
+    if action == "rebuild_uploads":
+        rows = (
+            await db_session.execute(
+                sa.select(Document.id).where(
+                    Document.source_id.is_(None),
+                    Document.uri.isnot(None),
+                )
+            )
+        ).all()
+        for row in rows:
+            document_id = row[0] if isinstance(row, tuple) else row
+            crawl_file_task.delay(document_id)
+        await flash(request, _("Rebuild task started for uploaded files"), "success")
         return web.Response(text="ok", status=200)
 
     raise web.HTTPBadRequest(text="Unknown action")
@@ -899,6 +966,12 @@ async def project_documents_json(request):
         )
 
     return web.json_response(data)
+
+
+@login_required()
+async def project_files_json(request):
+    rows = await _files_rows(request["db"])
+    return web.json_response([_file_row_to_payload(row) for row in rows])
 
 
 @meta(title=_("Stats"))
@@ -1385,10 +1458,10 @@ async def project_files(request):
     if request.method == "POST":
         await request.post()
         user = request["user"]
-        author_name = (getattr(user, "name", "") or "").strip()
-        author_email = (getattr(user, "email", "") or "").strip()
+        author_name = user.name.strip()
+        author_email = user.email.strip()
         if not author_name:
-            author_name = author_email or f"user-{getattr(user, 'id', '')}"
+            author_name = author_email or f"user-{user.id}"
 
         content = ""
         document = Document(
@@ -1400,7 +1473,7 @@ async def project_files(request):
             meta={
                 "doc_type": "markdown",
                 "content_type": "text/markdown",
-                "author_id": getattr(user, "id", None),
+                "author_id": user.id,
                 "author_name": author_name,
                 "author_email": author_email,
             },
@@ -1475,6 +1548,50 @@ async def file_document(request):
         "files_rows": files_rows,
         "current_document": document,
     }
+
+
+@login_required()
+async def secure_download(request):
+    file_id = int(request.match_info["file_id"])
+    document = await request["db"].scalar(
+        sa.select(Document).where(Document.id == file_id)
+    )
+    if not document or not getattr(document, "uri", None):
+        raise web.HTTPNotFound(text="File not found")
+    return web.FileResponse(path=document.uri)
+
+
+async def on_upload(request, resource, file_path):
+    user = request["user"]
+    author_name = user.name.strip()
+    author_email = user.email.strip()
+    if not author_name:
+        author_name = author_email or f"user-{user.id}"
+
+    filename = getattr(resource, "file_name", None) or os.path.basename(str(file_path))
+    document = Document(
+        source_id=None,
+        title=filename,
+        uri=str(file_path),
+        content="",
+        hash_value="",
+        meta={
+            "filename": filename,
+            "doc_type": Path(filename).suffix.lstrip(".").lower()
+            or DEFAULT_DOCUMENT_TYPE,
+            "author_id": user.id,
+            "author_name": author_name,
+            "author_email": author_email,
+        },
+        status="added",
+    )
+    document.length = 0
+    request["db"].add(document)
+    await request["db"].flush()
+    await request["db"].commit()
+    await admin_event("file_upload", request)
+    crawl_file_task.delay(document.id)
+    return document
 
 
 @meta(title=_("Прогресс индексации"))

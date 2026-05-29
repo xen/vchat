@@ -101,8 +101,18 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
             _Resp(all_rows=[SimpleNamespace(day=day, count=2, users=1)]),
             _Resp(all_rows=[SimpleNamespace(day=day, count=4, hits=3, tokens=100)]),
             _Resp(all_rows=[SimpleNamespace(day=day, likes=5, dislikes=2)]),
-            _Resp(all_rows=[SimpleNamespace(provider="openai", model="gpt-4o-mini", tokens=100)]),
-            _Resp(all_rows=[SimpleNamespace(id=1, type="site", title="Main", doc_count=7, data_volume=70)]),
+            _Resp(
+                all_rows=[
+                    SimpleNamespace(provider="openai", model="gpt-4o-mini", tokens=100)
+                ]
+            ),
+            _Resp(
+                all_rows=[
+                    SimpleNamespace(
+                        id=1, type="site", title="Main", doc_count=7, data_volume=70
+                    )
+                ]
+            ),
             _Resp(all_rows=[SimpleNamespace(id=1, chunk_count=9, chunk_storage=90)]),
             _Resp(one_row=SimpleNamespace(doc_count=1, data_volume=10)),
             _Resp(one_row=SimpleNamespace(chunk_count=2, chunk_storage=20)),
@@ -111,7 +121,9 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
     )
 
     req = _Req(db=db, app={})
-    monkeypatch.setattr(project_views, "_project_context", lambda request: SimpleNamespace(id="global"))
+    monkeypatch.setattr(
+        project_views, "_project_context", lambda request: SimpleNamespace(id="global")
+    )
 
     raw = project_views.project_stats.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(req)
@@ -125,7 +137,9 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.asyncio
-async def test_project_documents_and_files_json(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_documents_and_files_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     now = datetime(2026, 3, 1, tzinfo=timezone.utc)
     doc = SimpleNamespace(
         id=1,
@@ -184,11 +198,13 @@ async def test_project_documents_and_files_json(monkeypatch: pytest.MonkeyPatch)
     files_fn = project_views.project_files_json.__wrapped__
     files_resp = await files_fn(req_files)
     assert files_resp.status == 200
-    assert b'manual.pdf' in files_resp.body
+    assert b"manual.pdf" in files_resp.body
 
 
 @pytest.mark.asyncio
-async def test_secure_download_and_on_upload(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_secure_download_and_on_upload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     existing = tmp_path / "f.txt"
     existing.write_text("ok", encoding="utf-8")
 
@@ -223,7 +239,9 @@ async def test_secure_download_and_on_upload(monkeypatch: pytest.MonkeyPatch, tm
 
     monkeypatch.setattr(project_views, "admin_event", _admin_event)
 
-    upload_req = _Req(db=db)
+    upload_req = _Req(
+        db=db, user=SimpleNamespace(id=7, name="Uploader", email="u@example.com")
+    )
     await project_views.on_upload(upload_req, _Resource(), src_file)
 
     assert db.flushed == 1

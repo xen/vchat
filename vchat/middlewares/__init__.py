@@ -130,11 +130,18 @@ async def auth_middleware(
         user_id = request["auth_session"].get("user_id")
         if user_id is not None:
             result = await request["db"].execute(
-                sa.select(User.id).where(User.id == user_id)
+                sa.select(User.id, User.email, User.name, User.is_active).where(
+                    User.id == user_id
+                )
             )
-            found_id = result.scalar()
-            if found_id:
-                request["user"] = UserInfo(id=found_id)
+            row = result.first()
+            if row:
+                request["user"] = UserInfo(
+                    id=row.id,
+                    email=row.email,
+                    name=row.name,
+                    is_active=row.is_active,
+                )
             else:
                 request["auth_session"].invalidate()
     except Exception as e:
@@ -144,8 +151,12 @@ async def auth_middleware(
     return await handler(request)
 
 
-UserInfo = namedtuple("UserInfo", ["id"])
-Msg_type = namedtuple("Msg", ["status", "message"])
+UserInfo = namedtuple(
+    "UserInfo",
+    ["id", "email", "name", "is_active"],
+    defaults=("", "", True),
+)
+Msg = namedtuple("Msg", ["status", "message"])
 
 
 @web.middleware
@@ -166,7 +177,7 @@ async def flash_middleware(request, handler):
         await r.delete(key)  # Clear after retrieval
 
         # Parse them; store on request for a context processor
-        request["flash_messages"] = [Msg_type(*i.decode().split("|")) for i in msgs]
+        request["flash_messages"] = [Msg(*i.decode().split("|")) for i in msgs]
 
     return await handler(request)
 

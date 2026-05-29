@@ -152,13 +152,7 @@ def schedule_reindex_sources_task():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            sources = (
-                session.execute(
-                    select(Source)
-                )
-                .scalars()
-                .all()
-            )
+            sources = session.execute(select(Source)).scalars().all()
 
             for source in sources:
                 cron_expression = normalize_reindex_cron(

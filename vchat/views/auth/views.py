@@ -8,14 +8,13 @@ from passlib.context import CryptContext
 
 from vchat.app_keys import REDIS_KEY
 from vchat.i18n import _
+from vchat.middlewares import UserInfo
 from vchat.models import User
 from vchat.utils import (
     admin_event,
     login_required,
     meta,
 )
-
-from vchat.middlewares import UserInfo
 
 from . import forms
 
@@ -76,7 +75,12 @@ async def login(request):
 
         session = await new_session(request)
         session["user_id"] = user.id
-        request["user"] = UserInfo(id=user.id)
+        request["user"] = UserInfo(
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            is_active=user.is_active,
+        )
         await admin_event("user_login", request)
 
         target = "index"

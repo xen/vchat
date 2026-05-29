@@ -106,16 +106,14 @@ async def test_db_session_middleware(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeScalar:
-        def __init__(self, user):
-            self._user = user
-
-        def first(self):
-            return self._user
-
     class FakeExecResult:
-        def scalar(self):
-            return 10
+        def first(self):
+            return SimpleNamespace(
+                id=10,
+                email="u@example",
+                name="User",
+                is_active=True,
+            )
 
     class FakeDB:
         async def execute(self, stmt):
@@ -188,7 +186,10 @@ def test_get_middlewares_and_routes() -> None:
     setup_routes(app)
     assert app.router["login"].url_for().human_repr() == "/login/"
     assert app.router["logout"].url_for().human_repr() == "/logout/"
-    assert app.router["actions"].url_for(action="x", item_id="1").human_repr() == "/actions/x/1"
+    assert (
+        app.router["actions"].url_for(action="x", item_id="1").human_repr()
+        == "/actions/x/1"
+    )
 
     assert to_path(app.router["login"].url_for()) == "/login/"
     assert to_path(app.router["users"].url_for(), has_trailing_slash=False) == "/users"
