@@ -1,7 +1,7 @@
 .PHONY: clean setup run db lint user security-check \
         ensure-pip pip-compile autoupgrade \
         celery revision downgrade deploy \
-		frontend embedder docs
+		frontend embedder embedder-worker docs
 
 EMBEDDER_POOL ?= solo
 EMBEDDER_CONCURRENCY ?= 1
@@ -59,8 +59,11 @@ autoupgrade: ensure-pip ## upgrade dependencies
 celery: venv/bin/activate ## start celery (vchat + crawler queues)
 	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery,crawler
 
-embedder: venv/bin/activate ## start dedicated embedder worker
-	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n vchat-embedder@%h
+embedder: venv/bin/activate ## start dedicated embedder workers for this host
+	. venv/bin/activate && PYTHONMALLOC=malloc python -m jobs.embedder.launcher
+
+embedder-worker: venv/bin/activate ## start a single dedicated embedder worker
+	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n vchat-embedder-$${EMBEDDER_INSTANCE_INDEX:-1}@%h
 
 celery_stop: venv/bin/activate ## stop celery
 	. venv/bin/activate && celery -A jobs.celery control shutdown

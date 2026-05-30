@@ -2,11 +2,19 @@ import logging
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from vchat.document_pipeline import extract_url_document, normalize_title_candidate
+from vchat.document_pipeline import (
+    SPAPageError,
+    extract_url_document,
+    normalize_title_candidate,
+)
+from vchat.document_indexing import (
+    document_content_effectively_unchanged,
+    sync_document_has_chunks,
+)
 from vchat.document_types import guess_document_type
 from vchat.models.data import Document
 from vchat.settings import config
-from jobs.embedder.tasks import index_document
+from jobs.embedder.tasks import schedule_index_document
 
 
 class DatabasePipeline:
@@ -33,6 +41,12 @@ class DatabasePipeline:
             markdown_content, normalized_title, extracted_meta = extract_url_document(
                 url
             )
+        except SPAPageError as exc:
+            spider.logger.warning(
+                "SPA detected, skipping indexing for %s: %s", url, exc
+            )
+            self._mark_spa(url, source_id)
+            return item
         except Exception as exc:
             spider.logger.error("Extraction failed for %s: %s", url, exc, exc_info=True)
             return item
@@ -66,6 +80,14 @@ class DatabasePipeline:
                     session.commit()
                     return item
 
+                effectively_unchanged = document_content_effectively_unchanged(
+                    document, markdown_content
+                )
+                has_chunks = (
+                    sync_document_has_chunks(session, document.id)
+                    if (effectively_unchanged and document.id is not None)
+                    else False
+                )
                 document.content = markdown_content
                 document.status = "indexed"
                 document.hash_value = markdown_content
@@ -94,20 +116,50 @@ class DatabasePipeline:
 
                 session.commit()
                 spider.logger.info("Indexed %s", url)
-                # Вызов Celery-задачи для создания чанков
-                try:
-                    index_document.delay(document.id)
-                except Exception as embed_exc:
-                    spider.logger.error(
-                        "Failed to schedule chunking for %s: %s",
+                if effectively_unchanged and has_chunks:
+                    spider.logger.info(
+                        "Skipping chunk refresh for %s: content unchanged",
                         url,
-                        embed_exc,
-                        exc_info=True,
                     )
+                else:
+                    try:
+                        schedule_index_document(document.id)
+                    except Exception as embed_exc:
+                        spider.logger.error(
+                            "Failed to schedule chunking for %s: %s",
+                            url,
+                            embed_exc,
+                            exc_info=True,
+                        )
         except Exception as e:
             spider.logger.error(f"Error processing {url}: {e}", exc_info=True)
 
         return item
+
+    def _mark_spa(self, url: str, source_id: int) -> None:
+        try:
+            with Session(bind=self.engine) as session:
+                stmt = select(Document).where(
+                    Document.source_id == source_id, Document.uri == url
+                )
+                document = session.execute(stmt).scalar_one_or_none()
+                if document is None:
+                    document = Document(
+                        source_id=source_id,
+                        uri=url,
+                        status="indexed",
+                    )
+                    session.add(document)
+                document.status = "indexed"
+                document.content = ""
+                document.length = 0
+                document.language = ""
+                meta = dict(document.meta or {})
+                meta["spa_detected"] = True
+                document.meta = meta
+                session.commit()
+        except Exception as exc:
+            self.logger.error("Failed to mark SPA for %s: %s", url, exc, exc_info=True)
 
     def close_spider(self, spider):
         self.engine.dispose()

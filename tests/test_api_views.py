@@ -7,6 +7,7 @@ import pytest
 from aiohttp import web
 
 from vchat.views.api import views as api_views
+from vchat.document_indexing import content_sha256
 
 
 class _FakeScalarResult:
@@ -66,6 +67,19 @@ class _FakeRequest(dict):
         self.query = query or {}
 
 
+class _FakeDocument:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    @property
+    def hash_value(self):
+        return self._hash
+
+    @hash_value.setter
+    def hash_value(self, value):
+        self._hash = content_sha256(value)
+
+
 def _json(resp: web.Response) -> dict:
     import json
 
@@ -107,13 +121,12 @@ async def test_upsert_document_creates_and_indexes(monkeypatch: pytest.MonkeyPat
 
     delayed = []
 
-    class _Delay:
-        @staticmethod
-        def delay(doc_id):
-            delayed.append(doc_id)
+    def _schedule(doc_id):
+        delayed.append(doc_id)
+        return True
 
     monkeypatch.setattr(api_views, "_extract_content", _extract_content)
-    monkeypatch.setattr(api_views, "index_document", _Delay)
+    monkeypatch.setattr(api_views, "schedule_index_document", _schedule)
     monkeypatch.setattr(api_views, "guess_document_type", lambda url, ct: "html")
 
     status, _doc_id = await api_views._upsert_document(req, source_id=1, url="https://example.com/a")
@@ -125,6 +138,111 @@ async def test_upsert_document_creates_and_indexes(monkeypatch: pytest.MonkeyPat
     assert db.commits == 1
     assert db.refresh_count == 1
     assert delayed
+
+
+@pytest.mark.asyncio
+async def test_upsert_document_skips_reindex_for_unchanged_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _FakeDocument(
+        id=12,
+        source_id=1,
+        uri="https://example.com/a",
+        content="same",
+        _hash=content_sha256("same"),
+        meta={"doc_type": "html"},
+        title="Doc title",
+    )
+    db = _FakeDB(scalar_value=document)
+    req = _FakeRequest(db=db)
+
+    async def _extract_content(url: str):
+        assert urlparse(url).scheme in {"http", "https"}
+        return "same", {"content_type": "text/html"}, "Doc title"
+
+    delayed = []
+
+    async def _has_chunks(db, doc_id):
+        _ = db, doc_id
+        return True
+
+    monkeypatch.setattr(api_views, "_extract_content", _extract_content)
+    monkeypatch.setattr(api_views, "schedule_index_document", lambda doc_id: delayed.append(doc_id) or True)
+    monkeypatch.setattr(api_views, "guess_document_type", lambda url, ct: "html")
+    monkeypatch.setattr(api_views, "async_document_has_chunks", _has_chunks)
+
+    status, doc_id = await api_views._upsert_document(req, source_id=1, url="https://example.com/a")
+    assert status == "indexed"
+    assert doc_id == 12
+    assert db.commits == 1
+    assert db.refresh_count == 1
+    assert delayed == []
+
+
+@pytest.mark.asyncio
+async def test_upsert_document_skips_reindex_for_near_duplicate_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous_content = "\n".join(
+        [
+            "# Title",
+            "Body line 1",
+            "Body line 2",
+            "Body line 3",
+            "Published: 2026-05-29",
+        ]
+    )
+    new_content = "\n".join(
+        [
+            "# Title",
+            "Body line 1",
+            "Body line 2",
+            "Body line 3",
+            "Published: 2026-05-30",
+        ]
+    )
+    document = _FakeDocument(
+        id=13,
+        source_id=1,
+        uri="https://example.com/a",
+        content=previous_content,
+        _hash=content_sha256(previous_content),
+        meta={"doc_type": "html"},
+        title="Doc title",
+        status="indexed",
+        language="",
+        length=len(previous_content),
+    )
+    db = _FakeDB(scalar_value=document)
+    req = _FakeRequest(db=db)
+
+    async def _extract_content(url: str):
+        assert urlparse(url).scheme in {"http", "https"}
+        return new_content, {"content_type": "text/html"}, "Doc title"
+
+    delayed = []
+
+    async def _has_chunks(db, doc_id):
+        _ = db, doc_id
+        return True
+
+    monkeypatch.setattr(api_views, "_extract_content", _extract_content)
+    monkeypatch.setattr(
+        api_views,
+        "schedule_index_document",
+        lambda doc_id: delayed.append(doc_id) or True,
+    )
+    monkeypatch.setattr(api_views, "guess_document_type", lambda url, ct: "html")
+    monkeypatch.setattr(api_views, "async_document_has_chunks", _has_chunks)
+
+    status, doc_id = await api_views._upsert_document(
+        req, source_id=1, url="https://example.com/a"
+    )
+    assert status == "indexed"
+    assert doc_id == 13
+    assert document.content == new_content
+    assert document.hash_value == content_sha256(new_content)
+    assert delayed == []
 
 
 @pytest.mark.asyncio

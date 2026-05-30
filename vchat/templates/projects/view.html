@@ -117,23 +117,20 @@
             </div>
 
             <!-- Pagination -->
-            <div class="border-base-200 flex items-center justify-end gap-2 border-t border-dashed p-5" x-show="!loading && pageCount > 1">
-                <div class="join">
-                    <button
-                        class="btn btn-square btn-sm btn-outline border-base-300 join-item"
-                        :disabled="!canPreviousPage"
-                        @click="prevPage()">
-                        <iconify-icon icon="lucide:arrow-left"></iconify-icon>
-                    </button>
-                    <span class="join-item btn btn-sm btn-ghost no-animation cursor-default">
-                        <span x-text="pageIndex + 1"></span> / <span x-text="pageCount"></span>
+            <div class="border-base-200 border-t border-dashed px-5 py-3" x-show="!loading && pageCount > 1">
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-base-content/50 shrink-0 tabular-nums">
+                        <span x-text="pageIndex + 1"></span><span class="opacity-50"> / <span x-text="pageCount"></span></span>
                     </span>
-                    <button
-                        class="btn btn-square btn-sm btn-outline border-base-300 join-item"
-                        :disabled="!canNextPage"
-                        @click="nextPage()">
-                        <iconify-icon icon="lucide:arrow-right"></iconify-icon>
-                    </button>
+                    <input
+                        type="range"
+                        class="range range-xs range-primary w-full"
+                        :min="0"
+                        :max="pageCount - 1"
+                        step="1"
+                        :value="pageIndex"
+                        @input="setPageIndex(Number($event.target.value))"
+                    />
                 </div>
             </div>
         </div>

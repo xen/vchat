@@ -23,9 +23,9 @@ from passlib.context import CryptContext
 from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
 from jobs.embedder.tasks import (
     index_project,
-    index_document,
     refresh_project_index,
     refresh_source_index,
+    schedule_index_document,
 )
 from jobs.suggestions import generate_project_topics
 from vchat.ai_providers import (
@@ -385,8 +385,18 @@ async def project_edit(request):
 async def project_edit_sources(request):
     db_session = request["db"]
 
+    spa_source_ids_q = (
+        sa.select(Document.source_id)
+        .where(Document.meta["spa_detected"].astext == "true")
+        .distinct()
+        .scalar_subquery()
+    )
     stmt = (
-        sa.select(Source, sa.func.count(Document.id).label("doc_count"))
+        sa.select(
+            Source,
+            sa.func.count(Document.id).label("doc_count"),
+            Source.id.in_(spa_source_ids_q).label("is_spa"),
+        )
         .outerjoin(Document, Document.source_id == Source.id)
         .group_by(Source.id)
         .order_by(Source.created_at.desc())
@@ -1568,7 +1578,7 @@ async def file_document(request):
             sa.delete(Chunk).where(Chunk.document_id == document.id)
         )
         await db_session.commit()
-        index_document.delay(document.id)
+        schedule_index_document(document.id)
         await admin_event("file_update", request)
         await flash(request, _("Файл сохранен"), "success")
         raise web.HTTPFound(location=request.path)
@@ -1638,6 +1648,9 @@ async def project_progress(request):
         sa.select(
             Chunk.document_id,
             sa.func.count(Chunk.id).label("chunk_count"),
+            sa.func.count(Chunk.id)
+            .filter(Chunk.embedding.isnot(None))
+            .label("embedded_chunk_count"),
         )
         .where(Chunk.document_id.isnot(None))
         .group_by(Chunk.document_id)
@@ -1649,7 +1662,11 @@ async def project_progress(request):
             sa.select(
                 sa.func.count(Document.id).label("total"),
                 sa.func.count(Document.id)
-                .filter(sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0)
+                .filter(
+                    sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0,
+                    chunk_counts_sq.c.embedded_chunk_count
+                    == chunk_counts_sq.c.chunk_count,
+                )
                 .label("done"),
             )
             .outerjoin(chunk_counts_sq, chunk_counts_sq.c.document_id == Document.id)
@@ -1671,7 +1688,11 @@ async def project_progress(request):
                 Source.title,
                 sa.func.count(Document.id).label("total"),
                 sa.func.count(Document.id)
-                .filter(sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0)
+                .filter(
+                    sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0,
+                    chunk_counts_sq.c.embedded_chunk_count
+                    == chunk_counts_sq.c.chunk_count,
+                )
                 .label("done"),
             )
             .outerjoin(

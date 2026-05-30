@@ -21,6 +21,31 @@ from vchat.settings import config
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
 EMBED_STATS_MAX = 500  # сколько последних замеров хранить
+PENDING_CHUNKS_INFLIGHT_KEY = "vchat:embed:pending_chunks:inflight"
+ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
+INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX = "vchat:embed:index_document:scheduled:"
+PENDING_CHUNKS_BATCH_SIZE = max(
+    1, int(config.get("embedding_pending_chunks_batch_size", 8) or 8)
+)
+PENDING_CHUNKS_MAX_INFLIGHT = max(
+    1, int(config.get("embedding_pending_chunks_max_inflight", 32) or 32)
+)
+PENDING_CHUNKS_COUNTER_TTL = max(
+    60, int(config.get("embedding_pending_chunks_counter_ttl_seconds", 600) or 600)
+)
+ENSURE_PENDING_CHUNKS_SCHEDULE_TTL = max(
+    30, int(config.get("embedding_ensure_pending_chunks_ttl_seconds", 120) or 120)
+)
+INDEX_DOCUMENT_SCHEDULE_TTL = max(
+    300,
+    int(
+        config.get(
+            "embedding_index_document_schedule_ttl_seconds",
+            config.get("celery_visibility_timeout", 21600),
+        )
+        or config.get("celery_visibility_timeout", 21600)
+    ),
+)
 
 # Lazy, per-process singleton
 _embed_model = None
@@ -706,12 +731,186 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
     return True
 
 
+def _count_pending_chunks(session: Session) -> int:
+    return int(
+        session.execute(
+            sa.select(sa.func.count(Chunk.id)).where(Chunk.embedding.is_(None))
+        ).scalar_one()
+        or 0
+    )
+
+
+def _pending_chunk_task_target(pending_chunk_count: int) -> int:
+    if pending_chunk_count <= 0:
+        return 0
+    return min(
+        PENDING_CHUNKS_MAX_INFLIGHT,
+        max(1, math.ceil(pending_chunk_count / PENDING_CHUNKS_BATCH_SIZE)),
+    )
+
+
+def _reserve_pending_chunk_slots(redis_client: Any, target: int) -> int:
+    if target <= 0:
+        return 0
+
+    return int(
+        redis_client.eval(
+            """
+            local key = KEYS[1]
+            local target = tonumber(ARGV[1]) or 0
+            local ttl = tonumber(ARGV[2]) or 600
+            local current = tonumber(redis.call('GET', key) or '0')
+            if current >= target then
+                if current > 0 and ttl > 0 then
+                    redis.call('EXPIRE', key, ttl)
+                end
+                return 0
+            end
+            local missing = target - current
+            redis.call('INCRBY', key, missing)
+            if ttl > 0 then
+                redis.call('EXPIRE', key, ttl)
+            end
+            return missing
+            """,
+            1,
+            PENDING_CHUNKS_INFLIGHT_KEY,
+            target,
+            PENDING_CHUNKS_COUNTER_TTL,
+        )
+        or 0
+    )
+
+
+def _release_pending_chunk_slots(redis_client: Any, slots: int = 1) -> int:
+    slots = max(1, int(slots or 1))
+    return int(
+        redis_client.eval(
+            """
+            local key = KEYS[1]
+            local release = tonumber(ARGV[1]) or 1
+            local ttl = tonumber(ARGV[2]) or 600
+            local current = tonumber(redis.call('GET', key) or '0')
+            if current <= release then
+                redis.call('DEL', key)
+                return 0
+            end
+            local next = current - release
+            redis.call('SET', key, tostring(next))
+            if ttl > 0 then
+                redis.call('EXPIRE', key, ttl)
+            end
+            return next
+            """,
+            1,
+            PENDING_CHUNKS_INFLIGHT_KEY,
+            slots,
+            PENDING_CHUNKS_COUNTER_TTL,
+        )
+        or 0
+    )
+
+
+def _schedule_pending_chunk_tasks(task_count: int) -> int:
+    scheduled = 0
+    for _ in range(max(0, int(task_count or 0))):
+        pending_chunks.apply_async(kwargs={"counted": True})
+        scheduled += 1
+    return scheduled
+
+
+def _schedule_ensure_pending_chunks() -> bool:
+    redis_client = redis.from_url(REDIS_URL)
+    try:
+        acquired = redis_client.set(
+            ENSURE_PENDING_CHUNKS_SCHEDULE_KEY,
+            "1",
+            ex=ENSURE_PENDING_CHUNKS_SCHEDULE_TTL,
+            nx=True,
+        )
+        if not acquired:
+            return False
+
+        try:
+            ensure_pending_chunks.delay()
+            return True
+        except Exception:
+            redis_client.delete(ENSURE_PENDING_CHUNKS_SCHEDULE_KEY)
+            raise
+    finally:
+        redis_client.close()
+
+
+def _index_document_schedule_key(document_id: int) -> str:
+    return f"{INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}{document_id}"
+
+
+def schedule_index_document(document_id: int) -> bool:
+    redis_client = redis.from_url(REDIS_URL)
+    schedule_key = _index_document_schedule_key(document_id)
+    try:
+        acquired = redis_client.set(
+            schedule_key,
+            "1",
+            ex=INDEX_DOCUMENT_SCHEDULE_TTL,
+            nx=True,
+        )
+        if not acquired:
+            return False
+
+        try:
+            index_document.delay(document_id)
+            return True
+        except Exception:
+            redis_client.delete(schedule_key)
+            raise
+    finally:
+        redis_client.close()
+
+
+def _ensure_pending_chunk_workers(session: Session, redis_client: Any) -> tuple[int, int]:
+    pending_chunk_count = _count_pending_chunks(session)
+    target = _pending_chunk_task_target(pending_chunk_count)
+    if target == 0:
+        return pending_chunk_count, 0
+
+    missing = _reserve_pending_chunk_slots(redis_client, target)
+    if missing <= 0:
+        return pending_chunk_count, 0
+
+    scheduled = 0
+    try:
+        scheduled = _schedule_pending_chunk_tasks(missing)
+        return pending_chunk_count, scheduled
+    finally:
+        unscheduled = missing - scheduled
+        if unscheduled > 0:
+            _release_pending_chunk_slots(redis_client, unscheduled)
+
+
+def _run_pending_chunk_batch(
+    session: Session,
+    redis_client: Any,
+    *,
+    batch_size: int | None = None,
+) -> tuple[int, int]:
+    processed = 0
+    limit = max(1, int(batch_size or PENDING_CHUNKS_BATCH_SIZE))
+    while processed < limit and _process_next_pending_chunk(
+        session, redis_client=redis_client
+    ):
+        processed += 1
+
+    remaining = _count_pending_chunks(session)
+    return processed, remaining
+
+
 def _index_document_chunks(session: Session, doc: Document) -> bool:
     chunk_count = _materialize_document_chunks(session, doc)
     if chunk_count == 0:
         return False
 
-    pending_chunks.delay()
+    _schedule_ensure_pending_chunks()
     return True
 
 
@@ -774,28 +973,75 @@ def index_chat_message(msg_id: int):
 @app.task(name="jobs.embedder.tasks.index_document", queue="embeddings")
 def index_document(document_id: int):
     engine = create_sync_engine()
+    redis_client = redis.from_url(REDIS_URL)
     try:
         with Session(bind=engine) as session:
             _index_document_inner(session, document_id)
     finally:
-        engine.dispose()
+        try:
+            redis_client.delete(_index_document_schedule_key(document_id))
+        finally:
+            redis_client.close()
+            engine.dispose()
 
 
 @app.task(name="jobs.embedder.tasks.pending_chunks", queue="embeddings")
-def pending_chunks():
+def pending_chunks(counted: bool = False):
     engine = create_sync_engine()
+    redis_client = redis.from_url(REDIS_URL)
     processed = 0
+    remaining = 0
+    try:
+        with Session(bind=engine) as session:
+            processed, remaining = _run_pending_chunk_batch(session, redis_client)
+    finally:
+        try:
+            if counted:
+                _release_pending_chunk_slots(redis_client)
+        finally:
+            redis_client.close()
+            engine.dispose()
+
+    if remaining > 0:
+        _schedule_ensure_pending_chunks()
+
+    logging.info(
+        "Processed %s pending chunks in batch; %s remaining",
+        processed,
+        remaining,
+    )
+    return processed
+
+
+@app.task(name="jobs.embedder.tasks.ensure_pending_chunks", queue="embeddings")
+def ensure_pending_chunks():
+    engine = create_sync_engine()
     redis_client = redis.from_url(REDIS_URL)
     try:
         with Session(bind=engine) as session:
-            while _process_next_pending_chunk(session, redis_client=redis_client):
-                processed += 1
+            pending_chunk_count, scheduled = _ensure_pending_chunk_workers(
+                session, redis_client
+            )
     finally:
-        redis_client.close()
-        engine.dispose()
+        try:
+            redis_client.delete(ENSURE_PENDING_CHUNKS_SCHEDULE_KEY)
+        finally:
+            redis_client.close()
+            engine.dispose()
 
-    logging.info("Processed %s pending chunks", processed)
-    return processed
+    logging.info(
+        "Ensured pending chunk workers for %s pending chunks; scheduled %s tasks",
+        pending_chunk_count,
+        scheduled,
+    )
+    return scheduled
+
+
+@app.task(name="jobs.embedder.tasks.schedule_pending_chunks", queue="embeddings")
+def schedule_pending_chunks():
+    scheduled = _schedule_ensure_pending_chunks()
+    logging.info("Schedule pending chunks requested; enqueued=%s", scheduled)
+    return scheduled
 
 
 @app.task(name="jobs.embedder.tasks.index_project", queue="embeddings")
@@ -814,7 +1060,7 @@ def index_project():
     )
 
     for doc_id in doc_ids:
-        index_document.delay(doc_id)
+        schedule_index_document(doc_id)
 
 
 @app.task(name="jobs.embedder.tasks.refresh_project_index", queue="embeddings")
@@ -845,7 +1091,7 @@ def refresh_project_index():
 
             for doc_id in docs_without_chunks:
                 logging.info("Scheduling document %s for refresh indexing", doc_id)
-                index_document.delay(doc_id)
+                schedule_index_document(doc_id)
 
             ignored_doc_ids = (
                 session.execute(
@@ -928,7 +1174,7 @@ def refresh_source_index(source_id: int):
                     doc_id,
                     source_id,
                 )
-                index_document.delay(doc_id)
+                schedule_index_document(doc_id)
 
             ignored_doc_ids = (
                 session.execute(

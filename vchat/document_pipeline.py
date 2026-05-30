@@ -300,15 +300,14 @@ def build_structure_from_markdown(
 
 
 def _coerce_title(candidate: str | None, structure: list[dict[str, Any]]) -> str | None:
-    normalized = normalize_title_candidate(candidate)
-    if normalized:
-        return normalized
+    # Prefer the first heading from the extracted content — it's page-specific.
+    # HTML <title> tags often contain a site-wide name shared across all pages.
     for block in structure:
         if block.get("type") == "heading":
             value = normalize_title_candidate(block.get("content"))
             if value:
                 return value
-    return None
+    return normalize_title_candidate(candidate)
 
 
 def normalize_title_candidate(candidate: str | None) -> str | None:
@@ -492,6 +491,56 @@ def _docling_markdown_from_source(source: str) -> tuple[str | None, str | None]:
         return None, None
 
 
+SPA_TEXT_THRESHOLD = (
+    500  # chars of visible text below which we consider the page a JS-only SPA
+)
+
+
+class SPAPageError(ValueError):
+    """Raised when a page appears to be a client-side SPA with no server-rendered content."""
+
+
+def _static_text_length(html_body: str) -> int:
+    """Return the length of visible body text in the static (non-JS) HTML.
+
+    Strips scripts, styles, and structural chrome (nav/header/footer) so that
+    navigation-heavy SPAs that render all their actual content via JS are not
+    incorrectly treated as content-rich pages.
+    """
+    check_soup = BeautifulSoup(html_body, "html.parser")
+    for tag in check_soup(
+        ["script", "style", "meta", "link", "noscript", "nav", "header", "footer"]
+    ):
+        tag.decompose()
+    return len(check_soup.get_text(" ", strip=True))
+
+
+def _extract_nav_title(soup: BeautifulSoup, url: str) -> str | None:
+    """
+    Find a self-referencing navigation link on the page and return its text.
+
+    Many sites (especially SPAs) share a generic <title> across all pages
+    but expose human-readable page names in navigation anchors that link back
+    to the current URL path.  The first such anchor whose text passes
+    normalize_title_candidate is used as the page-specific title.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    path = parsed.path.rstrip("/")
+    if not path:
+        return None
+
+    for a in soup.find_all("a", href=True):
+        href = (a.get("href") or "").rstrip("/")
+        if href == path or href == url.rstrip("/"):
+            text = a.get_text(" ", strip=True)
+            candidate = normalize_title_candidate(text)
+            if candidate:
+                return candidate
+    return None
+
+
 def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, Any]]:
     doc_type = guess_document_type(source_url, "text/html")
 
@@ -504,11 +553,22 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
     soup = BeautifulSoup(body, "html.parser")
     html_title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
 
+    # Detect client-side SPA: if static HTML has almost no visible text the
+    # page requires JavaScript to render and we cannot index it meaningfully.
+    if _static_text_length(body) < SPA_TEXT_THRESHOLD:
+        raise SPAPageError(
+            f"Page appears to be a JS-only SPA (static text < {SPA_TEXT_THRESHOLD} chars): {source_url}"
+        )
+
+    # Prefer a self-referencing nav link over the generic site-wide <title>.
+    nav_title = _extract_nav_title(soup, source_url)
+    best_title = nav_title or html_title
+
     markdown, _ = _docling_markdown_from_source(source_url)
     if markdown:
         return build_document_payload(
             content=markdown,
-            title=html_title,
+            title=best_title,
             extractor="docling",
             fallback_used=False,
             degraded_mode=False,
@@ -523,7 +583,7 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
     )
     normalized, normalized_title, meta = build_document_payload(
         content=markdown,
-        title=html_title,
+        title=best_title,
         extractor="beautifulsoup",
         fallback_used=True,
         degraded_mode=False,

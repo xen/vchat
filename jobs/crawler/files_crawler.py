@@ -8,8 +8,12 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from jobs.embedder.tasks import index_document
+from jobs.embedder.tasks import schedule_index_document
 from vchat.document_pipeline import extract_local_file_document
+from vchat.document_indexing import (
+    document_content_effectively_unchanged,
+    sync_document_has_chunks,
+)
 from vchat.models import Document, Source
 
 logger = logging.getLogger(__name__)
@@ -64,6 +68,14 @@ def crawl_file_task(file_id: int):
                 merged_meta = dict(doc.meta or {})
                 merged_meta.update(meta)
 
+                effectively_unchanged = document_content_effectively_unchanged(
+                    doc, content
+                )
+                has_chunks = (
+                    sync_document_has_chunks(session, doc.id)
+                    if (effectively_unchanged and doc.id is not None)
+                    else False
+                )
                 doc.content = content
                 doc.hash_value = content
                 doc.length = len(content)
@@ -74,10 +86,16 @@ def crawl_file_task(file_id: int):
                     doc.title = title
                 session.commit()
 
-                index_document.delay(doc.id)
-                logger.info(
-                    "Normalized file document %s and scheduled indexing", doc.id
-                )
+                if effectively_unchanged and has_chunks:
+                    logger.info(
+                        "Skipping chunk refresh for file document %s: content unchanged",
+                        doc.id,
+                    )
+                else:
+                    schedule_index_document(doc.id)
+                    logger.info(
+                        "Normalized file document %s and scheduled indexing", doc.id
+                    )
 
             except Exception as exc:
                 logger.exception("Error processing document %s", doc.id)
@@ -138,6 +156,12 @@ def process_document(session: Session, doc: Document):
     _ensure_meta(doc)
     merged_meta = dict(doc.meta or {})
     merged_meta.update(meta)
+    effectively_unchanged = document_content_effectively_unchanged(doc, content)
+    has_chunks = (
+        sync_document_has_chunks(session, doc.id)
+        if (effectively_unchanged and doc.id is not None)
+        else False
+    )
     doc.content = content
     doc.hash_value = content
     doc.length = len(content)
@@ -147,7 +171,8 @@ def process_document(session: Session, doc: Document):
     if title:
         doc.title = title
     session.commit()
-    index_document.delay(doc.id)
+    if not (effectively_unchanged and has_chunks):
+        schedule_index_document(doc.id)
 
 
 if __name__ == "__main__":

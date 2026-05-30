@@ -70,7 +70,9 @@
             <div class="flex items-center gap-4">
                 <iconify-icon icon="lucide:timer" class="text-secondary size-8 shrink-0"></iconify-icon>
                 <dl class="min-w-0">
-                    <dt class="text-sm text-base-content/60 truncate">Прогноз (ETA)</dt>
+                    <dt class="text-sm text-base-content/60 truncate">
+                        ETA{% if avg_doc_fmt %} (~{{ avg_doc_fmt }} на страницу){% endif %}
+                    </dt>
                     <dd class="text-2xl font-semibold">
                         {% if eta_fmt %}{{ eta_fmt }}{% else %}&mdash;{% endif %}
                     </dd>
@@ -88,21 +90,6 @@
             <span class="text-base-content/60">{{ pct }}%</span>
         </div>
         <progress class="progress progress-primary w-full" value="{{ pct }}" max="100"></progress>
-
-        <div class="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-base-content/60">
-            {% if avg_doc_fmt %}
-            <span>
-                <iconify-icon icon="lucide:zap" class="size-3.5 align-text-bottom"></iconify-icon>
-                Среднее на страницу: <strong class="text-base-content">{{ avg_doc_fmt }}</strong>
-            </span>
-            {% endif %}
-            {% if samples %}
-            <span>
-                <iconify-icon icon="lucide:database" class="size-3.5 align-text-bottom"></iconify-icon>
-                Замеров в Redis: <strong class="text-base-content">{{ samples }}</strong>
-            </span>
-            {% endif %}
-        </div>
     </div>
 </div>
 

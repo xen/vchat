@@ -4,8 +4,12 @@ from urllib.parse import urljoin, urlparse
 import sqlalchemy as sa
 from aiohttp import ClientSession, ClientTimeout, web
 
-from jobs.embedder.tasks import index_document
+from jobs.embedder.tasks import schedule_index_document
 from vchat.document_pipeline import extract_url_document
+from vchat.document_indexing import (
+    async_document_has_chunks,
+    document_content_effectively_unchanged,
+)
 from vchat.document_types import guess_document_type
 from vchat.models import Chunk, Document, Source
 
@@ -125,6 +129,12 @@ async def _upsert_document(
         document = Document(source_id=source_id, uri=url, status="added")
         db.add(document)
 
+    effectively_unchanged = document_content_effectively_unchanged(document, content)
+    has_chunks = (
+        await async_document_has_chunks(db, document.id)
+        if (effectively_unchanged and document.id is not None)
+        else False
+    )
     document.content = content
     document.status = "indexed"
     document.hash_value = content
@@ -144,7 +154,8 @@ async def _upsert_document(
 
     await db.commit()
     await db.refresh(document)
-    index_document.delay(document.id)
+    if not (effectively_unchanged and has_chunks):
+        schedule_index_document(document.id)
 
     return ("indexed" if created else "indexed", document.id)
 

@@ -41,7 +41,7 @@ app.conf.beat_schedule = {
         "schedule": 86400.0,  # 24 hours
     },
     "process_pending_chunks": {
-        "task": "jobs.embedder.tasks.pending_chunks",
+        "task": "jobs.embedder.tasks.schedule_pending_chunks",
         "schedule": 300.0,
         "options": {"queue": "embeddings"},
     },

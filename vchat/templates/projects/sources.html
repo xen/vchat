@@ -41,13 +41,21 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for source, doc_count in sources %}
+                        {% for source, doc_count, is_spa in sources %}
                         <tr class="hover:bg-base-200/40 cursor-pointer *:text-nowrap">
                             <td>
                                 <div class="font-medium">{{ source.title }}</div>
                             </td>
                             <td>
-                                <div class="font-medium">{{ source.uri }}</div>
+                                <div class="font-medium inline-flex items-center gap-2">
+                                    {{ source.uri }}
+                                    {% if is_spa %}
+                                    <span class="badge badge-warning badge-sm gap-1" title="Сайт использует JavaScript для рендеринга — индексация недоступна">
+                                        <iconify-icon icon="lucide:zap-off" class="size-3"></iconify-icon>
+                                        SPA
+                                    </span>
+                                    {% endif %}
+                                </div>
                             </td>
                             <td>
                                 <div class="font-medium">{{ doc_count }}</div>
