@@ -798,6 +798,30 @@ async def project_action(request):
         await flash(request, _("Crawl task started for all sources"), "success")
         return web.Response(text="ok", status=200)
 
+    if action == "pause_source":
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
+        if not source:
+            raise web.HTTPNotFound()
+        source.is_paused = True
+        source.updated_at = datetime.now(timezone.utc)
+        await db_session.commit()
+        await admin_event("source_pause", request)
+        return web.Response(text="ok", status=200)
+
+    if action == "resume_source":
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
+        if not source:
+            raise web.HTTPNotFound()
+        source.is_paused = False
+        source.updated_at = datetime.now(timezone.utc)
+        await db_session.commit()
+        await admin_event("source_resume", request)
+        return web.Response(text="ok", status=200)
+
     if action == "refresh_project_index":
         refresh_project_index.delay()
         await flash(request, _("Update task started"), "success")

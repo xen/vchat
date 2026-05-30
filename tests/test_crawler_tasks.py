@@ -13,6 +13,7 @@ from vchat.models.source_config import CrawlerRule, SourceConfig
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def make_source(
     source_id: int = 1,
     uri: str = "https://example.com",
@@ -27,6 +28,7 @@ def make_source(
     source.title = title
     source.start_pages = start_pages or []
     source.config = SourceConfig(rules=rules or [])
+    source.is_paused = False
     return source
 
 
@@ -34,25 +36,26 @@ def make_source(
 # Source model: start_pages is a real attribute; sitemaps is now in Sitemap table
 # ---------------------------------------------------------------------------
 
+
 class TestSourceAttributes:
     def test_source_has_start_pages_attribute(self):
         from vchat.models.data import Source
+
         assert hasattr(Source, "start_pages"), (
-            "Source model is missing 'start_pages' column — "
-            "add it to data.py"
+            "Source model is missing 'start_pages' column — add it to data.py"
         )
 
     def test_source_has_sitemap_model(self):
         from vchat.models.data import Sitemap
-        assert hasattr(Sitemap, "url"), (
-            "Sitemap model is missing 'url' column"
-        )
+
+        assert hasattr(Sitemap, "url"), "Sitemap model is missing 'url' column"
         assert hasattr(Sitemap, "source_id"), (
             "Sitemap model is missing 'source_id' column"
         )
 
     def test_source_has_config_property(self):
         from vchat.models.data import Source
+
         assert isinstance(Source.config, property), (
             "Source.config must be a property returning SourceConfig"
         )
@@ -61,6 +64,7 @@ class TestSourceAttributes:
 # ---------------------------------------------------------------------------
 # crawl_source_task: payload building
 # ---------------------------------------------------------------------------
+
 
 class TestCrawlSourceTaskPayload:
     """Test that crawl_source_task builds the subprocess command correctly."""
@@ -88,6 +92,7 @@ class TestCrawlSourceTaskPayload:
             patch("jobs.embedder.tasks.refresh_project_index"),
         ):
             from jobs.crawler import tasks as crawler_tasks
+
             crawler_tasks.crawl_source_task(source.id)
 
         return captured.get("cmd", [])
@@ -104,17 +109,22 @@ class TestCrawlSourceTaskPayload:
         cmd = self.run_task_capture_cmd(source)
         non_flag_args = [a for a in cmd if not a.startswith("-")]
         module_idx = non_flag_args.index("jobs.crawler.crawler_runner")
-        positional = non_flag_args[module_idx + 1:]
+        positional = non_flag_args[module_idx + 1 :]
         assert len(positional) == 3, (
             f"Expected [url, source_id, config_json], got {positional}"
         )
 
     def test_config_json_contains_start_pages(self):
-        source = make_source(start_pages=["https://example.com/a", "https://example.com/b"])
+        source = make_source(
+            start_pages=["https://example.com/a", "https://example.com/b"]
+        )
         cmd = self.run_task_capture_cmd(source)
         config_json = cmd[-1]
         payload = json.loads(config_json)
-        assert payload["start_pages"] == ["https://example.com/a", "https://example.com/b"]
+        assert payload["start_pages"] == [
+            "https://example.com/a",
+            "https://example.com/b",
+        ]
 
     def test_config_json_contains_crawler_settings(self):
         source = make_source()

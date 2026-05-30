@@ -36,6 +36,10 @@ def crawl_source_task(source_id: int):
                 print(f"Source {source_id} not found")
                 return
 
+            if source.is_paused:
+                print(f"Source {source_id} is paused, skipping")
+                return
+
             url = source.uri
             source_title = source.title
             crawler_payload = source.config.to_dict()
@@ -107,7 +111,7 @@ def crawl_all_sources_task():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = select(Source)
+            stmt = select(Source).where(Source.is_paused == False)  # noqa: E712
             sources = session.execute(stmt).scalars().all()
 
             if not sources:
@@ -165,7 +169,13 @@ def schedule_reindex_sources_task():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            sources = session.execute(select(Source)).scalars().all()
+            sources = (
+                session.execute(
+                    select(Source).where(Source.is_paused == False)  # noqa: E712
+                )
+                .scalars()
+                .all()
+            )
 
             for source in sources:
                 cron_expression = normalize_reindex_cron(

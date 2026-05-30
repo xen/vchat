@@ -107,6 +107,12 @@ class Source(Base, Created, Updated):
         nullable=True,
     )
     robots_cache: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    is_paused: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+    )
 
 
 status_enum = ENUM(
