@@ -37,7 +37,7 @@ def setup_routes(app: web.Application) -> None:
 
     # single-project admin pages
     add("GET", "/", projects.project_stats, name="index")
-    add("GET", "/pages", projects.project_view, name="project_view")
+    add("GET", "/page", projects.project_view, name="project_view")
     add("*", "/edit", projects.project_edit, name="project_edit")
     add(
         "GET",
@@ -54,13 +54,13 @@ def setup_routes(app: web.Application) -> None:
     )
     add(
         "GET",
-        r"/document/{document_id:[0-9]+}",
+        r"/page/{document_id:[0-9]+}",
         projects.project_document_detail,
         name="project_document_detail",
     )
     add(
         "GET",
-        r"/document/{document_id:[0-9]+}/content",
+        r"/page/{document_id:[0-9]+}/content",
         projects.project_document_content,
         name="project_document_content",
     )

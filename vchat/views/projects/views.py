@@ -50,6 +50,7 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_CRAWLER_USER_AGENT,
+    DEFAULT_IGNORED_PARAMS,
     MANUAL_REINDEX_MODE,
     is_manual_reindex,
     normalize_reindex_cron,
@@ -111,6 +112,27 @@ __all__ = [
 ]
 
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
+
+
+def _with_default_ignored_param_rules(
+    rules: list[CrawlerRule] | None,
+) -> list[CrawlerRule]:
+    merged: list[CrawlerRule] = []
+    seen: set[tuple[str, str]] = set()
+
+    for param in DEFAULT_IGNORED_PARAMS:
+        key = ("param", param)
+        merged.append(CrawlerRule(type="param", value=param))
+        seen.add(key)
+
+    for rule in rules or []:
+        key = (rule.type, rule.value)
+        if key in seen:
+            continue
+        merged.append(rule)
+        seen.add(key)
+
+    return merged
 
 
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
@@ -791,7 +813,7 @@ async def project_action(request):
         source = Source(
             uri=uri,
             title=title,
-            config=SourceConfig(rules=rules),
+            config=SourceConfig(rules=_with_default_ignored_param_rules(rules)),
             reindex_cron=reindex_cron,
         )
         db_session.add(source)
@@ -801,6 +823,37 @@ async def project_action(request):
         response = web.Response(text="ok")
         response.headers["HX-Refresh"] = "true"
         return response
+
+    if action == "delete_source_rule":
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
+        if not source:
+            raise web.HTTPNotFound()
+
+        data = await request.post()
+        try:
+            rule_index = int(data.get("rule_index", "-1"))
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Invalid rule index")
+
+        cfg = source.config
+        rules = list(cfg.rules)
+        if rule_index < 0 or rule_index >= len(rules):
+            raise web.HTTPBadRequest(text="Rule index out of range")
+
+        rules.pop(rule_index)
+        source.config = SourceConfig(
+            crawler_user_agent=cfg.crawler_user_agent,
+            crawler_concurrent_requests=cfg.crawler_concurrent_requests,
+            crawler_download_delay=cfg.crawler_download_delay,
+            crawler_download_timeout=cfg.crawler_download_timeout,
+            rules=rules,
+        )
+        source.updated_at = datetime.now(timezone.utc)
+        await db_session.commit()
+        await admin_event("source_update", request)
+        return web.Response(text="", status=200)
 
     if action == "delete_source":
         source = await db_session.scalar(

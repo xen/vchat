@@ -51,6 +51,32 @@ BOILERPLATE_HINTS = (
     "share",
     "social",
 )
+BOILERPLATE_ATTR_HINTS = BOILERPLATE_HINTS + (
+    "modal",
+    "popup",
+    "overlay",
+    "dialog",
+    "search",
+    "login",
+    "signin",
+    "signup",
+    "register",
+    "auth",
+)
+AUTH_HEADING_HINTS = {
+    "авторизация",
+    "войти",
+    "вход",
+    "зарегистрироваться",
+    "регистрация",
+    "восстановить пароль",
+    "забыли пароль",
+    "login",
+    "sign in",
+    "sign up",
+    "register",
+    "forgot password",
+}
 CODE_FENCE_RE = re.compile(r"^```(?P<lang>[a-zA-Z0-9_+-]*)\s*$")
 
 
@@ -300,14 +326,24 @@ def build_structure_from_markdown(
 
 
 def _coerce_title(candidate: str | None, structure: list[dict[str, Any]]) -> str | None:
-    # Prefer the first heading from the extracted content — it's page-specific.
-    # HTML <title> tags often contain a site-wide name shared across all pages.
+    normalized_candidate = normalize_title_candidate(candidate)
+    headings: list[str] = []
     for block in structure:
-        if block.get("type") == "heading":
-            value = normalize_title_candidate(block.get("content"))
-            if value:
-                return value
-    return normalize_title_candidate(candidate)
+        if block.get("type") != "heading":
+            continue
+        value = normalize_title_candidate(block.get("content"))
+        if value:
+            headings.append(value)
+
+    if normalized_candidate:
+        if any(heading.casefold() == normalized_candidate.casefold() for heading in headings):
+            return normalized_candidate
+        if headings and headings[0].casefold() in AUTH_HEADING_HINTS:
+            return normalized_candidate
+
+    for value in headings:
+        return value
+    return normalized_candidate
 
 
 def normalize_title_candidate(candidate: str | None) -> str | None:
@@ -385,16 +421,26 @@ def _strip_boilerplate(soup: BeautifulSoup) -> int:
         for node in soup.find_all(tag_name):
             node.decompose()
             removed += 1
+    for node in soup.find_all(["dialog", "template"]):
+        node.decompose()
+        removed += 1
+    for form in list(soup.find_all("form")):
+        if form.find("input", attrs={"type": re.compile(r"password", re.I)}):
+            form.decompose()
+            removed += 1
     for node in list(soup.find_all(True)):
+        attrs_dict = getattr(node, "attrs", None) or {}
         attrs = " ".join(
             [
-                " ".join(node.get("class", [])),
-                node.get("id", "") or "",
+                " ".join(attrs_dict.get("class", [])),
+                attrs_dict.get("id", "") or "",
+                attrs_dict.get("role", "") or "",
+                attrs_dict.get("aria-label", "") or "",
             ]
         ).lower()
         if not attrs:
             continue
-        if any(hint in attrs for hint in BOILERPLATE_HINTS):
+        if any(hint in attrs for hint in BOILERPLATE_ATTR_HINTS):
             node.decompose()
             removed += 1
     return removed
@@ -564,36 +610,47 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
     nav_title = _extract_nav_title(soup, source_url)
     best_title = nav_title or html_title
 
+    # TODO: собрать all_docs_markdown для шинглового анализа (эвристика)
+    all_docs_markdown = []  # Для MVP: пусто, внедрить сборку при батч-обработке
+    markdown, _, removed, removed_shingles = _html_to_markdown_like(
+        body, all_docs_markdown=all_docs_markdown
+    )
+    if markdown.strip():
+        normalized, normalized_title, meta = build_document_payload(
+            content=markdown,
+            title=best_title,
+            extractor="beautifulsoup",
+            fallback_used=False,
+            degraded_mode=False,
+            content_type=content_type,
+            doc_type=doc_type,
+        )
+        meta["extraction"]["boilerplate_removed_count"] = removed
+        if removed_shingles:
+            meta["removed_shingles"] = visualize_removed_blocks(removed_shingles)
+        return normalized, normalized_title, meta
+
     markdown, _ = _docling_markdown_from_source(source_url)
     if markdown:
         return build_document_payload(
             content=markdown,
             title=best_title,
             extractor="docling",
-            fallback_used=False,
+            fallback_used=True,
             degraded_mode=False,
             content_type="text/html",
             doc_type=doc_type,
         )
 
-    # TODO: собрать all_docs_markdown для шинглового анализа (эвристика)
-    all_docs_markdown = []  # Для MVP: пусто, внедрить сборку при батч-обработке
-    markdown, _, removed, removed_shingles = _html_to_markdown_like(
-        body, all_docs_markdown=all_docs_markdown
-    )
-    normalized, normalized_title, meta = build_document_payload(
-        content=markdown,
+    return build_document_payload(
+        content=body,
         title=best_title,
-        extractor="beautifulsoup",
+        extractor="plain_text_html",
         fallback_used=True,
-        degraded_mode=False,
+        degraded_mode=True,
         content_type=content_type,
         doc_type=doc_type,
     )
-    meta["extraction"]["boilerplate_removed_count"] = removed
-    if removed_shingles:
-        meta["removed_shingles"] = visualize_removed_blocks(removed_shingles)
-    return normalized, normalized_title, meta
 
 
 def extract_pdf_text(file_path: str) -> str:

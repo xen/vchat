@@ -125,6 +125,13 @@ const compareStrings = (rowA, rowB, columnId) => {
   return a.localeCompare(b)
 }
 
+const normalizeSearchValue = (value) => {
+  if (value === null || value === undefined) {
+    return ''
+  }
+  return String(value).trim().toLowerCase()
+}
+
 const DOCUMENT_REFRESH_EVENT = "project-documents:refresh"
 
 window.useProjectDataTable = () => {
@@ -220,7 +227,7 @@ window.useProjectDataTable = () => {
         return `
           <div class="overflow-hidden">
             <a class="font-medium text-sm link link-hover block truncate"
-              href="/document/${docId}" title="${title}">${title}</a>
+              href="/page/${docId}" title="${title}">${title}</a>
             <div class="flex items-center gap-1.5 text-xs text-base-content/40 mt-0.5">
               ${uri ? `<a href="${uri}" target="_blank" rel="noopener" class="truncate min-w-0 hover:text-base-content/70 transition-colors">${uri}</a>` : ''}
               <span class="shrink-0 flex items-center gap-1 ml-auto pl-2">
@@ -241,6 +248,12 @@ window.useProjectDataTable = () => {
         if (!filterValue) return true
         return (row.getValue(columnId) ?? '').toString() === filterValue
       },
+    },
+    {
+      accessorKey: "uri",
+      header: "",
+      cell: () => '',
+      enableSorting: false,
     },
     {
       id: "size_chunks",
@@ -296,7 +309,7 @@ window.useProjectDataTable = () => {
         globalFilter: "",
         sorting: [],
         columnFilters: [],
-        columnVisibility: { source: false },
+        columnVisibility: { source: false, uri: false },
       }
 
       this.initFromUrl()
@@ -307,6 +320,17 @@ window.useProjectDataTable = () => {
         state: this.state,
         data: this.data,
         columns,
+        globalFilterFn: (row, _columnId, filterValue) => {
+          const searchValue = normalizeSearchValue(filterValue)
+          if (!searchValue) {
+            return true
+          }
+
+          const titleValue = normalizeSearchValue(row.original?.title)
+          const uriValue = normalizeSearchValue(row.original?.uri)
+
+          return titleValue.includes(searchValue) || uriValue.includes(searchValue)
+        },
         getCoreRowModel: getCoreRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
@@ -563,7 +587,7 @@ window.useProjectDataTable = () => {
       if (!doc) {
         return
       }
-      window.open(`/document/${docId}`, '_blank', 'noopener')
+      window.open(`/page/${docId}`, '_blank', 'noopener')
     },
     async toggleIgnore(docId, desiredState) {
       const doc = this.data.find(item => item.id === docId)

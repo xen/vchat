@@ -86,13 +86,14 @@ class TestSourceConfigFromDict:
             }
         )
         assert len(cfg.rules) == 1
-        assert cfg.rules[0].type == "css"
+        assert cfg.rules[0] == CrawlerRule(type="css", value="a.nav")
 
     def test_skips_rules_with_missing_type(self):
         cfg = SourceConfig.from_dict(
             {"rules": [{"value": "//a"}, {"type": "css", "value": "a"}]}
         )
         assert len(cfg.rules) == 1
+        assert cfg.rules[0] == CrawlerRule(type="css", value="a")
 
     def test_ignores_unknown_keys(self):
         cfg = SourceConfig.from_dict(
