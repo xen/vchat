@@ -45,7 +45,6 @@ from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
     get_setting,
-    get_setting_json,
 )
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
@@ -78,7 +77,6 @@ __all__ = [
     "project_files_json",
     "project_chat",
     "project_stats",
-    "project_topics",
     "project_integration",
     "public_widget_chat",
     "project_files",
@@ -234,21 +232,7 @@ def _project_context(request) -> SimpleNamespace:
             "welcome_message": settings.get("project.welcome_message") or "",
             "secret": settings.get("project.secret") or "",
         },
-        meta={
-            "topics": get_setting_json(request.app, "project.topics", []),
-            "intents": get_setting_json(request.app, "project.intents", []),
-        },
     )
-
-
-def _get_topics(request) -> list[str]:
-    topics = get_setting_json(request.app, "project.topics", [])
-    return topics if isinstance(topics, list) else []
-
-
-def _get_intents(request) -> list[str]:
-    intents = get_setting_json(request.app, "project.intents", [])
-    return intents if isinstance(intents, list) else []
 
 
 async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
@@ -491,49 +475,6 @@ async def project_source_settings(request):
     return {"project": _project_context(request), "source": source, "form": form}
 
 
-@meta(title=_("Topics"))
-@login_required()
-@aiohttp_jinja2.template("projects/topics.html")
-async def project_topics(request):
-    db_session = request["db"]
-    session = await get_session(request)
-
-    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
-    if request.method == "POST":
-        data = await request.post()
-        form_kwargs["formdata"] = data
-    else:
-        form_kwargs["data"] = {
-            "topics": "\n".join(_get_topics(request)),
-            "intents": "\n".join(_get_intents(request)),
-        }
-
-    form = forms.TopicsForm(**form_kwargs)
-
-    if request.method == "POST" and form.validate():
-        prev_topics = _get_topics(request)
-        prev_intents = _get_intents(request)
-        topics_list = [t.strip() for t in form.topics.data.split("\n") if t.strip()]
-        intents_list = [i.strip() for i in form.intents.data.split("\n") if i.strip()]
-        await apply_settings_updates(
-            request.app,
-            db_session,
-            {
-                "project.topics": topics_list,
-                "project.intents": intents_list,
-            },
-        )
-        await db_session.commit()
-        if (prev_topics or prev_intents) and not topics_list and not intents_list:
-            await admin_event("topics_delete", request)
-        else:
-            await admin_event("topics_update", request)
-        await flash(request, _("Topics updated"), "success")
-        raise web.HTTPFound(request.path)
-
-    return {"project": _project_context(request), "form": form}
-
-
 @login_required()
 async def project_action(request):
     db_session = request["db"]
@@ -714,10 +655,6 @@ async def project_action(request):
                 },
             )
         return web.json_response({"ok": True, "provider": provider, "model": model})
-
-    if action == "generate_topics":
-        await flash(request, _("Topics generation is not available"), "warning")
-        return web.json_response({"ok": False})
 
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)

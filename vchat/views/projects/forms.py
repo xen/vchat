@@ -303,31 +303,3 @@ class OnboardingForm(Form):
         ],
         render_kw={"class": "form-control"},
     )
-
-
-class TopicsForm(Form):
-    class Meta:
-        csrf = True
-        csrf_secret = config["secret_key"]
-        csrf_class = SessionCSRF
-        csrf_time_limit = timedelta(minutes=20)
-
-    topics = TextAreaField(
-        _("Topics"),
-        validators=[validators.Optional()],
-        render_kw={
-            "class": "textarea textarea-bordered w-full font-mono text-sm",
-            "rows": "10",
-        },
-        description=_("List of project topics (one per line)"),
-    )
-
-    intents = TextAreaField(
-        _("User Intents"),
-        validators=[validators.Optional()],
-        render_kw={
-            "class": "textarea textarea-bordered w-full font-mono text-sm",
-            "rows": "10",
-        },
-        description=_("List of potential user intents (one per line)"),
-    )
