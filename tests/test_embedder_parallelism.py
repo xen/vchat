@@ -247,3 +247,35 @@ def test_resolve_embedder_instance_count_auto_keeps_single_gpu_worker() -> None:
 
 def test_resolve_embedder_instance_count_honors_explicit_override() -> None:
     assert launcher.resolve_embedder_instance_count(configured="5", device="cpu") == 5
+
+
+def test_maybe_reset_embed_model_after_document_respects_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(embedder_tasks, "EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS", 2)
+    monkeypatch.setattr(embedder_tasks, "_completed_documents_since_reset", 0)
+    resets: list[bool] = []
+    monkeypatch.setattr(embedder_tasks, "reset_embed_model", lambda: resets.append(True))
+
+    assert embedder_tasks.maybe_reset_embed_model_after_document() is False
+    assert resets == []
+    assert embedder_tasks._completed_documents_since_reset == 1
+
+    assert embedder_tasks.maybe_reset_embed_model_after_document() is True
+    assert resets == [True]
+    assert embedder_tasks._completed_documents_since_reset == 0
+
+
+def test_maybe_reset_embed_model_after_document_can_be_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(embedder_tasks, "EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS", 0)
+    monkeypatch.setattr(embedder_tasks, "_completed_documents_since_reset", 0)
+    monkeypatch.setattr(
+        embedder_tasks,
+        "reset_embed_model",
+        lambda: (_ for _ in ()).throw(RuntimeError("should not reset")),
+    )
+
+    assert embedder_tasks.maybe_reset_embed_model_after_document() is False
+    assert embedder_tasks._completed_documents_since_reset == 0

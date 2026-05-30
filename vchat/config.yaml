@@ -67,6 +67,7 @@ embedding_pending_chunks_max_inflight: 32
 embedding_pending_chunks_counter_ttl_seconds: 600
 embedding_ensure_pending_chunks_ttl_seconds: 120
 embedding_index_document_schedule_ttl_seconds: 21600
+embedding_model_reset_after_documents: 20
 embedding_worker_instances: auto
 embedding_worker_cpu_reserve: 1
 yandex_api_key: ""

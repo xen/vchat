@@ -3,10 +3,10 @@ import math
 import re
 import time
 import hashlib
+import gc
 from dataclasses import dataclass
 from typing import Any, List
 
-import torch
 import redis
 import sqlalchemy as sa
 from sqlalchemy import delete, select
@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.embeddings import load_embedding_model, resolve_embedding_device
+from vchat.embeddings import (
+    load_embedding_model,
+    release_torch_cache,
+    resolve_embedding_device,
+)
 from vchat.models import ChatMsg, Chunk, Document, Source
 from vchat.settings import config
 
@@ -46,9 +50,13 @@ INDEX_DOCUMENT_SCHEDULE_TTL = max(
         or config.get("celery_visibility_timeout", 21600)
     ),
 )
+EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS = max(
+    0, int(config.get("embedding_model_reset_after_documents", 20) or 20)
+)
 
 # Lazy, per-process singleton
 _embed_model = None
+_completed_documents_since_reset = 0
 EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]
 EMBEDDING_CHUNK_MAX_TOKENS = config["embedding_chunk_max_tokens"]
 EMBEDDING_CHUNK_OVERLAP_TOKENS = config["embedding_chunk_overlap_tokens"]
@@ -62,6 +70,37 @@ def get_embed_model() -> Any:
         resolved_device = resolve_embedding_device()
         _embed_model = load_embedding_model(device=resolved_device)
     return _embed_model
+
+
+def reset_embed_model() -> None:
+    global _completed_documents_since_reset, _embed_model
+    model = _embed_model
+    _embed_model = None
+    _completed_documents_since_reset = 0
+    if model is not None:
+        if hasattr(model, "cpu"):
+            model.cpu()
+        del model
+    gc.collect()
+    release_torch_cache()
+
+
+def maybe_reset_embed_model_after_document() -> bool:
+    global _completed_documents_since_reset
+    if EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS <= 0:
+        return False
+
+    _completed_documents_since_reset += 1
+    if _completed_documents_since_reset < EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS:
+        return False
+
+    logging.info(
+        "Resetting embedding model after %s completed documents",
+        _completed_documents_since_reset,
+    )
+    _completed_documents_since_reset = 0
+    reset_embed_model()
+    return True
 
 
 def make_embed_vector(text: str) -> List[float]:
@@ -685,10 +724,7 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
 
     # Освобождаем MPS/CUDA кэш после каждого чанка — без этого PyTorch
     # накапливает Metal-буферы до исчерпания памяти при длинных циклах.
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-    elif torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    release_torch_cache()
 
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(
@@ -727,6 +763,9 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
         pipe.execute()
     except Exception:
         logging.debug("Failed to write embed timing to Redis", exc_info=True)
+
+    if remaining == 0:
+        maybe_reset_embed_model_after_document()
 
     return True
 

@@ -117,6 +117,14 @@ def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
     assert model.max_seq_length == 123
 
 
+def test_resolve_embedding_device_prefers_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMBEDDING_DEVICE", "cpu")
+    monkeypatch.setitem(embeddings.config, "embedding_device", "mps")
+    assert embeddings.resolve_embedding_device() == "cpu"
+
+
 def test_openai_guardrails_cache_and_extract(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
