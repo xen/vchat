@@ -27,7 +27,6 @@ from jobs.embedder.tasks import (
     refresh_source_index,
     schedule_index_document,
 )
-from jobs.suggestions import generate_project_topics
 from vchat.ai_providers import (
     DEFAULT_OPENAI_MODEL,
     get_ai_provider_options,
@@ -45,7 +44,6 @@ from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
     get_setting,
-    get_setting_json,
 )
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
@@ -53,8 +51,11 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_CRAWLER_USER_AGENT,
     MANUAL_REINDEX_MODE,
+    is_manual_reindex,
     normalize_reindex_cron,
 )
+from celery.schedules import crontab
+
 from vchat.settings import config
 from vchat.utils import admin_event, flash, login_required, meta
 
@@ -64,6 +65,28 @@ from . import forms
 
 logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
+
+
+def next_reindex_at(cron_expr: str, now: datetime) -> datetime | None:
+    if is_manual_reindex(cron_expr):
+        return None
+    parts = cron_expr.strip().split()
+    if len(parts) != 5:
+        return None
+    minute, hour, day_of_month, month_of_year, day_of_week = parts
+    try:
+        schedule = crontab(
+            minute=minute,
+            hour=hour,
+            day_of_month=day_of_month,
+            month_of_year=month_of_year,
+            day_of_week=day_of_week,
+            nowfun=lambda: now,
+        )
+        return now + schedule.remaining_estimate(now)
+    except Exception:
+        return None
+
 
 __all__ = [
     "index",
@@ -78,7 +101,6 @@ __all__ = [
     "project_files_json",
     "project_chat",
     "project_stats",
-    "project_topics",
     "project_integration",
     "public_widget_chat",
     "project_files",
@@ -218,21 +240,7 @@ def _project_context(request) -> SimpleNamespace:
             "welcome_message": settings.get("project.welcome_message") or "",
             "secret": settings.get("project.secret") or "",
         },
-        meta={
-            "topics": get_setting_json(request.app, "project.topics", []),
-            "intents": get_setting_json(request.app, "project.intents", []),
-        },
     )
-
-
-def _get_topics(request) -> list[str]:
-    topics = get_setting_json(request.app, "project.topics", [])
-    return topics if isinstance(topics, list) else []
-
-
-def _get_intents(request) -> list[str]:
-    intents = get_setting_json(request.app, "project.intents", [])
-    return intents if isinstance(intents, list) else []
 
 
 async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
@@ -475,50 +483,53 @@ async def project_source_settings(request):
         await flash(request, _("Source settings updated"), "success")
         raise web.HTTPFound(request.path)
 
-    return {"project": _project_context(request), "source": source, "form": form}
-
-
-@meta(title=_("Topics"))
-@login_required()
-@aiohttp_jinja2.template("projects/topics.html")
-async def project_topics(request):
-    db_session = request["db"]
-    session = await get_session(request)
-
-    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
-    if request.method == "POST":
-        data = await request.post()
-        form_kwargs["formdata"] = data
-    else:
-        form_kwargs["data"] = {
-            "topics": "\n".join(_get_topics(request)),
-            "intents": "\n".join(_get_intents(request)),
-        }
-
-    form = forms.TopicsForm(**form_kwargs)
-
-    if request.method == "POST" and form.validate():
-        prev_topics = _get_topics(request)
-        prev_intents = _get_intents(request)
-        topics_list = [t.strip() for t in form.topics.data.split("\n") if t.strip()]
-        intents_list = [i.strip() for i in form.intents.data.split("\n") if i.strip()]
-        await apply_settings_updates(
-            request.app,
-            db_session,
-            {
-                "project.topics": topics_list,
-                "project.intents": intents_list,
-            },
+    doc_stats_row = (
+        await db_session.execute(
+            sa.select(
+                sa.func.count(Document.id).label("doc_count"),
+                sa.func.coalesce(
+                    sa.func.sum(
+                        sa.func.coalesce(
+                            sa.cast(
+                                sa.func.octet_length(Document.content), sa.BigInteger
+                            ),
+                            sa.cast(Document._length, sa.BigInteger),
+                            sa.literal(0, type_=sa.BigInteger),
+                        )
+                    ),
+                    0,
+                ).label("doc_size_bytes"),
+            ).where(Document.source_id == source_id)
         )
-        await db_session.commit()
-        if (prev_topics or prev_intents) and not topics_list and not intents_list:
-            await admin_event("topics_delete", request)
-        else:
-            await admin_event("topics_update", request)
-        await flash(request, _("Topics updated"), "success")
-        raise web.HTTPFound(request.path)
+    ).one()
 
-    return {"project": _project_context(request), "form": form}
+    chunk_stats_row = (
+        await db_session.execute(
+            sa.select(
+                sa.func.count(Chunk.id).label("chunk_count"),
+                sa.func.coalesce(
+                    sa.func.sum(
+                        sa.cast(sa.func.octet_length(Chunk.text), sa.BigInteger)
+                    ),
+                    0,
+                ).label("chunk_size_bytes"),
+            )
+            .join(Document, Document.id == Chunk.document_id)
+            .where(Document.source_id == source_id)
+        )
+    ).one()
+
+    now = datetime.now(timezone.utc)
+    return {
+        "project": _project_context(request),
+        "source": source,
+        "form": form,
+        "doc_count": int(doc_stats_row.doc_count or 0),
+        "doc_size_bytes": int(doc_stats_row.doc_size_bytes or 0),
+        "chunk_count": int(chunk_stats_row.chunk_count or 0),
+        "chunk_size_bytes": int(chunk_stats_row.chunk_size_bytes or 0),
+        "next_reindex": next_reindex_at(source.reindex_cron, now),
+    }
 
 
 @login_required()
@@ -702,12 +713,6 @@ async def project_action(request):
             )
         return web.json_response({"ok": True, "provider": provider, "model": model})
 
-    if action == "generate_topics":
-        generate_project_topics.delay()
-        await admin_event("topics_generate_request", request)
-        await flash(request, _("Topics generation started in background"), "success")
-        return web.json_response({"ok": True})
-
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)
         await apply_settings_updates(
@@ -832,6 +837,11 @@ async def project_action(request):
         await flash(request, _("Crawl task started for source"), "success")
         return web.Response(text="ok", status=200)
 
+    if action == "crawl_all":
+        crawl_all_sources_task.delay()
+        await flash(request, _("Crawl task started for all sources"), "success")
+        return web.Response(text="ok", status=200)
+
     if action == "refresh_source_index":
         source = await db_session.scalar(
             sa.select(Source).where(Source.id == int(item_id))
@@ -845,11 +855,6 @@ async def project_action(request):
             _("Update task started for %(title)s", title=source.title or source.uri),
             "success",
         )
-        return web.Response(text="ok", status=200)
-
-    if action == "crawl_all":
-        crawl_all_sources_task.delay()
-        await flash(request, _("Crawl task started for all sources"), "success")
         return web.Response(text="ok", status=200)
 
     if action == "refresh_project_index":
@@ -1406,8 +1411,8 @@ async def project_chat(request):
         "current_ai_model": model_obj.id,
         "current_ai_model_label": model_obj.label,
         "current_ai_provider_label": provider_obj.title,
-        "allow_ai_switch": True,
-        "ai_settings_url": str(ai_settings_url),
+        "allow_ai_switch": False,
+        "ai_settings_url": None,
         "initial_messages": initial_messages,
         "signed_chat_id": signed_chat_id,
     }

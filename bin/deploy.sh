@@ -85,7 +85,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=$DEPLOY_PATH
-ExecStart=$DEPLOY_PATH/venv/bin/celery -A jobs.celery worker --beat --loglevel=INFO -Q celery,crawler
+ExecStart=$DEPLOY_PATH/venv/bin/celery -A jobs.celery worker --beat --loglevel=INFO -Q celery,crawler -n vchat-celery@%H
 Restart=always
 Environment=PYTHONUNBUFFERED=1
 
@@ -100,7 +100,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=$DEPLOY_PATH
-ExecStart=$DEPLOY_PATH/venv/bin/celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=prefork --autoscale=1,1
+ExecStart=$DEPLOY_PATH/venv/bin/celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=prefork --autoscale=1,1 --max-tasks-per-child=1 -n vchat-embedder@%H
 Environment=TOKENIZERS_PARALLELISM=false
 Environment=OMP_NUM_THREADS=1
 Environment=MKL_NUM_THREADS=1

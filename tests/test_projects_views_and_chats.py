@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import pytest
 from aiohttp import web
 
-from vchat.app_keys import SETTINGS_KEY
 from vchat.views.projects import chats as chats_views
 from vchat.views.projects import views as project_views
 
@@ -27,27 +26,6 @@ class _Req:
 
     def get(self, key, default=None):
         return self._data.get(key, default)
-
-
-def test_project_context_topics_intents(monkeypatch: pytest.MonkeyPatch) -> None:
-    app = {
-        SETTINGS_KEY: {
-            "project.title": "Demo",
-            "project.provider": "openai",
-            "project.model": "gpt-4o-mini",
-            "project.system_prompt": "sys",
-            "project.topics": ["a"],
-            "project.intents": ["b"],
-        }
-    }
-    request = SimpleNamespace(app=app)
-
-    monkeypatch.setattr(project_views, "get_setting_json", lambda app, key, default: app[SETTINGS_KEY].get(key, default))
-
-    ctx = project_views._project_context(request)
-    assert ctx.title == "Demo"
-    assert project_views._get_topics(request) == ["a"]
-    assert project_views._get_intents(request) == ["b"]
 
 
 @pytest.mark.asyncio
@@ -83,14 +61,20 @@ async def test_chats_list_returns_active_chats(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(chats_views, "redis", _Redis())
     monkeypatch.setattr(chats_views, "async_session_factory", _Factory())
-    monkeypatch.setattr(chats_views, "_project_context", lambda request: SimpleNamespace(id="global"))
+    monkeypatch.setattr(
+        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
+    )
     raw = chats_views.chats_list.__wrapped__.__wrapped__.__wrapped__
-    payload = await raw(_Req(user=SimpleNamespace(id=1), app={"login": None}, path="/chats"))
+    payload = await raw(
+        _Req(user=SimpleNamespace(id=1), app={"login": None}, path="/chats")
+    )
     assert payload["active_chats"]
 
 
 @pytest.mark.asyncio
-async def test_history_list_builds_pagination_and_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_history_list_builds_pagination_and_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     now = datetime.now(timezone.utc)
     fake_chat = SimpleNamespace(
         id="c1",
@@ -102,7 +86,11 @@ async def test_history_list_builds_pagination_and_filters(monkeypatch: pytest.Mo
 
     class _RowsResult:
         def all(self):
-            return [SimpleNamespace(Chat=fake_chat, upvotes=1, downvotes=0, guardrail_hits=1)]
+            return [
+                SimpleNamespace(
+                    Chat=fake_chat, upvotes=1, downvotes=0, guardrail_hits=1
+                )
+            ]
 
     class _Db:
         async def scalar(self, stmt):
@@ -132,7 +120,9 @@ async def test_history_list_builds_pagination_and_filters(monkeypatch: pytest.Mo
             self._store[key] = value
 
     request = _HistoryReq()
-    monkeypatch.setattr(chats_views, "_project_context", lambda request: SimpleNamespace(id="global"))
+    monkeypatch.setattr(
+        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
+    )
 
     raw = chats_views.history_list.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(request)
@@ -143,7 +133,9 @@ async def test_history_list_builds_pagination_and_filters(monkeypatch: pytest.Mo
 
 
 @pytest.mark.asyncio
-async def test_history_detail_masks_pii_and_maps_guardrail_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_history_detail_masks_pii_and_maps_guardrail_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     chat = SimpleNamespace(id="chat-1", title="Demo", meta={})
     msgs = [
         SimpleNamespace(
@@ -182,7 +174,9 @@ async def test_history_detail_masks_pii_and_maps_guardrail_labels(monkeypatch: p
             return _Res()
 
     request = _Req(db=_Db(), match_info={"chat_id": "chat-1"})
-    monkeypatch.setattr(chats_views, "_project_context", lambda request: SimpleNamespace(id="global"))
+    monkeypatch.setattr(
+        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
+    )
 
     raw = chats_views.history_detail.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(request)

@@ -153,8 +153,6 @@ def _live_generation_context() -> chat_views.GenerationContext:
         provider=provider,
         model=model,
         system_prompt=chat_views.SYSTEM_PROMPT,
-        topics=["кадровая политика", "отпуск"],
-        intents=["поиск правил", "уточнение по документу"],
     )
 
 

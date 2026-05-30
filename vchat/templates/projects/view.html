@@ -9,8 +9,8 @@
     <div class="card bg-base-100 shadow">
         <div class="card-body p-0">
             <!-- Toolbar -->
-            <div class="border-base-200 flex items-center justify-between border-b border-dashed px-5 py-5">
-                <label class="input input-sm w-56">
+            <div class="border-base-200 flex items-center gap-3 border-b border-dashed px-5 py-5">
+                <label class="input input-sm flex-1">
                     <iconify-icon icon="lucide:search" class="text-base-content/70 size-4.5"></iconify-icon>
                     <input
                         class="text-base placeholder:text-sm"
@@ -19,7 +19,7 @@
                         @input="updateSearch"
                         placeholder="Поиск документов..." />
                 </label>
-                <label class="select select-sm w-56">
+                <label class="select select-sm w-48 shrink-0">
                     <iconify-icon icon="lucide:filter" class="text-base-content/70 size-4.5"></iconify-icon>
                     <select x-model="sourceFilter" @change="updateSourceFilter">
                         <option value="">Все источники</option>
@@ -28,51 +28,6 @@
                         {% endfor %}
                     </select>
                 </label>
-                <div class="flex items-center gap-2">
-                  <div class="join">
-                    <button hx-post="{{ url('actions', action='refresh_project_index', item_id='global') }}"
-                            hx-swap="none"
-                            class="btn btn-secondary btn-sm max-sm:btn-square">
-                        <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
-                        <span class="hidden sm:inline">Обновить ИИ</span>
-                    </button>
-                    <div class="dropdown dropdown-end">
-                        <button tabindex="0"
-                                type="button"
-                                class="btn btn-secondary btn-outline btn-sm max-sm:btn-square">
-                            <iconify-icon icon="lucide:ellipsis-vertical" class="size-4"></iconify-icon>
-                            <span class="sr-only">Открыть меню</span>
-                        </button>
-                        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box shadow z-[1] w-56 p-2">
-                            {% for source in sources %}
-                                <li>
-                                    <button type="button" class="btn btn-ghost btn-outline btn-sm max-sm:btn-square"
-                                            hx-post="{{ url('actions', action='refresh_source_index', item_id=source.id) }}"
-                                            hx-swap="none">
-                                        {{ 'Обновить %(title)s' % {'title': (source.title or source.uri)} }}
-                                    </button>
-                                </li>
-                            {% endfor %}
-                            <li>
-                                <button type="button" class="btn btn-secondary btn-outline btn-sm max-sm:btn-square"
-                                        hx-post="{{ url('actions', action='index_project', item_id='global') }}"
-                                        hx-swap="none">
-                                    Полная переиндексация
-                                </button>
-                            </li>
-                        </ul>
-                    </div>
-                  </div>
-                     <!-- Pagination info -->
-                    <p class="text-base-content/70 text-sm" x-show="!loading">
-                        Показано
-                        <span class="text-base-content font-medium" x-text="rangeStart"></span>
-                        -
-                        <span class="text-base-content font-medium" x-text="rangeEnd"></span>
-                        из
-                        <span class="text-base-content font-medium" x-text="filteredRowCount"></span>
-                    </p>
-                </div>
             </div>
 
             <!-- Table -->
@@ -132,6 +87,12 @@
                         :value="pageIndex"
                         @input="setPageIndex(Number($event.target.value))"
                     />
+                    <p class="text-base-content/70 text-sm shrink-0">
+                        Показано
+                        <span class="text-base-content font-medium" x-text="rangeStart"></span>–<span class="text-base-content font-medium" x-text="rangeEnd"></span>
+                        из
+                        <span class="text-base-content font-medium" x-text="filteredRowCount"></span>
+                    </p>
                 </div>
             </div>
         </div>

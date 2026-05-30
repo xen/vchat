@@ -45,7 +45,6 @@ def setup_routes(app: web.Application) -> None:
         projects.project_documents_json,
         name="project_documents_json",
     )
-    add("*", "/topics", projects.project_topics, name="project_topics")
     add("*", "/source", projects.project_edit_sources, name="project_edit_sources")
     add(
         "*",

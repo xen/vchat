@@ -34,7 +34,7 @@ from vchat.gigachat_oauth import get_gigachat_access_token
 from vchat.logging_utils import log_json
 from vchat.metrics import record_chat_request
 from vchat.models import Chat, ChatMsg
-from vchat.project_settings import get_setting, get_setting_json
+from vchat.project_settings import get_setting
 from vchat.settings import config
 from vchat.utils import json, run_task
 
@@ -95,8 +95,6 @@ class GenerationContext:
     provider: BaseAIProvider
     model: ModelInfo
     system_prompt: str
-    topics: list[str]
-    intents: list[str]
 
     @property
     def provider_id(self) -> str:
@@ -119,13 +117,7 @@ def build_generation_context(app) -> GenerationContext:
     system_prompt = (
         get_setting(app, "project.system_prompt", SYSTEM_PROMPT) or SYSTEM_PROMPT
     )
-    topics = get_setting_json(app, "project.topics", [])
-    intents = get_setting_json(app, "project.intents", [])
-    if not isinstance(topics, list):
-        topics = []
-    if not isinstance(intents, list):
-        intents = []
-    return GenerationContext(provider, model, system_prompt, topics, intents)
+    return GenerationContext(provider, model, system_prompt)
 
 
 async def generate_suggestions(
@@ -163,20 +155,6 @@ async def generate_suggestions(
             ),
         },
     ]
-
-    # Inject configured context if available
-    if ctx.topics or ctx.intents:
-        context_str = "Configured Context:\n"
-        if ctx.topics:
-            context_str += f"- Topics: {', '.join(ctx.topics)}\n"
-        if ctx.intents:
-            context_str += f"- Potential Intents: {', '.join(ctx.intents)}\n"
-
-        prompt[0]["content"] += (
-            "\n\n"
-            + context_str
-            + "Try to align suggestions with these topics/intents if relevant."
-        )
 
     prompt.extend(recent_messages)
 

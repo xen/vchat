@@ -20,13 +20,6 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "project.agent_name": "",
     "project.welcome_message": "",
     "project.secret": "",
-    "project.topics": "[]",
-    "project.intents": "[]",
-}
-
-JSON_SETTING_KEYS = {
-    "project.topics",
-    "project.intents",
 }
 
 

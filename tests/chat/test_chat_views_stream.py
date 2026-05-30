@@ -38,14 +38,6 @@ class _FakeCtx:
     provider: _FakeProvider
     model: _FakeModel
     system_prompt: str = "sys"
-    topics: list[str] = None
-    intents: list[str] = None
-
-    def __post_init__(self):
-        if self.topics is None:
-            self.topics = []
-        if self.intents is None:
-            self.intents = []
 
     @property
     def provider_id(self) -> str:
@@ -148,7 +140,10 @@ def test_extract_total_tokens_variants() -> None:
     assert chat_views.extract_total_tokens(None) == 0
     assert chat_views.extract_total_tokens({"total_tokens": 10}) == 10
     assert chat_views.extract_total_tokens({"total": "12"}) == 12
-    assert chat_views.extract_total_tokens({"prompt_tokens": 7, "completion_tokens": 8}) == 15
+    assert (
+        chat_views.extract_total_tokens({"prompt_tokens": 7, "completion_tokens": 8})
+        == 15
+    )
     assert chat_views.extract_total_tokens({"input_tokens": 3, "output_tokens": 4}) == 7
     assert chat_views.extract_total_tokens({"usage": {"total_tokens": 9}}) == 9
     assert chat_views.extract_total_tokens(_UsageObj()) == 14
@@ -156,7 +151,9 @@ def test_extract_total_tokens_variants() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ai_chat_stream_guardrails_client_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_ai_chat_stream_guardrails_client_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _Usage:
         def model_dump(self):
             return {"total_tokens": 21}
@@ -207,8 +204,12 @@ async def test_ai_chat_stream_guardrails_client_mode(monkeypatch: pytest.MonkeyP
             _ = kwargs
             return _gen()
 
-    guardrails_client = SimpleNamespace(chat=SimpleNamespace(completions=_Completions()))
-    monkeypatch.setattr(chat_views, "get_guardrails_client", lambda api_key, base_url: guardrails_client)
+    guardrails_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=_Completions())
+    )
+    monkeypatch.setattr(
+        chat_views, "get_guardrails_client", lambda api_key, base_url: guardrails_client
+    )
 
     events = [
         event
@@ -218,11 +219,18 @@ async def test_ai_chat_stream_guardrails_client_mode(monkeypatch: pytest.MonkeyP
         )
     ]
 
-    assert any(e.get("event") == "usage" and e["usage"]["total_tokens"] == 21 for e in events)
+    assert any(
+        e.get("event") == "usage" and e["usage"]["total_tokens"] == 21 for e in events
+    )
     assert any(e.get("event") == "content" and e["data"] == "Hello " for e in events)
     assert any(e.get("event") == "content" and e["data"] == "world" for e in events)
-    assert any(e.get("event") == "guardrail" and e["reason"] == "content_filter" for e in events)
-    assert any(e.get("event") == "guardrail" and e["reason"] == "refusal" for e in events)
+    assert any(
+        e.get("event") == "guardrail" and e["reason"] == "content_filter"
+        for e in events
+    )
+    assert any(
+        e.get("event") == "guardrail" and e["reason"] == "refusal" for e in events
+    )
     tool_event = next(e for e in events if e.get("event") == "tool_call")
     assert tool_event["name"] == "search_doc"
     assert tool_event["arguments"] == {"q": "pto", "limit": 3}
@@ -232,8 +240,12 @@ async def test_ai_chat_stream_guardrails_client_mode(monkeypatch: pytest.MonkeyP
 
 
 @pytest.mark.asyncio
-async def test_ai_chat_stream_raw_mode_and_error_branch(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(chat_views, "get_guardrails_client", lambda api_key, base_url: None)
+async def test_ai_chat_stream_raw_mode_and_error_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        chat_views, "get_guardrails_client", lambda api_key, base_url: None
+    )
 
     lines = [
         b"data: " + json.dumps({"usage": {"total_tokens": 7}}).encode("utf-8") + b"\n",
@@ -314,7 +326,9 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(monkeypatch: pytest.Monk
             _ = args, kwargs
             return _Resp(status=self.status)
 
-    monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: _Session(status=200))
+    monkeypatch.setattr(
+        chat_views.aiohttp, "ClientSession", lambda: _Session(status=200)
+    )
     events = [
         event
         async for event in chat_views.ai_chat_stream(
@@ -327,7 +341,9 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(monkeypatch: pytest.Monk
     assert events[-1]["event"] == "assistant_message"
     assert events[-1]["message"]["content"] == "AB"
 
-    monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: _Session(status=500))
+    monkeypatch.setattr(
+        chat_views.aiohttp, "ClientSession", lambda: _Session(status=500)
+    )
     with pytest.raises(aiohttp.ClientResponseError):
         _ = [
             event
@@ -339,7 +355,9 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
-async def test_websocket_invalid_signature_closes_1008(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_websocket_invalid_signature_closes_1008(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ws = _FakeWs([])
     monkeypatch.setattr(chat_views.web, "WebSocketResponse", lambda: ws)
     monkeypatch.setattr(chat_views, "redis", _FakeRedis())
@@ -361,7 +379,9 @@ async def test_websocket_invalid_signature_closes_1008(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio
-async def test_websocket_sends_internal_error_json(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_websocket_sends_internal_error_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     ws = _FakeWs(
         [
             _WsMessage(type=aiohttp.WSMsgType.TEXT, data="hello"),
@@ -370,7 +390,9 @@ async def test_websocket_sends_internal_error_json(monkeypatch: pytest.MonkeyPat
     )
     monkeypatch.setattr(chat_views.web, "WebSocketResponse", lambda: ws)
     monkeypatch.setattr(chat_views, "redis", _FakeRedis())
-    monkeypatch.setattr(chat_views, "async_session_factory", _FakeSessionFactory(chat_exists="chat-1"))
+    monkeypatch.setattr(
+        chat_views, "async_session_factory", _FakeSessionFactory(chat_exists="chat-1")
+    )
 
     class _Serializer:
         def __init__(self, secret):
@@ -385,7 +407,11 @@ async def test_websocket_sends_internal_error_json(monkeypatch: pytest.MonkeyPat
             return "signed"
 
     monkeypatch.setattr(chat_views, "URLSafeSerializer", _Serializer)
-    monkeypatch.setattr(chat_views, "build_generation_context", lambda app: _FakeCtx(_FakeProvider(), _FakeModel()))
+    monkeypatch.setattr(
+        chat_views,
+        "build_generation_context",
+        lambda app: _FakeCtx(_FakeProvider(), _FakeModel()),
+    )
 
     async def _raise_input_guardrail(*, text: str, provider: Any) -> GuardrailDecision:
         _ = text, provider
@@ -393,11 +419,16 @@ async def test_websocket_sends_internal_error_json(monkeypatch: pytest.MonkeyPat
 
     metrics_calls = []
     monkeypatch.setattr(chat_views, "check_input_guardrails", _raise_input_guardrail)
-    monkeypatch.setattr(chat_views, "record_chat_request", lambda **kwargs: metrics_calls.append(kwargs))
+    monkeypatch.setattr(
+        chat_views, "record_chat_request", lambda **kwargs: metrics_calls.append(kwargs)
+    )
 
     request = SimpleNamespace(match_info={"payload": "ok"}, app={})
     result_ws = await chat_views.websocket(request)
 
     assert result_ws is ws
-    assert any(item.get("ok") is False and item.get("error") == "RuntimeError" for item in ws.sent_json)
+    assert any(
+        item.get("ok") is False and item.get("error") == "RuntimeError"
+        for item in ws.sent_json
+    )
     assert metrics_calls and metrics_calls[0]["status"] == "internal_error"

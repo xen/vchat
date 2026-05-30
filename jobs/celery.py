@@ -36,10 +36,6 @@ app.conf.task_acks_late = True
 app.conf.broker_connection_retry_on_startup = True
 
 app.conf.beat_schedule = {
-    "sitemap_generate": {
-        "task": "seo.sitemap_generate",
-        "schedule": 86400.0,  # 24 hours
-    },
     "process_pending_chunks": {
         "task": "jobs.embedder.tasks.schedule_pending_chunks",
         "schedule": 300.0,
@@ -61,8 +57,5 @@ def run_gc(*_, **__):
 # Import tasks to register them with Celery when autodiscovery is limited
 try:
     import jobs  # noqa: F401
-    import jobs.content  # noqa: F401
-    import jobs.sitemap  # noqa: F401
-    import jobs.suggestions  # noqa: F401
 except ImportError:
     pass  # jobs package might not be available in minimal environments

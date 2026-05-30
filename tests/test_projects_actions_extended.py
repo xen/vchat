@@ -28,11 +28,22 @@ class _Route:
 class _App(dict):
     def __init__(self):
         super().__init__({SIGNER_KEY: _Signer()})
-        self.router = {"users": _Route("/users/"), "actions": _Route("/actions/{action}/{item_id}")}
+        self.router = {
+            "users": _Route("/users/"),
+            "actions": _Route("/actions/{action}/{item_id}"),
+        }
 
 
 class _Request(dict):
-    def __init__(self, *, action: str, item_id: str = "1", method="POST", post_data=None, headers=None):
+    def __init__(
+        self,
+        *,
+        action: str,
+        item_id: str = "1",
+        method="POST",
+        post_data=None,
+        headers=None,
+    ):
         super().__init__()
         self.app = _App()
         self.match_info = {"action": action, "item_id": item_id}
@@ -90,36 +101,9 @@ async def test_project_action_rejects_missing_csrf() -> None:
 
 
 @pytest.mark.asyncio
-async def test_project_action_generate_topics(monkeypatch: pytest.MonkeyPatch) -> None:
-    req = _Request(action="generate_topics", item_id="global")
-    req["db"] = _DB()
-    req["user"] = SimpleNamespace(id=1)
-
-    delayed = []
-    flashed = []
-    events = []
-
-    monkeypatch.setattr(project_views.generate_project_topics, "delay", lambda: delayed.append(True))
-
-    async def _flash(request, msg, cat="success"):
-        _ = request
-        flashed.append((msg, cat))
-
-    async def _admin_event(event, request):
-        _ = request
-        events.append(event)
-
-    monkeypatch.setattr(project_views, "flash", _flash)
-    monkeypatch.setattr(project_views, "admin_event", _admin_event)
-
-    resp = await _raw_project_action()(req)
-    assert resp.status == 200
-    assert delayed
-    assert events == ["topics_generate_request"]
-
-
-@pytest.mark.asyncio
-async def test_project_action_ignore_document_toggle(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_action_ignore_document_toggle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     doc = SimpleNamespace(id=10, is_ignored=False)
     req = _Request(action="ignore_document", item_id="10", post_data={})
     req["db"] = _DB(scalar_values=[doc])
@@ -166,7 +150,9 @@ async def test_project_action_unknown_action() -> None:
 
 
 @pytest.mark.asyncio
-async def test_project_action_delete_source_success(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_action_delete_source_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = SimpleNamespace(id=3)
     req = _Request(action="delete_source", item_id="3")
     db = _DB(scalar_values=[source])
@@ -186,7 +172,9 @@ async def test_project_action_delete_source_success(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
-async def test_project_action_background_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_action_background_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     req = _Request(action="crawl_all", item_id="global")
     req["db"] = _DB()
     req["user"] = SimpleNamespace(id=1)
@@ -198,9 +186,19 @@ async def test_project_action_background_actions(monkeypatch: pytest.MonkeyPatch
         called.append("flash")
 
     monkeypatch.setattr(project_views, "flash", _flash)
-    monkeypatch.setattr(project_views.crawl_all_sources_task, "delay", lambda: called.append("crawl_all"))
-    monkeypatch.setattr(project_views.refresh_project_index, "delay", lambda: called.append("refresh_project_index"))
-    monkeypatch.setattr(project_views.index_project, "delay", lambda: called.append("index_project"))
+    monkeypatch.setattr(
+        project_views.crawl_all_sources_task,
+        "delay",
+        lambda: called.append("crawl_all"),
+    )
+    monkeypatch.setattr(
+        project_views.refresh_project_index,
+        "delay",
+        lambda: called.append("refresh_project_index"),
+    )
+    monkeypatch.setattr(
+        project_views.index_project, "delay", lambda: called.append("index_project")
+    )
 
     resp1 = await _raw_project_action()(req)
     assert resp1.status == 200
@@ -212,7 +210,11 @@ async def test_project_action_background_actions(monkeypatch: pytest.MonkeyPatch
     req.match_info["action"] = "index_project"
     resp3 = await _raw_project_action()(req)
     assert resp3.status == 200
-    assert "crawl_all" in called and "refresh_project_index" in called and "index_project" in called
+    assert (
+        "crawl_all" in called
+        and "refresh_project_index" in called
+        and "index_project" in called
+    )
 
 
 @pytest.mark.asyncio
@@ -228,7 +230,11 @@ async def test_project_action_rebuild_uploads(monkeypatch: pytest.MonkeyPatch) -
         _ = request, msg, cat
 
     monkeypatch.setattr(project_views, "flash", _flash)
-    monkeypatch.setattr(project_views.crawl_file_task, "delay", lambda document_id: delayed.append(document_id))
+    monkeypatch.setattr(
+        project_views.crawl_file_task,
+        "delay",
+        lambda document_id: delayed.append(document_id),
+    )
 
     resp = await _raw_project_action()(req)
     assert resp.status == 200
@@ -236,7 +242,9 @@ async def test_project_action_rebuild_uploads(monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.asyncio
-async def test_project_action_delete_file_success(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_action_delete_file_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     doc = SimpleNamespace(id=99, uri="/tmp/fake.bin")
     req = _Request(action="delete_file", item_id="99")
     db = _DB(scalar_values=[doc])

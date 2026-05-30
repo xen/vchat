@@ -3,52 +3,41 @@
 
 <div class="flex items-center justify-between">
     <p class="text-lg font-medium">Источники</p>
+    <div class="inline-flex items-center gap-3">
+        <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            <span class="hidden sm:inline">Добавить источник</span>
+        </button>
+        <button hx-post="{{ url('actions', action='crawl_all', item_id='global') }}"
+                hx-swap="none"
+                class="btn btn-secondary btn-sm max-sm:btn-square">
+            <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
+            <span class="hidden sm:inline">Обойти все</span>
+        </button>
+    </div>
 </div>
 
 <div class="mt-6">
     <div class="card bg-base-100 shadow">
         <div class="card-body p-0">
-            <!-- Header with Search/Add -->
-            <div class="flex items-center justify-between px-5 pt-5">
-                <div class="inline-flex items-center gap-3">
-                    <!-- Placeholder for search if needed, or just empty to push "Add" to right -->
-                </div>
-                <div class="inline-flex items-center gap-3">
-                    <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
-                        <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-                        <span class="hidden sm:inline">Добавить источник</span>
-                    </button>
-                    <button hx-post="{{ url('actions', action='crawl_all', item_id='global') }}"
-                            hx-swap="none"
-                            class="btn btn-secondary btn-sm max-sm:btn-square">
-                        <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
-                        <span class="hidden sm:inline">Обойти все</span>
-                    </button>
-                </div>
-            </div>
-
             <!-- Table -->
-            <div class="mt-4 overflow-auto">
+            <div class="overflow-auto">
                 <table class="table">
                     <thead>
                         <tr>
                             <th>Название</th>
-                            <th>URL</th>
                             <th>Документы</th>
                             <th>Переиндексация</th>
                             <th>Правила</th>
-                            <th>Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for source, doc_count, is_spa in sources %}
-                        <tr class="hover:bg-base-200/40 cursor-pointer *:text-nowrap">
-                            <td>
-                                <div class="font-medium">{{ source.title }}</div>
-                            </td>
+                        <tr class="hover:bg-base-200/40 cursor-pointer *:text-nowrap"
+                            onclick="window.location='{{ url('project_source_settings', source_id=source.id) }}'">
                             <td>
                                 <div class="font-medium inline-flex items-center gap-2">
-                                    {{ source.uri }}
+                                    {{ source.title or source.uri }}
                                     {% if is_spa %}
                                     <span class="badge badge-warning badge-sm gap-1" title="Сайт использует JavaScript для рендеринга — индексация недоступна">
                                         <iconify-icon icon="lucide:zap-off" class="size-3"></iconify-icon>
@@ -78,40 +67,10 @@
                                     {% endif %}
                                 </div>
                             </td>
-                            <td>
-                                <div class="inline-flex w-fit">
-                                    <button hx-post="{{ url('actions', action='crawl_source', item_id=source.id) }}"
-                                            hx-swap="none"
-                                            class="btn btn-square btn-ghost btn-sm"
-                                            title="Обход">
-                                        <iconify-icon icon="lucide:refresh-cw" class="text-success size-4"></iconify-icon>
-                                    </button>
-                                    <a href="{{ url('project_source_settings', source_id=source.id) }}"
-                                       class="btn btn-square btn-ghost btn-sm"
-                                       title="Редактировать">
-                                        <iconify-icon icon="lucide:pencil" class="text-primary size-4"></iconify-icon>
-                                    </a>
-                                    <button class="btn btn-square btn-ghost btn-sm"
-                                            hx-post="{{ url('actions', action='rebuild_source', item_id=source.id) }}"
-                                            hx-confirm="Вы уверены? Это удалит все проиндексированные документы этого источника и запустит обход заново."
-                                            hx-swap="none"
-                                            title="Полная переиндексация">
-                                        <iconify-icon icon="lucide:rotate-ccw" class="text-warning size-4"></iconify-icon>
-                                    </button>
-                                    <button class="btn btn-square btn-error btn-outline btn-sm border-transparent"
-                                            hx-post="{{ url('actions', action='delete_source', item_id=source.id) }}"
-                                            hx-confirm="Вы уверены, что хотите удалить этот источник?"
-                                            hx-target="closest tr"
-                                            hx-swap="outerHTML"
-                                            title="Удалить">
-                                        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
-                                    </button>
-                                </div>
-                            </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="6" class="text-center text-base-content/60 py-8">
+                            <td colspan="4" class="text-center text-base-content/60 py-8">
                                 Источники не найдены.
                             </td>
                         </tr>
@@ -131,7 +90,6 @@
             {{ form.csrf_token }}
             <div id="add_source_errors" class="hidden alert alert-error mb-4 text-sm flex-col items-start gap-1"></div>
 
-            <!-- Site-specific fields -->
             <div id="site_fields" class="source-type-fields">
                 <div class="form-control w-full mb-4">
                     <label class="label">
