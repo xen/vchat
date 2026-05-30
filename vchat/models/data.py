@@ -150,7 +150,7 @@ class Page(Base, Created, Updated):
     )
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(
-        status_enum, nullable=False, default="added", index=True
+        status_enum, nullable=False, default="pending", index=True
     )
     title: Mapped[str | None] = mapped_column(sa.String, nullable=True)
     is_ignored: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
@@ -194,6 +194,10 @@ class Page(Base, Created, Updated):
         nullable=False,
         default=0,
         server_default=sa.text("0"),
+    )
+    # Indexing pipeline progress: null → queued → indexing → indexed / failed
+    index_status: Mapped[str | None] = mapped_column(
+        sa.String(32), nullable=True, index=True
     )
 
     @hybrid_property

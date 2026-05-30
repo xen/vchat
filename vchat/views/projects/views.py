@@ -1553,7 +1553,8 @@ async def project_files(request):
                 "author_name": author_name,
                 "author_email": author_email,
             },
-            status="added",
+            status="ok",
+            index_status=None,
         )
         document.length = len(content)
         db_session.add(document)
@@ -1606,7 +1607,7 @@ async def file_document(request):
         document.content = content
         document.hash_value = content
         document.length = len(content)
-        document.status = "added"
+        document.index_status = "queued"
         document.updated_at = datetime.now(timezone.utc)
         await db_session.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
         await db_session.commit()
@@ -1655,7 +1656,8 @@ async def on_upload(request, resource, file_path):
             "author_name": author_name,
             "author_email": author_email,
         },
-        status="added",
+        status="ok",
+        index_status="queued",
     )
     document.length = 0
     request["db"].add(document)

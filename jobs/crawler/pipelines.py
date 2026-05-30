@@ -44,7 +44,7 @@ def is_auth_redirect(original_url: str, final_url: str) -> bool:
 
 def count_internal_links(content: str, source_domain: str) -> int:
     """Count markdown links pointing to the same domain."""
-    pattern = re.compile(r'\[([^\]]*)\]\(([^)]+)\)')
+    pattern = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
     count = 0
     for _, href in pattern.findall(content or ""):
         href_lower = href.lower()
@@ -74,7 +74,9 @@ class DatabasePipeline:
         if source_id:
             try:
                 with Session(bind=self.engine) as session:
-                    run = CrawlRun(source_id=source_id, started_at=datetime.now(timezone.utc))
+                    run = CrawlRun(
+                        source_id=source_id, started_at=datetime.now(timezone.utc)
+                    )
                     session.add(run)
                     session.commit()
                     self._crawl_run_id = run.id
@@ -92,38 +94,70 @@ class DatabasePipeline:
 
         # Auth redirect detection
         if is_auth_redirect(url, final_url):
-            save_page_status(self.engine, url, source_id, "excluded_auth", http_status, etag, self.logger)
+            save_page_status(
+                self.engine,
+                url,
+                source_id,
+                "excluded_auth",
+                http_status,
+                etag,
+                self.logger,
+            )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
             return item
 
         # Handle 4xx errors
         if http_status and 400 <= http_status < 500:
-            handle_error_page(self.engine, url, source_id, http_status, etag, self.logger)
+            handle_error_page(
+                self.engine, url, source_id, http_status, etag, self.logger
+            )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
             return item
 
         # Handle 5xx errors
         if http_status and http_status >= 500:
-            save_page_status(self.engine, url, source_id, "error_5xx", http_status, etag, self.logger)
+            save_page_status(
+                self.engine, url, source_id, "error_5xx", http_status, etag, self.logger
+            )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
             return item
 
         markdown_content = None
         try:
-            markdown_content, normalized_title, extracted_meta = extract_url_document(url)
+            markdown_content, normalized_title, extracted_meta = extract_url_document(
+                url
+            )
         except SPAPageError as exc:
             spider.logger.warning("SPA detected for %s: %s", url, exc)
-            save_page_status(self.engine, url, source_id, "no_content", http_status, etag, self.logger)
+            save_page_status(
+                self.engine,
+                url,
+                source_id,
+                "no_content",
+                http_status,
+                etag,
+                self.logger,
+            )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
             return item
         except Exception as exc:
             spider.logger.error("Extraction failed for %s: %s", url, exc, exc_info=True)
-            save_page_status(self.engine, url, source_id, "error_5xx", http_status, etag, self.logger)
+            save_page_status(
+                self.engine, url, source_id, "error_5xx", http_status, etag, self.logger
+            )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
             return item
 
         if not markdown_content:
-            save_page_status(self.engine, url, source_id, "no_content", http_status, etag, self.logger)
+            save_page_status(
+                self.engine,
+                url,
+                source_id,
+                "no_content",
+                http_status,
+                etag,
+                self.logger,
+            )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
             return item
 
@@ -144,10 +178,14 @@ class DatabasePipeline:
                     page.length = 0
                     page.last_crawled_at = datetime.now(timezone.utc)
                     session.commit()
-                    increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
+                    increment_run_stat(
+                        self.engine, self._crawl_run_id, "pages_excluded"
+                    )
                     return item
 
-                effectively_unchanged = document_content_effectively_unchanged(page, markdown_content)
+                effectively_unchanged = document_content_effectively_unchanged(
+                    page, markdown_content
+                )
                 has_chunks = (
                     sync_document_has_chunks(session, page.id)
                     if (effectively_unchanged and page.id is not None)
@@ -181,7 +219,9 @@ class DatabasePipeline:
                     page.error_count = 0
                 else:
                     page.stable_count = (page.stable_count or 0) + 1
-                page.check_interval_days = compute_adaptive_interval(page, content_changed)
+                page.check_interval_days = compute_adaptive_interval(
+                    page, content_changed
+                )
 
                 item_meta = item.get("meta", {})
                 meta = dict(page.meta or {})
@@ -215,12 +255,23 @@ class DatabasePipeline:
                 spider.logger.info("Indexed %s (changed=%s)", url, content_changed)
 
                 if effectively_unchanged and has_chunks:
-                    spider.logger.info("Skipping chunk refresh for %s: content unchanged", url)
+                    spider.logger.info(
+                        "Skipping chunk refresh for %s: content unchanged", url
+                    )
+                    page.index_status = "indexed"
+                    session.commit()
                 else:
+                    page.index_status = "queued"
+                    session.commit()
                     try:
                         schedule_index_document(page.id)
                     except Exception as embed_exc:
-                        spider.logger.error("Failed to schedule chunking for %s: %s", url, embed_exc, exc_info=True)
+                        spider.logger.error(
+                            "Failed to schedule chunking for %s: %s",
+                            url,
+                            embed_exc,
+                            exc_info=True,
+                        )
         except Exception as e:
             spider.logger.error(f"Error processing {url}: {e}", exc_info=True)
 
@@ -246,7 +297,15 @@ def sync_uri(uri: str) -> str:
     return uri
 
 
-def save_page_status(engine, url: str, source_id: int, status: str, http_status: int | None, etag: str | None, logger) -> None:
+def save_page_status(
+    engine,
+    url: str,
+    source_id: int,
+    status: str,
+    http_status: int | None,
+    etag: str | None,
+    logger,
+) -> None:
     try:
         with Session(bind=engine) as session:
             stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)
@@ -280,7 +339,9 @@ def save_page_status(engine, url: str, source_id: int, status: str, http_status:
         logger.error("Failed to save page status for %s: %s", url, exc, exc_info=True)
 
 
-def handle_error_page(engine, url: str, source_id: int, http_status: int, etag: str | None, logger) -> None:
+def handle_error_page(
+    engine, url: str, source_id: int, http_status: int, etag: str | None, logger
+) -> None:
     try:
         with Session(bind=engine) as session:
             stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)

@@ -88,11 +88,7 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
 
 async def _delete_document_by_url(request: web.Request, url: str) -> int:
     db = request["db"]
-    docs = (
-        (await db.execute(sa.select(Page).where(Page.uri == url)))
-        .scalars()
-        .all()
-    )
+    docs = (await db.execute(sa.select(Page).where(Page.uri == url))).scalars().all()
     if not docs:
         return 0
 
@@ -126,7 +122,7 @@ async def _upsert_document(
     created = document is None
 
     if document is None:
-        document = Page(source_id=source_id, uri=url, status="added")
+        document = Page(source_id=source_id, uri=url, status="ok")
         db.add(document)
 
     effectively_unchanged = document_content_effectively_unchanged(document, content)
@@ -136,7 +132,7 @@ async def _upsert_document(
         else False
     )
     document.content = content
-    document.status = "indexed"
+    document.status = "ok"
     document.hash_value = content
     document.language = ""
     document.length = len(content)
@@ -151,6 +147,11 @@ async def _upsert_document(
 
     if title:
         document.title = title[:512]
+
+    if not (effectively_unchanged and has_chunks):
+        document.index_status = "queued"
+    else:
+        document.index_status = "indexed"
 
     await db.commit()
     await db.refresh(document)

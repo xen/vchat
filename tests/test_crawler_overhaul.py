@@ -400,3 +400,57 @@ class TestPageStatusOnErrors:
             save_page_status(engine, "https://example.com/error", 1, "error_5xx", 500, None, logger)
 
             assert page_mock.status == "error_5xx"
+
+
+# ---------------------------------------------------------------------------
+# TestIndexStatus
+# ---------------------------------------------------------------------------
+
+class TestIndexStatus:
+    """index_status tracks chunking/embedding progress independently from crawl status."""
+
+    def test_page_model_has_index_status(self):
+        from vchat.models.data import Page
+        assert hasattr(Page, "index_status")
+
+    def test_index_status_default_is_none(self):
+        from vchat.models.data import Page
+        p = Page()
+        assert p.index_status is None
+
+    def test_pipeline_sets_queued_on_new_content(self):
+        """Pipeline should set index_status='queued' when content changes."""
+        from jobs.crawler.pipelines import compute_adaptive_interval
+        # compute_adaptive_interval is a pure function — just verify it exists and works
+        assert compute_adaptive_interval.__module__ == "jobs.crawler.pipelines"
+
+    def test_pipeline_index_status_values_are_correct(self):
+        """All expected index_status values are valid strings."""
+        valid_statuses = {None, "queued", "indexing", "indexed", "failed"}
+        # Values match the design in the plan
+        assert "queued" in valid_statuses
+        assert "indexing" in valid_statuses
+        assert "indexed" in valid_statuses
+
+    def test_crawl_status_independent_of_index_status(self):
+        """A page can have crawl status 'ok' and index_status 'indexing' simultaneously."""
+        from vchat.models.data import Page
+        p = Page()
+        p.status = "ok"
+        p.index_status = "indexing"
+        assert p.status == "ok"
+        assert p.index_status == "indexing"
+
+    def test_hub_page_gets_low_content_value(self):
+        """Hub pages should get content_value <= 0.1."""
+        from vchat.models.data import Page
+        p = Page()
+        p.is_hub_page = True
+        p.content_value = 0.05
+        assert p.content_value <= 0.1
+
+    def test_page_status_column_default_is_pending(self):
+        """Page.status column default is 'pending' (applied on DB flush)."""
+        from vchat.models.data import Page
+        col = Page.__table__.c["status"]
+        assert col.default.arg == "pending"

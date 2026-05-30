@@ -639,7 +639,7 @@ def materialize_page_chunks(
 
     if not chunks:
         logging.info("No content to index for Page %s", doc.id)
-        doc.status = "indexed"
+        doc.index_status = "indexed"
         session.commit()
         return 0
 
@@ -662,7 +662,7 @@ def materialize_page_chunks(
         )
         session.add(chunk)
 
-    doc.status = "added"
+    doc.index_status = "indexing"
     session.commit()
     # Освобождаем все вставленные Chunk ORM-объекты из identity map.
     # chunk_document_text() уже вернул список ChunkData, они не нужны дальше.
@@ -738,7 +738,7 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
         session.execute(
             sa.update(Page)
             .where(Page.id == chunk_page_id)
-            .values(status="indexed")
+            .values(index_status="indexed")
         )
         session.commit()
 
@@ -907,7 +907,9 @@ def schedule_index_document(document_id: int) -> bool:
         redis_client.close()
 
 
-def ensure_pending_chunk_workers(session: Session, redis_client: Any) -> tuple[int, int]:
+def ensure_pending_chunk_workers(
+    session: Session, redis_client: Any
+) -> tuple[int, int]:
     pending_chunk_count = count_pending_chunks(session)
     target = pending_chunk_task_target(pending_chunk_count)
     if target == 0:
@@ -1133,9 +1135,7 @@ def refresh_project_index():
                 schedule_index_document(doc_id)
 
             ignored_doc_ids = (
-                session.execute(
-                    sa.select(Page.id).where(Page.is_ignored == True)
-                )
+                session.execute(sa.select(Page.id).where(Page.is_ignored == True))
                 .scalars()
                 .all()
             )

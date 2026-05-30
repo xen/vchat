@@ -57,7 +57,7 @@ def crawl_file_task(file_id: int):
                 if not content:
                     logger.warning("No text extracted from %s", file_path_str)
                     _ensure_meta(doc)
-                    doc.status = "indexed"
+                    doc.index_status = "indexed"
                     doc.content = ""
                     doc.length = 0
                     doc.hash_value = ""
@@ -79,7 +79,7 @@ def crawl_file_task(file_id: int):
                 doc.content = content
                 doc.hash_value = content
                 doc.length = len(content)
-                doc.status = "indexed"
+                doc.index_status = "queued"
                 doc.language = ""
                 doc.meta = merged_meta
                 if title:
@@ -87,6 +87,8 @@ def crawl_file_task(file_id: int):
                 session.commit()
 
                 if effectively_unchanged and has_chunks:
+                    doc.index_status = "indexed"
+                    session.commit()
                     logger.info(
                         "Skipping chunk refresh for file document %s: content unchanged",
                         doc.id,
@@ -165,7 +167,9 @@ def process_document(session: Session, doc: Document):
     doc.content = content
     doc.hash_value = content
     doc.length = len(content)
-    doc.status = "indexed"
+    doc.index_status = (
+        "queued" if not (effectively_unchanged and has_chunks) else "indexed"
+    )
     doc.language = ""
     doc.meta = merged_meta
     if title:
