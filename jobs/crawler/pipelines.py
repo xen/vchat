@@ -312,6 +312,7 @@ def save_page_status(
             page = session.execute(stmt).scalar_one_or_none()
             if page is None:
                 page = Page(source_id=source_id, uri=url)
+                page._hash = ""
                 session.add(page)
 
             page.status = status
@@ -348,6 +349,7 @@ def handle_error_page(
             page = session.execute(stmt).scalar_one_or_none()
             if page is None:
                 page = Page(source_id=source_id, uri=url)
+                page._hash = ""
                 session.add(page)
 
             page.http_status = http_status
