@@ -21,7 +21,6 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
-    DEFAULT_CRAWLER_USER_AGENT,
     is_manual_reindex,
     normalize_reindex_cron,
     validate_reindex_cron,
@@ -236,12 +235,6 @@ class SourceCrawlerSettingsForm(Form):
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
         render_kw={"class": "input input-bordered w-full"},
     )
-    user_agent = StringField(
-        _("User Agent"),
-        validators=[validators.Optional(), validators.Length(max=500)],
-        default=DEFAULT_CRAWLER_USER_AGENT,
-        render_kw={"class": "input input-bordered w-full"},
-    )
 
 
 class SourceSettingsForm(SourceForm):
@@ -261,12 +254,6 @@ class SourceSettingsForm(SourceForm):
         _("Таймаут запроса (DOWNLOAD_TIMEOUT, сек)"),
         validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
-        render_kw={"class": "input input-bordered w-full"},
-    )
-    user_agent = StringField(
-        _("User Agent"),
-        validators=[validators.Optional(), validators.Length(max=500)],
-        default=DEFAULT_CRAWLER_USER_AGENT,
         render_kw={"class": "input input-bordered w-full"},
     )
 
@@ -315,4 +302,32 @@ class OnboardingForm(Form):
             ),
         ],
         render_kw={"class": "form-control"},
+    )
+
+
+class TopicsForm(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = config["secret_key"]
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=20)
+
+    topics = TextAreaField(
+        _("Topics"),
+        validators=[validators.Optional()],
+        render_kw={
+            "class": "textarea textarea-bordered w-full font-mono text-sm",
+            "rows": "10",
+        },
+        description=_("List of project topics (one per line)"),
+    )
+
+    intents = TextAreaField(
+        _("User Intents"),
+        validators=[validators.Optional()],
+        render_kw={
+            "class": "textarea textarea-bordered w-full font-mono text-sm",
+            "rows": "10",
+        },
+        description=_("List of potential user intents (one per line)"),
     )

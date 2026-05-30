@@ -19,7 +19,7 @@ from vchat.embeddings import (
     release_torch_cache,
     resolve_embedding_device,
 )
-from vchat.models import ChatMsg, Chunk, Document, Source
+from vchat.models import ChatMsg, Chunk, Page, Source
 from vchat.settings import config
 
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
@@ -314,7 +314,7 @@ def split_table_rows(table_text: str, max_tokens: int) -> list[str]:
     return parts or [table_text]
 
 
-def _collect_entity_terms(
+def collect_entity_terms(
     block: str,
     *,
     header_text: str | None = None,
@@ -441,7 +441,7 @@ def chunk_document_text(
     chunk_ix = 0
     tokenizer = get_embed_model().tokenizer
     for kind, block, header_text, section_path in blocks:
-        entity_terms = _collect_entity_terms(
+        entity_terms = collect_entity_terms(
             block,
             header_text=header_text,
             section_path=section_path,
@@ -609,36 +609,36 @@ def chunk_document_text(
     return chunks
 
 
-def _fetch_document_context(session: Session, document_id: int):
-    stmt = select(Document).where(Document.id == document_id)
+def fetch_page_context(session: Session, page_id: int):
+    stmt = select(Page).where(Page.id == page_id)
     row = session.execute(stmt).first()
     if not row:
-        logging.warning("Document %s not found", document_id)
+        logging.warning("Page %s not found", page_id)
         return None
 
     (doc,) = row
 
     if not doc.content:
-        logging.warning("Document %s has no content", document_id)
+        logging.warning("Page %s has no content", page_id)
         return None
 
     if doc.is_ignored:
-        logging.info("Document %s is ignored, skipping", document_id)
+        logging.info("Page %s is ignored, skipping", page_id)
         return None
 
     return doc
 
 
-def _materialize_document_chunks(
-    session: Session, doc: Document, user_uid: str = "system"
+def materialize_page_chunks(
+    session: Session, doc: Page, user_uid: str = "system"
 ) -> int:
     chunks = chunk_document_text(doc.content or "")
-    logging.info("Materializing %s chunks for Document %s", len(chunks), doc.id)
+    logging.info("Materializing %s chunks for Page %s", len(chunks), doc.id)
 
-    session.execute(delete(Chunk).where(Chunk.document_id == doc.id))
+    session.execute(delete(Chunk).where(Chunk.page_id == doc.id))
 
     if not chunks:
-        logging.info("No content to index for Document %s", doc.id)
+        logging.info("No content to index for Page %s", doc.id)
         doc.status = "indexed"
         session.commit()
         return 0
@@ -648,7 +648,7 @@ def _materialize_document_chunks(
             chat_id=None,
             user_uid=user_uid,
             msg_id=None,
-            document_id=doc.id,
+            page_id=doc.id,
             chunk_ix=c.index,
             start_offset=c.start,
             end_offset=c.end,
@@ -670,11 +670,11 @@ def _materialize_document_chunks(
     return len(chunks)
 
 
-def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> bool:
+def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bool:
     stmt = (
         select(Chunk)
         .where(Chunk.embedding.is_(None))
-        .order_by(Chunk.document_id.asc(), Chunk.chunk_ix.asc())
+        .order_by(Chunk.page_id.asc(), Chunk.chunk_ix.asc())
         .limit(1)
         .with_for_update(skip_locked=True)
     )
@@ -682,19 +682,19 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
     if not chunk:
         return False
 
-    if chunk.document_id is None:
-        logging.warning("Chunk %s has no document reference, deleting", chunk.id)
+    if chunk.page_id is None:
+        logging.warning("Chunk %s has no page reference, deleting", chunk.id)
         session.delete(chunk)
         session.commit()
         session.expunge_all()
         return True
 
-    doc = session.get(Document, chunk.document_id)
+    doc = session.get(Page, chunk.page_id)
     if doc is None:
         logging.info(
-            "Chunk %s references missing document %s, deleting",
+            "Chunk %s references missing page %s, deleting",
             chunk.id,
-            chunk.document_id,
+            chunk.page_id,
         )
         session.delete(chunk)
         session.commit()
@@ -704,14 +704,14 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
     # Снимаем скалярные значения до commit/expunge, чтобы не обращаться к
     # detached-объектам после очистки identity map.
     chunk_id = chunk.id
-    chunk_doc_id = chunk.document_id
+    chunk_page_id = chunk.page_id
     chunk_ix = chunk.chunk_ix
     chunk_text = chunk.text
     chunk_size = len(chunk_text or "")
     start_time = time.monotonic()
     logging.info(
-        "Embedding chunk doc_id=%s ix=%s size=%s chars",
-        chunk_doc_id,
+        "Embedding chunk page_id=%s ix=%s size=%s chars",
+        chunk_page_id,
         chunk_ix,
         chunk_size,
     )
@@ -728,7 +728,7 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
 
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(
-            Chunk.document_id == chunk_doc_id,
+            Chunk.page_id == chunk_page_id,
             Chunk.embedding.is_(None),
         )
     ).scalar_one()
@@ -736,21 +736,21 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
     if remaining == 0:
         # UPDATE без загрузки объекта в identity map
         session.execute(
-            sa.update(Document)
-            .where(Document.id == chunk_doc_id)
+            sa.update(Page)
+            .where(Page.id == chunk_page_id)
             .values(status="indexed")
         )
         session.commit()
 
-    # Очищаем identity map: без этого Session накапливает все Chunk/Document
+    # Очищаем identity map: без этого Session накапливает все Chunk/Page
     # за всё время задачи, что даёт линейный рост памяти.
     session.expunge_all()
 
     duration = time.monotonic() - start_time
     logging.info(
-        "Embedded chunk %s (doc_id=%s ix=%s) in %.2fs; %s remaining",
+        "Embedded chunk %s (page_id=%s ix=%s) in %.2fs; %s remaining",
         chunk_id,
-        chunk_doc_id,
+        chunk_page_id,
         chunk_ix,
         duration,
         remaining,
@@ -770,7 +770,7 @@ def _process_next_pending_chunk(session: Session, redis_client: Any = None) -> b
     return True
 
 
-def _count_pending_chunks(session: Session) -> int:
+def count_pending_chunks(session: Session) -> int:
     return int(
         session.execute(
             sa.select(sa.func.count(Chunk.id)).where(Chunk.embedding.is_(None))
@@ -779,7 +779,7 @@ def _count_pending_chunks(session: Session) -> int:
     )
 
 
-def _pending_chunk_task_target(pending_chunk_count: int) -> int:
+def pending_chunk_task_target(pending_chunk_count: int) -> int:
     if pending_chunk_count <= 0:
         return 0
     return min(
@@ -788,7 +788,7 @@ def _pending_chunk_task_target(pending_chunk_count: int) -> int:
     )
 
 
-def _reserve_pending_chunk_slots(redis_client: Any, target: int) -> int:
+def reserve_pending_chunk_slots(redis_client: Any, target: int) -> int:
     if target <= 0:
         return 0
 
@@ -821,7 +821,7 @@ def _reserve_pending_chunk_slots(redis_client: Any, target: int) -> int:
     )
 
 
-def _release_pending_chunk_slots(redis_client: Any, slots: int = 1) -> int:
+def release_pending_chunk_slots(redis_client: Any, slots: int = 1) -> int:
     slots = max(1, int(slots or 1))
     return int(
         redis_client.eval(
@@ -850,7 +850,7 @@ def _release_pending_chunk_slots(redis_client: Any, slots: int = 1) -> int:
     )
 
 
-def _schedule_pending_chunk_tasks(task_count: int) -> int:
+def schedule_pending_chunk_tasks(task_count: int) -> int:
     scheduled = 0
     for _ in range(max(0, int(task_count or 0))):
         pending_chunks.apply_async(kwargs={"counted": True})
@@ -858,7 +858,7 @@ def _schedule_pending_chunk_tasks(task_count: int) -> int:
     return scheduled
 
 
-def _schedule_ensure_pending_chunks() -> bool:
+def schedule_ensure_pending_chunks() -> bool:
     redis_client = redis.from_url(REDIS_URL)
     try:
         acquired = redis_client.set(
@@ -880,13 +880,13 @@ def _schedule_ensure_pending_chunks() -> bool:
         redis_client.close()
 
 
-def _index_document_schedule_key(document_id: int) -> str:
+def index_document_schedule_key(document_id: int) -> str:
     return f"{INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}{document_id}"
 
 
 def schedule_index_document(document_id: int) -> bool:
     redis_client = redis.from_url(REDIS_URL)
-    schedule_key = _index_document_schedule_key(document_id)
+    schedule_key = index_document_schedule_key(document_id)
     try:
         acquired = redis_client.set(
             schedule_key,
@@ -907,27 +907,27 @@ def schedule_index_document(document_id: int) -> bool:
         redis_client.close()
 
 
-def _ensure_pending_chunk_workers(session: Session, redis_client: Any) -> tuple[int, int]:
-    pending_chunk_count = _count_pending_chunks(session)
-    target = _pending_chunk_task_target(pending_chunk_count)
+def ensure_pending_chunk_workers(session: Session, redis_client: Any) -> tuple[int, int]:
+    pending_chunk_count = count_pending_chunks(session)
+    target = pending_chunk_task_target(pending_chunk_count)
     if target == 0:
         return pending_chunk_count, 0
 
-    missing = _reserve_pending_chunk_slots(redis_client, target)
+    missing = reserve_pending_chunk_slots(redis_client, target)
     if missing <= 0:
         return pending_chunk_count, 0
 
     scheduled = 0
     try:
-        scheduled = _schedule_pending_chunk_tasks(missing)
+        scheduled = schedule_pending_chunk_tasks(missing)
         return pending_chunk_count, scheduled
     finally:
         unscheduled = missing - scheduled
         if unscheduled > 0:
-            _release_pending_chunk_slots(redis_client, unscheduled)
+            release_pending_chunk_slots(redis_client, unscheduled)
 
 
-def _run_pending_chunk_batch(
+def run_pending_chunk_batch(
     session: Session,
     redis_client: Any,
     *,
@@ -935,30 +935,30 @@ def _run_pending_chunk_batch(
 ) -> tuple[int, int]:
     processed = 0
     limit = max(1, int(batch_size or PENDING_CHUNKS_BATCH_SIZE))
-    while processed < limit and _process_next_pending_chunk(
+    while processed < limit and process_next_pending_chunk(
         session, redis_client=redis_client
     ):
         processed += 1
 
-    remaining = _count_pending_chunks(session)
+    remaining = count_pending_chunks(session)
     return processed, remaining
 
 
-def _index_document_chunks(session: Session, doc: Document) -> bool:
-    chunk_count = _materialize_document_chunks(session, doc)
+def index_page_chunks(session: Session, doc: Page) -> bool:
+    chunk_count = materialize_page_chunks(session, doc)
     if chunk_count == 0:
         return False
 
-    _schedule_ensure_pending_chunks()
+    schedule_ensure_pending_chunks()
     return True
 
 
-def _index_document_inner(session: Session, document_id: int) -> bool:
-    context = _fetch_document_context(session, document_id)
+def index_page_inner(session: Session, page_id: int) -> bool:
+    context = fetch_page_context(session, page_id)
     if not context:
         return False
 
-    return _index_document_chunks(session, context)
+    return index_page_chunks(session, context)
 
 
 @app.task(name="jobs.embedder.tasks.index_chat_message", queue="embeddings")
@@ -989,7 +989,7 @@ def index_chat_message(msg_id: int):
                     chat_id=msg.chat_id,
                     user_uid=msg.user_uid,
                     msg_id=msg.id,
-                    document_id=None,
+                    page_id=None,
                     chunk_ix=c.index,
                     start_offset=c.start,
                     end_offset=c.end,
@@ -1015,10 +1015,10 @@ def index_document(document_id: int):
     redis_client = redis.from_url(REDIS_URL)
     try:
         with Session(bind=engine) as session:
-            _index_document_inner(session, document_id)
+            index_page_inner(session, document_id)
     finally:
         try:
-            redis_client.delete(_index_document_schedule_key(document_id))
+            redis_client.delete(index_document_schedule_key(document_id))
         finally:
             redis_client.close()
             engine.dispose()
@@ -1032,17 +1032,17 @@ def pending_chunks(counted: bool = False):
     remaining = 0
     try:
         with Session(bind=engine) as session:
-            processed, remaining = _run_pending_chunk_batch(session, redis_client)
+            processed, remaining = run_pending_chunk_batch(session, redis_client)
     finally:
         try:
             if counted:
-                _release_pending_chunk_slots(redis_client)
+                release_pending_chunk_slots(redis_client)
         finally:
             redis_client.close()
             engine.dispose()
 
     if remaining > 0:
-        _schedule_ensure_pending_chunks()
+        schedule_ensure_pending_chunks()
 
     logging.info(
         "Processed %s pending chunks in batch; %s remaining",
@@ -1058,7 +1058,7 @@ def ensure_pending_chunks():
     redis_client = redis.from_url(REDIS_URL)
     try:
         with Session(bind=engine) as session:
-            pending_chunk_count, scheduled = _ensure_pending_chunk_workers(
+            pending_chunk_count, scheduled = ensure_pending_chunk_workers(
                 session, redis_client
             )
     finally:
@@ -1078,7 +1078,7 @@ def ensure_pending_chunks():
 
 @app.task(name="jobs.embedder.tasks.schedule_pending_chunks", queue="embeddings")
 def schedule_pending_chunks():
-    scheduled = _schedule_ensure_pending_chunks()
+    scheduled = schedule_ensure_pending_chunks()
     logging.info("Schedule pending chunks requested; enqueued=%s", scheduled)
     return scheduled
 
@@ -1088,13 +1088,13 @@ def index_project():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = select(Document.id).where(Document.is_ignored == False)
+            stmt = select(Page.id).where(Page.is_ignored == False)
             doc_ids = session.execute(stmt).scalars().all()
     finally:
         engine.dispose()
 
     logging.info(
-        "Scheduling indexing for %s documents",
+        "Scheduling indexing for %s pages",
         len(doc_ids),
     )
 
@@ -1109,19 +1109,19 @@ def refresh_project_index():
         with Session(bind=engine) as session:
             chunk_counts = (
                 sa.select(
-                    Chunk.document_id,
+                    Chunk.page_id,
                     sa.func.count(Chunk.id).label("chunk_count"),
                 )
-                .join(Document, Chunk.document_id == Document.id)
-                .group_by(Chunk.document_id)
+                .join(Page, Chunk.page_id == Page.id)
+                .group_by(Chunk.page_id)
                 .subquery()
             )
 
             docs_without_chunks = (
                 session.execute(
-                    sa.select(Document.id)
-                    .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-                    .where(Document.is_ignored == False)
+                    sa.select(Page.id)
+                    .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
+                    .where(Page.is_ignored == False)
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
                 )
                 .scalars()
@@ -1129,12 +1129,12 @@ def refresh_project_index():
             )
 
             for doc_id in docs_without_chunks:
-                logging.info("Scheduling document %s for refresh indexing", doc_id)
+                logging.info("Scheduling page %s for refresh indexing", doc_id)
                 schedule_index_document(doc_id)
 
             ignored_doc_ids = (
                 session.execute(
-                    sa.select(Document.id).where(Document.is_ignored == True)
+                    sa.select(Page.id).where(Page.is_ignored == True)
                 )
                 .scalars()
                 .all()
@@ -1142,19 +1142,19 @@ def refresh_project_index():
 
             if ignored_doc_ids:
                 logging.info(
-                    "Removing %s chunk sets for ignored documents",
+                    "Removing %s chunk sets for ignored pages",
                     len(ignored_doc_ids),
                 )
                 session.execute(
-                    sa.delete(Chunk).where(Chunk.document_id.in_(ignored_doc_ids))
+                    sa.delete(Chunk).where(Chunk.page_id.in_(ignored_doc_ids))
                 )
 
             dangling_chunk_ids = (
                 session.execute(
                     sa.select(Chunk.id)
-                    .outerjoin(Document, Chunk.document_id == Document.id)
-                    .where(Chunk.document_id.isnot(None))
-                    .where(Document.id.is_(None))
+                    .outerjoin(Page, Chunk.page_id == Page.id)
+                    .where(Chunk.page_id.isnot(None))
+                    .where(Page.id.is_(None))
                 )
                 .scalars()
                 .all()
@@ -1162,7 +1162,7 @@ def refresh_project_index():
 
             if dangling_chunk_ids:
                 logging.info(
-                    "Cleaning up %s chunk records for deleted documents",
+                    "Cleaning up %s chunk records for deleted pages",
                     len(dangling_chunk_ids),
                 )
                 session.execute(
@@ -1186,21 +1186,21 @@ def refresh_source_index(source_id: int):
 
             chunk_counts = (
                 sa.select(
-                    Chunk.document_id,
+                    Chunk.page_id,
                     sa.func.count(Chunk.id).label("chunk_count"),
                 )
-                .join(Document, Chunk.document_id == Document.id)
-                .where(Document.source_id == source_id)
-                .group_by(Chunk.document_id)
+                .join(Page, Chunk.page_id == Page.id)
+                .where(Page.source_id == source_id)
+                .group_by(Chunk.page_id)
                 .subquery()
             )
 
             docs_without_chunks = (
                 session.execute(
-                    sa.select(Document.id)
-                    .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-                    .where(Document.source_id == source_id)
-                    .where(Document.is_ignored == False)
+                    sa.select(Page.id)
+                    .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
+                    .where(Page.source_id == source_id)
+                    .where(Page.is_ignored == False)
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
                 )
                 .scalars()
@@ -1209,7 +1209,7 @@ def refresh_source_index(source_id: int):
 
             for doc_id in docs_without_chunks:
                 logging.info(
-                    "Scheduling document %s for refresh indexing (source %s)",
+                    "Scheduling page %s for refresh indexing (source %s)",
                     doc_id,
                     source_id,
                 )
@@ -1217,8 +1217,8 @@ def refresh_source_index(source_id: int):
 
             ignored_doc_ids = (
                 session.execute(
-                    sa.select(Document.id).where(
-                        Document.source_id == source_id, Document.is_ignored == True
+                    sa.select(Page.id).where(
+                        Page.source_id == source_id, Page.is_ignored == True
                     )
                 )
                 .scalars()
@@ -1227,12 +1227,12 @@ def refresh_source_index(source_id: int):
 
             if ignored_doc_ids:
                 logging.info(
-                    "Removing %s chunk sets for ignored documents in source %s",
+                    "Removing %s chunk sets for ignored pages in source %s",
                     len(ignored_doc_ids),
                     source_id,
                 )
                 session.execute(
-                    sa.delete(Chunk).where(Chunk.document_id.in_(ignored_doc_ids))
+                    sa.delete(Chunk).where(Chunk.page_id.in_(ignored_doc_ids))
                 )
 
             session.commit()

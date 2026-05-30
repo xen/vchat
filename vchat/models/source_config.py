@@ -7,7 +7,6 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
-    DEFAULT_CRAWLER_USER_AGENT,
 )
 
 RuleType = Literal["xpath", "css", "param", "regex"]
@@ -28,10 +27,10 @@ class CrawlerRule:
 
 @dataclass
 class SourceConfig:
-    crawler_user_agent: str = DEFAULT_CRAWLER_USER_AGENT
     crawler_concurrent_requests: int = DEFAULT_CRAWLER_CONCURRENT_REQUESTS
     crawler_download_delay: int = DEFAULT_CRAWLER_DOWNLOAD_DELAY
     crawler_download_timeout: int = DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+    crawler_max_pages: int = 500
     rules: list[CrawlerRule] = field(default_factory=list)
 
     @classmethod
@@ -41,15 +40,13 @@ class SourceConfig:
         concurrent_requests_raw = d.get("crawler_concurrent_requests")
         download_delay_raw = d.get("crawler_download_delay")
         download_timeout_raw = d.get("crawler_download_timeout")
+        max_pages_raw = d.get("crawler_max_pages")
         rules = [
             CrawlerRule.from_dict(r)
             for r in (d.get("rules") or [])
             if r.get("type") and r.get("value")
         ]
         return cls(
-            crawler_user_agent=str(
-                d.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT
-            ),
             crawler_concurrent_requests=int(
                 DEFAULT_CRAWLER_CONCURRENT_REQUESTS
                 if concurrent_requests_raw is None
@@ -65,15 +62,18 @@ class SourceConfig:
                 if download_timeout_raw is None
                 else download_timeout_raw
             ),
+            crawler_max_pages=int(
+                500 if max_pages_raw is None else max_pages_raw
+            ),
             rules=rules,
         )
 
     def to_dict(self) -> dict:
         d: dict = {
-            "crawler_user_agent": self.crawler_user_agent,
             "crawler_concurrent_requests": self.crawler_concurrent_requests,
             "crawler_download_delay": self.crawler_download_delay,
             "crawler_download_timeout": self.crawler_download_timeout,
+            "crawler_max_pages": self.crawler_max_pages,
         }
         if self.rules:
             d["rules"] = [r.to_dict() for r in self.rules]

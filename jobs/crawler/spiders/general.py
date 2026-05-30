@@ -11,8 +11,8 @@ from ..items import CrawledItem
 from ..seed_urls import iter_source_seed_urls
 
 
-class GenericSpider(CrawlSpider):
-    name = "generic"
+class GeneralSpider(CrawlSpider):
+    name = "general"
 
     def __init__(self, url=None, source_id=None, config=None, *args, **kwargs):
         self.source_id = int(source_id) if source_id else None

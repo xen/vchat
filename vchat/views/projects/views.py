@@ -27,6 +27,7 @@ from jobs.embedder.tasks import (
     refresh_source_index,
     schedule_index_document,
 )
+
 from vchat.ai_providers import (
     DEFAULT_OPENAI_MODEL,
     get_ai_provider_options,
@@ -39,24 +40,21 @@ from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg, Chunk, Document, Source, User
+from vchat.models import Chat, ChatMsg, Chunk, Page, Source, User
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
     get_setting,
+    get_setting_json,
 )
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
-    DEFAULT_CRAWLER_USER_AGENT,
     DEFAULT_IGNORED_PARAMS,
     MANUAL_REINDEX_MODE,
-    is_manual_reindex,
     normalize_reindex_cron,
 )
-from celery.schedules import crontab
-
 from vchat.settings import config
 from vchat.utils import admin_event, flash, login_required, meta
 
@@ -66,28 +64,6 @@ from . import forms
 
 logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
-
-
-def next_reindex_at(cron_expr: str, now: datetime) -> datetime | None:
-    if is_manual_reindex(cron_expr):
-        return None
-    parts = cron_expr.strip().split()
-    if len(parts) != 5:
-        return None
-    minute, hour, day_of_month, month_of_year, day_of_week = parts
-    try:
-        schedule = crontab(
-            minute=minute,
-            hour=hour,
-            day_of_month=day_of_month,
-            month_of_year=month_of_year,
-            day_of_week=day_of_week,
-            nowfun=lambda: now,
-        )
-        return now + schedule.remaining_estimate(now)
-    except Exception:
-        return None
-
 
 __all__ = [
     "index",
@@ -102,6 +78,7 @@ __all__ = [
     "project_files_json",
     "project_chat",
     "project_stats",
+    "project_topics",
     "project_integration",
     "public_widget_chat",
     "project_files",
@@ -112,27 +89,6 @@ __all__ = [
 ]
 
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
-
-
-def _with_default_ignored_param_rules(
-    rules: list[CrawlerRule] | None,
-) -> list[CrawlerRule]:
-    merged: list[CrawlerRule] = []
-    seen: set[tuple[str, str]] = set()
-
-    for param in DEFAULT_IGNORED_PARAMS:
-        key = ("param", param)
-        merged.append(CrawlerRule(type="param", value=param))
-        seen.add(key)
-
-    for rule in rules or []:
-        key = (rule.type, rule.value)
-        if key in seen:
-            continue
-        merged.append(rule)
-        seen.add(key)
-
-    return merged
 
 
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
@@ -174,6 +130,22 @@ def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
     return sources
 
 
+def with_default_ignored_param_rules(
+    rules: list[CrawlerRule] | None,
+) -> list[CrawlerRule]:
+    merged: list[CrawlerRule] = []
+    seen: set[tuple[str, str]] = set()
+    for param in DEFAULT_IGNORED_PARAMS:
+        merged.append(CrawlerRule(type="param", value=param))
+        seen.add(("param", param))
+    for rule in rules or []:
+        key = (rule.type, rule.value)
+        if key not in seen:
+            merged.append(rule)
+            seen.add(key)
+    return merged
+
+
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9\-_]*$")
 
 
@@ -208,7 +180,7 @@ def _display_document_title(title: str | None, uri: str | None) -> str:
 
 async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     db = request["db"]
-    document = await db.scalar(sa.select(Document).where(Document.id == document_id))
+    document = await db.scalar(sa.select(Page).where(Page.id == document_id))
     if not document:
         raise web.HTTPNotFound()
 
@@ -216,7 +188,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         (
             await db.execute(
                 sa.select(Chunk)
-                .where(Chunk.document_id == document.id)
+                .where(Chunk.page_id == document.id)
                 .order_by(Chunk.chunk_ix.asc(), Chunk.id.asc())
             )
         )
@@ -262,30 +234,44 @@ def _project_context(request) -> SimpleNamespace:
             "welcome_message": settings.get("project.welcome_message") or "",
             "secret": settings.get("project.secret") or "",
         },
+        meta={
+            "topics": get_setting_json(request.app, "project.topics", []),
+            "intents": get_setting_json(request.app, "project.intents", []),
+        },
     )
+
+
+def _get_topics(request) -> list[str]:
+    topics = get_setting_json(request.app, "project.topics", [])
+    return topics if isinstance(topics, list) else []
+
+
+def _get_intents(request) -> list[str]:
+    intents = get_setting_json(request.app, "project.intents", [])
+    return intents if isinstance(intents, list) else []
 
 
 async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
     chunk_counts = (
         sa.select(
-            Chunk.document_id.label("document_id"),
+            Chunk.page_id.label("document_id"),
             sa.func.count(Chunk.id).label("chunk_count"),
         )
-        .group_by(Chunk.document_id)
+        .group_by(Chunk.page_id)
         .subquery()
     )
     size_bytes_expr = sa.func.coalesce(
-        sa.cast(sa.func.octet_length(Document.content), sa.BigInteger),
-        sa.cast(Document._length, sa.BigInteger),
+        sa.cast(sa.func.octet_length(Page.content), sa.BigInteger),
+        sa.cast(Page._length, sa.BigInteger),
         sa.literal(0, type_=sa.BigInteger),
     ).label("size_bytes")
 
     rows = (
         await db_session.execute(
-            sa.select(Document, size_bytes_expr, chunk_counts.c.chunk_count)
-            .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-            .where(Document.source_id.is_(None), Document.uri.is_(None))
-            .order_by(Document.updated_at.desc(), Document.created_at.desc())
+            sa.select(Page, size_bytes_expr, chunk_counts.c.chunk_count)
+            .outerjoin(chunk_counts, chunk_counts.c.document_id == Page.id)
+            .where(Page.source_id.is_(None), Page.uri.is_(None))
+            .order_by(Page.updated_at.desc(), Page.created_at.desc())
         )
     ).all()
 
@@ -416,18 +402,18 @@ async def project_edit_sources(request):
     db_session = request["db"]
 
     spa_source_ids_q = (
-        sa.select(Document.source_id)
-        .where(Document.meta["spa_detected"].astext == "true")
+        sa.select(Page.source_id)
+        .where(Page.meta["spa_detected"].astext == "true")
         .distinct()
         .scalar_subquery()
     )
     stmt = (
         sa.select(
             Source,
-            sa.func.count(Document.id).label("doc_count"),
+            sa.func.count(Page.id).label("doc_count"),
             Source.id.in_(spa_source_ids_q).label("is_spa"),
         )
-        .outerjoin(Document, Document.source_id == Source.id)
+        .outerjoin(Page, Page.source_id == Source.id)
         .group_by(Source.id)
         .order_by(Source.created_at.desc())
     )
@@ -464,7 +450,6 @@ async def project_source_settings(request):
             "concurrent_requests": cfg.crawler_concurrent_requests,
             "download_delay": cfg.crawler_download_delay,
             "download_timeout": cfg.crawler_download_timeout,
-            "user_agent": cfg.crawler_user_agent,
         }
 
     form = forms.SourceSettingsForm(**form_kwargs)
@@ -482,8 +467,6 @@ async def project_source_settings(request):
             if rv.strip()
         ]
         source.config = SourceConfig(
-            crawler_user_agent=(form.user_agent.data or "").strip()
-            or DEFAULT_CRAWLER_USER_AGENT,
             crawler_concurrent_requests=int(
                 form.concurrent_requests.data or DEFAULT_CRAWLER_CONCURRENT_REQUESTS
             ),
@@ -505,53 +488,50 @@ async def project_source_settings(request):
         await flash(request, _("Source settings updated"), "success")
         raise web.HTTPFound(request.path)
 
-    doc_stats_row = (
-        await db_session.execute(
-            sa.select(
-                sa.func.count(Document.id).label("doc_count"),
-                sa.func.coalesce(
-                    sa.func.sum(
-                        sa.func.coalesce(
-                            sa.cast(
-                                sa.func.octet_length(Document.content), sa.BigInteger
-                            ),
-                            sa.cast(Document._length, sa.BigInteger),
-                            sa.literal(0, type_=sa.BigInteger),
-                        )
-                    ),
-                    0,
-                ).label("doc_size_bytes"),
-            ).where(Document.source_id == source_id)
-        )
-    ).one()
+    return {"project": _project_context(request), "source": source, "form": form}
 
-    chunk_stats_row = (
-        await db_session.execute(
-            sa.select(
-                sa.func.count(Chunk.id).label("chunk_count"),
-                sa.func.coalesce(
-                    sa.func.sum(
-                        sa.cast(sa.func.octet_length(Chunk.text), sa.BigInteger)
-                    ),
-                    0,
-                ).label("chunk_size_bytes"),
-            )
-            .join(Document, Document.id == Chunk.document_id)
-            .where(Document.source_id == source_id)
-        )
-    ).one()
 
-    now = datetime.now(timezone.utc)
-    return {
-        "project": _project_context(request),
-        "source": source,
-        "form": form,
-        "doc_count": int(doc_stats_row.doc_count or 0),
-        "doc_size_bytes": int(doc_stats_row.doc_size_bytes or 0),
-        "chunk_count": int(chunk_stats_row.chunk_count or 0),
-        "chunk_size_bytes": int(chunk_stats_row.chunk_size_bytes or 0),
-        "next_reindex": next_reindex_at(source.reindex_cron, now),
-    }
+@meta(title=_("Topics"))
+@login_required()
+@aiohttp_jinja2.template("projects/topics.html")
+async def project_topics(request):
+    db_session = request["db"]
+    session = await get_session(request)
+
+    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
+    if request.method == "POST":
+        data = await request.post()
+        form_kwargs["formdata"] = data
+    else:
+        form_kwargs["data"] = {
+            "topics": "\n".join(_get_topics(request)),
+            "intents": "\n".join(_get_intents(request)),
+        }
+
+    form = forms.TopicsForm(**form_kwargs)
+
+    if request.method == "POST" and form.validate():
+        prev_topics = _get_topics(request)
+        prev_intents = _get_intents(request)
+        topics_list = [t.strip() for t in form.topics.data.split("\n") if t.strip()]
+        intents_list = [i.strip() for i in form.intents.data.split("\n") if i.strip()]
+        await apply_settings_updates(
+            request.app,
+            db_session,
+            {
+                "project.topics": topics_list,
+                "project.intents": intents_list,
+            },
+        )
+        await db_session.commit()
+        if (prev_topics or prev_intents) and not topics_list and not intents_list:
+            await admin_event("topics_delete", request)
+        else:
+            await admin_event("topics_update", request)
+        await flash(request, _("Topics updated"), "success")
+        raise web.HTTPFound(request.path)
+
+    return {"project": _project_context(request), "form": form}
 
 
 @login_required()
@@ -735,6 +715,10 @@ async def project_action(request):
             )
         return web.json_response({"ok": True, "provider": provider, "model": model})
 
+    if action == "generate_topics":
+        await flash(request, _("Topics generation is not available"), "warning")
+        return web.json_response({"ok": False})
+
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)
         await apply_settings_updates(
@@ -751,10 +735,10 @@ async def project_action(request):
 
     if action == "delete_document":
         document = await db_session.scalar(
-            sa.select(Document).where(Document.id == int(item_id))
+            sa.select(Page).where(Page.id == int(item_id))
         )
         if not document:
-            raise web.HTTPNotFound(text="Document not found")
+            raise web.HTTPNotFound(text="Page not found")
         await db_session.delete(document)
         await db_session.commit()
         response = web.Response(text="")
@@ -763,10 +747,10 @@ async def project_action(request):
 
     if action == "ignore_document":
         document = await db_session.scalar(
-            sa.select(Document).where(Document.id == int(item_id))
+            sa.select(Page).where(Page.id == int(item_id))
         )
         if not document:
-            raise web.HTTPNotFound(text="Document not found")
+            raise web.HTTPNotFound(text="Page not found")
         data = await request.post()
         raw_value = data.get("is_ignored")
         if raw_value is not None:
@@ -780,10 +764,10 @@ async def project_action(request):
 
     if action == "delete_file":
         document = await db_session.scalar(
-            sa.select(Document).where(Document.id == int(item_id))
+            sa.select(Page).where(Page.id == int(item_id))
         )
         if not document:
-            raise web.HTTPNotFound(text="Document not found")
+            raise web.HTTPNotFound(text="Page not found")
         file_path = getattr(document, "uri", None)
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
@@ -813,7 +797,7 @@ async def project_action(request):
         source = Source(
             uri=uri,
             title=title,
-            config=SourceConfig(rules=_with_default_ignored_param_rules(rules)),
+            config=SourceConfig(rules=with_default_ignored_param_rules(rules)),
             reindex_cron=reindex_cron,
         )
         db_session.add(source)
@@ -823,37 +807,6 @@ async def project_action(request):
         response = web.Response(text="ok")
         response.headers["HX-Refresh"] = "true"
         return response
-
-    if action == "delete_source_rule":
-        source = await db_session.scalar(
-            sa.select(Source).where(Source.id == int(item_id))
-        )
-        if not source:
-            raise web.HTTPNotFound()
-
-        data = await request.post()
-        try:
-            rule_index = int(data.get("rule_index", "-1"))
-        except (TypeError, ValueError):
-            raise web.HTTPBadRequest(text="Invalid rule index")
-
-        cfg = source.config
-        rules = list(cfg.rules)
-        if rule_index < 0 or rule_index >= len(rules):
-            raise web.HTTPBadRequest(text="Rule index out of range")
-
-        rules.pop(rule_index)
-        source.config = SourceConfig(
-            crawler_user_agent=cfg.crawler_user_agent,
-            crawler_concurrent_requests=cfg.crawler_concurrent_requests,
-            crawler_download_delay=cfg.crawler_download_delay,
-            crawler_download_timeout=cfg.crawler_download_timeout,
-            rules=rules,
-        )
-        source.updated_at = datetime.now(timezone.utc)
-        await db_session.commit()
-        await admin_event("source_update", request)
-        return web.Response(text="", status=200)
 
     if action == "delete_source":
         source = await db_session.scalar(
@@ -872,9 +825,7 @@ async def project_action(request):
         )
         if not source:
             raise web.HTTPNotFound()
-        await db_session.execute(
-            sa.delete(Document).where(Document.source_id == source.id)
-        )
+        await db_session.execute(sa.delete(Page).where(Page.source_id == source.id))
         await db_session.commit()
         await admin_event("source_reindex_request", request)
         crawl_source_task.delay(source.id)
@@ -888,11 +839,6 @@ async def project_action(request):
             raise web.HTTPNotFound()
         crawl_source_task.delay(source.id)
         await flash(request, _("Crawl task started for source"), "success")
-        return web.Response(text="ok", status=200)
-
-    if action == "crawl_all":
-        crawl_all_sources_task.delay()
-        await flash(request, _("Crawl task started for all sources"), "success")
         return web.Response(text="ok", status=200)
 
     if action == "refresh_source_index":
@@ -910,6 +856,11 @@ async def project_action(request):
         )
         return web.Response(text="ok", status=200)
 
+    if action == "crawl_all":
+        crawl_all_sources_task.delay()
+        await flash(request, _("Crawl task started for all sources"), "success")
+        return web.Response(text="ok", status=200)
+
     if action == "refresh_project_index":
         refresh_project_index.delay()
         await flash(request, _("Update task started"), "success")
@@ -923,9 +874,9 @@ async def project_action(request):
     if action == "rebuild_uploads":
         rows = (
             await db_session.execute(
-                sa.select(Document.id).where(
-                    Document.source_id.is_(None),
-                    Document.uri.isnot(None),
+                sa.select(Page.id).where(
+                    Page.source_id.is_(None),
+                    Page.uri.isnot(None),
                 )
             )
         ).all()
@@ -933,6 +884,33 @@ async def project_action(request):
             document_id = row[0] if isinstance(row, tuple) else row
             crawl_file_task.delay(document_id)
         await flash(request, _("Rebuild task started for uploaded files"), "success")
+        return web.Response(text="ok", status=200)
+
+    if action == "delete_source_rule":
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == int(item_id))
+        )
+        if not source:
+            raise web.HTTPNotFound()
+        data = await request.post()
+        try:
+            rule_index = int(data.get("rule_index", "-1"))
+        except (TypeError, ValueError):
+            raise web.HTTPBadRequest(text="Invalid rule index")
+        cfg = source.config
+        rules = list(cfg.rules)
+        if rule_index < 0 or rule_index >= len(rules):
+            raise web.HTTPBadRequest(text="Rule index out of range")
+        rules.pop(rule_index)
+        source.config = SourceConfig(
+            crawler_concurrent_requests=cfg.crawler_concurrent_requests,
+            crawler_download_delay=cfg.crawler_download_delay,
+            crawler_download_timeout=cfg.crawler_download_timeout,
+            rules=rules,
+        )
+        source.updated_at = datetime.now(timezone.utc)
+        await db_session.commit()
+        await admin_event("source_update", request)
         return web.Response(text="ok", status=200)
 
     raise web.HTTPBadRequest(text="Unknown action")
@@ -972,37 +950,37 @@ async def project_view(request):
 async def project_documents_json(request):
     chunk_counts = (
         sa.select(
-            Chunk.document_id.label("document_id"),
+            Chunk.page_id.label("document_id"),
             sa.func.count(Chunk.id).label("chunk_count"),
         )
-        .group_by(Chunk.document_id)
+        .group_by(Chunk.page_id)
         .subquery()
     )
 
-    size_bytes_expr = sa.cast(Document._length, sa.BigInteger).label("size_bytes")
-    doc_type_expr = sa.func.nullif(Document.meta["doc_type"].astext, "").label(
+    size_bytes_expr = sa.cast(Page._length, sa.BigInteger).label("size_bytes")
+    doc_type_expr = sa.func.nullif(Page.meta["doc_type"].astext, "").label(
         "document_type"
     )
 
     documents = (
         await request["db"].execute(
             sa.select(
-                Document.id,
-                Document.title,
-                Document.uri,
-                Document.created_at,
-                Document.updated_at,
-                Document.status,
-                Document.is_ignored,
+                Page.id,
+                Page.title,
+                Page.uri,
+                Page.created_at,
+                Page.updated_at,
+                Page.status,
+                Page.is_ignored,
                 Source.title.label("source_title"),
                 Source.uri.label("source_uri"),
                 size_bytes_expr,
                 chunk_counts.c.chunk_count,
                 doc_type_expr,
             )
-            .join(Source, Document.source_id == Source.id)
-            .outerjoin(chunk_counts, chunk_counts.c.document_id == Document.id)
-            .order_by(Document.created_at.desc())
+            .join(Source, Page.source_id == Source.id)
+            .outerjoin(chunk_counts, chunk_counts.c.document_id == Page.id)
+            .order_by(Page.created_at.desc())
         )
     ).all()
 
@@ -1235,11 +1213,11 @@ async def project_stats(request):
         sa.select(
             Source.id,
             Source.title,
-            sa.func.count(Document.id).label("doc_count"),
-            sa.func.coalesce(sa.func.sum(Document._length), 0).label("data_volume"),
+            sa.func.count(Page.id).label("doc_count"),
+            sa.func.coalesce(sa.func.sum(Page._length), 0).label("data_volume"),
         )
         .select_from(Source)
-        .outerjoin(Document, Document.source_id == Source.id)
+        .outerjoin(Page, Page.source_id == Source.id)
         .group_by(Source.id, Source.title)
         .order_by(Source.title)
     )
@@ -1254,17 +1232,17 @@ async def project_stats(request):
             ),
         )
         .select_from(Source)
-        .outerjoin(Document, Document.source_id == Source.id)
-        .outerjoin(Chunk, Chunk.document_id == Document.id)
+        .outerjoin(Page, Page.source_id == Source.id)
+        .outerjoin(Chunk, Chunk.page_id == Page.id)
         .group_by(Source.id)
     )
     source_chunks_res = (await db.execute(source_chunks_query)).all()
     files_docs_row = (
         await db.execute(
             sa.select(
-                sa.func.count(Document.id).label("doc_count"),
-                sa.func.coalesce(sa.func.sum(Document._length), 0).label("data_volume"),
-            ).where(Document.source_id.is_(None))
+                sa.func.count(Page.id).label("doc_count"),
+                sa.func.coalesce(sa.func.sum(Page._length), 0).label("data_volume"),
+            ).where(Page.source_id.is_(None))
         )
     ).one()
     files_chunks_row = (
@@ -1275,9 +1253,9 @@ async def project_stats(request):
                     "chunk_storage"
                 ),
             )
-            .select_from(Document)
-            .outerjoin(Chunk, Chunk.document_id == Document.id)
-            .where(Document.source_id.is_(None))
+            .select_from(Page)
+            .outerjoin(Chunk, Chunk.page_id == Page.id)
+            .where(Page.source_id.is_(None))
         )
     ).one()
 
@@ -1434,9 +1412,7 @@ async def project_chat(request):
     if slug_uris:
         fresh_rows = (
             await request["db"].execute(
-                sa.select(Document.uri, Document.title).where(
-                    Document.uri.in_(slug_uris)
-                )
+                sa.select(Page.uri, Page.title).where(Page.uri.in_(slug_uris))
             )
         ).all()
         uri_title_map = {r.uri: r.title for r in fresh_rows if r.title}
@@ -1464,8 +1440,8 @@ async def project_chat(request):
         "current_ai_model": model_obj.id,
         "current_ai_model_label": model_obj.label,
         "current_ai_provider_label": provider_obj.title,
-        "allow_ai_switch": False,
-        "ai_settings_url": None,
+        "allow_ai_switch": True,
+        "ai_settings_url": str(ai_settings_url),
         "initial_messages": initial_messages,
         "signed_chat_id": signed_chat_id,
     }
@@ -1564,7 +1540,7 @@ async def project_files(request):
             author_name = author_email or f"user-{user.id}"
 
         content = ""
-        document = Document(
+        document = Page(
             source_id=None,
             title=None,
             uri=None,
@@ -1608,10 +1584,10 @@ async def file_document(request):
     document_id = int(request.match_info["document_id"])
 
     document = await db_session.scalar(
-        sa.select(Document).where(
-            Document.id == document_id,
-            Document.source_id.is_(None),
-            Document.uri.is_(None),
+        sa.select(Page).where(
+            Page.id == document_id,
+            Page.source_id.is_(None),
+            Page.uri.is_(None),
         )
     )
     if not document:
@@ -1632,9 +1608,7 @@ async def file_document(request):
         document.length = len(content)
         document.status = "added"
         document.updated_at = datetime.now(timezone.utc)
-        await db_session.execute(
-            sa.delete(Chunk).where(Chunk.document_id == document.id)
-        )
+        await db_session.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
         await db_session.commit()
         schedule_index_document(document.id)
         await admin_event("file_update", request)
@@ -1653,9 +1627,7 @@ async def file_document(request):
 @login_required()
 async def secure_download(request):
     file_id = int(request.match_info["file_id"])
-    document = await request["db"].scalar(
-        sa.select(Document).where(Document.id == file_id)
-    )
+    document = await request["db"].scalar(sa.select(Page).where(Page.id == file_id))
     if not document or not getattr(document, "uri", None):
         raise web.HTTPNotFound(text="File not found")
     return web.FileResponse(path=document.uri)
@@ -1669,7 +1641,7 @@ async def on_upload(request, resource, file_path):
         author_name = author_email or f"user-{user.id}"
 
     filename = getattr(resource, "file_name", None) or os.path.basename(str(file_path))
-    document = Document(
+    document = Page(
         source_id=None,
         title=filename,
         uri=str(file_path),
@@ -1704,22 +1676,22 @@ async def project_progress(request):
     # ---- Статистика по документам из БД ----
     chunk_counts_sq = (
         sa.select(
-            Chunk.document_id,
+            Chunk.page_id,
             sa.func.count(Chunk.id).label("chunk_count"),
             sa.func.count(Chunk.id)
             .filter(Chunk.embedding.isnot(None))
             .label("embedded_chunk_count"),
         )
-        .where(Chunk.document_id.isnot(None))
-        .group_by(Chunk.document_id)
+        .where(Chunk.page_id.isnot(None))
+        .group_by(Chunk.page_id)
         .subquery()
     )
 
     overall_row = (
         await db_session.execute(
             sa.select(
-                sa.func.count(Document.id).label("total"),
-                sa.func.count(Document.id)
+                sa.func.count(Page.id).label("total"),
+                sa.func.count(Page.id)
                 .filter(
                     sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0,
                     chunk_counts_sq.c.embedded_chunk_count
@@ -1727,9 +1699,9 @@ async def project_progress(request):
                 )
                 .label("done"),
             )
-            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.document_id == Document.id)
-            .where(Document.is_ignored.is_(False))
-            .where(Document.source_id.isnot(None))
+            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.page_id == Page.id)
+            .where(Page.is_ignored.is_(False))
+            .where(Page.source_id.isnot(None))
         )
     ).one()
 
@@ -1744,8 +1716,8 @@ async def project_progress(request):
             sa.select(
                 Source.id,
                 Source.title,
-                sa.func.count(Document.id).label("total"),
-                sa.func.count(Document.id)
+                sa.func.count(Page.id).label("total"),
+                sa.func.count(Page.id)
                 .filter(
                     sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0,
                     chunk_counts_sq.c.embedded_chunk_count
@@ -1754,13 +1726,13 @@ async def project_progress(request):
                 .label("done"),
             )
             .outerjoin(
-                Document,
+                Page,
                 sa.and_(
-                    Document.source_id == Source.id,
-                    Document.is_ignored.is_(False),
+                    Page.source_id == Source.id,
+                    Page.is_ignored.is_(False),
                 ),
             )
-            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.document_id == Document.id)
+            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.page_id == Page.id)
             .group_by(Source.id, Source.title)
             .order_by(Source.id)
         )

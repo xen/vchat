@@ -7,7 +7,7 @@ from vchat.document_indexing import (
 )
 
 
-class _Doc:
+class FakeDoc:
     def __init__(self, content: str, hash_value: str):
         self.content = content
         self.hash_value = hash_value
@@ -38,7 +38,7 @@ def test_effectively_unchanged_uses_shingle_similarity_for_near_duplicate() -> N
     current = "\n".join(
         ["# Title", "Body line 1", "Body line 2", "Body line 3", "Published: 2026-05-30"]
     )
-    document = _Doc(
+    document = FakeDoc(
         content=previous,
         hash_value="not-the-new-hash",
     )

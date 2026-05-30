@@ -4,6 +4,7 @@
 secret_key: !!binary "68cXXW8soAmL3Uxioe54oHnUHg_UD8w_LpzKOW4Pa-0="
 cookie_key: hAEX-ELluUXIZAwpOfZOvsi6E39qq6RmBP6gyQxkvzM=
 mode: production
+crawler_user_agent: "Dzen-AI/1.0"
 
 # Application settings
 max_upload_size: 5242880 # 5 MB

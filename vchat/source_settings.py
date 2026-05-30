@@ -1,11 +1,6 @@
 from celery.schedules import crontab
 
 
-DEFAULT_CRAWLER_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36 vChat/1.0"
-)
 DEFAULT_CRAWLER_CONCURRENT_REQUESTS = 2
 DEFAULT_CRAWLER_DOWNLOAD_DELAY = 1
 DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT = 30

@@ -12,11 +12,11 @@ def test_pending_chunk_task_target_respects_batch_and_cap(
     monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_BATCH_SIZE", 8)
     monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
 
-    assert embedder_tasks._pending_chunk_task_target(0) == 0
-    assert embedder_tasks._pending_chunk_task_target(1) == 1
-    assert embedder_tasks._pending_chunk_task_target(8) == 1
-    assert embedder_tasks._pending_chunk_task_target(9) == 2
-    assert embedder_tasks._pending_chunk_task_target(99) == 4
+    assert embedder_tasks.pending_chunk_task_target(0) == 0
+    assert embedder_tasks.pending_chunk_task_target(1) == 1
+    assert embedder_tasks.pending_chunk_task_target(8) == 1
+    assert embedder_tasks.pending_chunk_task_target(9) == 2
+    assert embedder_tasks.pending_chunk_task_target(99) == 4
 
 
 def test_run_pending_chunk_batch_stops_at_batch_limit(
@@ -30,10 +30,10 @@ def test_run_pending_chunk_batch_stops_at_batch_limit(
         calls.append((session, redis_client))
         return next(outcomes)
 
-    monkeypatch.setattr(embedder_tasks, "_process_next_pending_chunk", _process)
-    monkeypatch.setattr(embedder_tasks, "_count_pending_chunks", lambda session: 7)
+    monkeypatch.setattr(embedder_tasks, "process_next_pending_chunk", _process)
+    monkeypatch.setattr(embedder_tasks, "count_pending_chunks", lambda session: 7)
 
-    processed, remaining = embedder_tasks._run_pending_chunk_batch(
+    processed, remaining = embedder_tasks.run_pending_chunk_batch(
         session="db-session",
         redis_client="redis-client",
     )
@@ -49,7 +49,7 @@ def test_run_pending_chunk_batch_stops_at_batch_limit(
 def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(embedder_tasks, "_count_pending_chunks", lambda session: 19)
+    monkeypatch.setattr(embedder_tasks, "count_pending_chunks", lambda session: 19)
     reserved_targets: list[int] = []
     scheduled_counts: list[int] = []
 
@@ -57,21 +57,21 @@ def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
         reserved_targets.append(target)
         return 2
 
-    monkeypatch.setattr(embedder_tasks, "_reserve_pending_chunk_slots", _reserve)
+    monkeypatch.setattr(embedder_tasks, "reserve_pending_chunk_slots", _reserve)
     monkeypatch.setattr(
         embedder_tasks,
-        "_schedule_pending_chunk_tasks",
+        "schedule_pending_chunk_tasks",
         lambda count: scheduled_counts.append(count) or count,
     )
     monkeypatch.setattr(
         embedder_tasks,
-        "_release_pending_chunk_slots",
+        "release_pending_chunk_slots",
         lambda _redis_client, slots=1: (_redis_client, slots),
     )
     monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_BATCH_SIZE", 8)
     monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
 
-    pending, scheduled = embedder_tasks._ensure_pending_chunk_workers(
+    pending, scheduled = embedder_tasks.ensure_pending_chunk_workers(
         session="db-session",
         redis_client="redis-client",
     )
@@ -113,7 +113,7 @@ def test_schedule_ensure_pending_chunks_deduplicates(monkeypatch: pytest.MonkeyP
         type("_Task", (), {"delay": staticmethod(lambda: delayed.append(True))}),
     )
 
-    assert embedder_tasks._schedule_ensure_pending_chunks() is True
+    assert embedder_tasks.schedule_ensure_pending_chunks() is True
     assert delayed == [True]
     assert deleted == []
     assert closed == [True]
@@ -146,7 +146,7 @@ def test_schedule_ensure_pending_chunks_skips_when_already_scheduled(
         type("_Task", (), {"delay": staticmethod(lambda: (_ for _ in ()).throw(RuntimeError))}),
     )
 
-    assert embedder_tasks._schedule_ensure_pending_chunks() is False
+    assert embedder_tasks.schedule_ensure_pending_chunks() is False
     assert closed == [True]
 
 

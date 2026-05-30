@@ -41,7 +41,7 @@ class _SessionCtx:
 )
 def test_cron_matches_now(cron_expression: str, should_match: bool) -> None:
     now = datetime.now(timezone.utc)
-    assert crawler_tasks._cron_matches_now(cron_expression, now) is should_match
+    assert crawler_tasks.cron_matches_now(cron_expression, now) is should_match
 
 
 def test_manual_reindex_mode_helpers() -> None:

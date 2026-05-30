@@ -11,7 +11,7 @@ from vchat.document_indexing import (
     document_content_effectively_unchanged,
 )
 from vchat.document_types import guess_document_type
-from vchat.models import Chunk, Document, Source
+from vchat.models import Chunk, Page, Source
 
 __all__ = [
     "update_document",
@@ -89,7 +89,7 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
 async def _delete_document_by_url(request: web.Request, url: str) -> int:
     db = request["db"]
     docs = (
-        (await db.execute(sa.select(Document).where(Document.uri == url)))
+        (await db.execute(sa.select(Page).where(Page.uri == url)))
         .scalars()
         .all()
     )
@@ -98,7 +98,7 @@ async def _delete_document_by_url(request: web.Request, url: str) -> int:
 
     deleted = 0
     for doc in docs:
-        await db.execute(sa.delete(Chunk).where(Chunk.document_id == doc.id))
+        await db.execute(sa.delete(Chunk).where(Chunk.page_id == doc.id))
         await db.delete(doc)
         deleted += 1
 
@@ -121,12 +121,12 @@ async def _upsert_document(
         raise web.HTTPInternalServerError(text="Failed to extract document content")
 
     document = await db.scalar(
-        sa.select(Document).where(Document.source_id == source_id, Document.uri == url)
+        sa.select(Page).where(Page.source_id == source_id, Page.uri == url)
     )
     created = document is None
 
     if document is None:
-        document = Document(source_id=source_id, uri=url, status="added")
+        document = Page(source_id=source_id, uri=url, status="added")
         db.add(document)
 
     effectively_unchanged = document_content_effectively_unchanged(document, content)
@@ -187,7 +187,7 @@ async def update_document(request: web.Request) -> web.Response:
                 "action": "deleted",
                 "url": url,
                 "final_url": None,
-                "message": "Document removed from index (404)",
+                "message": "Page removed from index (404)",
             }
         )
 
@@ -245,6 +245,6 @@ async def update_document(request: web.Request) -> web.Response:
             "action": "indexed",
             "url": url,
             "final_url": None,
-            "message": "Document indexed",
+            "message": "Page indexed",
         }
     )

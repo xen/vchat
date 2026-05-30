@@ -7,7 +7,7 @@ from typing import Any
 import sqlalchemy as sa
 
 from vchat.document_shingles import extract_shingles
-from vchat.models import Chunk, Document
+from vchat.models import Chunk, Page
 
 NEAR_DUPLICATE_SHINGLE_SIZE = 3
 NEAR_DUPLICATE_SIMILARITY_THRESHOLD = 0.9
@@ -17,12 +17,12 @@ def content_sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def document_content_unchanged(document: Document | None, content: str) -> bool:
+def document_content_unchanged(document: Page | None, content: str) -> bool:
     return document is not None and document.hash_value == content_sha256(content)
 
 
-def _normalized_lines(text: str) -> list[str]:
-    normalized: list[str] = []
+def normalized_lines(text: str) -> list[str]:
+    result: list[str] = []
     for raw_line in text.splitlines():
         line = raw_line.strip().lower()
         if not line:
@@ -31,17 +31,17 @@ def _normalized_lines(text: str) -> list[str]:
         line = re.sub(r"\b\d+\b", "<num>", line)
         line = re.sub(r"\s+", " ", line).strip()
         if line:
-            normalized.append(line)
-    return normalized
+            result.append(line)
+    return result
 
 
 def content_shingle_set(text: str, k: int = NEAR_DUPLICATE_SHINGLE_SIZE) -> set[str]:
-    normalized_lines = _normalized_lines(text)
-    normalized_text = "\n".join(normalized_lines)
+    norm_lines = normalized_lines(text)
+    normalized_text = "\n".join(norm_lines)
     shingles = extract_shingles(normalized_text, k=k)
     if shingles:
         return set(shingles)
-    return set(normalized_lines)
+    return set(norm_lines)
 
 
 def shingle_jaccard_similarity(
@@ -64,7 +64,7 @@ def shingle_jaccard_similarity(
 
 
 def document_content_effectively_unchanged(
-    document: Document | None,
+    document: Page | None,
     content: str,
     *,
     similarity_threshold: float = NEAR_DUPLICATE_SIMILARITY_THRESHOLD,
@@ -82,20 +82,20 @@ def document_content_effectively_unchanged(
     return similarity >= similarity_threshold
 
 
-def sync_document_has_chunks(session: Any, document_id: int) -> bool:
+def sync_document_has_chunks(session: Any, page_id: int) -> bool:
     return (
         session.execute(
-            sa.select(Chunk.id).where(Chunk.document_id == document_id).limit(1)
+            sa.select(Chunk.id).where(Chunk.page_id == page_id).limit(1)
         ).first()
         is not None
     )
 
 
-async def async_document_has_chunks(session: Any, document_id: int) -> bool:
+async def async_document_has_chunks(session: Any, page_id: int) -> bool:
     return (
         (
             await session.execute(
-                sa.select(Chunk.id).where(Chunk.document_id == document_id).limit(1)
+                sa.select(Chunk.id).where(Chunk.page_id == page_id).limit(1)
             )
         ).first()
         is not None

@@ -5,13 +5,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from celery.schedules import crontab
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from jobs.embedder.tasks import refresh_project_index
-from vchat.models.data import Source
+from vchat.models.data import Source, CrawlRun
 from vchat.source_settings import (
     DEFAULT_REINDEX_CRON,
     is_manual_reindex,
@@ -40,7 +40,20 @@ def crawl_source_task(source_id: int):
             source_title = source.title
             crawler_payload = source.config.to_dict()
             crawler_payload["start_pages"] = list(source.start_pages or [])
-            crawler_payload["sitemaps"] = list(source.sitemaps or [])
+
+            # Mark any existing incomplete CrawlRun for this source as interrupted
+            session.execute(
+                update(CrawlRun)
+                .where(
+                    CrawlRun.source_id == source_id,
+                    CrawlRun.finished_at.is_(None),
+                )
+                .values(
+                    finished_at=datetime.now(timezone.utc),
+                    exit_reason="interrupted",
+                )
+            )
+            session.commit()
     finally:
         engine.dispose()
 
@@ -114,7 +127,7 @@ def crawl_all_sources_task():
     print("Finished queueing crawl tasks")
 
 
-def _normalize_datetime(value: datetime | None) -> datetime | None:
+def normalize_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
@@ -122,7 +135,7 @@ def _normalize_datetime(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _cron_matches_now(cron_expression: str, now: datetime) -> bool:
+def cron_matches_now(cron_expression: str, now: datetime) -> bool:
     parts = cron_expression.split(" ")
     if len(parts) != 5:
         return False
@@ -162,10 +175,10 @@ def schedule_reindex_sources_task():
                 if is_manual_reindex(cron_expression):
                     continue
 
-                if not _cron_matches_now(cron_expression, now):
+                if not cron_matches_now(cron_expression, now):
                     continue
 
-                last_reindex = _normalize_datetime(source.last_reindexed_at)
+                last_reindex = normalize_datetime(source.last_reindexed_at)
                 if last_reindex and (now - last_reindex) < timedelta(days=1):
                     continue
 

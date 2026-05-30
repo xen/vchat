@@ -96,12 +96,6 @@ class Source(Base, Created, Updated):
         default=list,
         server_default=sa.text("'{}'"),
     )
-    sitemaps: Mapped[list[str]] = mapped_column(
-        sa.ARRAY(sa.Text),
-        nullable=False,
-        default=list,
-        server_default=sa.text("'{}'"),
-    )
     reindex_cron: Mapped[str] = mapped_column(
         sa.String(100),
         nullable=False,
@@ -112,18 +106,31 @@ class Source(Base, Created, Updated):
         sa.DateTime(timezone=True),
         nullable=True,
     )
+    robots_cache: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 status_enum = ENUM(
     "added",
     "indexed",
+    "pending",
+    "unchanged",
+    "ok",
+    "error_4xx",
+    "error_5xx",
+    "blocked",
+    "redirect",
+    "no_content",
+    "excluded_robots",
+    "excluded_rules",
+    "excluded_auth",
+    "excluded_ignored",
     name="status",
     create_type=False,
 )
 
 
-class Document(Base, Created, Updated):
-    __tablename__ = "document"
+class Page(Base, Created, Updated):
+    __tablename__ = "page"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
     uri: Mapped[str] = mapped_column(sa.String, nullable=True)
@@ -147,6 +154,47 @@ class Document(Base, Created, Updated):
     )
     title: Mapped[str | None] = mapped_column(sa.String, nullable=True)
     is_ignored: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+
+    # New crawler fields
+    http_status: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    last_crawled_at: Mapped[datetime | None] = mapped_column(
+        sa.TIMESTAMP(timezone=True), nullable=True
+    )
+    last_etag: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    last_modified_at: Mapped[datetime | None] = mapped_column(
+        sa.TIMESTAMP(timezone=True), nullable=True
+    )
+    check_interval_days: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=7,
+        server_default=sa.text("7"),
+    )
+    stable_count: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
+    error_count: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
+    is_hub_page: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+    )
+    content_value: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    inlink_count: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
 
     @hybrid_property
     def hash_value(self) -> str:
@@ -180,6 +228,10 @@ class Document(Base, Created, Updated):
             self._length = value
 
 
+# Backward-compatible alias
+Document = Page
+
+
 class Chunk(Base, Created, Updated):
     __tablename__ = "chunk"
 
@@ -197,9 +249,9 @@ class Chunk(Base, Created, Updated):
         nullable=True,
         index=True,
     )
-    document_id: Mapped[int | None] = mapped_column(
+    page_id: Mapped[int | None] = mapped_column(
         sa.Integer,
-        ForeignKey("document.id", ondelete="CASCADE"),
+        ForeignKey("page.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -230,6 +282,105 @@ class Chunk(Base, Created, Updated):
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
     fts: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+
+
+class Sitemap(Base):
+    __tablename__ = "sitemap"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    url: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    is_excluded: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+    )
+    discovered_via: Mapped[str] = mapped_column(
+        sa.String(32),
+        nullable=False,
+        default="manual",
+        server_default=sa.text("'manual'"),
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=sa.text("NOW()"),
+    )
+    last_fetched_at: Mapped[datetime | None] = mapped_column(
+        sa.TIMESTAMP(timezone=True), nullable=True
+    )
+    last_etag: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    last_content_hash: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    url_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+
+
+class PageLink(Base):
+    __tablename__ = "page_link"
+
+    id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
+    source_uri: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    target_uri: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    source_page_id: Mapped[int | None] = mapped_column(
+        sa.Integer,
+        ForeignKey("page.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    target_page_id: Mapped[int | None] = mapped_column(
+        sa.Integer,
+        ForeignKey("page.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_id: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    target_status: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
+    found_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=sa.text("NOW()"),
+    )
+
+
+class CrawlRun(Base):
+    __tablename__ = "crawl_run"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=sa.text("NOW()"),
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        sa.TIMESTAMP(timezone=True), nullable=True
+    )
+    pages_crawled: Mapped[int | None] = mapped_column(
+        sa.Integer, nullable=True, server_default=sa.text("0")
+    )
+    pages_new: Mapped[int | None] = mapped_column(
+        sa.Integer, nullable=True, server_default=sa.text("0")
+    )
+    pages_changed: Mapped[int | None] = mapped_column(
+        sa.Integer, nullable=True, server_default=sa.text("0")
+    )
+    pages_errors: Mapped[int | None] = mapped_column(
+        sa.Integer, nullable=True, server_default=sa.text("0")
+    )
+    pages_excluded: Mapped[int | None] = mapped_column(
+        sa.Integer, nullable=True, server_default=sa.text("0")
+    )
+    was_rate_limited: Mapped[bool | None] = mapped_column(
+        sa.Boolean, nullable=True, server_default=sa.text("false")
+    )
+    exit_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
 
 class Settings(Base):

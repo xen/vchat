@@ -18,13 +18,13 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
 
 from jobs.crawler import settings as my_settings
-from jobs.crawler.spiders.generic import GenericSpider
+from jobs.crawler.spiders.general import GeneralSpider
 from vchat.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
-    DEFAULT_CRAWLER_USER_AGENT,
 )
+from vchat.settings import config as project_config
 from vchat.logging_utils import configure_json_logging
 
 configure_json_logging(logging.INFO)
@@ -44,12 +44,11 @@ if len(sys.argv) > 3:
 
 print(f"Starting crawler for URL: {url}, Source ID: {source_id}")
 
+user_agent = project_config.get("crawler_user_agent") or "Dzen-AI/1.0"
+
 settings = Settings()
 settings.setmodule(my_settings)
-settings.set(
-    "USER_AGENT",
-    str(config.get("crawler_user_agent") or DEFAULT_CRAWLER_USER_AGENT),
-)
+settings.set("USER_AGENT", user_agent)
 concurrent_requests = config.get(
     "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
 )
@@ -61,8 +60,11 @@ download_timeout = config.get(
 )
 settings.set("DOWNLOAD_TIMEOUT", max(1, int(float(download_timeout))))
 
+max_pages = int(config.get("crawler_max_pages") or 500)
+settings.set("CLOSESPIDER_PAGECOUNT", max_pages)
+
 process = CrawlerProcess(settings)
-process.crawl(GenericSpider, url=url, source_id=source_id, config=config)
+process.crawl(GeneralSpider, url=url, source_id=source_id, config=config)
 process.start()  # This blocks until crawling is finished
 
 print(f"Crawling completed for source {source_id}")
