@@ -6,6 +6,7 @@ import json
 import hashlib
 import hmac
 import uuid
+from celery.schedules import crontab
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -52,6 +53,7 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
     DEFAULT_IGNORED_PARAMS,
     MANUAL_REINDEX_MODE,
+    is_manual_reindex,
     normalize_reindex_cron,
 )
 from vchat.settings import config
@@ -126,6 +128,27 @@ def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
             }
         )
     return sources
+
+
+def next_reindex_at(cron_expr: str, now: datetime) -> datetime | None:
+    if is_manual_reindex(cron_expr):
+        return None
+    parts = cron_expr.strip().split()
+    if len(parts) != 5:
+        return None
+    minute, hour, day_of_month, month_of_year, day_of_week = parts
+    try:
+        schedule = crontab(
+            minute=minute,
+            hour=hour,
+            day_of_month=day_of_month,
+            month_of_year=month_of_year,
+            day_of_week=day_of_week,
+            nowfun=lambda: now,
+        )
+        return now + schedule.remaining_estimate(now)
+    except Exception:
+        return None
 
 
 def with_default_ignored_param_rules(
@@ -472,7 +495,51 @@ async def project_source_settings(request):
         await flash(request, _("Source settings updated"), "success")
         raise web.HTTPFound(request.path)
 
-    return {"project": _project_context(request), "source": source, "form": form}
+    doc_stats_row = (
+        await db_session.execute(
+            sa.select(
+                sa.func.count(Page.id).label("doc_count"),
+                sa.func.coalesce(
+                    sa.func.sum(
+                        sa.func.coalesce(
+                            sa.cast(sa.func.octet_length(Page.content), sa.BigInteger),
+                            sa.cast(Page._length, sa.BigInteger),
+                            sa.literal(0, type_=sa.BigInteger),
+                        )
+                    ),
+                    0,
+                ).label("doc_size_bytes"),
+            ).where(Page.source_id == source_id)
+        )
+    ).one()
+
+    chunk_stats_row = (
+        await db_session.execute(
+            sa.select(
+                sa.func.count(Chunk.id).label("chunk_count"),
+                sa.func.coalesce(
+                    sa.func.sum(
+                        sa.cast(sa.func.octet_length(Chunk.text), sa.BigInteger)
+                    ),
+                    0,
+                ).label("chunk_size_bytes"),
+            )
+            .join(Page, Page.id == Chunk.page_id)
+            .where(Page.source_id == source_id)
+        )
+    ).one()
+
+    now = datetime.now(timezone.utc)
+    return {
+        "project": _project_context(request),
+        "source": source,
+        "form": form,
+        "doc_count": int(doc_stats_row.doc_count or 0),
+        "doc_size_bytes": int(doc_stats_row.doc_size_bytes or 0),
+        "chunk_count": int(chunk_stats_row.chunk_count or 0),
+        "chunk_size_bytes": int(chunk_stats_row.chunk_size_bytes or 0),
+        "next_reindex": next_reindex_at(source.reindex_cron, now),
+    }
 
 
 @login_required()
