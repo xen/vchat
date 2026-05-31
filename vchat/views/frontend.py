@@ -1,9 +1,10 @@
 import aiohttp_jinja2
+import sqlalchemy as sa
 from aiohttp import web
 
 
 async def healthcheck(request):
-    await request["db"].execute("select 1;")
+    await request["db"].execute(sa.text("select 1;"))
     return web.HTTPFound(request.app.router["project_view"].url_for())
 
 

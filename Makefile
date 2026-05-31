@@ -46,8 +46,8 @@ pip-compile: ensure-pip  ## compile dependencies
 pip-linux: ## compile dependencies inside Linux container so darwin-only wheel dependencies (ocrmac etc.) are skipped
 	docker build -t pusk-pip-compile -f docker/pip-compile.Dockerfile .
 	docker run --rm -v $(PWD):/workspace -w /workspace pusk-pip-compile sh -c "\
-		pip-compile --generate-hashes --unsafe-package pip --unsafe-package torch --unsafe-package torchvision --unsafe-package torchaudio requirements/requirements.in -o requirements/requirements.txt && \
-		pip-compile --generate-hashes --unsafe-package pip --unsafe-package torch --unsafe-package torchvision --unsafe-package torchaudio requirements/dev.in -o requirements/dev.txt"
+		pip-compile --generate-hashes --unsafe-package pip requirements/requirements.in -o requirements/requirements.txt && \
+		pip-compile --generate-hashes --unsafe-package pip requirements/dev.in -o requirements/dev.txt"
 	make setup
 
 autoupgrade: ensure-pip ## upgrade dependencies
