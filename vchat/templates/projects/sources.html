@@ -143,15 +143,12 @@
                             </span>
                             {% endif %}
                         </a>
-                        {% if s.uri and s.title != s.uri %}
-                        <div class="text-xs text-base-content/40 truncate max-w-xs">{{ s.uri }}</div>
-                        {% endif %}
                     </td>
                     <td>
                         <div class="flex h-3 w-full rounded overflow-hidden" style="min-width:120px">
                             {% if bar_total > 0 %}
                                 {% for group, count, color, label in ns.visible %}
-                                <div class="hover:opacity-75 transition-opacity"
+                                <div class="hover:opacity-75 transition-opacity cursor-pointer"
                                      style="flex: {{ count }} 1 0%; min-width: 3px; background-color: {% if group == 'errors' %}var(--color-error){% elif group == 'pending' %}var(--color-warning){% elif group == 'processing' %}var(--color-success){% else %}oklch(62.7% .265 303.9){% endif %}"
                                      title="{{ label }}: {{ count }}"
                                      onclick="location.href='{{ s.page_url_base }}&group={{ group }}'">
@@ -161,23 +158,12 @@
                                 <div class="flex-1 bg-base-300 opacity-40"></div>
                             {% endif %}
                         </div>
-                        {% if bar_total > 0 %}
-                        <div class="text-xs text-base-content/40 mt-1 flex gap-2 flex-wrap">
-                            {% for group, count, color, label in ns.visible %}
-                            <span>{{ label }}: {{ count }}</span>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
                     </td>
                     <td class="text-center">
-                        {% if s.excluded > 0 %}
                         <a href="{{ s.page_url_base }}&group=excluded"
-                           class="badge badge-ghost badge-sm hover:badge-neutral transition-colors">
+                           class="badge badge-ghost badge-sm hover:badge-neutral transition-colors {% if s.excluded == 0 %}opacity-40 pointer-events-none{% endif %}">
                             {{ s.excluded }}
                         </a>
-                        {% else %}
-                        <span class="text-base-content/30">—</span>
-                        {% endif %}
                     </td>
                     <td onclick="event.stopPropagation()">
                         {% if s.is_paused %}
