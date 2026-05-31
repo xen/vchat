@@ -7,7 +7,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from jobs.db import create_sync_engine
-from vchat.models.data import Page
 
 
 def iter_priority_crawl_queue(
@@ -30,8 +29,6 @@ def iter_priority_crawl_queue(
         return
 
     excluded = set(exclude or [])
-    now = datetime.now(timezone.utc)
-
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
@@ -41,14 +38,18 @@ def iter_priority_crawl_queue(
 
             # Basket A: hub pages
             basket_a = fetch_basket(
-                session, source_id, excluded,
+                session,
+                source_id,
+                excluded,
                 extra_filter="is_hub_page = true",
                 limit=budget,  # fetch all, we'll cap later
             )
 
             # Basket B: pages due for recrawl (interval expired) + pending
             basket_b = fetch_basket(
-                session, source_id, excluded,
+                session,
+                source_id,
+                excluded,
                 extra_filter="""
                     is_hub_page = false AND status != 'error_5xx'
                     AND (
@@ -66,7 +67,9 @@ def iter_priority_crawl_queue(
 
             # Basket C: error_5xx retry
             basket_c = fetch_basket(
-                session, source_id, excluded,
+                session,
+                source_id,
+                excluded,
                 extra_filter="status = 'error_5xx' AND is_hub_page = false",
                 limit=budget,
             )
@@ -93,11 +96,7 @@ def iter_priority_crawl_queue(
                 alloc_a += extra
                 remaining -= extra
 
-            queue = (
-                basket_a[:alloc_a]
-                + basket_b[:alloc_b]
-                + basket_c[:alloc_c]
-            )
+            queue = basket_a[:alloc_a] + basket_b[:alloc_b] + basket_c[:alloc_c]
 
             # Deduplicate preserving order
             seen: set[str] = set()
