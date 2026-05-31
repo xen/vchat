@@ -116,7 +116,6 @@
                         <th>Название</th>
                         <th class="min-w-[160px]">Прогресс</th>
                         <th class="w-28 text-center">Игнорировано</th>
-                        <th class="w-36">Расписание</th>
                         <th class="w-10"></th>
                     </tr>
                 </thead>
@@ -178,16 +177,6 @@
                         </a>
                         {% else %}
                         <span class="text-base-content/30">—</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-sm text-base-content/60">
-                        {% if s.next_reindex %}
-                        <span title="Следующий обход">
-                            <iconify-icon icon="lucide:clock" class="size-3.5 inline-block mr-0.5 align-middle"></iconify-icon>
-                            {{ s.next_reindex.astimezone().strftime('%d.%m %H:%M') }}
-                        </span>
-                        {% elif s.reindex_cron == 'manual' %}
-                        <span class="text-base-content/40">Ручной</span>
                         {% endif %}
                     </td>
                     <td onclick="event.stopPropagation()">

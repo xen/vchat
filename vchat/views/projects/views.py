@@ -83,11 +83,9 @@ __all__ = [
     "public_widget_chat",
     "project_files",
     "file_document",
-    "project_progress",
     "secure_download",
     "on_upload",
     "source_sitemaps",
-    "crawl_monitor",
 ]
 
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
@@ -459,7 +457,6 @@ async def project_edit_sources(request):
                 Source.title,
                 Source.uri,
                 Source.is_paused,
-                Source.reindex_cron,
                 sa.func.count(Page.id).filter(is_excl).label("excluded"),
                 sa.func.count(Page.id).filter(is_err).label("errors"),
                 sa.func.count(Page.id).filter(is_pend).label("pending"),
@@ -472,7 +469,6 @@ async def project_edit_sources(request):
                 Source.title,
                 Source.uri,
                 Source.is_paused,
-                Source.reindex_cron,
             )
             .order_by(Source.created_at.desc())
         )
@@ -542,7 +538,6 @@ async def project_edit_sources(request):
         m = (s % 3600) // 60
         return f"{h}ч {m}м"
 
-    now = datetime.now(timezone.utc)
     sources = []
     for row in source_rows:
         source_name = row.title or row.uri or ""
@@ -551,21 +546,17 @@ async def project_edit_sources(request):
         processing = int(row.processing or 0)
         ready = int(row.ready or 0)
         excluded = int(row.excluded or 0)
-        bar_total = errors + pending + processing + ready
         sources.append(
             {
                 "id": row.id,
                 "title": source_name,
                 "uri": row.uri,
                 "is_paused": row.is_paused,
-                "reindex_cron": row.reindex_cron,
                 "errors": errors,
                 "pending": pending,
                 "processing": processing,
                 "ready": ready,
                 "excluded": excluded,
-                "bar_total": bar_total,
-                "next_reindex": next_reindex_at(row.reindex_cron or "", now),
                 "page_url_base": "/page?"
                 + urlencode_qs({"source": source_name}),
             }
@@ -1993,261 +1984,3 @@ async def on_upload(request, resource, file_path):
     await admin_event("file_upload", request)
     crawl_file_task.delay(document.id)
     return document
-
-
-@meta(title=_("Прогресс индексации"))
-@login_required()
-@aiohttp_jinja2.template("projects/progress.html")
-async def project_progress(request):
-    db_session = request["db"]
-    r = request.app[REDIS_KEY]
-
-    # ---- Статистика по документам из БД ----
-    chunk_counts_sq = (
-        sa.select(
-            Chunk.page_id,
-            sa.func.count(Chunk.id).label("chunk_count"),
-            sa.func.count(Chunk.id)
-            .filter(Chunk.embedding.isnot(None))
-            .label("embedded_chunk_count"),
-        )
-        .where(Chunk.page_id.isnot(None))
-        .group_by(Chunk.page_id)
-        .subquery()
-    )
-
-    overall_row = (
-        await db_session.execute(
-            sa.select(
-                sa.func.count(Page.id).label("total"),
-                sa.func.count(Page.id)
-                .filter(
-                    sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0,
-                    chunk_counts_sq.c.embedded_chunk_count
-                    == chunk_counts_sq.c.chunk_count,
-                )
-                .label("done"),
-            )
-            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.page_id == Page.id)
-            .where(Page.is_ignored.is_(False))
-            .where(Page.source_id.isnot(None))
-        )
-    ).one()
-
-    total_docs = overall_row.total or 0
-    done_docs = overall_row.done or 0
-    remaining_docs = total_docs - done_docs
-    pct = round(done_docs / total_docs * 100) if total_docs else 0
-
-    # Статистика по источникам
-    source_rows = (
-        await db_session.execute(
-            sa.select(
-                Source.id,
-                Source.title,
-                sa.func.count(Page.id).label("total"),
-                sa.func.count(Page.id)
-                .filter(
-                    sa.func.coalesce(chunk_counts_sq.c.chunk_count, 0) > 0,
-                    chunk_counts_sq.c.embedded_chunk_count
-                    == chunk_counts_sq.c.chunk_count,
-                )
-                .label("done"),
-            )
-            .outerjoin(
-                Page,
-                sa.and_(
-                    Page.source_id == Source.id,
-                    Page.is_ignored.is_(False),
-                ),
-            )
-            .outerjoin(chunk_counts_sq, chunk_counts_sq.c.page_id == Page.id)
-            .group_by(Source.id, Source.title)
-            .order_by(Source.id)
-        )
-    ).all()
-
-    sources = []
-    for row in source_rows:
-        src_total = row.total or 0
-        src_done = row.done or 0
-        src_remaining = src_total - src_done
-        src_pct = round(src_done / src_total * 100) if src_total else 0
-        if src_remaining > 0:
-            sources.append(
-                {
-                    "id": row.id,
-                    "title": row.title,
-                    "total": src_total,
-                    "done": src_done,
-                    "remaining": src_remaining,
-                    "pct": src_pct,
-                }
-            )
-
-    # ---- Среднее время обработки из Redis ----
-    raw_times = await r.lrange(EMBED_STATS_KEY, 0, -1)
-    durations = []
-    for v in raw_times:
-        try:
-            durations.append(float(v))
-        except (ValueError, TypeError):
-            pass
-
-    avg_chunk_sec = sum(durations) / len(durations) if durations else None
-
-    avg_chunks_row = (
-        await db_session.execute(
-            sa.select(sa.func.avg(chunk_counts_sq.c.chunk_count)).select_from(
-                chunk_counts_sq
-            )
-        )
-    ).scalar()
-    avg_chunks_per_doc = float(avg_chunks_row) if avg_chunks_row else None
-
-    avg_doc_sec = None
-    eta_sec = None
-    if avg_chunk_sec is not None and avg_chunks_per_doc:
-        avg_doc_sec = avg_chunk_sec * avg_chunks_per_doc
-        eta_sec = avg_doc_sec * remaining_docs
-
-    def fmt_duration(sec):
-        if sec is None:
-            return None
-        sec = int(sec)
-        if sec < 60:
-            return f"{sec}с"
-        if sec < 3600:
-            return f"{sec // 60}м {sec % 60}с"
-        h = sec // 3600
-        m = (sec % 3600) // 60
-        return f"{h}ч {m}м"
-
-    return {
-        "project": _project_context(request),
-        "total_docs": total_docs,
-        "done_docs": done_docs,
-        "remaining_docs": remaining_docs,
-        "pct": pct,
-        "sources": sources,
-        "avg_doc_sec": round(avg_doc_sec, 1) if avg_doc_sec else None,
-        "avg_doc_fmt": fmt_duration(avg_doc_sec),
-        "eta_fmt": fmt_duration(eta_sec),
-        "samples": len(durations),
-    }
-
-
-@meta(title=_("Обход сайтов"))
-@login_required()
-@aiohttp_jinja2.template("projects/crawl_monitor.html")
-async def crawl_monitor(request):
-    db_session = request["db"]
-    r = request.app[REDIS_KEY]
-    now = datetime.now(timezone.utc)
-
-    # Queue lengths from Redis
-    crawler_queue = await r.llen("crawler")
-    embedder_queue = await r.llen("celery")
-
-    # All sources
-    sources_rows = (
-        (
-            await db_session.execute(
-                sa.select(Source).order_by(Source.title.asc(), Source.created_at.asc())
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    # Last CrawlRun per source
-    latest_run_sq = (
-        sa.select(
-            CrawlRun.source_id,
-            sa.func.max(CrawlRun.id).label("max_id"),
-        )
-        .group_by(CrawlRun.source_id)
-        .subquery()
-    )
-    last_runs_rows = (
-        (
-            await db_session.execute(
-                sa.select(CrawlRun).join(
-                    latest_run_sq,
-                    sa.and_(
-                        CrawlRun.source_id == latest_run_sq.c.source_id,
-                        CrawlRun.id == latest_run_sq.c.max_id,
-                    ),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    last_run_by_source: dict[int, CrawlRun] = {r.source_id: r for r in last_runs_rows}
-
-    # Page status counts per source
-    status_rows = (
-        await db_session.execute(
-            sa.select(
-                Page.source_id,
-                Page.status,
-                sa.func.count(Page.id).label("cnt"),
-            )
-            .where(Page.source_id.isnot(None))
-            .group_by(Page.source_id, Page.status)
-        )
-    ).all()
-    status_by_source: dict[int, dict[str, int]] = {}
-    for row in status_rows:
-        status_by_source.setdefault(row.source_id, {})[row.status] = row.cnt
-
-    # Sitemaps per source
-    sitemap_rows = (
-        (
-            await db_session.execute(
-                sa.select(Sitemap).order_by(Sitemap.source_id, Sitemap.first_seen_at)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    sitemaps_by_source: dict[int, list[Sitemap]] = {}
-    for sm in sitemap_rows:
-        sitemaps_by_source.setdefault(sm.source_id, []).append(sm)
-
-    # Recently excluded pages (last 50 across all sources)
-    excluded_pages = (
-        await db_session.execute(
-            sa.select(Page, Source.title.label("source_title"))
-            .join(Source, Source.id == Page.source_id)
-            .where(sa.cast(Page.status, sa.Text).like("excluded_%"))
-            .order_by(Page.last_crawled_at.desc().nullslast())
-            .limit(50)
-        )
-    ).all()
-
-    source_data = []
-    for source in sources_rows:
-        last_run = last_run_by_source.get(source.id)
-        statuses = status_by_source.get(source.id, {})
-        sms = sitemaps_by_source.get(source.id, [])
-        source_data.append(
-            {
-                "source": source,
-                "last_run": last_run,
-                "statuses": statuses,
-                "sitemaps": sms,
-                "next_reindex": next_reindex_at(source.reindex_cron or "", now),
-                "total_pages": sum(statuses.values()),
-            }
-        )
-
-    return {
-        "project": _project_context(request),
-        "source_data": source_data,
-        "excluded_pages": excluded_pages,
-        "crawler_queue": crawler_queue,
-        "embedder_queue": embedder_queue,
-        "now": now,
-    }
