@@ -9,13 +9,13 @@
 {% if count > 0 %}{% set ns.visible = ns.visible + [(group, count, color, label)] %}{% endif %}
 {% endfor %}
 <tr id="source-row-{{ s.id }}">
-    <td>
+    <td class="w-[32%]">
         <a href="{{ url('project_source_settings', source_id=s.id) }}"
-           class="font-medium link link-hover inline-flex items-center gap-1.5">
+           class="block truncate font-medium link link-hover">
             {{ s.title }}
         </a>
     </td>
-    <td>
+    <td class="w-[140px]">
         <div class="flex h-3 w-full rounded overflow-hidden" style="min-width:120px">
             {% if bar_total > 0 %}
                 {% for group, count, color, label in ns.visible %}
@@ -30,11 +30,39 @@
             {% endif %}
         </div>
     </td>
-    <td class="text-center">
-        <a href="{{ s.page_url_base }}&group=excluded"
-           class="badge badge-ghost badge-sm hover:badge-neutral transition-colors {% if s.excluded == 0 %}opacity-40 pointer-events-none{% endif %}">
-            {{ s.excluded }}
-        </a>
+    <td class="w-[140px] text-left">
+        <div class="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+            {% if s.errors > 0 %}
+            <a href="{{ s.page_url_base }}&group=errors"
+               class="text-error font-medium">
+                {{ s.errors }}
+            </a>
+            {% endif %}
+            {% if s.pending > 0 %}
+            <a href="{{ s.page_url_base }}&group=pending"
+               class="text-warning font-medium">
+                {{ s.pending }}
+            </a>
+            {% endif %}
+            {% if s.processing > 0 %}
+            <a href="{{ s.page_url_base }}&group=processing"
+               class="text-success font-medium">
+                {{ s.processing }}
+            </a>
+            {% endif %}
+            {% if s.ready > 0 %}
+            <a href="{{ s.page_url_base }}&group=ready"
+               class="font-medium text-[oklch(62.7%_.265_303.9)]">
+                {{ s.ready }}
+            </a>
+            {% endif %}
+            {% if s.excluded > 0 %}
+            <a href="{{ s.page_url_base }}&group=excluded"
+               class="text-base-content/60 font-medium">
+                {{ s.excluded }}
+            </a>
+            {% endif %}
+        </div>
     </td>
     <td onclick="event.stopPropagation()">
         {% include "projects/_source_toggle_button.html" %}

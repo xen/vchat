@@ -29,8 +29,6 @@ from vchat.page_status import PageStatus
 from vchat.settings import config
 
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
-EMBED_STATS_KEY = "vchat:embed:chunk_durations"
-EMBED_STATS_MAX = 500  # сколько последних замеров хранить
 PENDING_CHUNKS_INFLIGHT_KEY = "vchat:embed:pending_chunks:inflight"
 ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
 REFRESH_PROJECT_INDEX_SCHEDULE_KEY = "vchat:embed:refresh_project_index:scheduled"
@@ -798,14 +796,6 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
         duration,
         remaining,
     )
-
-    try:
-        pipe = redis_client.pipeline()
-        pipe.lpush(EMBED_STATS_KEY, f"{duration:.4f}")
-        pipe.ltrim(EMBED_STATS_KEY, 0, EMBED_STATS_MAX - 1)
-        pipe.execute()
-    except Exception:
-        logging.debug("Failed to write embed timing to Redis", exc_info=True)
 
     if remaining == 0:
         maybe_reset_embed_model_after_document()

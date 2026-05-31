@@ -37,14 +37,36 @@
      hx-trigger="every 10s [document.getElementById('sources-auto-refresh')?.checked]">
 
 {# ── Статистика ────────────────────────────────────────────────────────────── #}
-<div class="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
+<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6 mb-4">
     <div class="card bg-base-100 shadow">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
-                <iconify-icon icon="lucide:files" class="text-primary size-7 shrink-0"></iconify-icon>
+                <iconify-icon icon="lucide:alert-circle" class="text-error size-7 shrink-0"></iconify-icon>
                 <dl class="min-w-0">
-                    <dt class="text-xs text-base-content/60 truncate">Всего страниц</dt>
-                    <dd class="text-xl font-semibold">{{ overall.total }}</dd>
+                    <dt class="text-xs text-base-content/60 truncate">Ошибки</dt>
+                    <dd class="text-xl font-semibold {% if overall.errors > 0 %}text-error{% endif %}">{{ overall.errors }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-4">
+            <div class="flex items-center gap-3">
+                <iconify-icon icon="lucide:clock" class="text-warning size-7 shrink-0"></iconify-icon>
+                <dl class="min-w-0">
+                    <dt class="text-xs text-base-content/60 truncate">Ожидает</dt>
+                    <dd class="text-xl font-semibold">{{ overall.pending }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-4">
+            <div class="flex items-center gap-3">
+                <iconify-icon icon="lucide:cpu" class="text-success size-7 shrink-0"></iconify-icon>
+                <dl class="min-w-0">
+                    <dt class="text-xs text-base-content/60 truncate">В обработке</dt>
+                    <dd class="text-xl font-semibold">{{ overall.processing }}</dd>
                 </dl>
             </div>
         </div>
@@ -63,10 +85,10 @@
     <div class="card bg-base-100 shadow">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
-                <iconify-icon icon="lucide:clock" class="text-warning size-7 shrink-0"></iconify-icon>
+                <iconify-icon icon="lucide:ban" class="text-base-content/50 size-7 shrink-0"></iconify-icon>
                 <dl class="min-w-0">
-                    <dt class="text-xs text-base-content/60 truncate">В очереди</dt>
-                    <dd class="text-xl font-semibold">{{ overall.pending + overall.processing }}</dd>
+                    <dt class="text-xs text-base-content/60 truncate">Исключено</dt>
+                    <dd class="text-xl font-semibold">{{ overall.excluded }}</dd>
                 </dl>
             </div>
         </div>
@@ -74,35 +96,14 @@
     <div class="card bg-base-100 shadow">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
-                <iconify-icon icon="lucide:alert-circle" class="text-error size-7 shrink-0"></iconify-icon>
+                <iconify-icon icon="lucide:files" class="text-primary size-7 shrink-0"></iconify-icon>
                 <dl class="min-w-0">
-                    <dt class="text-xs text-base-content/60 truncate">Ошибки</dt>
-                    <dd class="text-xl font-semibold {% if overall.errors > 0 %}text-error{% endif %}">{{ overall.errors }}</dd>
+                    <dt class="text-xs text-base-content/60 truncate">Всего страниц</dt>
+                    <dd class="text-xl font-semibold">{{ overall.total }}</dd>
                 </dl>
             </div>
         </div>
     </div>
-</div>
-
-{# ── Очереди и ETA ─────────────────────────────────────────────────────────── #}
-<div class="flex flex-wrap gap-x-5 gap-y-1 text-sm text-base-content/60 mb-5">
-    <span>
-        <iconify-icon icon="lucide:globe" class="size-3.5 inline-block mr-1 align-middle"></iconify-icon>
-        Кравлер:
-        <span class="{% if crawler_queue > 0 %}text-warning font-medium{% endif %}">{{ crawler_queue }}</span>
-    </span>
-    <span>
-        <iconify-icon icon="lucide:cpu" class="size-3.5 inline-block mr-1 align-middle"></iconify-icon>
-        Embedder:
-        <span class="{% if embedder_queue > 0 %}text-warning font-medium{% endif %}">{{ embedder_queue }}</span>
-    </span>
-    {% if eta_fmt %}
-    <span>
-        <iconify-icon icon="lucide:timer" class="size-3.5 inline-block mr-1 align-middle"></iconify-icon>
-        ETA: <span class="font-medium text-base-content/80">{{ eta_fmt }}</span>
-        {% if avg_doc_fmt %}<span class="text-xs">(~{{ avg_doc_fmt }}/стр.)</span>{% endif %}
-    </span>
-    {% endif %}
 </div>
 
 {# ── Таблица источников ────────────────────────────────────────────────────── #}
@@ -110,12 +111,12 @@
 <div class="card bg-base-100 shadow">
     <div class="card-body p-0">
         <div class="overflow-x-auto">
-            <table class="table">
+            <table class="table table-fixed">
                 <thead>
                     <tr>
-                        <th>Название</th>
-                        <th class="min-w-[160px]">Прогресс</th>
-                        <th class="w-28 text-center">Игнорировано</th>
+                        <th class="w-[32%]">Название</th>
+                        <th class="w-[140px]">Прогресс</th>
+                        <th class="w-[140px] text-left">Статусы</th>
                         <th class="w-10"></th>
                     </tr>
                 </thead>

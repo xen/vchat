@@ -39,7 +39,7 @@ from vchat.ai_providers import (
     is_provider_available,
     resolve_ai_settings,
 )
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
@@ -88,9 +88,6 @@ __all__ = [
     "file_document",
     "source_sitemaps",
 ]
-
-EMBED_STATS_KEY = "vchat:embed:chunk_durations"
-
 
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
     if row.role != "assistant":
@@ -513,7 +510,6 @@ async def _get_source_row_data(db_session, source_id: int) -> dict[str, Any] | N
 @aiohttp_jinja2.template("projects/sources.html")
 async def project_edit_sources(request):
     db_session = request["db"]
-    r = request.app[REDIS_KEY]
 
     is_excl, is_err, is_pend, is_ready, is_proc = _build_progress_conditions()
 
@@ -555,57 +551,6 @@ async def project_edit_sources(request):
         )
     ).one()
 
-    # Queue lengths
-    crawler_queue = await r.llen("crawler")
-    embedder_queue = await r.llen("celery")
-
-    # ETA from Redis embed stats
-    raw_times = await r.lrange(EMBED_STATS_KEY, 0, -1)
-    durations: list[float] = []
-    for v in raw_times:
-        try:
-            durations.append(float(v))
-        except (ValueError, TypeError):
-            pass
-    avg_chunk_sec = sum(durations) / len(durations) if durations else None
-
-    chunk_counts_sq = (
-        sa.select(
-            Chunk.page_id,
-            sa.func.count(Chunk.id).label("chunk_count"),
-        )
-        .where(Chunk.page_id.isnot(None))
-        .group_by(Chunk.page_id)
-        .subquery()
-    )
-    avg_chunks_val = (
-        await db_session.execute(
-            sa.select(sa.func.avg(chunk_counts_sq.c.chunk_count)).select_from(
-                chunk_counts_sq
-            )
-        )
-    ).scalar()
-    avg_chunks_per_doc = float(avg_chunks_val) if avg_chunks_val else None
-
-    remaining = int((overall_row.processing or 0) + (overall_row.pending or 0))
-    avg_doc_sec = None
-    eta_sec = None
-    if avg_chunk_sec is not None and avg_chunks_per_doc:
-        avg_doc_sec = avg_chunk_sec * avg_chunks_per_doc
-        eta_sec = avg_doc_sec * remaining
-
-    def fmt_duration(sec: float | None) -> str | None:
-        if sec is None:
-            return None
-        s = int(sec)
-        if s < 60:
-            return f"{s}с"
-        if s < 3600:
-            return f"{s // 60}м {s % 60}с"
-        h = s // 3600
-        m = (s % 3600) // 60
-        return f"{h}ч {m}м"
-
     sources = [_serialize_source_row(row) for row in source_rows]
 
     session = await get_session(request)
@@ -631,10 +576,6 @@ async def project_edit_sources(request):
             "processing": int(overall_row.processing or 0),
             "excluded": int(overall_row.excluded or 0),
         },
-        "crawler_queue": crawler_queue,
-        "embedder_queue": embedder_queue,
-        "eta_fmt": fmt_duration(eta_sec),
-        "avg_doc_fmt": fmt_duration(avg_doc_sec),
     }
 
 
