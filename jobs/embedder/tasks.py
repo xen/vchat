@@ -27,6 +27,7 @@ EMBED_STATS_KEY = "vchat:embed:chunk_durations"
 EMBED_STATS_MAX = 500  # сколько последних замеров хранить
 PENDING_CHUNKS_INFLIGHT_KEY = "vchat:embed:pending_chunks:inflight"
 ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
+REFRESH_PROJECT_INDEX_SCHEDULE_KEY = "vchat:embed:refresh_project_index:scheduled"
 INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX = "vchat:embed:index_document:scheduled:"
 PENDING_CHUNKS_BATCH_SIZE = max(
     1, int(config.get("embedding_pending_chunks_batch_size", 8) or 8)
@@ -39,6 +40,9 @@ PENDING_CHUNKS_COUNTER_TTL = max(
 )
 ENSURE_PENDING_CHUNKS_SCHEDULE_TTL = max(
     30, int(config.get("embedding_ensure_pending_chunks_ttl_seconds", 120) or 120)
+)
+REFRESH_PROJECT_INDEX_SCHEDULE_TTL = max(
+    60, int(config.get("embedding_refresh_project_index_ttl_seconds", 300) or 300)
 )
 INDEX_DOCUMENT_SCHEDULE_TTL = max(
     300,
@@ -880,6 +884,28 @@ def schedule_ensure_pending_chunks() -> bool:
         redis_client.close()
 
 
+def schedule_refresh_project_index() -> bool:
+    redis_client = redis.from_url(REDIS_URL)
+    try:
+        acquired = redis_client.set(
+            REFRESH_PROJECT_INDEX_SCHEDULE_KEY,
+            "1",
+            ex=REFRESH_PROJECT_INDEX_SCHEDULE_TTL,
+            nx=True,
+        )
+        if not acquired:
+            return False
+
+        try:
+            refresh_project_index.delay()
+            return True
+        except Exception:
+            redis_client.delete(REFRESH_PROJECT_INDEX_SCHEDULE_KEY)
+            raise
+    finally:
+        redis_client.close()
+
+
 def index_document_schedule_key(document_id: int) -> str:
     return f"{INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}{document_id}"
 
@@ -1107,6 +1133,7 @@ def index_project():
 @app.task(name="jobs.embedder.tasks.refresh_project_index", queue="embeddings")
 def refresh_project_index():
     engine = create_sync_engine()
+    redis_client = redis.from_url(REDIS_URL)
     try:
         with Session(bind=engine) as session:
             chunk_counts = (
@@ -1171,7 +1198,11 @@ def refresh_project_index():
 
             session.commit()
     finally:
-        engine.dispose()
+        try:
+            redis_client.delete(REFRESH_PROJECT_INDEX_SCHEDULE_KEY)
+        finally:
+            redis_client.close()
+            engine.dispose()
 
 
 @app.task(name="jobs.embedder.tasks.refresh_source_index", queue="embeddings")

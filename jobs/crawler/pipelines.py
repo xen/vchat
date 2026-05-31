@@ -7,7 +7,6 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from vchat.document_pipeline import (
-    SPAPageError,
     extract_url_document,
     normalize_title_candidate,
 )
@@ -127,19 +126,6 @@ class DatabasePipeline:
             markdown_content, normalized_title, extracted_meta = extract_url_document(
                 url
             )
-        except SPAPageError as exc:
-            spider.logger.warning("SPA detected for %s: %s", url, exc)
-            save_page_status(
-                self.engine,
-                url,
-                source_id,
-                "no_content",
-                http_status,
-                etag,
-                self.logger,
-            )
-            increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
-            return item
         except Exception as exc:
             spider.logger.error("Extraction failed for %s: %s", url, exc, exc_info=True)
             save_page_status(
@@ -331,8 +317,6 @@ def save_page_status(
                 page.last_etag = etag
 
             meta = dict(page.meta or {})
-            if status == "no_content":
-                meta["spa_detected"] = True
             page.meta = meta
 
             session.commit()

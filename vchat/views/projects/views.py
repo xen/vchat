@@ -24,9 +24,9 @@ from passlib.context import CryptContext
 from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
 from jobs.embedder.tasks import (
     index_project,
-    refresh_project_index,
     refresh_source_index,
     schedule_index_document,
+    schedule_refresh_project_index,
 )
 
 from vchat.ai_providers import (
@@ -408,17 +408,10 @@ async def project_edit(request):
 async def project_edit_sources(request):
     db_session = request["db"]
 
-    spa_source_ids_q = (
-        sa.select(Page.source_id)
-        .where(Page.meta["spa_detected"].astext == "true")
-        .distinct()
-        .scalar_subquery()
-    )
     stmt = (
         sa.select(
             Source,
             sa.func.count(Page.id).label("doc_count"),
-            Source.id.in_(spa_source_ids_q).label("is_spa"),
         )
         .outerjoin(Page, Page.source_id == Source.id)
         .group_by(Source.id)
@@ -890,7 +883,7 @@ async def project_action(request):
         return web.Response(text="ok", status=200)
 
     if action == "refresh_project_index":
-        refresh_project_index.delay()
+        schedule_refresh_project_index()
         await flash(request, _("Update task started"), "success")
         return web.Response(text="ok", status=200)
 

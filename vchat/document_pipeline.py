@@ -540,30 +540,6 @@ def _docling_markdown_from_source(source: str) -> tuple[str | None, str | None]:
         return None, None
 
 
-SPA_TEXT_THRESHOLD = (
-    500  # chars of visible text below which we consider the page a JS-only SPA
-)
-
-
-class SPAPageError(ValueError):
-    """Raised when a page appears to be a client-side SPA with no server-rendered content."""
-
-
-def _static_text_length(html_body: str) -> int:
-    """Return the length of visible body text in the static (non-JS) HTML.
-
-    Strips scripts, styles, and structural chrome (nav/header/footer) so that
-    navigation-heavy SPAs that render all their actual content via JS are not
-    incorrectly treated as content-rich pages.
-    """
-    check_soup = BeautifulSoup(html_body, "html.parser")
-    for tag in check_soup(
-        ["script", "style", "meta", "link", "noscript", "nav", "header", "footer"]
-    ):
-        tag.decompose()
-    return len(check_soup.get_text(" ", strip=True))
-
-
 def _extract_nav_title(soup: BeautifulSoup, url: str) -> str | None:
     """
     Find a self-referencing navigation link on the page and return its text.
@@ -601,13 +577,6 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
     content_type = response.headers.get("Content-Type")
     soup = BeautifulSoup(body, "html.parser")
     html_title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
-
-    # Detect client-side SPA: if static HTML has almost no visible text the
-    # page requires JavaScript to render and we cannot index it meaningfully.
-    if _static_text_length(body) < SPA_TEXT_THRESHOLD:
-        raise SPAPageError(
-            f"Page appears to be a JS-only SPA (static text < {SPA_TEXT_THRESHOLD} chars): {source_url}"
-        )
 
     # Prefer a self-referencing nav link over the generic site-wide <title>.
     nav_title = _extract_nav_title(soup, source_url)
