@@ -27,13 +27,6 @@
 
 </head>
 <body {% block body_id %}{% endblock %} {% if csrf_token -%} hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}' {%- endif -%}>
-{% if not debug %}
-<!-- Google Tag Manager (noscript) -->
-<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-K7593Q73"
-height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-<!-- End Google Tag Manager (noscript) -->
-{% endif %}
-
 <div class="h-screen w-full overflow-hidden">
   {% block fullbody %}
     <div class="flex h-screen">
