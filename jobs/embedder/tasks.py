@@ -19,7 +19,12 @@ from vchat.embeddings import (
     release_torch_cache,
     resolve_embedding_device,
 )
-from vchat.models import ChatMsg, Chunk, Page, Source
+from vchat.document_shingles import (
+    compute_trigram_hashes,
+    extract_content_blocks,
+    is_boilerplate_block,
+)
+from vchat.models import ChatMsg, Chunk, Page, Source, SourceShingleFreq
 from vchat.settings import config
 
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
@@ -358,6 +363,7 @@ def chunk_document_text(
     *,
     max_tokens: int | None = None,
     overlap: int | None = None,
+    boilerplate_hashes: frozenset[int] | None = None,
 ) -> list[ChunkData]:
     if max_tokens is None:
         max_tokens = EMBEDDING_CHUNK_MAX_TOKENS
@@ -441,6 +447,13 @@ def chunk_document_text(
                 section_path,
             )
         )
+
+    if boilerplate_hashes:
+        blocks = [
+            (kind, block, header_text, section_path)
+            for kind, block, header_text, section_path in blocks
+            if not is_boilerplate_block(block, boilerplate_hashes)
+        ]
 
     chunk_ix = 0
     tokenizer = get_embed_model().tokenizer
@@ -633,10 +646,36 @@ def fetch_page_context(session: Session, page_id: int):
     return doc
 
 
+def load_boilerplate_hashes(session: Session, source_id: int) -> frozenset[int]:
+    """Return shingle hashes that appear in >40% of pages for this source."""
+    total: int = session.execute(
+        sa.select(sa.func.count(Page.id)).where(
+            Page.source_id == source_id,
+            Page.content.isnot(None),
+            Page.content != "",
+        )
+    ).scalar_one()
+    if total < 5:
+        return frozenset()
+    rows = session.execute(
+        sa.select(SourceShingleFreq.shingle_hash).where(
+            SourceShingleFreq.source_id == source_id,
+            SourceShingleFreq.count > total * 0.4,
+        )
+    ).scalars()
+    return frozenset(rows)
+
+
 def materialize_page_chunks(
     session: Session, doc: Page, user_uid: str = "system"
 ) -> int:
-    chunks = chunk_document_text(doc.content or "")
+    boilerplate_hashes: frozenset[int] = frozenset()
+    if doc.source_id is not None:
+        boilerplate_hashes = load_boilerplate_hashes(session, doc.source_id)
+
+    chunks = chunk_document_text(
+        doc.content or "", boilerplate_hashes=boilerplate_hashes or None
+    )
     logging.info("Materializing %s chunks for Page %s", len(chunks), doc.id)
 
     session.execute(delete(Chunk).where(Chunk.page_id == doc.id))
@@ -1116,7 +1155,12 @@ def index_project():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = select(Page.id).where(Page.is_ignored == False)
+            stmt = (
+                select(Page.id)
+                .where(Page.is_ignored == False)
+                .where(Page.content.isnot(None))
+                .where(Page.content != "")
+            )
             doc_ids = session.execute(stmt).scalars().all()
     finally:
         engine.dispose()
@@ -1151,6 +1195,8 @@ def refresh_project_index():
                     sa.select(Page.id)
                     .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
                     .where(Page.is_ignored == False)
+                    .where(Page.content.isnot(None))
+                    .where(Page.content != "")
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
                 )
                 .scalars()
@@ -1232,6 +1278,8 @@ def refresh_source_index(source_id: int):
                     .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
                     .where(Page.source_id == source_id)
                     .where(Page.is_ignored == False)
+                    .where(Page.content.isnot(None))
+                    .where(Page.content != "")
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
                 )
                 .scalars()
@@ -1267,5 +1315,73 @@ def refresh_source_index(source_id: int):
                 )
 
             session.commit()
+    finally:
+        engine.dispose()
+
+
+def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
+    """Recount word-trigram shingle frequencies for all pages of a source.
+
+    Returns the number of distinct shingle hashes written.
+    """
+    from collections import Counter
+
+    rows = (
+        session.execute(
+            sa.select(Page.content).where(
+                Page.source_id == source_id,
+                Page.content.isnot(None),
+                Page.content != "",
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not rows:
+        session.execute(
+            sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
+        )
+        session.commit()
+        return 0
+
+    shingle_counts: Counter[int] = Counter()
+    for content in rows:
+        blocks = extract_content_blocks(content)
+        page_hashes: set[int] = set()
+        for block in blocks:
+            page_hashes.update(compute_trigram_hashes(block))
+        shingle_counts.update(page_hashes)
+
+    session.execute(
+        sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
+    )
+    for shingle_hash, count in shingle_counts.items():
+        session.add(
+            SourceShingleFreq(
+                source_id=source_id,
+                shingle_hash=shingle_hash,
+                count=count,
+            )
+        )
+    session.commit()
+    logging.info(
+        "Rebuilt boilerplate index for source %s: %s distinct shingles from %s pages",
+        source_id,
+        len(shingle_counts),
+        len(rows),
+    )
+    return len(shingle_counts)
+
+
+@app.task(
+    name="jobs.embedder.tasks.rebuild_boilerplate_index",
+    queue="embeddings",
+)
+def rebuild_boilerplate_index(source_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            rebuild_boilerplate_for_source(session, source_id)
     finally:
         engine.dispose()

@@ -292,6 +292,20 @@
     </div>
 </div>
 
+<!-- Sitemaps -->
+<div class="card bg-base-100 shadow mt-6">
+    <div class="card-body">
+        <h2 class="card-title text-base mb-3">Sitemap-файлы</h2>
+        <div
+            hx-get="{{ url('source_sitemaps', source_id=source.id) }}"
+            hx-trigger="load"
+            hx-swap="innerHTML"
+        >
+            <span class="loading loading-spinner loading-sm"></span>
+        </div>
+    </div>
+</div>
+
 <template id="rule_template">
     <tr class="rule-row align-top">
         <td class="whitespace-nowrap">

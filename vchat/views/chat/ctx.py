@@ -557,7 +557,7 @@ async def vector_supply(
 
     chat_sql = sa.text(
         """
-        SELECT c.id, c.text, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
+        SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix, c.start_offset, c.end_offset,
                c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
                c.embedding <=> :qvec AS dist,
                'chat' AS src,
@@ -574,18 +574,19 @@ async def vector_supply(
 
     kb_sql = sa.text(
         """
-        SELECT c.id, c.text, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
+        SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix, c.start_offset, c.end_offset,
                c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
                c.embedding <=> :qvec AS dist,
                'kb' AS src,
                d.uri AS uri,
                d.title AS title
         FROM chunk c
-        JOIN document d ON c.document_id = d.id
+        JOIN page d ON c.page_id = d.id
         WHERE c.chat_id IS NULL
-          AND c.document_id IS NOT NULL
+          AND c.page_id IS NOT NULL
           AND c.embedding IS NOT NULL
           AND c.embedding <=> :qvec <= :max_dist
+          AND (d.content_value IS NULL OR d.content_value > 0.1)
         ORDER BY c.embedding <=> :qvec
         LIMIT :k_kb
         """
@@ -620,18 +621,19 @@ async def fulltext_supply(
 
     sql = sa.text(
         """
-        SELECT c.id, c.text, c.chat_id, c.document_id, c.chunk_ix, c.start_offset, c.end_offset,
+        SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix, c.start_offset, c.end_offset,
                c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
                NULL::float8 AS dist,
                'ft' AS src,
                d.uri AS uri,
                d.title AS title
         FROM chunk c
-        LEFT JOIN document d ON c.document_id = d.id
+        LEFT JOIN page d ON c.page_id = d.id
         WHERE (
                c.fts @@ websearch_to_tsquery('russian', :q)
             OR c.fts @@ websearch_to_tsquery('english', :q)
         )
+          AND (d.content_value IS NULL OR d.content_value > 0.1)
         ORDER BY
             CASE
                 WHEN :table_mode = true AND c.kind IN ('table', 'table_rows') THEN 3

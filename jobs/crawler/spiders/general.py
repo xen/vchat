@@ -80,6 +80,10 @@ class GeneralSpider(CrawlSpider):
         )
         super().__init__(*args, **kwargs)
 
+    def parse_start_url(self, response, **kwargs):
+        """Index start URLs as content (not just extract links from them)."""
+        return self.parse_item(response)
+
     def start_requests(self):
         yield from super().start_requests()
 

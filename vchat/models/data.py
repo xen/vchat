@@ -393,6 +393,20 @@ class CrawlRun(Base):
     notes: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
 
+class SourceShingleFreq(Base):
+    __tablename__ = "source_shingle_freq"
+
+    source_id: Mapped[int] = mapped_column(
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    shingle_hash: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
+    count: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default=sa.text("0")
+    )
+
+
 class Settings(Base):
     __tablename__ = "settings"
 

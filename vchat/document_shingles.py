@@ -1,39 +1,67 @@
+from __future__ import annotations
+
+import hashlib
 import re
-from collections import Counter
-from typing import List, Tuple
+from typing import List
 
 
 def extract_shingles(text: str, k: int = 10) -> List[str]:
+    """Line-window shingles for near-duplicate detection (Jaccard similarity)."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) < k:
         return []
     return ["\n".join(lines[i : i + k]) for i in range(len(lines) - k + 1)]
 
 
-def find_repeated_shingles(
-    docs: List[str], k: int = 10, min_freq: float = 0.5
-) -> List[str]:
-    shingle_counts = Counter()
-    for doc in docs:
-        shingle_counts.update(set(extract_shingles(doc, k)))
-    threshold = max(2, int(len(docs) * min_freq))
-    return [sh for sh, count in shingle_counts.items() if count >= threshold]
+def normalize_words(text: str) -> list[str]:
+    return re.findall(r"[a-zа-яё0-9]+", text.lower())
 
 
-def remove_shingles(text: str, shingles: List[str]) -> Tuple[str, List[str]]:
-    removed = []
-    for sh in shingles:
-        if sh in text:
-            text = text.replace(sh, "")
-            removed.append(sh)
-    return text, removed
+def compute_trigram_hashes(block: str) -> frozenset[int]:
+    """Return a frozenset of signed 64-bit hashes, one per word trigram in block."""
+    words = normalize_words(block)
+    if len(words) < 3:
+        return frozenset()
+    hashes: set[int] = set()
+    for i in range(len(words) - 2):
+        trigram = f"{words[i]} {words[i + 1]} {words[i + 2]}"
+        raw = int(hashlib.md5(trigram.encode()).hexdigest()[:16], 16)
+        h = raw if raw < 2**63 else raw - 2**64
+        hashes.add(h)
+    return frozenset(hashes)
 
 
-def visualize_removed_blocks(removed: List[str]) -> str:
-    if not removed:
-        return '<div class="text-xs opacity-60">Навигация/boilerplate не обнаружены шинглами.</div>'
-    blocks = "".join(
-        f'<div class="bg-warning/20 border border-warning rounded p-2 my-1 text-xs">{re.escape(block[:200])}...</div>'
-        for block in removed
-    )
-    return f'<div class="text-xs mb-2">Удалено как навигация/boilerplate (шинглы):</div>{blocks}'
+def extract_content_blocks(text: str) -> list[str]:
+    """Split markdown text into content blocks (sections delimited by headers).
+
+    Blocks with fewer than 3 whitespace-separated tokens are dropped.
+    """
+    blocks: list[str] = []
+    lines = text.splitlines()
+    current: list[str] = []
+
+    for line in lines:
+        if re.match(r"^#{1,6}\s+", line.strip()):
+            block = "\n".join(current).strip()
+            if block:
+                blocks.append(block)
+            current = []
+        else:
+            current.append(line)
+
+    block = "\n".join(current).strip()
+    if block:
+        blocks.append(block)
+
+    return [b for b in blocks if len(b.split()) >= 3]
+
+
+def is_boilerplate_block(block: str, boilerplate_hashes: frozenset[int]) -> bool:
+    """Return True if >= 50% of the block's word trigrams are boilerplate."""
+    if not boilerplate_hashes:
+        return False
+    hashes = compute_trigram_hashes(block)
+    if len(hashes) < 3:
+        return False
+    overlap = len(hashes & boilerplate_hashes)
+    return overlap / len(hashes) >= 0.5

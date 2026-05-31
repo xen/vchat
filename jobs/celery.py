@@ -46,6 +46,11 @@ app.conf.beat_schedule = {
         "schedule": crontab(),
         "options": {"queue": "crawler"},
     },
+    "schedule_sitemap_sync": {
+        "task": "jobs.crawler.tasks.schedule_sitemap_sync_task",
+        "schedule": crontab(minute=0, hour="*/4"),
+        "options": {"queue": "crawler"},
+    },
 }
 
 

@@ -41,7 +41,7 @@ from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg, Chunk, Page, Source, User
+from vchat.models import Chat, ChatMsg, Chunk, CrawlRun, Page, Sitemap, Source, User
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
@@ -86,6 +86,8 @@ __all__ = [
     "project_progress",
     "secure_download",
     "on_upload",
+    "source_sitemaps",
+    "crawl_monitor",
 ]
 
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
@@ -536,6 +538,34 @@ async def project_source_settings(request):
 
 
 @login_required()
+async def source_sitemaps(request):
+    """Return HTMX fragment: sitemap list for a source."""
+    source_id = int(request.match_info.get("source_id"))
+    db_session = request["db"]
+    source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
+    if not source:
+        raise web.HTTPNotFound()
+
+    sitemaps = (
+        (
+            await db_session.execute(
+                sa.select(Sitemap)
+                .where(Sitemap.source_id == source_id)
+                .order_by(Sitemap.first_seen_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return aiohttp_jinja2.render_template(
+        "projects/_sitemaps.html",
+        request,
+        {"source": source, "sitemaps": sitemaps},
+    )
+
+
+@login_required()
 async def project_action(request):
     db_session = request["db"]
     item_id = request.match_info.get("item_id")
@@ -933,6 +963,104 @@ async def project_action(request):
         await db_session.commit()
         await admin_event("source_update", request)
         return web.Response(text="ok", status=200)
+
+    if action == "sitemap_add":
+        source_id = int(item_id)
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == source_id)
+        )
+        if not source:
+            raise web.HTTPNotFound()
+        data = await request.post()
+        url = (data.get("url") or "").strip()
+        if not url:
+            raise web.HTTPBadRequest(text="URL required")
+        existing = await db_session.scalar(
+            sa.select(Sitemap).where(Sitemap.source_id == source_id, Sitemap.url == url)
+        )
+        if not existing:
+            db_session.add(
+                Sitemap(
+                    source_id=source_id,
+                    url=url,
+                    discovered_via="manual",
+                    first_seen_at=datetime.now(timezone.utc),
+                )
+            )
+            await db_session.commit()
+        sitemaps = (
+            (
+                await db_session.execute(
+                    sa.select(Sitemap)
+                    .where(Sitemap.source_id == source_id)
+                    .order_by(Sitemap.first_seen_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return aiohttp_jinja2.render_template(
+            "projects/_sitemaps.html",
+            request,
+            {"source": source, "sitemaps": sitemaps},
+        )
+
+    if action == "sitemap_toggle":
+        sitemap = await db_session.scalar(
+            sa.select(Sitemap).where(Sitemap.id == int(item_id))
+        )
+        if not sitemap:
+            raise web.HTTPNotFound()
+        sitemap.is_excluded = not sitemap.is_excluded
+        await db_session.commit()
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == sitemap.source_id)
+        )
+        sitemaps = (
+            (
+                await db_session.execute(
+                    sa.select(Sitemap)
+                    .where(Sitemap.source_id == sitemap.source_id)
+                    .order_by(Sitemap.first_seen_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return aiohttp_jinja2.render_template(
+            "projects/_sitemaps.html",
+            request,
+            {"source": source, "sitemaps": sitemaps},
+        )
+
+    if action == "sitemap_delete":
+        sitemap = await db_session.scalar(
+            sa.select(Sitemap).where(Sitemap.id == int(item_id))
+        )
+        if not sitemap:
+            raise web.HTTPNotFound()
+        source_id = sitemap.source_id
+        await db_session.delete(sitemap)
+        await db_session.commit()
+        source = await db_session.scalar(
+            sa.select(Source).where(Source.id == source_id)
+        )
+        sitemaps = (
+            (
+                await db_session.execute(
+                    sa.select(Sitemap)
+                    .where(Sitemap.source_id == source_id)
+                    .order_by(Sitemap.first_seen_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return aiohttp_jinja2.render_template(
+            "projects/_sitemaps.html",
+            request,
+            {"source": source, "sitemaps": sitemaps},
+        )
 
     raise web.HTTPBadRequest(text="Unknown action")
 
@@ -1828,4 +1956,120 @@ async def project_progress(request):
         "avg_doc_fmt": fmt_duration(avg_doc_sec),
         "eta_fmt": fmt_duration(eta_sec),
         "samples": len(durations),
+    }
+
+
+@meta(title=_("Обход сайтов"))
+@login_required()
+@aiohttp_jinja2.template("projects/crawl_monitor.html")
+async def crawl_monitor(request):
+    db_session = request["db"]
+    r = request.app[REDIS_KEY]
+    now = datetime.now(timezone.utc)
+
+    # Queue lengths from Redis
+    crawler_queue = await r.llen("crawler")
+    embedder_queue = await r.llen("celery")
+
+    # All sources
+    sources_rows = (
+        (
+            await db_session.execute(
+                sa.select(Source).order_by(Source.title.asc(), Source.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Last CrawlRun per source
+    latest_run_sq = (
+        sa.select(
+            CrawlRun.source_id,
+            sa.func.max(CrawlRun.id).label("max_id"),
+        )
+        .group_by(CrawlRun.source_id)
+        .subquery()
+    )
+    last_runs_rows = (
+        (
+            await db_session.execute(
+                sa.select(CrawlRun).join(
+                    latest_run_sq,
+                    sa.and_(
+                        CrawlRun.source_id == latest_run_sq.c.source_id,
+                        CrawlRun.id == latest_run_sq.c.max_id,
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    last_run_by_source: dict[int, CrawlRun] = {r.source_id: r for r in last_runs_rows}
+
+    # Page status counts per source
+    status_rows = (
+        await db_session.execute(
+            sa.select(
+                Page.source_id,
+                Page.status,
+                sa.func.count(Page.id).label("cnt"),
+            )
+            .where(Page.source_id.isnot(None))
+            .group_by(Page.source_id, Page.status)
+        )
+    ).all()
+    status_by_source: dict[int, dict[str, int]] = {}
+    for row in status_rows:
+        status_by_source.setdefault(row.source_id, {})[row.status] = row.cnt
+
+    # Sitemaps per source
+    sitemap_rows = (
+        (
+            await db_session.execute(
+                sa.select(Sitemap).order_by(Sitemap.source_id, Sitemap.first_seen_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    sitemaps_by_source: dict[int, list[Sitemap]] = {}
+    for sm in sitemap_rows:
+        sitemaps_by_source.setdefault(sm.source_id, []).append(sm)
+
+    # Recently excluded pages (last 50 across all sources)
+    excluded_pages = (
+        await db_session.execute(
+            sa.select(Page, Source.title.label("source_title"))
+            .join(Source, Source.id == Page.source_id)
+            .where(sa.cast(Page.status, sa.Text).like("excluded_%"))
+            .order_by(Page.last_crawled_at.desc().nullslast())
+            .limit(50)
+        )
+    ).all()
+
+    source_data = []
+    for source in sources_rows:
+        last_run = last_run_by_source.get(source.id)
+        statuses = status_by_source.get(source.id, {})
+        sms = sitemaps_by_source.get(source.id, [])
+        source_data.append(
+            {
+                "source": source,
+                "last_run": last_run,
+                "statuses": statuses,
+                "sitemaps": sms,
+                "next_reindex": next_reindex_at(source.reindex_cron or "", now),
+                "total_pages": sum(statuses.values()),
+            }
+        )
+
+    return {
+        "project": _project_context(request),
+        "source_data": source_data,
+        "excluded_pages": excluded_pages,
+        "crawler_queue": crawler_queue,
+        "embedder_queue": embedder_queue,
+        "now": now,
     }

@@ -1,0 +1,67 @@
+groups:
+  - name: vchat_crawler
+    rules:
+
+      # Source hasn't been crawled for more than 14 days
+      - alert: CrawlerSourceStale
+        expr: |
+          time() - vchat_crawler_last_crawl_timestamp_seconds > 14 * 24 * 3600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source {{ $labels.source_id }} not crawled for >14 days"
+          description: >
+            Source {{ $labels.source_id }} has not been crawled for
+            {{ $value | humanizeDuration }}. Check if the crawler is running.
+
+      # Crawler queue is large — possible backlog
+      - alert: CrawlerQueueHigh
+        expr: vchat_crawler_queue_size > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Crawler queue has {{ $value }} pending tasks"
+          description: >
+            The crawler Celery queue has been above 100 tasks for 15 minutes.
+            Workers may be down or processing too slowly.
+
+      # Embedder queue is large
+      - alert: EmbedderQueueHigh
+        expr: vchat_embedder_queue_size > 500
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Embedder queue has {{ $value }} pending tasks"
+          description: >
+            The embedder Celery queue has been above 500 tasks for 15 minutes.
+            Workers may be down or new pages are not being indexed.
+
+      # Rate limiting detected in last crawl run (counter increasing)
+      - alert: CrawlerRateLimited
+        expr: increase(vchat_crawler_rate_limited_total[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source {{ $labels.source_id }} hit rate limiting"
+          description: >
+            Crawl runs for source {{ $labels.source_id }} are being rate limited.
+            Consider increasing download_delay for this source.
+
+      # High error rate in crawler
+      - alert: CrawlerHighErrorRate
+        expr: |
+          rate(vchat_crawler_pages_total{result="error"}[1h])
+            /
+          (rate(vchat_crawler_pages_total[1h]) + 0.001)
+          > 0.3
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source {{ $labels.source_id }} error rate >30%"
+          description: >
+            More than 30% of crawled pages for source {{ $labels.source_id }}
+            are resulting in errors over the last hour.

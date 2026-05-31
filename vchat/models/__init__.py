@@ -11,5 +11,6 @@ from .data import (
     Sitemap,
     PageLink,
     CrawlRun,
+    SourceShingleFreq,
 )  # noqa
 from .admin_event import AdminEvent  # noqa

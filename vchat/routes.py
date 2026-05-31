@@ -54,6 +54,12 @@ def setup_routes(app: web.Application) -> None:
     )
     add(
         "GET",
+        r"/source/{source_id:[0-9]+}/sitemaps",
+        projects.source_sitemaps,
+        name="source_sitemaps",
+    )
+    add(
+        "GET",
         r"/page/{document_id:[0-9]+}",
         projects.project_document_detail,
         name="project_document_detail",
@@ -66,6 +72,7 @@ def setup_routes(app: web.Application) -> None:
     )
     add("GET", "/stats", projects.project_stats, name="project_stats")
     add("GET", "/progress", projects.project_progress, name="project_progress")
+    add("GET", "/crawl-monitor", projects.crawl_monitor, name="crawl_monitor")
     add("*", "/files", projects.project_files, name="project_files")
     add(
         "*",

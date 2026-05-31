@@ -1,0 +1,90 @@
+<div id="sitemaps-panel">
+    {% if sitemaps %}
+    <div class="overflow-x-auto">
+        <table class="table table-zebra w-full text-sm">
+            <thead>
+                <tr>
+                    <th>URL</th>
+                    <th class="w-32">Откуда</th>
+                    <th class="w-24 text-right">URL в карте</th>
+                    <th class="w-40">Последняя проверка</th>
+                    <th class="w-24 text-right"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for sm in sitemaps %}
+                <tr class="{{ 'opacity-50' if sm.is_excluded else '' }}">
+                    <td class="break-all font-mono text-xs">{{ sm.url }}</td>
+                    <td>
+                        {% if sm.discovered_via == 'robots_txt' %}
+                            <span class="badge badge-ghost badge-sm">robots.txt</span>
+                        {% elif sm.discovered_via == 'auto_probe' %}
+                            <span class="badge badge-ghost badge-sm">авто</span>
+                        {% else %}
+                            <span class="badge badge-ghost badge-sm">вручную</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-right">
+                        {% if sm.url_count is not none %}{{ sm.url_count }}{% else %}—{% endif %}
+                    </td>
+                    <td class="text-xs text-base-content/60">
+                        {% if sm.last_fetched_at %}
+                            {{ sm.last_fetched_at.astimezone().strftime('%d.%m.%Y %H:%M') }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td class="text-right whitespace-nowrap">
+                        <button
+                            hx-post="{{ url('actions', action='sitemap_toggle', item_id=sm.id) }}"
+                            hx-target="#sitemaps-panel"
+                            hx-swap="outerHTML"
+                            class="btn btn-xs btn-ghost {% if sm.is_excluded %}text-success{% else %}text-warning{% endif %}"
+                            title="{{ 'Включить' if sm.is_excluded else 'Исключить' }}"
+                        >
+                            <iconify-icon icon="{{ 'lucide:eye' if sm.is_excluded else 'lucide:eye-off' }}" class="size-3.5"></iconify-icon>
+                        </button>
+                        <button
+                            hx-post="{{ url('actions', action='sitemap_delete', item_id=sm.id) }}"
+                            hx-target="#sitemaps-panel"
+                            hx-swap="outerHTML"
+                            hx-confirm="Удалить этот sitemap?"
+                            class="btn btn-xs btn-ghost text-error"
+                            title="Удалить"
+                        >
+                            <iconify-icon icon="lucide:trash" class="size-3.5"></iconify-icon>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-base-content/50">Sitemap-файлы не обнаружены. Добавьте вручную или запустите обход — кравлер найдёт их из robots.txt.</p>
+    {% endif %}
+
+    <form
+        hx-post="{{ url('actions', action='sitemap_add', item_id=source.id) }}"
+        hx-target="#sitemaps-panel"
+        hx-swap="outerHTML"
+        class="mt-4 flex gap-2 items-end"
+    >
+        <div class="form-control flex-1">
+            <label class="label pb-1">
+                <span class="label-text text-xs">Добавить sitemap вручную</span>
+            </label>
+            <input
+                type="url"
+                name="url"
+                placeholder="https://example.com/sitemap.xml"
+                class="input input-bordered input-sm w-full"
+                required
+            >
+        </div>
+        <button type="submit" class="btn btn-sm btn-outline btn-primary">
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            Добавить
+        </button>
+    </form>
+</div>

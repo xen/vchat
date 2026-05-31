@@ -2,17 +2,22 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import Iterable
 
+import redis as redis_lib
 from aiohttp import web
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
     Counter,
+    Gauge,
+    Histogram,
     REGISTRY,
     generate_latest,
     multiprocess,
 )
+from prometheus_client.core import GaugeMetricFamily
 
 logger = logging.getLogger("vchat.metrics")
 
@@ -32,6 +37,32 @@ CHAT_GUARDRAIL_EVENTS_TOTAL = Counter(
     "vchat_chat_guardrail_events_total",
     "Total number of guardrail remarks detected while processing chat requests.",
     ("provider", "model", "reason"),
+)
+
+CRAWLER_PAGES_TOTAL = Counter(
+    "vchat_crawler_pages_total",
+    "Total pages processed by the crawler, by result type.",
+    ("source_id", "result"),
+)
+
+CRAWLER_RUN_DURATION_SECONDS = Histogram(
+    "vchat_crawler_run_duration_seconds",
+    "Duration of a single crawl run in seconds.",
+    ("source_id",),
+    buckets=(30, 60, 120, 300, 600, 1200, 1800, 3600),
+)
+
+CRAWLER_RATE_LIMITED_TOTAL = Counter(
+    "vchat_crawler_rate_limited_total",
+    "Number of crawl runs that encountered rate limiting.",
+    ("source_id",),
+)
+
+CRAWLER_LAST_CRAWL_TIMESTAMP = Gauge(
+    "vchat_crawler_last_crawl_timestamp_seconds",
+    "Unix timestamp of the last completed crawl run for a source.",
+    ("source_id",),
+    multiprocess_mode="livemax",
 )
 
 
@@ -114,6 +145,71 @@ def record_chat_request(
             model=model_label,
             reason=reason,
         ).inc()
+
+
+def record_crawl_run(
+    *,
+    source_id: int,
+    pages_new: int,
+    pages_changed: int,
+    pages_crawled: int,
+    pages_errors: int,
+    pages_excluded: int,
+    duration_seconds: float | None,
+    was_rate_limited: bool,
+) -> None:
+    sid = str(source_id)
+    n_new = int(pages_new or 0)
+    n_changed = int(pages_changed or 0)
+    n_crawled = int(pages_crawled or 0)
+    n_errors = int(pages_errors or 0)
+    n_excluded = int(pages_excluded or 0)
+    if n_new:
+        CRAWLER_PAGES_TOTAL.labels(source_id=sid, result="new").inc(n_new)
+    if n_changed:
+        CRAWLER_PAGES_TOTAL.labels(source_id=sid, result="changed").inc(n_changed)
+    if n_crawled:
+        CRAWLER_PAGES_TOTAL.labels(source_id=sid, result="unchanged").inc(n_crawled)
+    if n_errors:
+        CRAWLER_PAGES_TOTAL.labels(source_id=sid, result="error").inc(n_errors)
+    if n_excluded:
+        CRAWLER_PAGES_TOTAL.labels(source_id=sid, result="excluded").inc(n_excluded)
+    if duration_seconds is not None and float(duration_seconds) >= 0:
+        CRAWLER_RUN_DURATION_SECONDS.labels(source_id=sid).observe(
+            float(duration_seconds)
+        )
+    if was_rate_limited:
+        CRAWLER_RATE_LIMITED_TOTAL.labels(source_id=sid).inc()
+    CRAWLER_LAST_CRAWL_TIMESTAMP.labels(source_id=sid).set(time.time())
+
+
+class CrawlerQueueCollector:
+    """Reads Celery queue lengths from Redis at scrape time."""
+
+    def describe(self):
+        return []
+
+    def collect(self):
+        crawler_metric = GaugeMetricFamily(
+            "vchat_crawler_queue_size",
+            "Current number of tasks in the crawler Celery queue.",
+        )
+        embedder_metric = GaugeMetricFamily(
+            "vchat_embedder_queue_size",
+            "Current number of tasks in the embedder Celery queue.",
+        )
+        try:
+            r = redis_lib.Redis(db=31, decode_responses=False)
+            crawler_metric.add_metric([], float(r.llen("crawler")))
+            embedder_metric.add_metric([], float(r.llen("celery")))
+            r.close()
+        except Exception as exc:
+            logger.debug("CrawlerQueueCollector: Redis error: %s", exc)
+        yield crawler_metric
+        yield embedder_metric
+
+
+REGISTRY.register(CrawlerQueueCollector())
 
 
 def _is_multiprocess_enabled() -> bool:

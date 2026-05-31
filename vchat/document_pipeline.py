@@ -12,11 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 from docling.document_converter import DocumentConverter
 
-from vchat.document_shingles import (
-    find_repeated_shingles,
-    remove_shingles,
-    visualize_removed_blocks,
-)
+
 from vchat.document_types import guess_document_type
 
 logger = logging.getLogger(__name__)
@@ -449,9 +445,7 @@ def _strip_boilerplate(soup: BeautifulSoup) -> int:
     return removed
 
 
-def _html_to_markdown_like(
-    body: str, all_docs_markdown: list[str] = None
-) -> tuple[str, str | None, int, list[str]]:
+def _html_to_markdown_like(body: str) -> tuple[str, str | None, int, list[str]]:
     soup = BeautifulSoup(body, "html.parser")
     boilerplate_removed = _strip_boilerplate(soup)
     title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
@@ -518,13 +512,7 @@ def _html_to_markdown_like(
         lines.append(text)
         lines.append("")
     markdown = normalize_markdown("\n".join(lines))
-    removed_shingles = []
-    if all_docs_markdown:
-        shingles = find_repeated_shingles(
-            all_docs_markdown + [markdown], k=10, min_freq=0.5
-        )
-        markdown, removed_shingles = remove_shingles(markdown, shingles)
-    return markdown, title, boilerplate_removed, removed_shingles
+    return markdown, title, boilerplate_removed
 
 
 def _docling_markdown_from_source(source: str) -> tuple[str | None, str | None]:
@@ -582,11 +570,7 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
     nav_title = _extract_nav_title(soup, source_url)
     best_title = nav_title or html_title
 
-    # TODO: собрать all_docs_markdown для шинглового анализа (эвристика)
-    all_docs_markdown = []  # Для MVP: пусто, внедрить сборку при батч-обработке
-    markdown, _, removed, removed_shingles = _html_to_markdown_like(
-        body, all_docs_markdown=all_docs_markdown
-    )
+    markdown, _, removed = _html_to_markdown_like(body)
     if markdown.strip():
         normalized, normalized_title, meta = build_document_payload(
             content=markdown,
@@ -598,8 +582,6 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
             doc_type=doc_type,
         )
         meta["extraction"]["boilerplate_removed_count"] = removed
-        if removed_shingles:
-            meta["removed_shingles"] = visualize_removed_blocks(removed_shingles)
         return normalized, normalized_title, meta
 
     markdown, _ = _docling_markdown_from_source(source_url)
