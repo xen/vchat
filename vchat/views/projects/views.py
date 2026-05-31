@@ -1012,18 +1012,6 @@ async def project_action(request):
         await admin_event("source_delete", request)
         return web.Response(text="", status=200)
 
-    if action == "rebuild_source":
-        source = await db_session.scalar(
-            sa.select(Source).where(Source.id == int(item_id))
-        )
-        if not source:
-            raise web.HTTPNotFound()
-        await db_session.execute(sa.delete(Page).where(Page.source_id == source.id))
-        await db_session.commit()
-        await admin_event("source_reindex_request", request)
-        crawl_source_task.delay(source.id)
-        return web.Response(text="ok")
-
     if action == "crawl_source":
         source = await db_session.scalar(
             sa.select(Source).where(Source.id == int(item_id))

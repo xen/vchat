@@ -39,15 +39,7 @@
                 <span class="hidden sm:inline">Пауза</span>
             </button>
             {% endif %}
-            <button class="btn btn-sm btn-outline"
-                    hx-post="{{ url('actions', action='rebuild_source', item_id=source.id) }}"
-                    hx-confirm="Вы уверены? Это удалит все проиндексированные документы этого источника и запустит обход заново."
-                    hx-swap="none"
-                    title="Полная переиндексация">
-                <iconify-icon icon="lucide:rotate-ccw" class="text-warning size-4"></iconify-icon>
-                <span class="hidden sm:inline">Переиндексировать</span>
-            </button>
-            <button class="btn btn-sm btn-error btn-outline"
+<button class="btn btn-sm btn-error btn-outline"
                     hx-post="{{ url('actions', action='delete_source', item_id=source.id) }}"
                     hx-confirm="Вы уверены, что хотите удалить этот источник?"
                     hx-swap="none"

@@ -37,22 +37,38 @@ inlink_count        integer        — сколько страниц любог�
 `GET /page HTTP/1.1 If-None-Match: "abc123"` → сервер вернёт 304 если не изменилось.
 Это экономит трафик и время для больших страниц с нормально работающим сервером.
 
-Статусы страницы (расширить `status` enum):
+Статусы страницы (`status` enum):
 
-| Статус | Смысл |
-|--------|-------|
-| `pending` | URL известен, ещё не скачивался |
-| `ok` | скачан, проиндексирован |
-| `unchanged` | скачан, 304 Not Modified или хэш совпал |
-| `error_4xx` | 404/403/410 |
-| `error_5xx` | серверная ошибка |
-| `blocked` | 403/429 стабильно |
-| `redirect` | 301/302, нужно обновить canonical URL |
-| `no_content` | SPA / пустая / нетекстовая страница |
-| `excluded_robots` | запрещено robots.txt |
-| `excluded_rules` | исключено правилами источника |
-| `excluded_auth` | редирект на страницу авторизации |
-| `excluded_ignored` | помечено вручную оператором |
+| Статус             | Смысл                                                                   |
+| ------------------ | ----------------------------------------------------------------------- |
+| `added`            | URL добавлен в систему, требует индексации; использовался как сигнал    |
+|                    | переиндексации при смене модели эмбеддингов. Заменяется `index_status`  |
+| `pending`          | URL известен, ещё не скачивался                                         |
+| `ok`               | скачан, содержимое актуально                                            |
+| `indexed`          | скачан и успешно проиндексирован в embeddings; legacy-статус,           |
+|                    | функционально эквивалентен `ok` + `index_status = 'indexed'`            |
+| `unchanged`        | скачан, 304 Not Modified или хэш совпал                                 |
+| `error_4xx`        | 404/403/410                                                             |
+| `error_5xx`        | серверная ошибка                                                        |
+| `blocked`          | 403/429 стабильно                                                       |
+| `redirect`         | 301/302, нужно обновить canonical URL                                   |
+| `no_content`       | SPA / пустая / нетекстовая страница                                     |
+| `excluded_robots`  | запрещено robots.txt                                                    |
+| `excluded_rules`   | исключено правилами источника                                           |
+| `excluded_auth`    | редирект на страницу авторизации                                        |
+| `excluded_ignored` | помечено вручную оператором                                             |
+
+Поле `index_status` (String, не enum) отражает прогресс embedder-пайплайна независимо от `status`:
+
+| Значение    | Смысл                                              |
+| ----------- | -------------------------------------------------- |
+| `null`      | страница не стоит в очереди на индексацию          |
+| `queued`    | поставлена в очередь embedder (заменяет `added`)   |
+| `indexing`  | embedder сейчас обрабатывает                       |
+| `indexed`   | успешно проиндексировано                           |
+| `failed`    | ошибка индексации                                  |
+
+Переход: `null → queued → indexing → indexed / failed`.
 
 Страницы со статусом `excluded_*` или `error_4xx` (устойчиво):
 - Немедленно исключаются из поиска: их чанки помечаются как неактивные (или удаляются)
@@ -376,14 +392,14 @@ User-agent кравлера берётся из `config.yaml` (ключ `crawler
 
 Полный перечень случаев:
 
-| Причина | Статус | Как определяется |
-|---------|--------|-----------------|
-| Запрещено robots.txt | `excluded_robots` | Scrapy автоматически |
-| Редирект на авторизацию | `excluded_auth` | Паттерны URL редиректа |
-| Правила источника (CSS/XPath/regex/param) | `excluded_rules` | SourceConfig.rules при совпадении URL или содержимого |
-| Вручную оператором | `excluded_ignored` | `is_ignored = True` |
-| SPA / пустой контент | `no_content` | `extract_url_document` вернул пустой markdown |
-| Стабильно 404 + нет inlinks | удаляется | Задача-уборщик |
+| Причина                                   | Статус             | Как определяется                                      |
+| ----------------------------------------- | ------------------ | ----------------------------------------------------- |
+| Запрещено robots.txt                      | `excluded_robots`  | Scrapy автоматически                                  |
+| Редирект на авторизацию                   | `excluded_auth`    | Паттерны URL редиректа                                |
+| Правила источника (CSS/XPath/regex/param) | `excluded_rules`   | SourceConfig.rules при совпадении URL или содержимого |
+| Вручную оператором                        | `excluded_ignored` | `is_ignored = True`                                   |
+| SPA / пустой контент                      | `no_content`       | `extract_url_document` вернул пустой markdown         |
+| Стабильно 404 + нет inlinks               | удаляется          | Задача-уборщик                                        |
 
 При назначении любого `excluded_*` статуса:
 - Чанки страницы деактивируются немедленно (или удаляются)
@@ -474,16 +490,16 @@ AutoThrottle автоматически замедляется при задер
 
 ### Список задач
 
-| Задача | Очередь | Триггер |
-|--------|---------|---------|
-| `crawl_source_task(source_id)` | crawler | schedule_crawl_task или вручную |
-| `schedule_crawl_task` | crawler | Celery Beat каждый час |
-| `sitemap_sync_task(source_id)` | crawler | Celery Beat несколько раз в день |
-| `update_inlink_counts_task(source_id)` | crawler | После crawl_source_task |
-| `cleanup_orphans_task(source_id)` | crawler | После update_inlink_counts_task |
-| `schedule_index_page(page_id)` | embedder | После изменения Page.content |
-| `refresh_project_index` | embedder | После crawl_source_task при наличии изменений |
-| `rebuild_boilerplate_index(source_id)` | embedder | После полного кравла |
+| Задача                                 | Очередь  | Триггер                                       |
+| -------------------------------------- | -------- | --------------------------------------------- |
+| `crawl_source_task(source_id)`         | crawler  | schedule_crawl_task или вручную               |
+| `schedule_crawl_task`                  | crawler  | Celery Beat каждый час                        |
+| `sitemap_sync_task(source_id)`         | crawler  | Celery Beat несколько раз в день              |
+| `update_inlink_counts_task(source_id)` | crawler  | После crawl_source_task                       |
+| `cleanup_orphans_task(source_id)`      | crawler  | После update_inlink_counts_task               |
+| `schedule_index_page(page_id)`         | embedder | После изменения Page.content                  |
+| `refresh_project_index`                | embedder | После crawl_source_task при наличии изменений |
+| `rebuild_boilerplate_index(source_id)` | embedder | После полного кравла                          |
 
 Цепочка выполнения:
 ```
