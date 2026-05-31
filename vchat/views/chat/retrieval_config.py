@@ -24,3 +24,8 @@ RERANK_TABLE_MODE_BONUS: dict[str, float] = {
 # Penalty for summary/section_summary chunks with zero lexical term overlap.
 # Prevents low-relevance summaries from surviving purely on cross-encoder score.
 RERANK_SUMMARY_ZERO_OVERLAP_PENALTY = 0.12
+
+# Drop whole documents whose best rerank score is far below the best document
+# for the current query. This prevents weak "title-only" matches from leaking
+# into the final citations block and context.
+RERANK_DOC_MIN_RATIO_TO_BEST = 0.55

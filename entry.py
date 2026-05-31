@@ -112,7 +112,7 @@ if args.model:
     embedding_model_id = config["embedding_model_id"]
     embedding_model_dir = config["embedding_model_dir"]
     reranker_model_id = config.get(
-        "reranker_model_id", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+        "reranker_model_id", "BAAI/bge-reranker-v2-m3"
     )
 
     logging.info("Downloading embedding model %s", embedding_model_id)

@@ -41,7 +41,7 @@ CONTEXT_SAFETY_MARGIN = 1024
 RERANK_LIMIT = 48
 RRF_K = 60
 RERANK_MODEL = cfg.get(
-    "reranker_model_id", "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+    "reranker_model_id", "BAAI/bge-reranker-v2-m3"
 )
 
 SNIPPET_INJECTION_PATTERNS = re.compile(
@@ -812,6 +812,37 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
     return out
 
 
+def filter_snippets_by_document_relevance(snippets: list[Snippet]) -> list[Snippet]:
+    if len(snippets) <= 1:
+        return snippets
+
+    doc_best_scores: dict[tuple[Any, ...], float] = {}
+    for snippet in snippets:
+        doc_key = (snippet.document_id, snippet.uri, snippet.title)
+        score = float(snippet.rerank_score or 0.0)
+        best = doc_best_scores.get(doc_key)
+        if best is None or score > best:
+            doc_best_scores[doc_key] = score
+
+    if not doc_best_scores:
+        return snippets
+
+    best_score = max(doc_best_scores.values())
+    if best_score <= 0:
+        return snippets
+
+    min_doc_score = best_score * rcnf.RERANK_DOC_MIN_RATIO_TO_BEST
+    allowed_docs = {
+        doc_key for doc_key, score in doc_best_scores.items() if score >= min_doc_score
+    }
+    filtered = [
+        snippet
+        for snippet in snippets
+        if (snippet.document_id, snippet.uri, snippet.title) in allowed_docs
+    ]
+    return filtered or snippets
+
+
 def trim_messages(
     messages: list[Msg],
     provider: BaseAIProvider | None = None,
@@ -1030,6 +1061,7 @@ async def get_context(
             )
         )
     snippets = crossrerank(prompt, snippets)
+    snippets = filter_snippets_by_document_relevance(snippets)
 
     policy, coverage = _build_policy_and_coverage(prompt, snippets)
     policy_msg = Msg(

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Демо интеграции виджета — vchat</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page-bg: #f7f4ee;
+      --card-bg: #fffdf8;
+      --text: #1f1a17;
+      --muted: #6b625b;
+      --border: rgba(31, 26, 23, 0.12);
+      --accent: #1f1a17;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Georgia", "Times New Roman", serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(174, 137, 92, 0.18), transparent 32%),
+        linear-gradient(180deg, #fbf8f2 0%, var(--page-bg) 100%);
+    }
+
+    .page {
+      width: min(960px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 56px 0 96px;
+    }
+
+    .hero {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(31, 26, 23, 0.08);
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      font: 600 13px/1.2 Arial, sans-serif;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0 0 20px;
+      font-size: clamp(2.4rem, 6vw, 4.5rem);
+      line-height: 0.95;
+      font-weight: 700;
+    }
+
+    .lead,
+    .content p,
+    .content li {
+      font: 400 18px/1.7 Arial, sans-serif;
+      color: var(--muted);
+    }
+
+    .content {
+      display: grid;
+      gap: 24px;
+      margin-top: 32px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .content section {
+      padding: 24px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.72);
+      backdrop-filter: blur(6px);
+    }
+
+    .content h2 {
+      margin: 0 0 12px;
+      font-size: 1.1rem;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(31, 26, 23, 0.06);
+      color: var(--accent);
+      font-family: "SFMono-Regular", Menlo, monospace;
+      font-size: 0.95em;
+    }
+
+    @media (max-width: 720px) {
+      .page {
+        width: min(100% - 20px, 960px);
+        padding: 24px 0 80px;
+      }
+
+      .hero {
+        padding: 24px;
+        border-radius: 20px;
+      }
+
+      .content {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <article class="hero">
+      <p class="eyebrow">Demo Page</p>
+      <h1>Демо-страница с интегрированным виджетом vchat</h1>
+      <p class="lead">
+        Это пример обычной публичной страницы, на которую встроен чат-виджет.
+        Подключение выполнено по тем же принципам, что и на странице интеграции:
+        скрипт загружается с этого же домена через <code>/widget</code>, а интерфейс
+        монтируется в контейнер <code>#vchat-chat</code>.
+      </p>
+
+      <div class="content">
+        <section>
+          <h2>Что здесь показано</h2>
+          <p>
+            На странице размещён произвольный контент, а сам виджет открывается
+            отдельной кнопкой в правом нижнем углу. Это удобно для проверки
+            внешнего встраивания без доступа к админке.
+          </p>
+        </section>
+
+        <section>
+          <h2>Принцип подключения</h2>
+          <ul>
+            <li>Скрипт подключается с текущего домена: <code>/widget</code>.</li>
+            <li>Контейнер <code>div#vchat-chat</code> обязателен.</li>
+            <li>Атрибуты <code>data-user-*</code> можно передавать при необходимости.</li>
+          </ul>
+        </section>
+      </div>
+    </article>
+  </main>
+
+  <div
+    id="vchat-chat"
+    data-user-uid="demo-user"
+    data-user-name="Demo User"
+    data-user-email="demo@local.vchat.com"
+  ></div>
+  <script src="/widget" defer></script>
+</body>
+</html>

@@ -1756,7 +1756,7 @@ async def project_chat(request):
         "current_ai_model": model_obj.id,
         "current_ai_model_label": model_obj.label,
         "current_ai_provider_label": provider_obj.title,
-        "allow_ai_switch": True,
+        "allow_ai_switch": False,
         "ai_settings_url": str(ai_settings_url),
         "initial_messages": initial_messages,
         "signed_chat_id": signed_chat_id,

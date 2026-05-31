@@ -28,3 +28,8 @@ async def widget_js(request):
     return aiohttp_jinja2.render_template(
         "js/widget.js", request, {"widget_chat_path": widget_chat_path}
     )
+
+
+@aiohttp_jinja2.template("demo.html")
+async def demo_page(request):
+    return {}

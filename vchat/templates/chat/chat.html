@@ -21,15 +21,8 @@
   <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
     <div class="flex-1 gap-2 items-center">
       <div class="flex flex-col">
-        <span class="font-bold text-sm leading-tight">{{ project.title }}</span>
-        <span class="text-xs opacity-60 leading-tight">{{ agent_name if agent_name else _('Виртуальный ассистент') }}</span>
+        <span class="font-bold text-sm leading-tight">{{ agent_name if agent_name else _('Виртуальный ассистент') }}</span>
       </div>
-    </div>
-    <div class="flex-none flex flex-col items-end gap-1 text-xs">
-      {% if allow_ai_switch %}
-      <span class="font-semibold uppercase tracking-wide opacity-60">{{ _('Модель') }}</span>
-      {% include 'chat/includes/ai_settings.html' %}
-      {% endif %}
     </div>
     <div class="flex-none"></div>
   </header>
@@ -91,13 +84,7 @@
     const formEl = document.getElementById('composer');
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
-    const aiSettingsUrl = {{ ai_settings_url| tojson | safe }};
-    const aiOptions = {{ ai_provider_options| tojson | safe }};
-    const allowAiSwitch = {{ allow_ai_switch| tojson }};
     const csrfToken = {{ csrf_token() | tojson | safe }};
-    const aiProviderSelect = document.getElementById('chat-provider-select');
-    const aiModelSelect = document.getElementById('chat-model-select');
-    const aiStatusEl = document.getElementById('ai-settings-status');
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
     const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
 

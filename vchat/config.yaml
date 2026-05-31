@@ -56,7 +56,7 @@ openai_guardrails_enabled: true
 guardrails_ru_pii_enabled: true
 embedding_model_id: "deepvk/USER-bge-m3"
 embedding_model_dir: "data/models/user-bge-m3"
-reranker_model_id: "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+reranker_model_id: "BAAI/bge-reranker-v2-m3"
 # Embedding / pgvector dimension for stored vectors and similarity queries.
 vec_dim: 1024
 embedding_max_seq_length: 8192

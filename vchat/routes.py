@@ -19,6 +19,7 @@ def setup_routes(app: web.Application) -> None:
 
     # frontend
     add("GET", "/check", frontend.healthcheck)
+    add("GET", "/demo", frontend.demo_page, name="demo_page")
     add("GET", "/widget", frontend.widget_js, name="widget")
     add("GET", "/js", frontend.widget_js, name="widget_js")
     add("*", "/robots.txt", frontend.robots_txt)
