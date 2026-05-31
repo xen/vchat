@@ -91,7 +91,13 @@ __all__ = [
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
 
 # Page status grouping for progress bars
-_EXCLUDED_STATUSES = ["excluded_robots", "excluded_rules", "excluded_auth", "excluded_ignored"]
+_EXCLUDED_STATUSES = [
+    "excluded_robots",
+    "excluded_rules",
+    "excluded_auth",
+    "excluded_ignored",
+    "low_content",
+]
 _ERROR_STATUSES = ["error_4xx", "error_5xx", "blocked", "no_content", "redirect"]
 _PENDING_STATUSES = ["added", "pending"]
 
@@ -173,6 +179,19 @@ def with_default_ignored_param_rules(
 
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9\-_]*$")
+_HTTP_MESSAGE_RE = re.compile(r"^Source returned HTTP (\d+)\.$")
+_LOW_CONTENT_MESSAGE_RE = re.compile(
+    r"^Extracted content is too small to index safely \((\d+) words, (\d+) chars\)\.$"
+)
+_REASON_TRANSLATIONS = {
+    "http_4xx": "Источник вернул клиентскую ошибку HTTP.",
+    "http_5xx": "Источник вернул серверную ошибку HTTP.",
+    "extraction_failed": "Извлечение содержимого завершилось ошибкой.",
+    "empty_extracted_content": "После извлечения не осталось полезного текста.",
+    "excluded_auth_redirect": "Запрос был перенаправлен на страницу авторизации.",
+    "pipeline_processing_failed": "Ошибка произошла при сохранении или постановке документа в очередь индексации.",
+    "low_content": "Извлеченного содержимого слишком мало для индексации.",
+}
 
 
 def _is_slug_title(title: str | None) -> bool:
@@ -202,6 +221,109 @@ def _display_document_title(title: str | None, uri: str | None) -> str:
             return parsed.netloc
 
     return "Без названия"
+
+
+def _localize_document_reason(reason: str) -> str:
+    return _REASON_TRANSLATIONS.get(reason, reason)
+
+
+def _localize_document_message(message: str) -> str:
+    if match := _HTTP_MESSAGE_RE.match(message):
+        return f"Источник вернул HTTP {match.group(1)}."
+    if match := _LOW_CONTENT_MESSAGE_RE.match(message):
+        words, chars = match.groups()
+        return (
+            "Извлеченного содержимого слишком мало для безопасной индексации "
+            f"({words} слов, {chars} символов)."
+        )
+
+    exact = {
+        "Request redirected to an auth/login page.": "Запрос был перенаправлен на страницу авторизации.",
+        "Document extraction failed after the page was downloaded.": "Страница успешно загрузилась, но извлечение содержимого завершилось ошибкой.",
+        "No useful text remained after extraction.": "После извлечения не осталось полезного текста.",
+        "Crawler pipeline failed while saving or scheduling the document.": "Ошибка произошла при сохранении документа или постановке его в очередь индексации.",
+    }
+    return exact.get(message, message)
+
+
+def _document_status_explanation(document: Page) -> dict[str, Any] | None:
+    raw_meta = document.meta if isinstance(document.meta, dict) else {}
+    status = (document.status or "").strip()
+    http_status = document.http_status
+
+    summary: str | None = None
+    if status == "error_4xx":
+        summary = (
+            f"Источник вернул HTTP {http_status}."
+            if http_status
+            else "Источник вернул клиентскую ошибку (4xx)."
+        )
+    elif status == "error_5xx":
+        if http_status and http_status >= 500:
+            summary = f"Источник вернул серверную ошибку HTTP {http_status}."
+        elif http_status:
+            summary = (
+                f"Источник успешно ответил HTTP {http_status}, "
+                "но ошибка произошла уже во внутреннем пайплайне извлечения или обработки."
+            )
+        else:
+            summary = "Обработка страницы завершилась внутренней ошибкой."
+    elif status == "blocked":
+        summary = "Страница была заблокирована во время обхода."
+    elif status == "no_content":
+        summary = "Страница загрузилась, но после очистки из нее не удалось извлечь полезный текст."
+    elif status == "low_content":
+        summary = "Страница распарсилась, но содержимого слишком мало для индексации и поиска."
+    elif status == "redirect":
+        summary = "Исходный URL был помечен как редирект и исключен из индексации."
+    elif status == "excluded_auth":
+        summary = "Страница ведет на авторизацию и не индексируется."
+
+    detail_map = {
+        "error": "Ошибка",
+        "message": "Сообщение",
+        "reason": "Причина",
+        "exception_class": "Тип исключения",
+        "final_url": "Итоговый URL",
+        "redirect_url": "URL редиректа",
+    }
+    raw_details = []
+    for key, label in detail_map.items():
+        value = raw_meta.get(key)
+        if isinstance(value, str) and value.strip():
+            display_value = value.strip()
+            if key == "reason":
+                raw_details.append(
+                    {"label": label, "value": _localize_document_reason(display_value)}
+                )
+                raw_details.append({"label": "Код причины", "value": display_value})
+                continue
+            if key == "message":
+                display_value = _localize_document_message(display_value)
+            raw_details.append({"label": label, "value": display_value})
+
+    extraction = raw_meta.get("extraction")
+    if isinstance(extraction, dict):
+        reason = extraction.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            raw_details.append({"label": "Extraction reason", "value": reason.strip()})
+
+    has_saved_content = bool((document.content or "").strip())
+    content_note = None
+    if status in _ERROR_STATUSES and has_saved_content:
+        content_note = (
+            "Ниже показано последнее сохраненное содержимое страницы. "
+            "Оно могло остаться от предыдущего успешного прохода и не объясняет текущую ошибку."
+        )
+
+    if not summary and not raw_details and not content_note:
+        return None
+
+    return {
+        "summary": summary,
+        "raw_details": raw_details,
+        "content_note": content_note,
+    }
 
 
 async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
@@ -238,6 +360,8 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     return {
         "project": _project_context(request),
         "document": document,
+        "document_display_title": _display_document_title(document.title, document.uri),
+        "document_status_explanation": _document_status_explanation(document),
         "document_structure": structure,
         "document_outline": outline,
         "document_extraction": extraction,

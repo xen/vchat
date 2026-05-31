@@ -4,13 +4,35 @@
             <div class="card-body gap-3">
                 <div class="flex items-start justify-between gap-3">
                     <div>
-                        <h3 class="card-title text-base">{{ document.title or 'Без названия' }}</h3>
+                        <h3 class="card-title text-base">{{ document_display_title }}</h3>
                         {% if document.uri %}
                         <p class="text-xs opacity-70 break-all">{{ document.uri }}</p>
                         {% endif %}
                     </div>
                     <div class="badge badge-outline">{{ document.status }}</div>
                 </div>
+
+                {% if document_status_explanation %}
+                <div class="rounded-box border border-warning/30 bg-warning/10 p-4 text-sm">
+                    <div class="font-medium">Расшифровка статуса</div>
+                    {% if document_status_explanation.summary %}
+                    <p class="mt-1">{{ document_status_explanation.summary }}</p>
+                    {% endif %}
+                    {% if document_status_explanation.content_note %}
+                    <p class="mt-2 opacity-80">{{ document_status_explanation.content_note }}</p>
+                    {% endif %}
+                    {% if document_status_explanation.raw_details %}
+                    <dl class="mt-3 grid gap-2">
+                        {% for item in document_status_explanation.raw_details %}
+                        <div>
+                            <dt class="text-xs opacity-60">{{ item.label }}</dt>
+                            <dd class="whitespace-pre-wrap break-words font-mono text-xs mt-0.5">{{ item.value }}</dd>
+                        </div>
+                        {% endfor %}
+                    </dl>
+                    {% endif %}
+                </div>
+                {% endif %}
 
                 <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-sm">
                     <div class="rounded-box bg-base-100 p-3">

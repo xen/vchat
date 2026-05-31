@@ -5,6 +5,7 @@ Revises: c1d2e3f4a5b6
 Create Date: 2026-05-31
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -18,10 +19,6 @@ depends_on = None
 
 def upgrade():
     bind = op.get_bind()
-
-    # 1. Truncate chunk and document tables
-    bind.execute(sa.text("TRUNCATE TABLE chunk CASCADE"))
-    bind.execute(sa.text("TRUNCATE TABLE document CASCADE"))
 
     # 2. Add new status enum values
     new_status_values = [
@@ -39,9 +36,7 @@ def upgrade():
         "excluded_ignored",
     ]
     for val in new_status_values:
-        bind.execute(
-            sa.text(f"ALTER TYPE status ADD VALUE IF NOT EXISTS '{val}'")
-        )
+        bind.execute(sa.text(f"ALTER TYPE status ADD VALUE IF NOT EXISTS '{val}'"))
 
     # 3. Add new columns to document
     op.add_column("document", sa.Column("http_status", sa.Integer(), nullable=True))

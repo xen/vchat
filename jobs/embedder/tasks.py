@@ -643,6 +643,10 @@ def fetch_page_context(session: Session, page_id: int):
         logging.info("Page %s is ignored, skipping", page_id)
         return None
 
+    if doc.status == "low_content":
+        logging.info("Page %s is low_content, skipping indexing", page_id)
+        return None
+
     return doc
 
 
@@ -1158,6 +1162,7 @@ def index_project():
             stmt = (
                 select(Page.id)
                 .where(Page.is_ignored == False)
+                .where(Page.status != "low_content")
                 .where(Page.content.isnot(None))
                 .where(Page.content != "")
             )
@@ -1195,6 +1200,7 @@ def refresh_project_index():
                     sa.select(Page.id)
                     .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
                     .where(Page.is_ignored == False)
+                    .where(Page.status != "low_content")
                     .where(Page.content.isnot(None))
                     .where(Page.content != "")
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
@@ -1208,7 +1214,11 @@ def refresh_project_index():
                 schedule_index_document(doc_id)
 
             ignored_doc_ids = (
-                session.execute(sa.select(Page.id).where(Page.is_ignored == True))
+                session.execute(
+                    sa.select(Page.id).where(
+                        sa.or_(Page.is_ignored == True, Page.status == "low_content")
+                    )
+                )
                 .scalars()
                 .all()
             )
@@ -1278,6 +1288,7 @@ def refresh_source_index(source_id: int):
                     .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
                     .where(Page.source_id == source_id)
                     .where(Page.is_ignored == False)
+                    .where(Page.status != "low_content")
                     .where(Page.content.isnot(None))
                     .where(Page.content != "")
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
@@ -1297,7 +1308,8 @@ def refresh_source_index(source_id: int):
             ignored_doc_ids = (
                 session.execute(
                     sa.select(Page.id).where(
-                        Page.source_id == source_id, Page.is_ignored == True
+                        Page.source_id == source_id,
+                        sa.or_(Page.is_ignored == True, Page.status == "low_content"),
                     )
                 )
                 .scalars()

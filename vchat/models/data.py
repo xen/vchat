@@ -126,6 +126,7 @@ status_enum = ENUM(
     "blocked",
     "redirect",
     "no_content",
+    "low_content",
     "excluded_robots",
     "excluded_rules",
     "excluded_auth",

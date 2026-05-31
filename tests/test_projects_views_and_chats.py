@@ -196,3 +196,30 @@ async def test_history_detail_404_when_chat_missing() -> None:
     raw = chats_views.history_detail.__wrapped__.__wrapped__.__wrapped__
     with pytest.raises(web.HTTPNotFound):
         await raw(_Req(db=_Db(), match_info={"chat_id": "x"}))
+
+
+def test_document_status_explanation_localizes_reason_and_message() -> None:
+    document = SimpleNamespace(
+        status="error_5xx",
+        http_status=200,
+        content="stored content",
+        meta={
+            "reason": "extraction_failed",
+            "message": "Document extraction failed after the page was downloaded.",
+            "error": "boom",
+            "exception_class": "ValueError",
+        },
+    )
+
+    payload = project_views._document_status_explanation(document)
+
+    assert payload is not None
+    detail_values = {item["label"]: item["value"] for item in payload["raw_details"]}
+    assert detail_values["Причина"] == "Извлечение содержимого завершилось ошибкой."
+    assert detail_values["Код причины"] == "extraction_failed"
+    assert (
+        detail_values["Сообщение"]
+        == "Страница успешно загрузилась, но извлечение содержимого завершилось ошибкой."
+    )
+    assert detail_values["Ошибка"] == "boom"
+    assert detail_values["Тип исключения"] == "ValueError"

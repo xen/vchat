@@ -136,6 +136,27 @@ class TestComputeAdaptiveInterval:
 
 
 # ---------------------------------------------------------------------------
+# TestLowContentDetection
+# ---------------------------------------------------------------------------
+
+class TestLowContentDetection:
+    def setup_method(self):
+        from jobs.crawler.pipelines import is_low_content_page
+
+        self.is_low_content_page = is_low_content_page
+
+    def test_low_content_page_detected_for_short_page(self):
+        meta = {"extraction": {"word_count": 19}}
+        content = "# Title\n\nshort text"
+        assert self.is_low_content_page(content, meta) is True
+
+    def test_normal_page_not_marked_low_content(self):
+        meta = {"extraction": {"word_count": 120}}
+        content = "x" * 500
+        assert self.is_low_content_page(content, meta) is False
+
+
+# ---------------------------------------------------------------------------
 # TestHubPageDetection
 # ---------------------------------------------------------------------------
 
@@ -356,6 +377,9 @@ class TestPageStatusOnErrors:
 
             assert page_mock.status == "error_4xx"
             assert page_mock.http_status == 404
+            assert page_mock.meta["reason"] == "http_4xx"
+            assert page_mock.meta["message"] == "Source returned HTTP 404."
+            assert page_mock.meta["error"] == "HTTP 404"
 
     def test_repeated_4xx_increases_check_interval(self):
         """After 2+ errors the check_interval_days should be set to 90."""
@@ -400,6 +424,80 @@ class TestPageStatusOnErrors:
             save_page_status(engine, "https://example.com/error", 1, "error_5xx", 500, None, logger)
 
             assert page_mock.status == "error_5xx"
+
+    def test_save_page_status_stores_reason_details(self):
+        from jobs.crawler.pipelines import save_page_status
+
+        with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
+            session = MagicMock()
+            session.__enter__ = lambda s: session
+            session.__exit__ = MagicMock(return_value=False)
+
+            page_mock = MagicMock()
+            page_mock.error_count = 0
+            page_mock.meta = {"other": "value"}
+            session.execute.return_value.scalar_one_or_none.return_value = page_mock
+            mock_session_cls.return_value = session
+
+            logger = MagicMock()
+            engine = MagicMock()
+
+            save_page_status(
+                engine,
+                "https://example.com/error",
+                1,
+                "error_5xx",
+                200,
+                None,
+                logger,
+                reason="extraction_failed",
+                message="Document extraction failed after the page was downloaded.",
+                error="boom",
+                exception_class="ValueError",
+            )
+
+            assert page_mock.meta["reason"] == "extraction_failed"
+            assert (
+                page_mock.meta["message"]
+                == "Document extraction failed after the page was downloaded."
+            )
+            assert page_mock.meta["error"] == "boom"
+            assert page_mock.meta["exception_class"] == "ValueError"
+            assert page_mock.meta["other"] == "value"
+
+    def test_save_page_status_clears_stale_reason_details(self):
+        from jobs.crawler.pipelines import save_page_status
+
+        with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
+            session = MagicMock()
+            session.__enter__ = lambda s: session
+            session.__exit__ = MagicMock(return_value=False)
+
+            page_mock = MagicMock()
+            page_mock.error_count = 1
+            page_mock.meta = {
+                "reason": "old_reason",
+                "message": "old message",
+                "error": "old error",
+                "exception_class": "RuntimeError",
+            }
+            session.execute.return_value.scalar_one_or_none.return_value = page_mock
+            mock_session_cls.return_value = session
+
+            save_page_status(
+                MagicMock(),
+                "https://example.com/page",
+                1,
+                "unchanged",
+                200,
+                None,
+                MagicMock(),
+            )
+
+            assert "reason" not in page_mock.meta
+            assert "message" not in page_mock.meta
+            assert "error" not in page_mock.meta
+            assert "exception_class" not in page_mock.meta
 
 
 # ---------------------------------------------------------------------------
@@ -454,3 +552,19 @@ class TestIndexStatus:
         from vchat.models.data import Page
         col = Page.__table__.c["status"]
         assert col.default.arg == "pending"
+
+
+class TestEmbedderSkipsLowContent:
+    def test_fetch_page_context_skips_low_content_pages(self):
+        from jobs.embedder.tasks import fetch_page_context
+
+        page = SimpleNamespace(
+            id=1,
+            content="short content",
+            is_ignored=False,
+            status="low_content",
+        )
+        session = MagicMock()
+        session.execute.return_value.first.return_value = (page,)
+
+        assert fetch_page_context(session, 1) is None
