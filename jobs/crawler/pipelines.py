@@ -16,6 +16,7 @@ from vchat.document_indexing import (
 )
 from vchat.document_types import guess_document_type
 from vchat.models.data import Chunk, CrawlRun, Page
+from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 from jobs.embedder.tasks import schedule_index_document
 
@@ -86,13 +87,13 @@ def is_low_content_page(content: str, extracted_meta: dict[str, object]) -> bool
     return words <= LOW_CONTENT_MAX_WORDS and len(stripped) <= LOW_CONTENT_MAX_CHARS
 
 
-def _clear_error_meta(meta: dict) -> dict:
+def clear_error_meta(meta: dict) -> dict:
     for key in ERROR_META_KEYS:
         meta.pop(key, None)
     return meta
 
 
-def _set_error_meta(
+def set_error_meta(
     meta: dict,
     *,
     reason: str,
@@ -100,7 +101,7 @@ def _set_error_meta(
     error: str | None = None,
     exception_class: str | None = None,
 ) -> dict:
-    _clear_error_meta(meta)
+    clear_error_meta(meta)
     meta["reason"] = reason
     if message:
         meta["message"] = message
@@ -148,7 +149,8 @@ class DatabasePipeline:
                 self.engine,
                 url,
                 source_id,
-                "excluded_auth",
+                PageStatus.crawler,
+                PageStatusError.excluded_auth,
                 http_status,
                 etag,
                 self.logger,
@@ -169,8 +171,14 @@ class DatabasePipeline:
         # Handle 5xx errors
         if http_status and http_status >= 500:
             save_page_status(
-                self.engine, url, source_id, "error_5xx", http_status, etag, self.logger
-                ,
+                self.engine,
+                url,
+                source_id,
+                PageStatus.crawler,
+                PageStatusError.http_5xx,
+                http_status,
+                etag,
+                self.logger,
                 reason="http_5xx",
                 message=f"Source returned HTTP {http_status}.",
                 error=f"HTTP {http_status}",
@@ -193,7 +201,8 @@ class DatabasePipeline:
                 self.engine,
                 url,
                 source_id,
-                "error_5xx",
+                PageStatus.crawler,
+                PageStatusError.extraction_failed,
                 http_status,
                 etag,
                 self.logger,
@@ -210,7 +219,8 @@ class DatabasePipeline:
                 self.engine,
                 url,
                 source_id,
-                "no_content",
+                PageStatus.crawler,
+                PageStatusError.no_content,
                 http_status,
                 etag,
                 self.logger,
@@ -232,8 +242,8 @@ class DatabasePipeline:
                     page = Page(source_id=source_id, uri=url)
                     session.add(page)
 
-                if page.is_ignored:
-                    page.status = "excluded_ignored"
+                if page.status_error == PageStatusError.excluded_ignored:
+                    page.status = PageStatus.crawler
                     page.content = ""
                     page.title = ""
                     page.length = 0
@@ -274,7 +284,7 @@ class DatabasePipeline:
                 item_meta = item.get("meta", {})
                 meta = dict(page.meta or {})
                 meta.pop("force_reprocess_once", None)
-                _clear_error_meta(meta)
+                clear_error_meta(meta)
                 meta.update(extracted_meta)
                 if item_meta:
                     meta.update(item_meta)
@@ -286,7 +296,8 @@ class DatabasePipeline:
                     meta["content_type"] = content_type
 
                 page.content = markdown_content
-                page.status = "ok" if content_changed else "unchanged"
+                page.status = PageStatus.parsing
+                page.status_error = None
                 page.hash_value = markdown_content
                 page.language = ""
                 page.length = len(markdown_content)
@@ -310,7 +321,7 @@ class DatabasePipeline:
                     word_count = None
                     if isinstance(extraction, dict):
                         word_count = extraction.get("word_count")
-                    _set_error_meta(
+                    set_error_meta(
                         meta,
                         reason="low_content",
                         message=(
@@ -318,12 +329,12 @@ class DatabasePipeline:
                             f"({word_count or 0} words, {len(markdown_content.strip())} chars)."
                         ),
                     )
-                    page.status = "low_content"
-                    page.index_status = None
+                    page.status = PageStatus.crawler
+                    page.status_error = PageStatusError.low_content
                     if page.id is not None:
                         session.execute(delete(Chunk).where(Chunk.page_id == page.id))
                 else:
-                    _clear_error_meta(meta)
+                    clear_error_meta(meta)
                 page.meta = meta
 
                 if normalized_title:
@@ -357,10 +368,10 @@ class DatabasePipeline:
                     spider.logger.info(
                         "Skipping chunk refresh for %s: content unchanged", url
                     )
-                    page.index_status = "indexed"
+                    page.status = PageStatus.ready
+                    page.status_error = None
                     session.commit()
                 else:
-                    page.index_status = "queued"
                     session.commit()
                     try:
                         schedule_index_document(page.id)
@@ -377,7 +388,8 @@ class DatabasePipeline:
                 self.engine,
                 url,
                 source_id,
-                "error_5xx",
+                PageStatus.crawler,
+                PageStatusError.extraction_failed,
                 http_status,
                 etag,
                 self.logger,
@@ -413,7 +425,8 @@ def save_page_status(
     engine,
     url: str,
     source_id: int,
-    status: str,
+    status: PageStatus,
+    status_error: PageStatusError | None,
     http_status: int | None,
     etag: str | None,
     logger,
@@ -433,13 +446,14 @@ def save_page_status(
                 session.add(page)
 
             page.status = status
+            page.status_error = status_error
             page.last_crawled_at = datetime.now(timezone.utc)
             if http_status:
                 page.http_status = http_status
 
-            if status in ("error_4xx", "error_5xx", "blocked"):
+            if status_error in (PageStatusError.http_4xx, PageStatusError.http_5xx):
                 page.error_count = (page.error_count or 0) + 1
-                if status == "error_4xx" and (page.error_count or 0) >= 3:
+                if status_error == PageStatusError.http_4xx and (page.error_count or 0) >= 3:
                     page.check_interval_days = 90
             else:
                 page.error_count = 0
@@ -449,7 +463,7 @@ def save_page_status(
 
             meta = dict(page.meta or {})
             if reason:
-                _set_error_meta(
+                set_error_meta(
                     meta,
                     reason=reason,
                     message=message,
@@ -457,7 +471,7 @@ def save_page_status(
                     exception_class=exception_class,
                 )
             else:
-                _clear_error_meta(meta)
+                clear_error_meta(meta)
             page.meta = meta
 
             session.commit()
@@ -483,12 +497,13 @@ def handle_error_page(
             if etag:
                 page.last_etag = etag
 
-            page.status = "error_4xx"
+            page.status = PageStatus.crawler
+            page.status_error = PageStatusError.http_4xx
             if page.error_count >= 2:
                 page.check_interval_days = 90
 
             meta = dict(page.meta or {})
-            _set_error_meta(
+            set_error_meta(
                 meta,
                 reason="http_4xx",
                 message=f"Source returned HTTP {http_status}.",

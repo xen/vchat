@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, Created, Updated, generate_uuid7
 
 from .source_config import SourceConfig
+from vchat.page_status import PageStatus
 
 
 class Chat(Base, Created, Updated):
@@ -116,21 +117,9 @@ class Source(Base, Created, Updated):
 
 
 status_enum = ENUM(
-    "added",
-    "indexed",
-    "pending",
-    "unchanged",
-    "ok",
-    "error_4xx",
-    "error_5xx",
-    "blocked",
-    "redirect",
-    "no_content",
-    "low_content",
-    "excluded_robots",
-    "excluded_rules",
-    "excluded_auth",
-    "excluded_ignored",
+    "crawler",
+    "parsing",
+    "ready",
     name="status",
     create_type=False,
 )
@@ -157,10 +146,12 @@ class Page(Base, Created, Updated):
     )
     meta: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     status: Mapped[str] = mapped_column(
-        status_enum, nullable=False, default="pending", index=True
+        status_enum, nullable=False, default=PageStatus.crawler, index=True
+    )
+    status_error: Mapped[str | None] = mapped_column(
+        sa.String(64), nullable=True, index=True
     )
     title: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    is_ignored: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
 
     # New crawler fields
     http_status: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
@@ -202,11 +193,6 @@ class Page(Base, Created, Updated):
         default=0,
         server_default=sa.text("0"),
     )
-    # Indexing pipeline progress: null → queued → indexing → indexed / failed
-    index_status: Mapped[str | None] = mapped_column(
-        sa.String(32), nullable=True, index=True
-    )
-
     @hybrid_property
     def hash_value(self) -> str:
         return self._hash

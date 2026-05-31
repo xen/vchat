@@ -9,7 +9,7 @@ from celery.schedules import crontab
 from datetime import datetime, time, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
-from urllib.parse import quote as urlquote, unquote, urlencode as urlencode_qs, urlparse
+from urllib.parse import unquote, urlencode as urlencode_qs, urlparse
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
@@ -43,7 +43,7 @@ from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg, Chunk, CrawlRun, Page, Sitemap, Source, User
+from vchat.models import Chat, ChatMsg, Chunk, Page, Sitemap, Source, User
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
@@ -59,6 +59,7 @@ from vchat.source_settings import (
     normalize_reindex_cron,
 )
 from vchat.settings import config
+from vchat.page_status import PageStatus, PageStatusError, STATUS_ERROR_DESCRIPTIONS
 from vchat.utils import admin_event, flash, login_required, meta
 
 from vchat.views.admin import forms as admin_forms
@@ -89,17 +90,6 @@ __all__ = [
 ]
 
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
-
-# Page status grouping for progress bars
-_EXCLUDED_STATUSES = [
-    "excluded_robots",
-    "excluded_rules",
-    "excluded_auth",
-    "excluded_ignored",
-    "low_content",
-]
-_ERROR_STATUSES = ["error_4xx", "error_5xx", "blocked", "no_content", "redirect"]
-_PENDING_STATUSES = ["added", "pending"]
 
 
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
@@ -179,19 +169,6 @@ def with_default_ignored_param_rules(
 
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9\-_]*$")
-_HTTP_MESSAGE_RE = re.compile(r"^Source returned HTTP (\d+)\.$")
-_LOW_CONTENT_MESSAGE_RE = re.compile(
-    r"^Extracted content is too small to index safely \((\d+) words, (\d+) chars\)\.$"
-)
-_REASON_TRANSLATIONS = {
-    "http_4xx": "Источник вернул клиентскую ошибку HTTP.",
-    "http_5xx": "Источник вернул серверную ошибку HTTP.",
-    "extraction_failed": "Извлечение содержимого завершилось ошибкой.",
-    "empty_extracted_content": "После извлечения не осталось полезного текста.",
-    "excluded_auth_redirect": "Запрос был перенаправлен на страницу авторизации.",
-    "pipeline_processing_failed": "Ошибка произошла при сохранении или постановке документа в очередь индексации.",
-    "low_content": "Извлеченного содержимого слишком мало для индексации.",
-}
 
 
 def _is_slug_title(title: str | None) -> bool:
@@ -223,107 +200,26 @@ def _display_document_title(title: str | None, uri: str | None) -> str:
     return "Без названия"
 
 
-def _localize_document_reason(reason: str) -> str:
-    return _REASON_TRANSLATIONS.get(reason, reason)
+def _document_pipeline_steps(document: Page) -> tuple[str, str | None, str | None]:
+    """Return (status, status_error, error_message) for the pipeline widget."""
+    status = document.status or PageStatus.crawler
+    status_error = document.status_error
+    meta = document.meta or {}
 
+    if not status_error:
+        return status, None, None
 
-def _localize_document_message(message: str) -> str:
-    if match := _HTTP_MESSAGE_RE.match(message):
-        return f"Источник вернул HTTP {match.group(1)}."
-    if match := _LOW_CONTENT_MESSAGE_RE.match(message):
-        words, chars = match.groups()
-        return (
-            "Извлеченного содержимого слишком мало для безопасной индексации "
-            f"({words} слов, {chars} символов)."
-        )
+    try:
+        err_enum = PageStatusError(status_error)
+        msg = STATUS_ERROR_DESCRIPTIONS.get(err_enum, status_error)
+    except ValueError:
+        msg = status_error
 
-    exact = {
-        "Request redirected to an auth/login page.": "Запрос был перенаправлен на страницу авторизации.",
-        "Document extraction failed after the page was downloaded.": "Страница успешно загрузилась, но извлечение содержимого завершилось ошибкой.",
-        "No useful text remained after extraction.": "После извлечения не осталось полезного текста.",
-        "Crawler pipeline failed while saving or scheduling the document.": "Ошибка произошла при сохранении документа или постановке его в очередь индексации.",
-    }
-    return exact.get(message, message)
+    detail = str(meta.get("error") or meta.get("message") or "").strip()
+    if detail and detail != msg:
+        msg = f"{msg}: {detail}"
 
-
-def _document_status_explanation(document: Page) -> dict[str, Any] | None:
-    raw_meta = document.meta if isinstance(document.meta, dict) else {}
-    status = (document.status or "").strip()
-    http_status = document.http_status
-
-    summary: str | None = None
-    if status == "error_4xx":
-        summary = (
-            f"Источник вернул HTTP {http_status}."
-            if http_status
-            else "Источник вернул клиентскую ошибку (4xx)."
-        )
-    elif status == "error_5xx":
-        if http_status and http_status >= 500:
-            summary = f"Источник вернул серверную ошибку HTTP {http_status}."
-        elif http_status:
-            summary = (
-                f"Источник успешно ответил HTTP {http_status}, "
-                "но ошибка произошла уже во внутреннем пайплайне извлечения или обработки."
-            )
-        else:
-            summary = "Обработка страницы завершилась внутренней ошибкой."
-    elif status == "blocked":
-        summary = "Страница была заблокирована во время обхода."
-    elif status == "no_content":
-        summary = "Страница загрузилась, но после очистки из нее не удалось извлечь полезный текст."
-    elif status == "low_content":
-        summary = "Страница распарсилась, но содержимого слишком мало для индексации и поиска."
-    elif status == "redirect":
-        summary = "Исходный URL был помечен как редирект и исключен из индексации."
-    elif status == "excluded_auth":
-        summary = "Страница ведет на авторизацию и не индексируется."
-
-    detail_map = {
-        "error": "Ошибка",
-        "message": "Сообщение",
-        "reason": "Причина",
-        "exception_class": "Тип исключения",
-        "final_url": "Итоговый URL",
-        "redirect_url": "URL редиректа",
-    }
-    raw_details = []
-    for key, label in detail_map.items():
-        value = raw_meta.get(key)
-        if isinstance(value, str) and value.strip():
-            display_value = value.strip()
-            if key == "reason":
-                raw_details.append(
-                    {"label": label, "value": _localize_document_reason(display_value)}
-                )
-                raw_details.append({"label": "Код причины", "value": display_value})
-                continue
-            if key == "message":
-                display_value = _localize_document_message(display_value)
-            raw_details.append({"label": label, "value": display_value})
-
-    extraction = raw_meta.get("extraction")
-    if isinstance(extraction, dict):
-        reason = extraction.get("reason")
-        if isinstance(reason, str) and reason.strip():
-            raw_details.append({"label": "Extraction reason", "value": reason.strip()})
-
-    has_saved_content = bool((document.content or "").strip())
-    content_note = None
-    if status in _ERROR_STATUSES and has_saved_content:
-        content_note = (
-            "Ниже показано последнее сохраненное содержимое страницы. "
-            "Оно могло остаться от предыдущего успешного прохода и не объясняет текущую ошибку."
-        )
-
-    if not summary and not raw_details and not content_note:
-        return None
-
-    return {
-        "summary": summary,
-        "raw_details": raw_details,
-        "content_note": content_note,
-    }
+    return status, status_error, msg or None
 
 
 async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
@@ -361,7 +257,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         "project": _project_context(request),
         "document": document,
         "document_display_title": _display_document_title(document.title, document.uri),
-        "document_status_explanation": _document_status_explanation(document),
+        "document_pipeline": _document_pipeline_steps(document),
         "document_structure": structure,
         "document_outline": outline,
         "document_extraction": extraction,
@@ -532,34 +428,31 @@ async def project_edit(request):
 
 
 def _build_progress_conditions():
-    is_excl = sa.or_(Page.is_ignored.is_(True), Page.status.in_(_EXCLUDED_STATUSES))
-    # Use IS NOT NULL guard to avoid NULL propagation when index_status is NULL
+    _EXCLUDED_ERRORS = [
+        PageStatusError.excluded_auth.value,
+        PageStatusError.excluded_ignored.value,
+        PageStatusError.excluded_robots.value,
+        PageStatusError.excluded_rules.value,
+        PageStatusError.no_content.value,
+        PageStatusError.low_content.value,
+        PageStatusError.redirect.value,
+    ]
+    is_excl = Page.status_error.in_(_EXCLUDED_ERRORS)
     is_err = sa.and_(
+        Page.status_error.isnot(None),
         sa.not_(is_excl),
-        sa.or_(
-            Page.status.in_(_ERROR_STATUSES),
-            sa.and_(Page.index_status.isnot(None), Page.index_status == "failed"),
-        ),
-    )
-    is_pend = sa.and_(
-        sa.not_(is_excl),
-        sa.not_(is_err),
-        Page.status.in_(_PENDING_STATUSES),
     )
     is_ready = sa.and_(
-        sa.not_(is_excl),
-        sa.not_(is_err),
-        sa.not_(is_pend),
-        sa.or_(
-            Page.index_status == "indexed",
-            sa.and_(Page.status == "indexed", Page.index_status.is_(None)),
-        ),
+        Page.status == PageStatus.ready,
+        Page.status_error.is_(None),
+    )
+    is_pend = sa.and_(
+        Page.status == PageStatus.crawler,
+        Page.status_error.is_(None),
     )
     is_proc = sa.and_(
-        sa.not_(is_excl),
-        sa.not_(is_err),
-        sa.not_(is_pend),
-        sa.not_(is_ready),
+        Page.status == PageStatus.parsing,
+        Page.status_error.is_(None),
     )
     return is_excl, is_err, is_pend, is_ready, is_proc
 
@@ -1070,12 +963,18 @@ async def project_action(request):
             raise web.HTTPNotFound(text="Page not found")
         data = await request.post()
         raw_value = data.get("is_ignored")
+        currently_ignored = document.status_error == PageStatusError.excluded_ignored
         if raw_value is not None:
-            document.is_ignored = str(raw_value).lower() in {"1", "true", "yes", "on"}
+            want_ignored = str(raw_value).lower() in {"1", "true", "yes", "on"}
         else:
-            document.is_ignored = not bool(document.is_ignored)
+            want_ignored = not currently_ignored
+        if want_ignored:
+            document.status = PageStatus.crawler
+            document.status_error = PageStatusError.excluded_ignored
+        else:
+            document.status_error = None
         await db_session.commit()
-        response = web.json_response({"is_ignored": document.is_ignored})
+        response = web.json_response({"is_ignored": want_ignored})
         response.headers["HX-Trigger"] = "project-documents:refresh"
         return response
 
@@ -1399,8 +1298,7 @@ async def project_documents_json(request):
                 Page.title,
                 Page.uri,
                 Page.status,
-                Page.index_status,
-                Page.is_ignored,
+                Page.status_error,
                 Source.title.label("source_title"),
                 Source.uri.label("source_uri"),
                 size_bytes_expr,
@@ -1418,8 +1316,7 @@ async def project_documents_json(request):
         title,
         uri,
         status,
-        index_status,
-        is_ignored,
+        status_error,
         source_title,
         source_uri,
         size_bytes,
@@ -1432,8 +1329,8 @@ async def project_documents_json(request):
                 "uri": uri or "",
                 "source": source_title or source_uri or _("Файлы"),
                 "status": status,
-                "index_status": index_status,
-                "is_ignored": bool(is_ignored) or status == "low_content",
+                "status_error": status_error,
+                "is_ignored": status_error == PageStatusError.excluded_ignored,
                 "size_bytes": int(size_bytes or 0),
                 "chunk_count": int(chunk_count or 0),
             }
@@ -1972,8 +1869,7 @@ async def project_files(request):
                 "author_name": author_name,
                 "author_email": author_email,
             },
-            status="ok",
-            index_status=None,
+            status=PageStatus.parsing,
         )
         document.length = len(content)
         db_session.add(document)
@@ -2026,7 +1922,8 @@ async def file_document(request):
         document.content = content
         document.hash_value = content
         document.length = len(content)
-        document.index_status = "queued"
+        document.status = PageStatus.parsing
+        document.status_error = None
         document.updated_at = datetime.now(timezone.utc)
         await db_session.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
         await db_session.commit()

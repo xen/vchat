@@ -73,10 +73,12 @@ def test_document_content_template_renders_structure_items() -> None:
         document=SimpleNamespace(
             title="Doc",
             uri=None,
-            status="indexed",
+            status="ready",
+            status_error=None,
             meta={},
             content="body",
         ),
+        document_pipeline=("ready", None, None),
         document_structure=[
             {
                 "type": "list",
@@ -226,17 +228,9 @@ async def test_project_edit_sources_keeps_active_sources_first(
 async def test_project_documents_and_files_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from vchat.page_status import PageStatus
+
     now = datetime(2026, 3, 1, tzinfo=timezone.utc)
-    doc = SimpleNamespace(
-        id=1,
-        title="Doc",
-        uri="https://example.local/a",
-        created_at=now,
-        updated_at=now,
-        status="indexed",
-        is_ignored=False,
-        meta={"doc_type": "html"},
-    )
     source = SimpleNamespace(title="S", uri="https://example.local")
 
     db_docs = _DB(
@@ -244,12 +238,11 @@ async def test_project_documents_and_files_json(
             _Resp(
                 all_rows=[
                     (
-                        doc.id,
-                        doc.title,
-                        doc.uri,
-                        doc.status,
-                        "indexed",
-                        doc.is_ignored,
+                        1,
+                        "Doc",
+                        "https://example.local/a",
+                        PageStatus.ready,
+                        None,
                         source.title,
                         source.uri,
                         120,

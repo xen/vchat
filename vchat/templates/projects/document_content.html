@@ -9,28 +9,42 @@
                         <p class="text-xs opacity-70 break-all">{{ document.uri }}</p>
                         {% endif %}
                     </div>
-                    <div class="badge badge-outline">{{ document.status }}</div>
+                    {% set p_status, p_error, p_msg = document_pipeline %}
+                    {% if p_status == 'ready' and not p_error %}
+                    <div class="badge badge-success">Готово к поиску</div>
+                    {% endif %}
                 </div>
 
-                {% if document_status_explanation %}
-                <div class="rounded-box border border-warning/30 bg-warning/10 p-4 text-sm">
-                    <div class="font-medium">Расшифровка статуса</div>
-                    {% if document_status_explanation.summary %}
-                    <p class="mt-1">{{ document_status_explanation.summary }}</p>
-                    {% endif %}
-                    {% if document_status_explanation.content_note %}
-                    <p class="mt-2 opacity-80">{{ document_status_explanation.content_note }}</p>
-                    {% endif %}
-                    {% if document_status_explanation.raw_details %}
-                    <dl class="mt-3 grid gap-2">
-                        {% for item in document_status_explanation.raw_details %}
-                        <div>
-                            <dt class="text-xs opacity-60">{{ item.label }}</dt>
-                            <dd class="whitespace-pre-wrap break-words font-mono text-xs mt-0.5">{{ item.value }}</dd>
-                        </div>
-                        {% endfor %}
-                    </dl>
-                    {% endif %}
+                {# Pipeline steps widget #}
+                {% set p_status, p_error, p_msg = document_pipeline %}
+                {% set ERROR_ERRORS = ['http_4xx', 'http_5xx', 'extraction_failed', 'index_failed'] %}
+                {% set EXCL_ERRORS = ['redirect', 'excluded_auth', 'excluded_ignored', 'excluded_robots', 'excluded_rules', 'no_content', 'low_content'] %}
+                {% set STEP_OF = {'crawler': 0, 'parsing': 1, 'ready': 2} %}
+                {% set cur_step = STEP_OF.get(p_status, 0) %}
+                {% set steps = [('Crawler', 0), ('Parser', 1), ('Ready', 2)] %}
+                <div class="flex items-center gap-2 text-sm">
+                    {% for step_label, step_idx in steps %}
+                        {% if step_idx < cur_step %}
+                            <span class="text-success font-semibold">✓ {{ step_label }}</span>
+                        {% elif step_idx == cur_step %}
+                            {% if not p_error %}
+                                <span class="text-warning font-semibold">● {{ step_label }}</span>
+                            {% elif p_error in ERROR_ERRORS %}
+                                <span class="text-error font-semibold">✕ {{ step_label }}</span>
+                            {% else %}
+                                <span class="opacity-50">— {{ step_label }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="opacity-30">· {{ step_label }}</span>
+                        {% endif %}
+                        {% if not loop.last %}
+                        <span class="opacity-30">→</span>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% if p_msg %}
+                <div class="rounded-box border border-warning/30 bg-warning/10 p-3 text-sm">
+                    <span class="font-medium">{{ p_error }}:</span> {{ p_msg }}
                 </div>
                 {% endif %}
 

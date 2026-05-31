@@ -25,6 +25,7 @@ from vchat.document_shingles import (
     is_boilerplate_block,
 )
 from vchat.models import ChatMsg, Chunk, Page, Source, SourceShingleFreq
+from vchat.page_status import PageStatus
 from vchat.settings import config
 
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
@@ -639,12 +640,8 @@ def fetch_page_context(session: Session, page_id: int):
         logging.warning("Page %s has no content", page_id)
         return None
 
-    if doc.is_ignored:
-        logging.info("Page %s is ignored, skipping", page_id)
-        return None
-
-    if doc.status == "low_content":
-        logging.info("Page %s is low_content, skipping indexing", page_id)
+    if doc.status_error is not None:
+        logging.info("Page %s has status_error=%s, skipping", page_id, doc.status_error)
         return None
 
     return doc
@@ -686,7 +683,8 @@ def materialize_page_chunks(
 
     if not chunks:
         logging.info("No content to index for Page %s", doc.id)
-        doc.index_status = "indexed"
+        doc.status = PageStatus.ready
+        doc.status_error = None
         session.commit()
         return 0
 
@@ -709,7 +707,6 @@ def materialize_page_chunks(
         )
         session.add(chunk)
 
-    doc.index_status = "indexing"
     session.commit()
     # Освобождаем все вставленные Chunk ORM-объекты из identity map.
     # chunk_document_text() уже вернул список ChunkData, они не нужны дальше.
@@ -781,11 +778,10 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
     ).scalar_one()
 
     if remaining == 0:
-        # UPDATE без загрузки объекта в identity map
         session.execute(
             sa.update(Page)
             .where(Page.id == chunk_page_id)
-            .values(index_status="indexed")
+            .values(status=PageStatus.ready, status_error=None)
         )
         session.commit()
 
@@ -1161,8 +1157,7 @@ def index_project():
         with Session(bind=engine) as session:
             stmt = (
                 select(Page.id)
-                .where(Page.is_ignored == False)
-                .where(Page.status != "low_content")
+                .where(Page.status_error.is_(None))
                 .where(Page.content.isnot(None))
                 .where(Page.content != "")
             )
@@ -1199,8 +1194,7 @@ def refresh_project_index():
                 session.execute(
                     sa.select(Page.id)
                     .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
-                    .where(Page.is_ignored == False)
-                    .where(Page.status != "low_content")
+                    .where(Page.status_error.is_(None))
                     .where(Page.content.isnot(None))
                     .where(Page.content != "")
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
@@ -1213,23 +1207,21 @@ def refresh_project_index():
                 logging.info("Scheduling page %s for refresh indexing", doc_id)
                 schedule_index_document(doc_id)
 
-            ignored_doc_ids = (
+            errored_doc_ids = (
                 session.execute(
-                    sa.select(Page.id).where(
-                        sa.or_(Page.is_ignored == True, Page.status == "low_content")
-                    )
+                    sa.select(Page.id).where(Page.status_error.isnot(None))
                 )
                 .scalars()
                 .all()
             )
 
-            if ignored_doc_ids:
+            if errored_doc_ids:
                 logging.info(
-                    "Removing %s chunk sets for ignored pages",
-                    len(ignored_doc_ids),
+                    "Removing %s chunk sets for errored pages",
+                    len(errored_doc_ids),
                 )
                 session.execute(
-                    sa.delete(Chunk).where(Chunk.page_id.in_(ignored_doc_ids))
+                    sa.delete(Chunk).where(Chunk.page_id.in_(errored_doc_ids))
                 )
 
             dangling_chunk_ids = (
@@ -1287,8 +1279,7 @@ def refresh_source_index(source_id: int):
                     sa.select(Page.id)
                     .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
                     .where(Page.source_id == source_id)
-                    .where(Page.is_ignored == False)
-                    .where(Page.status != "low_content")
+                    .where(Page.status_error.is_(None))
                     .where(Page.content.isnot(None))
                     .where(Page.content != "")
                     .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
@@ -1305,25 +1296,25 @@ def refresh_source_index(source_id: int):
                 )
                 schedule_index_document(doc_id)
 
-            ignored_doc_ids = (
+            errored_doc_ids = (
                 session.execute(
                     sa.select(Page.id).where(
                         Page.source_id == source_id,
-                        sa.or_(Page.is_ignored == True, Page.status == "low_content"),
+                        Page.status_error.isnot(None),
                     )
                 )
                 .scalars()
                 .all()
             )
 
-            if ignored_doc_ids:
+            if errored_doc_ids:
                 logging.info(
-                    "Removing %s chunk sets for ignored pages in source %s",
-                    len(ignored_doc_ids),
+                    "Removing %s chunk sets for errored pages in source %s",
+                    len(errored_doc_ids),
                     source_id,
                 )
                 session.execute(
-                    sa.delete(Chunk).where(Chunk.page_id.in_(ignored_doc_ids))
+                    sa.delete(Chunk).where(Chunk.page_id.in_(errored_doc_ids))
                 )
 
             session.commit()

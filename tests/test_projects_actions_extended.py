@@ -104,14 +104,17 @@ async def test_project_action_rejects_missing_csrf() -> None:
 async def test_project_action_ignore_document_toggle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    doc = SimpleNamespace(id=10, is_ignored=False)
+    from vchat.page_status import PageStatus, PageStatusError
+
+    doc = SimpleNamespace(id=10, status=PageStatus.crawler, status_error=None)
     req = _Request(action="ignore_document", item_id="10", post_data={})
     req["db"] = _DB(scalar_values=[doc])
     req["user"] = SimpleNamespace(id=1)
 
     resp = await _raw_project_action()(req)
     assert resp.status == 200
-    assert doc.is_ignored is True
+    assert doc.status_error == PageStatusError.excluded_ignored
+    assert '"is_ignored": true' in resp.text
     assert resp.headers["HX-Trigger"] == "project-documents:refresh"
 
 
@@ -297,29 +300,19 @@ async def test_project_action_delete_file_success(
 
 @pytest.mark.asyncio
 async def test_project_documents_json_serializes_rows() -> None:
+    from vchat.page_status import PageStatus
+
     source = SimpleNamespace(id=2, title="Source A", uri="https://example.com")
-    doc = SimpleNamespace(
-        id=5,
-        title="Doc A",
-        uri="https://example.com/a",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        status="indexed",
-        index_status="indexed",
-        is_ignored=False,
-        meta={"doc_type": "html"},
-    )
     req = _Request(action="noop")
     req["db"] = _DB(
         execute_rows=[
             [
                 (
-                    doc.id,
-                    doc.title,
-                    doc.uri,
-                    doc.status,
-                    doc.index_status,
-                    doc.is_ignored,
+                    5,
+                    "Doc A",
+                    "https://example.com/a",
+                    PageStatus.ready,
+                    None,
                     source.title,
                     source.uri,
                     123,
@@ -342,9 +335,10 @@ async def test_project_documents_json_serializes_rows() -> None:
 
 
 @pytest.mark.asyncio
-async def test_project_documents_json_marks_low_content_as_ignored() -> None:
+async def test_project_documents_json_marks_excluded_as_ignored() -> None:
+    from vchat.page_status import PageStatus, PageStatusError
+
     source = SimpleNamespace(id=2, title="Source A", uri="https://example.com")
-    now = datetime.now(timezone.utc)
     req = _Request(action="noop")
     req["db"] = _DB(
         execute_rows=[
@@ -353,9 +347,8 @@ async def test_project_documents_json_marks_low_content_as_ignored() -> None:
                     6,
                     "Thin page",
                     "https://example.com/thin",
-                    "low_content",
-                    None,
-                    False,
+                    PageStatus.crawler,
+                    PageStatusError.low_content,
                     source.title,
                     source.uri,
                     119,
@@ -369,8 +362,8 @@ async def test_project_documents_json_marks_low_content_as_ignored() -> None:
     raw = project_views.project_documents_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    assert '"status": "low_content"' in resp.text
-    assert '"is_ignored": true' in resp.text
+    assert '"status_error": "low_content"' in resp.text
+    assert '"is_ignored": false' in resp.text
 
 
 @pytest.mark.asyncio

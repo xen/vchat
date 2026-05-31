@@ -353,19 +353,20 @@ class TestCrawlRunCreation:
         """force_reprocess_once should bypass unchanged-content short circuit."""
         from jobs.crawler.pipelines import DatabasePipeline
 
+        from vchat.page_status import PageStatus
+
         page = SimpleNamespace(
             id=55,
             source_id=1,
             uri="https://example.com/page",
             meta={"force_reprocess_once": True},
-            is_ignored=False,
+            status_error=None,
             is_hub_page=False,
             content_value=None,
             stable_count=2,
             error_count=0,
             check_interval_days=7,
             title="Existing",
-            index_status="indexed",
         )
 
         session = MagicMock()
@@ -411,7 +412,7 @@ class TestCrawlRunCreation:
         ):
             pipeline.process_item(item, spider)
 
-        assert page.index_status == "queued"
+        assert page.status == PageStatus.parsing
         assert "force_reprocess_once" not in page.meta
         schedule_mock.assert_called_once_with(55)
 
@@ -439,9 +440,12 @@ class TestPageStatusOnErrors:
             logger = MagicMock()
             engine = MagicMock()
 
+            from vchat.page_status import PageStatus, PageStatusError
+
             handle_error_page(engine, "https://example.com/gone", 1, 404, None, logger)
 
-            assert page_mock.status == "error_4xx"
+            assert page_mock.status == PageStatus.crawler
+            assert page_mock.status_error == PageStatusError.http_4xx
             assert page_mock.http_status == 404
             assert page_mock.meta["reason"] == "http_4xx"
             assert page_mock.meta["message"] == "Source returned HTTP 404."
@@ -470,8 +474,9 @@ class TestPageStatusOnErrors:
             assert page_mock.check_interval_days == 90
 
     def test_5xx_sets_error_5xx_status(self):
-        """save_page_status with error_5xx should record the right status."""
+        """save_page_status with http_5xx should record the right status."""
         from jobs.crawler.pipelines import save_page_status
+        from vchat.page_status import PageStatus, PageStatusError
 
         with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
             session = MagicMock()
@@ -487,9 +492,13 @@ class TestPageStatusOnErrors:
             logger = MagicMock()
             engine = MagicMock()
 
-            save_page_status(engine, "https://example.com/error", 1, "error_5xx", 500, None, logger)
+            save_page_status(
+                engine, "https://example.com/error", 1,
+                PageStatus.crawler, PageStatusError.http_5xx, 500, None, logger,
+            )
 
-            assert page_mock.status == "error_5xx"
+            assert page_mock.status == PageStatus.crawler
+            assert page_mock.status_error == PageStatusError.http_5xx
 
     def test_save_page_status_stores_reason_details(self):
         from jobs.crawler.pipelines import save_page_status
@@ -508,11 +517,14 @@ class TestPageStatusOnErrors:
             logger = MagicMock()
             engine = MagicMock()
 
+            from vchat.page_status import PageStatus, PageStatusError
+
             save_page_status(
                 engine,
                 "https://example.com/error",
                 1,
-                "error_5xx",
+                PageStatus.crawler,
+                PageStatusError.extraction_failed,
                 200,
                 None,
                 logger,
@@ -550,11 +562,14 @@ class TestPageStatusOnErrors:
             session.execute.return_value.scalar_one_or_none.return_value = page_mock
             mock_session_cls.return_value = session
 
+            from vchat.page_status import PageStatus
+
             save_page_status(
                 MagicMock(),
                 "https://example.com/page",
                 1,
-                "unchanged",
+                PageStatus.parsing,
+                None,
                 200,
                 None,
                 MagicMock(),
@@ -570,65 +585,48 @@ class TestPageStatusOnErrors:
 # TestIndexStatus
 # ---------------------------------------------------------------------------
 
-class TestIndexStatus:
-    """index_status tracks chunking/embedding progress independently from crawl status."""
+class TestPageStatusModel:
+    """Page.status uses three-value enum: crawler / parsing / ready."""
 
-    def test_page_model_has_index_status(self):
+    def test_page_model_has_status_error(self):
         from vchat.models.data import Page
-        assert hasattr(Page, "index_status")
+        assert hasattr(Page, "status_error")
 
-    def test_index_status_default_is_none(self):
+    def test_page_model_no_index_status(self):
         from vchat.models.data import Page
-        p = Page()
-        assert p.index_status is None
+        assert not hasattr(Page, "index_status")
 
-    def test_pipeline_sets_queued_on_new_content(self):
-        """Pipeline should set index_status='queued' when content changes."""
+    def test_page_model_no_is_ignored(self):
+        from vchat.models.data import Page
+        assert not hasattr(Page, "is_ignored")
+
+    def test_pipeline_sets_parsing_on_new_content(self):
         from jobs.crawler.pipelines import compute_adaptive_interval
-        # compute_adaptive_interval is a pure function — just verify it exists and works
         assert compute_adaptive_interval.__module__ == "jobs.crawler.pipelines"
 
-    def test_pipeline_index_status_values_are_correct(self):
-        """All expected index_status values are valid strings."""
-        valid_statuses = {None, "queued", "indexing", "indexed", "failed"}
-        # Values match the design in the plan
-        assert "queued" in valid_statuses
-        assert "indexing" in valid_statuses
-        assert "indexed" in valid_statuses
-
-    def test_crawl_status_independent_of_index_status(self):
-        """A page can have crawl status 'ok' and index_status 'indexing' simultaneously."""
-        from vchat.models.data import Page
-        p = Page()
-        p.status = "ok"
-        p.index_status = "indexing"
-        assert p.status == "ok"
-        assert p.index_status == "indexing"
-
     def test_hub_page_gets_low_content_value(self):
-        """Hub pages should get content_value <= 0.1."""
         from vchat.models.data import Page
         p = Page()
         p.is_hub_page = True
         p.content_value = 0.05
         assert p.content_value <= 0.1
 
-    def test_page_status_column_default_is_pending(self):
-        """Page.status column default is 'pending' (applied on DB flush)."""
+    def test_page_status_column_default_is_crawler(self):
         from vchat.models.data import Page
+        from vchat.page_status import PageStatus
         col = Page.__table__.c["status"]
-        assert col.default.arg == "pending"
+        assert col.default.arg == PageStatus.crawler
 
 
-class TestEmbedderSkipsLowContent:
-    def test_fetch_page_context_skips_low_content_pages(self):
+class TestEmbedderSkipsErrorPages:
+    def test_fetch_page_context_skips_pages_with_status_error(self):
         from jobs.embedder.tasks import fetch_page_context
+        from vchat.page_status import PageStatusError
 
         page = SimpleNamespace(
             id=1,
             content="short content",
-            is_ignored=False,
-            status="low_content",
+            status_error=PageStatusError.low_content,
         )
         session = MagicMock()
         session.execute.return_value.first.return_value = (page,)

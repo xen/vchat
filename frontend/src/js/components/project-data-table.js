@@ -65,22 +65,20 @@ const formatBytes = (value) => {
 
 // ── Status group helpers ────────────────────────────────────────────────────
 
-const EXCLUDED_STATUSES = new Set([
+const EXCLUDED_ERRORS = new Set([
   'excluded_robots', 'excluded_rules', 'excluded_auth', 'excluded_ignored',
+  'no_content', 'low_content', 'redirect',
 ])
-const ERROR_STATUSES = new Set([
-  'error_4xx', 'error_5xx', 'blocked', 'no_content', 'redirect',
-])
-const PENDING_STATUSES = new Set(['added', 'pending'])
 
-function computeGroup(status, indexStatus, isIgnored) {
+function computeGroup(status, statusError, isIgnored) {
+  const e = (statusError || '').toLowerCase()
   const s = (status || '').toLowerCase()
-  const ix = (indexStatus || '').toLowerCase()
 
-  if (isIgnored || EXCLUDED_STATUSES.has(s)) return 'excluded'
-  if (ERROR_STATUSES.has(s) || ix === 'failed') return 'errors'
-  if (PENDING_STATUSES.has(s)) return 'pending'
-  if (ix === 'indexed' || (s === 'indexed' && !indexStatus)) return 'ready'
+  if (isIgnored || EXCLUDED_ERRORS.has(e)) return 'excluded'
+  if (e) return 'errors'
+  if (s === 'crawler') return 'pending'
+  if (s === 'parsing') return 'processing'
+  if (s === 'ready') return 'ready'
   return 'processing'
 }
 
@@ -443,7 +441,7 @@ window.useProjectDataTable = () => {
         .then(jsonData => {
           this.data = Array.isArray(jsonData)
             ? jsonData.map(item => {
-              const group = computeGroup(item?.status, item?.index_status, item?.is_ignored)
+              const group = computeGroup(item?.status, item?.status_error, item?.is_ignored)
               return {
                 ...(item || {}),
                 size_bytes: Number(item?.size_bytes ?? 0),
@@ -617,7 +615,7 @@ window.useProjectDataTable = () => {
           if (item.id !== docId) {
             return item
           }
-          const group = computeGroup(item.status, item.index_status, desiredState)
+          const group = computeGroup(item.status, desiredState ? 'excluded_ignored' : null, desiredState)
           return {
             ...item,
             is_ignored: desiredState,

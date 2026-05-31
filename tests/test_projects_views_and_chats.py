@@ -198,28 +198,22 @@ async def test_history_detail_404_when_chat_missing() -> None:
         await raw(_Req(db=_Db(), match_info={"chat_id": "x"}))
 
 
-def test_document_status_explanation_localizes_reason_and_message() -> None:
+def test_document_pipeline_steps_returns_error_description() -> None:
+    from vchat.page_status import PageStatus, PageStatusError
+
     document = SimpleNamespace(
-        status="error_5xx",
-        http_status=200,
-        content="stored content",
+        status=PageStatus.crawler,
+        status_error=PageStatusError.extraction_failed,
         meta={
             "reason": "extraction_failed",
-            "message": "Document extraction failed after the page was downloaded.",
             "error": "boom",
-            "exception_class": "ValueError",
         },
     )
 
-    payload = project_views._document_status_explanation(document)
+    status, status_error, msg = project_views._document_pipeline_steps(document)
 
-    assert payload is not None
-    detail_values = {item["label"]: item["value"] for item in payload["raw_details"]}
-    assert detail_values["Причина"] == "Извлечение содержимого завершилось ошибкой."
-    assert detail_values["Код причины"] == "extraction_failed"
-    assert (
-        detail_values["Сообщение"]
-        == "Страница успешно загрузилась, но извлечение содержимого завершилось ошибкой."
-    )
-    assert detail_values["Ошибка"] == "boom"
-    assert detail_values["Тип исключения"] == "ValueError"
+    assert status == PageStatus.crawler
+    assert status_error == PageStatusError.extraction_failed
+    assert msg is not None
+    assert "Ошибка извлечения" in msg
+    assert "boom" in msg

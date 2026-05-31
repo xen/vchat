@@ -57,7 +57,7 @@ autoupgrade: ensure-pip ## upgrade dependencies
 
 # Celery and tasks
 celery: venv/bin/activate ## start celery (vchat + crawler queues)
-	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery,crawler
+	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery,crawler -n vchat@%h
 
 embedder: venv/bin/activate ## start dedicated embedder workers for this host
 	. venv/bin/activate && PYTHONMALLOC=malloc python -m jobs.embedder.launcher
