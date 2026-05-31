@@ -11,7 +11,7 @@ from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote as urlquote, unquote, urlencode as urlencode_qs, urlparse
 from zoneinfo import ZoneInfo
 
 import aiohttp_jinja2
@@ -91,6 +91,11 @@ __all__ = [
 ]
 
 EMBED_STATS_KEY = "vchat:embed:chunk_durations"
+
+# Page status grouping for progress bars
+_EXCLUDED_STATUSES = ["excluded_robots", "excluded_rules", "excluded_auth", "excluded_ignored"]
+_ERROR_STATUSES = ["error_4xx", "error_5xx", "blocked", "no_content", "redirect"]
+_PENDING_STATUSES = ["added", "pending"]
 
 
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
@@ -404,26 +409,196 @@ async def project_edit(request):
     }
 
 
+def _build_progress_conditions():
+    is_excl = sa.or_(Page.is_ignored.is_(True), Page.status.in_(_EXCLUDED_STATUSES))
+    # Use IS NOT NULL guard to avoid NULL propagation when index_status is NULL
+    is_err = sa.and_(
+        sa.not_(is_excl),
+        sa.or_(
+            Page.status.in_(_ERROR_STATUSES),
+            sa.and_(Page.index_status.isnot(None), Page.index_status == "failed"),
+        ),
+    )
+    is_pend = sa.and_(
+        sa.not_(is_excl),
+        sa.not_(is_err),
+        Page.status.in_(_PENDING_STATUSES),
+    )
+    is_ready = sa.and_(
+        sa.not_(is_excl),
+        sa.not_(is_err),
+        sa.not_(is_pend),
+        sa.or_(
+            Page.index_status == "indexed",
+            sa.and_(Page.status == "indexed", Page.index_status.is_(None)),
+        ),
+    )
+    is_proc = sa.and_(
+        sa.not_(is_excl),
+        sa.not_(is_err),
+        sa.not_(is_pend),
+        sa.not_(is_ready),
+    )
+    return is_excl, is_err, is_pend, is_ready, is_proc
+
+
 @meta(title=_("Sources"))
 @login_required()
 @aiohttp_jinja2.template("projects/sources.html")
 async def project_edit_sources(request):
     db_session = request["db"]
+    r = request.app[REDIS_KEY]
 
-    stmt = (
-        sa.select(
-            Source,
-            sa.func.count(Page.id).label("doc_count"),
+    is_excl, is_err, is_pend, is_ready, is_proc = _build_progress_conditions()
+
+    # Per-source progress buckets
+    source_rows = (
+        await db_session.execute(
+            sa.select(
+                Source.id,
+                Source.title,
+                Source.uri,
+                Source.is_paused,
+                Source.reindex_cron,
+                sa.func.count(Page.id).filter(is_excl).label("excluded"),
+                sa.func.count(Page.id).filter(is_err).label("errors"),
+                sa.func.count(Page.id).filter(is_pend).label("pending"),
+                sa.func.count(Page.id).filter(is_proc).label("processing"),
+                sa.func.count(Page.id).filter(is_ready).label("ready"),
+            )
+            .outerjoin(Page, Page.source_id == Source.id)
+            .group_by(
+                Source.id,
+                Source.title,
+                Source.uri,
+                Source.is_paused,
+                Source.reindex_cron,
+            )
+            .order_by(Source.created_at.desc())
         )
-        .outerjoin(Page, Page.source_id == Source.id)
-        .group_by(Source.id)
-        .order_by(Source.created_at.desc())
+    ).all()
+
+    # Overall stats
+    overall_row = (
+        await db_session.execute(
+            sa.select(
+                sa.func.count(Page.id).filter(is_excl).label("excluded"),
+                sa.func.count(Page.id).filter(is_err).label("errors"),
+                sa.func.count(Page.id).filter(is_pend).label("pending"),
+                sa.func.count(Page.id).filter(is_proc).label("processing"),
+                sa.func.count(Page.id).filter(is_ready).label("ready"),
+            ).where(Page.source_id.isnot(None))
+        )
+    ).one()
+
+    # Queue lengths
+    crawler_queue = await r.llen("crawler")
+    embedder_queue = await r.llen("celery")
+
+    # ETA from Redis embed stats
+    raw_times = await r.lrange(EMBED_STATS_KEY, 0, -1)
+    durations: list[float] = []
+    for v in raw_times:
+        try:
+            durations.append(float(v))
+        except (ValueError, TypeError):
+            pass
+    avg_chunk_sec = sum(durations) / len(durations) if durations else None
+
+    chunk_counts_sq = (
+        sa.select(
+            Chunk.page_id,
+            sa.func.count(Chunk.id).label("chunk_count"),
+        )
+        .where(Chunk.page_id.isnot(None))
+        .group_by(Chunk.page_id)
+        .subquery()
     )
-    sources = (await db_session.execute(stmt)).all()
+    avg_chunks_val = (
+        await db_session.execute(
+            sa.select(sa.func.avg(chunk_counts_sq.c.chunk_count)).select_from(
+                chunk_counts_sq
+            )
+        )
+    ).scalar()
+    avg_chunks_per_doc = float(avg_chunks_val) if avg_chunks_val else None
+
+    remaining = int((overall_row.processing or 0) + (overall_row.pending or 0))
+    avg_doc_sec = None
+    eta_sec = None
+    if avg_chunk_sec is not None and avg_chunks_per_doc:
+        avg_doc_sec = avg_chunk_sec * avg_chunks_per_doc
+        eta_sec = avg_doc_sec * remaining
+
+    def fmt_duration(sec: float | None) -> str | None:
+        if sec is None:
+            return None
+        s = int(sec)
+        if s < 60:
+            return f"{s}с"
+        if s < 3600:
+            return f"{s // 60}м {s % 60}с"
+        h = s // 3600
+        m = (s % 3600) // 60
+        return f"{h}ч {m}м"
+
+    now = datetime.now(timezone.utc)
+    sources = []
+    for row in source_rows:
+        source_name = row.title or row.uri or ""
+        errors = int(row.errors or 0)
+        pending = int(row.pending or 0)
+        processing = int(row.processing or 0)
+        ready = int(row.ready or 0)
+        excluded = int(row.excluded or 0)
+        bar_total = errors + pending + processing + ready
+        sources.append(
+            {
+                "id": row.id,
+                "title": source_name,
+                "uri": row.uri,
+                "is_paused": row.is_paused,
+                "reindex_cron": row.reindex_cron,
+                "errors": errors,
+                "pending": pending,
+                "processing": processing,
+                "ready": ready,
+                "excluded": excluded,
+                "bar_total": bar_total,
+                "next_reindex": next_reindex_at(row.reindex_cron or "", now),
+                "page_url_base": "/page?"
+                + urlencode_qs({"source": source_name}),
+            }
+        )
 
     session = await get_session(request)
     form = forms.SourceForm(meta={"csrf_context": session})
-    return {"project": _project_context(request), "sources": sources, "form": form}
+
+    overall_total = int(
+        (overall_row.errors or 0)
+        + (overall_row.pending or 0)
+        + (overall_row.processing or 0)
+        + (overall_row.ready or 0)
+        + (overall_row.excluded or 0)
+    )
+
+    return {
+        "project": _project_context(request),
+        "sources": sources,
+        "form": form,
+        "overall": {
+            "total": overall_total,
+            "ready": int(overall_row.ready or 0),
+            "errors": int(overall_row.errors or 0),
+            "pending": int(overall_row.pending or 0),
+            "processing": int(overall_row.processing or 0),
+            "excluded": int(overall_row.excluded or 0),
+        },
+        "crawler_queue": crawler_queue,
+        "embedder_queue": embedder_queue,
+        "eta_fmt": fmt_duration(eta_sec),
+        "avg_doc_fmt": fmt_duration(avg_doc_sec),
+    }
 
 
 @meta(title=_("Source Settings"))
@@ -1120,6 +1295,7 @@ async def project_documents_json(request):
                 Page.created_at,
                 Page.updated_at,
                 Page.status,
+                Page.index_status,
                 Page.is_ignored,
                 Source.title.label("source_title"),
                 Source.uri.label("source_uri"),
@@ -1141,6 +1317,7 @@ async def project_documents_json(request):
         created_at,
         updated_at,
         status,
+        index_status,
         is_ignored,
         source_title,
         source_uri,
@@ -1162,6 +1339,7 @@ async def project_documents_json(request):
                 "created_at": created_at.isoformat() if created_at else None,
                 "updated_at": updated_at.isoformat() if updated_at else None,
                 "status": status,
+                "index_status": index_status,
                 "is_ignored": is_ignored,
                 "size_bytes": int(size_bytes or 0),
                 "chunk_count": int(chunk_count or 0),

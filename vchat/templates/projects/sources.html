@@ -1,12 +1,20 @@
 {% extends "admin.html" %}
 {% block content %}
 
-<div class="flex items-center justify-between">
+<div class="flex items-center justify-between mb-6">
     <p class="text-lg font-medium">Источники</p>
-    <div class="inline-flex items-center gap-3">
-        <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
-            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-            <span class="hidden sm:inline">Добавить источник</span>
+    <div class="inline-flex items-center gap-2 flex-wrap justify-end">
+        <label class="flex items-center gap-2 cursor-pointer select-none text-sm text-base-content/70">
+            <input type="checkbox" id="sources-auto-refresh" class="checkbox checkbox-sm checkbox-primary">
+            <span id="sources-live-dot" class="hidden status status-success status-sm"></span>
+            <span class="hidden sm:inline">Авто</span>
+        </label>
+        <button hx-get="{{ url('project_edit_sources') }}"
+                hx-target="#sources-body"
+                hx-select="#sources-body"
+                hx-swap="outerHTML"
+                class="btn btn-sm btn-ghost">
+            <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
         </button>
         <button hx-post="{{ url('actions', action='crawl_all', item_id='global') }}"
                 hx-swap="none"
@@ -14,96 +22,215 @@
             <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
             <span class="hidden sm:inline">Обойти все</span>
         </button>
+        <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            <span class="hidden sm:inline">Добавить источник</span>
+        </button>
     </div>
 </div>
 
-<div class="mt-6">
-    <div class="card bg-base-100 shadow">
-        <div class="card-body p-0">
-            <!-- Table -->
-            <div class="overflow-auto">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Название</th>
-                            <th>Документы</th>
-                            <th>Переиндексация</th>
-                            <th>Правила</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for source, doc_count in sources %}
-                        <tr class="hover:bg-base-200/40 cursor-pointer *:text-nowrap {% if source.is_paused %}opacity-50{% endif %}"
-                            onclick="window.location='{{ url('project_source_settings', source_id=source.id) }}'">
-                            <td>
-                                <div class="font-medium inline-flex items-center gap-2">
-                                    {{ source.title or source.uri }}
-                                    {% if source.is_paused %}
-                                    <span class="badge badge-ghost badge-sm gap-1" title="Краулинг приостановлен">
-                                        <iconify-icon icon="lucide:pause-circle" class="size-3"></iconify-icon>
-                                        Пауза
-                                    </span>
-                                    {% endif %}
+<div id="sources-body"
+     hx-get="{{ url('project_edit_sources') }}"
+     hx-target="#sources-body"
+     hx-select="#sources-body"
+     hx-swap="outerHTML"
+     hx-trigger="every 10s [document.getElementById('sources-auto-refresh')?.checked]">
 
-                                </div>
-                            </td>
-                            <td>
-                                <div class="font-medium">{{ doc_count }}</div>
-                            </td>
-                            <td>
-                                <div class="font-medium">
-                                    {% if source.reindex_cron == 'manual' %}
-                                        Ручной режим
-                                    {% else %}
-                                        {{ source.reindex_cron }}
-                                    {% endif %}
-                                </div>
-                            </td>
-                            <td>
-                                <div class="font-medium">
-                                    {% if source.config.rules %}
-                                        {{ source.config.rules|length }}
-                                    {% else %}
-                                        0
-                                    {% endif %}
-                                </div>
-                            </td>
-                            <td onclick="event.stopPropagation()">
-                                {% if source.is_paused %}
-                                <button class="btn btn-xs btn-ghost"
-                                    hx-post="{{ url('actions', action='resume_source', item_id=source.id) }}"
-                                    hx-swap="none"
-                                    hx-on::after-request="window.location.reload()"
-                                    title="Возобновить краулинг">
-                                    <iconify-icon icon="lucide:play" class="size-3"></iconify-icon>
-                                </button>
-                                {% else %}
-                                <button class="btn btn-xs btn-ghost text-warning"
-                                    hx-post="{{ url('actions', action='pause_source', item_id=source.id) }}"
-                                    hx-swap="none"
-                                    hx-on::after-request="window.location.reload()"
-                                    title="Приостановить краулинг">
-                                    <iconify-icon icon="lucide:pause" class="size-3"></iconify-icon>
-                                </button>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="4" class="text-center text-base-content/60 py-8">
-                                Источники не найдены.
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+{# ── Статистика ────────────────────────────────────────────────────────────── #}
+<div class="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-4">
+            <div class="flex items-center gap-3">
+                <iconify-icon icon="lucide:files" class="text-primary size-7 shrink-0"></iconify-icon>
+                <dl class="min-w-0">
+                    <dt class="text-xs text-base-content/60 truncate">Всего страниц</dt>
+                    <dd class="text-xl font-semibold">{{ overall.total }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-4">
+            <div class="flex items-center gap-3">
+                <iconify-icon icon="lucide:check-circle" class="text-success size-7 shrink-0"></iconify-icon>
+                <dl class="min-w-0">
+                    <dt class="text-xs text-base-content/60 truncate">Готово</dt>
+                    <dd class="text-xl font-semibold">{{ overall.ready }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-4">
+            <div class="flex items-center gap-3">
+                <iconify-icon icon="lucide:clock" class="text-warning size-7 shrink-0"></iconify-icon>
+                <dl class="min-w-0">
+                    <dt class="text-xs text-base-content/60 truncate">В очереди</dt>
+                    <dd class="text-xl font-semibold">{{ overall.pending + overall.processing }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-4">
+            <div class="flex items-center gap-3">
+                <iconify-icon icon="lucide:alert-circle" class="text-error size-7 shrink-0"></iconify-icon>
+                <dl class="min-w-0">
+                    <dt class="text-xs text-base-content/60 truncate">Ошибки</dt>
+                    <dd class="text-xl font-semibold {% if overall.errors > 0 %}text-error{% endif %}">{{ overall.errors }}</dd>
+                </dl>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Add Source Modal -->
+{# ── Очереди и ETA ─────────────────────────────────────────────────────────── #}
+<div class="flex flex-wrap gap-x-5 gap-y-1 text-sm text-base-content/60 mb-5">
+    <span>
+        <iconify-icon icon="lucide:globe" class="size-3.5 inline-block mr-1 align-middle"></iconify-icon>
+        Кравлер:
+        <span class="{% if crawler_queue > 0 %}text-warning font-medium{% endif %}">{{ crawler_queue }}</span>
+    </span>
+    <span>
+        <iconify-icon icon="lucide:cpu" class="size-3.5 inline-block mr-1 align-middle"></iconify-icon>
+        Embedder:
+        <span class="{% if embedder_queue > 0 %}text-warning font-medium{% endif %}">{{ embedder_queue }}</span>
+    </span>
+    {% if eta_fmt %}
+    <span>
+        <iconify-icon icon="lucide:timer" class="size-3.5 inline-block mr-1 align-middle"></iconify-icon>
+        ETA: <span class="font-medium text-base-content/80">{{ eta_fmt }}</span>
+        {% if avg_doc_fmt %}<span class="text-xs">(~{{ avg_doc_fmt }}/стр.)</span>{% endif %}
+    </span>
+    {% endif %}
+</div>
+
+{# ── Таблица источников ────────────────────────────────────────────────────── #}
+{% if sources %}
+<div class="card bg-base-100 shadow">
+    <div class="card-body p-0">
+        <div class="overflow-x-auto">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Название</th>
+                        <th class="min-w-[160px]">Прогресс</th>
+                        <th class="w-28 text-center">Игнорировано</th>
+                        <th class="w-36">Расписание</th>
+                        <th class="w-10"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in sources %}
+                {% set bar_total = s.errors + s.pending + s.processing + s.ready %}
+                {% set ns = namespace(visible=[]) %}
+                {% for group, count, color, label in [
+                    ('errors', s.errors, 'bg-error', 'Ошибки'),
+                    ('pending', s.pending, 'bg-warning', 'Ожидает'),
+                    ('processing', s.processing, 'bg-success', 'В обработке'),
+                    ('ready', s.ready, 'bg-purple-500', 'Готово'),
+                ] %}
+                {% if count > 0 %}{% set ns.visible = ns.visible + [(group, count, color, label)] %}{% endif %}
+                {% endfor %}
+                <tr class="{% if s.is_paused %}opacity-50{% endif %}">
+                    <td>
+                        <a href="{{ url('project_source_settings', source_id=s.id) }}"
+                           class="font-medium link link-hover inline-flex items-center gap-1.5">
+                            {{ s.title }}
+                            {% if s.is_paused %}
+                            <span class="badge badge-ghost badge-xs gap-1">
+                                <iconify-icon icon="lucide:pause-circle" class="size-2.5"></iconify-icon>
+                                Пауза
+                            </span>
+                            {% endif %}
+                        </a>
+                        {% if s.uri and s.title != s.uri %}
+                        <div class="text-xs text-base-content/40 truncate max-w-xs">{{ s.uri }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="flex h-3 w-full rounded overflow-hidden" style="min-width:120px">
+                            {% if bar_total > 0 %}
+                                {% for group, count, color, label in ns.visible %}
+                                <div class="hover:opacity-75 transition-opacity"
+                                     style="flex: {{ count }} 1 0%; min-width: 3px; background-color: {% if group == 'errors' %}var(--color-error){% elif group == 'pending' %}var(--color-warning){% elif group == 'processing' %}var(--color-success){% else %}oklch(62.7% .265 303.9){% endif %}"
+                                     title="{{ label }}: {{ count }}"
+                                     onclick="location.href='{{ s.page_url_base }}&group={{ group }}'">
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="flex-1 bg-base-300 opacity-40"></div>
+                            {% endif %}
+                        </div>
+                        {% if bar_total > 0 %}
+                        <div class="text-xs text-base-content/40 mt-1 flex gap-2 flex-wrap">
+                            {% for group, count, color, label in ns.visible %}
+                            <span>{{ label }}: {{ count }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if s.excluded > 0 %}
+                        <a href="{{ s.page_url_base }}&group=excluded"
+                           class="badge badge-ghost badge-sm hover:badge-neutral transition-colors">
+                            {{ s.excluded }}
+                        </a>
+                        {% else %}
+                        <span class="text-base-content/30">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-sm text-base-content/60">
+                        {% if s.next_reindex %}
+                        <span title="Следующий обход">
+                            <iconify-icon icon="lucide:clock" class="size-3.5 inline-block mr-0.5 align-middle"></iconify-icon>
+                            {{ s.next_reindex.astimezone().strftime('%d.%m %H:%M') }}
+                        </span>
+                        {% elif s.reindex_cron == 'manual' %}
+                        <span class="text-base-content/40">Ручной</span>
+                        {% endif %}
+                    </td>
+                    <td onclick="event.stopPropagation()">
+                        {% if s.is_paused %}
+                        <button class="btn btn-xs btn-ghost"
+                            hx-post="{{ url('actions', action='resume_source', item_id=s.id) }}"
+                            hx-swap="none"
+                            hx-on::after-request="window.location.reload()"
+                            title="Возобновить">
+                            <iconify-icon icon="lucide:play" class="size-3"></iconify-icon>
+                        </button>
+                        {% else %}
+                        <button class="btn btn-xs btn-ghost text-warning"
+                            hx-post="{{ url('actions', action='pause_source', item_id=s.id) }}"
+                            hx-swap="none"
+                            hx-on::after-request="window.location.reload()"
+                            title="Приостановить">
+                            <iconify-icon icon="lucide:pause" class="size-3"></iconify-icon>
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card bg-base-100 shadow">
+    <div class="card-body text-base-content/50 text-center py-12">
+        <iconify-icon icon="lucide:inbox" class="size-10 mx-auto mb-2"></iconify-icon>
+        Источники не найдены.
+        <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm mt-4 mx-auto">
+            Добавить первый источник
+        </button>
+    </div>
+</div>
+{% endif %}
+
+</div>{# /sources-body #}
+
+{# ── Модальное окно добавления источника ─────────────────────────────────── #}
 <dialog id="add_source_modal" class="modal">
     <div class="modal-box">
         <h3 class="font-bold text-lg">Добавить новый источник</h3>
@@ -111,18 +238,16 @@
             {{ form.csrf_token }}
             <div id="add_source_errors" class="hidden alert alert-error mb-4 text-sm flex-col items-start gap-1"></div>
 
-            <div id="site_fields" class="source-type-fields">
-                <div class="form-control w-full mb-4">
-                    <label class="label">
-                        <span class="label-text">URL</span>
-                    </label>
-                    {{ form.url(class="input input-bordered w-full", placeholder="https://example.com") }}
-                </div>
+            <div class="form-control w-full mb-4">
+                <label class="label">
+                    <span class="label-text">URL</span>
+                </label>
+                {{ form.url(class="input input-bordered w-full", placeholder="https://example.com") }}
             </div>
 
             <div class="form-control w-full mb-4">
                 <label class="label">
-                        <span class="label-text">Cron переиндексации (UTC)</span>
+                    <span class="label-text">Cron переиндексации (UTC)</span>
                 </label>
                 {{ form.reindex_cron(class="input input-bordered w-full", placeholder="0 3 * * 1") }}
                 <label class="label">
@@ -142,31 +267,40 @@
 </dialog>
 
 <script>
-    const addSourceForm = document.getElementById('add_source_form');
-    const addSourceErrors = document.getElementById('add_source_errors');
+(function () {
+    const checkbox = document.getElementById('sources-auto-refresh');
+    const dot = document.getElementById('sources-live-dot');
+    if (!checkbox || !dot) return;
+    function syncDot() { dot.classList.toggle('hidden', !checkbox.checked); }
+    checkbox.addEventListener('change', syncDot);
+    syncDot();
+})();
 
-    addSourceForm.addEventListener('htmx:responseError', function(e) {
-        try {
-            const data = JSON.parse(e.detail.xhr.responseText);
-            const errors = data.errors || {};
-            addSourceErrors.innerHTML = '';
-            Object.entries(errors).forEach(([, msgs]) => {
-                msgs.forEach(msg => {
-                    const line = document.createElement('div');
-                    line.textContent = msg;
-                    addSourceErrors.appendChild(line);
-                });
-            });
-        } catch {
-            addSourceErrors.textContent = e.detail.xhr.responseText || 'Ошибка при сохранении';
-        }
-        addSourceErrors.classList.remove('hidden');
-    });
+const addSourceForm = document.getElementById('add_source_form');
+const addSourceErrors = document.getElementById('add_source_errors');
 
-    addSourceForm.addEventListener('htmx:beforeRequest', function() {
-        addSourceErrors.classList.add('hidden');
+addSourceForm.addEventListener('htmx:responseError', function(e) {
+    try {
+        const data = JSON.parse(e.detail.xhr.responseText);
+        const errors = data.errors || {};
         addSourceErrors.innerHTML = '';
-    });
+        Object.entries(errors).forEach(([, msgs]) => {
+            msgs.forEach(msg => {
+                const line = document.createElement('div');
+                line.textContent = msg;
+                addSourceErrors.appendChild(line);
+            });
+        });
+    } catch {
+        addSourceErrors.textContent = e.detail.xhr.responseText || 'Ошибка при сохранении';
+    }
+    addSourceErrors.classList.remove('hidden');
+});
+
+addSourceForm.addEventListener('htmx:beforeRequest', function() {
+    addSourceErrors.classList.add('hidden');
+    addSourceErrors.innerHTML = '';
+});
 </script>
 
 {% endblock %}

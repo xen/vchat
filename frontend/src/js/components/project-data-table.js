@@ -84,25 +84,38 @@ const resolveDocumentType = (value) => {
   return 'other'
 }
 
-const formatDocumentStatus = (value) => {
-  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
-  if (normalized === 'indexed') {
-    return {
-      label: 'Индексирован',
-      className: 'badge badge-success badge-sm badge-soft',
-    }
-  }
-  if (normalized === 'added') {
-    return {
-      label: 'В очереди',
-      className: 'badge badge-warning badge-sm badge-soft',
-    }
-  }
-  return {
-    label: normalized || 'unknown',
-    className: 'badge badge-outline badge-sm',
-  }
+// ── Status group helpers ────────────────────────────────────────────────────
+
+const EXCLUDED_STATUSES = new Set([
+  'excluded_robots', 'excluded_rules', 'excluded_auth', 'excluded_ignored',
+])
+const ERROR_STATUSES = new Set([
+  'error_4xx', 'error_5xx', 'blocked', 'no_content', 'redirect',
+])
+const PENDING_STATUSES = new Set(['added', 'pending'])
+
+function computeGroup(status, indexStatus, isIgnored) {
+  const s = (status || '').toLowerCase()
+  const ix = (indexStatus || '').toLowerCase()
+
+  if (isIgnored || EXCLUDED_STATUSES.has(s)) return 'excluded'
+  if (ERROR_STATUSES.has(s) || ix === 'failed') return 'errors'
+  if (PENDING_STATUSES.has(s)) return 'pending'
+  if (ix === 'indexed' || (s === 'indexed' && !indexStatus)) return 'ready'
+  return 'processing'
 }
+
+const GROUP_ORDER = { errors: 0, pending: 1, processing: 2, ready: 3, excluded: 4 }
+
+const GROUP_DISPLAY = {
+  errors:     { label: 'Ошибка',       cls: 'badge badge-xs badge-error badge-soft' },
+  pending:    { label: 'Ожидает',      cls: 'badge badge-xs badge-warning badge-soft' },
+  processing: { label: 'В обработке',  cls: 'badge badge-xs badge-success badge-soft' },
+  ready:      { label: 'Готово',       cls: 'badge badge-xs bg-purple-100 text-purple-700 border-purple-200' },
+  excluded:   { label: 'Игнорировано', cls: 'badge badge-xs badge-ghost' },
+}
+
+// ── Date helpers ────────────────────────────────────────────────────────────
 
 const compareIsoDates = (rowA, rowB, columnId) => {
   const toTimestamp = (value) => {
@@ -172,13 +185,6 @@ window.useProjectDataTable = () => {
     return `${day}.${month}.${year}`
   }
 
-  const statusDotClass = (status, chunkCount) => {
-    if (Number(chunkCount) > 0) return 'inline-block size-1.5 rounded-full bg-success shrink-0'
-    const s = typeof status === 'string' ? status.trim().toLowerCase() : ''
-    if (s === 'added' || s === 'indexed') return 'inline-block size-1.5 rounded-full bg-warning shrink-0'
-    return 'inline-block size-1.5 rounded-full bg-base-300 shrink-0'
-  }
-
   const columns = [
     {
       id: "actions",
@@ -222,7 +228,9 @@ window.useProjectDataTable = () => {
         const docId = escapeHtml(info.row.original.id)
         const uri = escapeHtml(info.row.original.uri || '')
         const dateStr = escapeHtml(formatShortDate(info.row.original.created_at))
-        const dotClass = statusDotClass(info.row.original.status, info.row.original.chunk_count)
+        const group = info.row.original.group || 'processing'
+        const groupInfo = GROUP_DISPLAY[group] || GROUP_DISPLAY['processing']
+        const badgeHtml = `<span class="${groupInfo.cls}">${escapeHtml(groupInfo.label)}</span>`
 
         return `
           <div class="overflow-hidden">
@@ -230,8 +238,8 @@ window.useProjectDataTable = () => {
               href="/page/${docId}" title="${title}">${title}</a>
             <div class="flex items-center gap-1.5 text-xs text-base-content/40 mt-0.5">
               ${uri ? `<a href="${uri}" target="_blank" rel="noopener" class="truncate min-w-0 hover:text-base-content/70 transition-colors">${uri}</a>` : ''}
-              <span class="shrink-0 flex items-center gap-1 ml-auto pl-2">
-                <span class="${dotClass}" title="${escapeHtml(info.row.original.status || '')}"></span>
+              <span class="shrink-0 flex items-center gap-1.5 ml-auto pl-2">
+                ${badgeHtml}
                 ${dateStr}
               </span>
             </div>
@@ -254,6 +262,24 @@ window.useProjectDataTable = () => {
       header: "",
       cell: () => '',
       enableSorting: false,
+    },
+    {
+      accessorKey: "group",
+      header: "",
+      cell: () => '',
+      enableSorting: false,
+      filterFn: (row, columnId, filterValue) => {
+        if (!filterValue) return true
+        return (row.getValue(columnId) ?? '') === filterValue
+      },
+    },
+    {
+      accessorKey: "group_order",
+      header: sortableHeader("Статус"),
+      meta: { thStyle: 'width:0; display:none', tdStyle: 'display:none' },
+      cell: () => '',
+      enableSorting: true,
+      sortingFn: compareNumbers,
     },
     {
       id: "size_chunks",
@@ -291,6 +317,7 @@ window.useProjectDataTable = () => {
     rangeEnd: 0,
     search: "",
     sourceFilter: "",
+    groupFilter: "",
     table: null,
     state: null,
     data: [],
@@ -307,9 +334,9 @@ window.useProjectDataTable = () => {
           pageIndex: 0,
         },
         globalFilter: "",
-        sorting: [],
+        sorting: [{ id: 'group_order', desc: false }],
         columnFilters: [],
-        columnVisibility: { source: false, uri: false },
+        columnVisibility: { source: false, uri: false, group: false, group_order: false },
       }
 
       this.initFromUrl()
@@ -363,7 +390,10 @@ window.useProjectDataTable = () => {
       const params = new URLSearchParams(window.location.search)
       const search = params.get('search')
       const source = params.get('source')
+      const group = params.get('group')
       const page = params.get('page')
+
+      const filters = []
 
       if (search) {
         this.state.globalFilter = search
@@ -371,11 +401,18 @@ window.useProjectDataTable = () => {
       }
       if (source) {
         this.sourceFilter = source
-        this.state.columnFilters = [{ id: 'source', value: source }]
+        filters.push({ id: 'source', value: source })
       } else {
         this.sourceFilter = ""
-        this.state.columnFilters = []
       }
+      if (group) {
+        this.groupFilter = group
+        filters.push({ id: 'group', value: group })
+      } else {
+        this.groupFilter = ""
+      }
+      this.state.columnFilters = filters
+
       if (page) {
         const pageIndex = parseInt(page, 10) - 1
         if (!isNaN(pageIndex) && pageIndex >= 0) {
@@ -398,6 +435,12 @@ window.useProjectDataTable = () => {
         params.set('source', this.sourceFilter)
       } else {
         params.delete('source')
+      }
+
+      if (this.groupFilter) {
+        params.set('group', this.groupFilter)
+      } else {
+        params.delete('group')
       }
 
       if (this.state.pagination.pageIndex > 0) {
@@ -423,8 +466,7 @@ window.useProjectDataTable = () => {
               ...prev.state.pagination,
               pageIndex: this.state.pagination.pageIndex
             },
-            globalFilter: this.state.globalFilter
-            ,
+            globalFilter: this.state.globalFilter,
             columnFilters: this.state.columnFilters
           }
         }))
@@ -438,11 +480,14 @@ window.useProjectDataTable = () => {
         .then(jsonData => {
           this.data = Array.isArray(jsonData)
             ? jsonData.map(item => {
+              const group = computeGroup(item?.status, item?.index_status, item?.is_ignored)
               return {
                 ...(item || {}),
                 document_type: resolveDocumentType(item?.document_type),
                 size_bytes: Number(item?.size_bytes ?? 0),
                 chunk_count: Number(item?.chunk_count ?? 0),
+                group,
+                group_order: GROUP_ORDER[group] ?? 5,
               }
             })
             : []
@@ -493,11 +538,17 @@ window.useProjectDataTable = () => {
     },
     updateSourceFilter() {
       this.table?.setPageIndex(0)
-      const sourceColumn = this.table?.getColumn('source')
-      if (!sourceColumn) {
-        return
-      }
-      sourceColumn.setFilterValue(this.sourceFilter || undefined)
+      this.applyColumnFilter('source', this.sourceFilter || undefined)
+    },
+    setGroupFilter(group) {
+      this.table?.setPageIndex(0)
+      this.groupFilter = group
+      this.applyColumnFilter('group', group || undefined)
+    },
+    applyColumnFilter(columnId, value) {
+      const column = this.table?.getColumn(columnId)
+      if (!column) return
+      column.setFilterValue(value)
     },
     registerRefreshListener() {
       if (this.refreshListener || typeof document === 'undefined') {
@@ -599,6 +650,8 @@ window.useProjectDataTable = () => {
       const ok = await this.sendRowAction(`/actions/ignore_document/${docId}`, payload)
       if (ok) {
         doc.is_ignored = desiredState
+        doc.group = computeGroup(doc.status, doc.index_status, desiredState)
+        doc.group_order = GROUP_ORDER[doc.group] ?? 5
         this.updateDerivedState()
         this.emitRefreshEvent()
       }

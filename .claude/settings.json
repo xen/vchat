@@ -1,4 +1,14 @@
 {
+    "permissions": {
+        "allow": [
+            "Bash(psql postgresql://deploy@localhost:5432/vchat *)",
+            "Bash(psql -U deploy -d vchat *)",
+            "Bash(journalctl *)",
+            "Bash(redis-cli *)",
+            "Bash(systemctl status *)",
+            "Bash(celery *)",
+        ]
+    },
     "hooks": {
         "PostToolUse": [
             {
@@ -6,9 +16,9 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "jq -r '.tool_input.file_path // empty' | { read -r f && venv/bin/ruff format \"$f\"; } 2>/dev/null || true"
+                        "command": "jq -r '.tool_input.file_path // empty' | { read -r f && venv/bin/ruff format \"$f\"; } 2>/dev/null || true",
                     }
-                ]
+                ],
             }
         ],
         "PreToolUse": [
@@ -17,10 +27,10 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": "if echo \"$CLAUDE_TOOL_INPUT_COMMAND\" | grep -qiE 'Co-Authored-By'; then echo 'ERROR: Co-Authored-By forbidden in commits' >&2; exit 1; fi"
+                        "command": "if echo \"$CLAUDE_TOOL_INPUT_COMMAND\" | grep -qiE 'Co-Authored-By'; then echo 'ERROR: Co-Authored-By forbidden in commits' >&2; exit 1; fi",
                     }
-                ]
+                ],
             }
-        ]
-    }
+        ],
+    },
 }

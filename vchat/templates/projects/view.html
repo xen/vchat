@@ -9,8 +9,8 @@
     <div class="card bg-base-100 shadow">
         <div class="card-body p-0">
             <!-- Toolbar -->
-            <div class="border-base-200 flex items-center gap-3 border-b border-dashed px-5 py-5">
-                <label class="input input-sm flex-1">
+            <div class="border-base-200 flex items-center gap-3 border-b border-dashed px-5 py-4 flex-wrap">
+                <label class="input input-sm flex-1 min-w-[180px]">
                     <iconify-icon icon="lucide:search" class="text-base-content/70 size-4.5"></iconify-icon>
                     <input
                         class="text-base placeholder:text-sm"
@@ -19,7 +19,7 @@
                         @input="updateSearch"
                         placeholder="Поиск по названию или URL..." />
                 </label>
-                <label class="select select-sm w-48 shrink-0">
+                <label class="select select-sm w-40 shrink-0">
                     <iconify-icon icon="lucide:filter" class="text-base-content/70 size-4.5"></iconify-icon>
                     <select x-model="sourceFilter" @change="updateSourceFilter">
                         <option value="">Все источники</option>
@@ -28,6 +28,39 @@
                         {% endfor %}
                     </select>
                 </label>
+            </div>
+            <!-- Group filter chips -->
+            <div class="border-base-200 flex items-center gap-1.5 border-b border-dashed px-5 py-2 flex-wrap">
+                <button @click="setGroupFilter('')"
+                        :class="groupFilter === '' ? 'btn-neutral' : 'btn-ghost text-base-content/60'"
+                        class="btn btn-xs">
+                    Все
+                </button>
+                <button @click="setGroupFilter('errors')"
+                        :class="groupFilter === 'errors' ? 'btn-error' : 'btn-ghost text-error/70'"
+                        class="btn btn-xs">
+                    Ошибки
+                </button>
+                <button @click="setGroupFilter('pending')"
+                        :class="groupFilter === 'pending' ? 'btn-warning' : 'btn-ghost text-warning/70'"
+                        class="btn btn-xs">
+                    Ожидает
+                </button>
+                <button @click="setGroupFilter('processing')"
+                        :class="groupFilter === 'processing' ? 'btn-success' : 'btn-ghost text-success/70'"
+                        class="btn btn-xs">
+                    В обработке
+                </button>
+                <button @click="setGroupFilter('ready')"
+                        :class="groupFilter === 'ready' ? 'bg-purple-500 text-white border-purple-500' : 'btn-ghost text-purple-600/70'"
+                        class="btn btn-xs">
+                    Готово
+                </button>
+                <button @click="setGroupFilter('excluded')"
+                        :class="groupFilter === 'excluded' ? 'btn-neutral' : 'btn-ghost text-base-content/50'"
+                        class="btn btn-xs">
+                    Игнорировано
+                </button>
             </div>
 
             <!-- Table -->
