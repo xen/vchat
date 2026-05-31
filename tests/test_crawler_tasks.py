@@ -150,3 +150,60 @@ class TestCrawlSourceTaskPayload:
         cmd = self.run_task_capture_cmd(source)
         payload = json.loads(cmd[-1])
         assert payload["start_pages"] == []
+
+
+class TestCrawlPageTaskPayload:
+    def test_page_task_uses_single_page_mode(self):
+        page = SimpleNamespace(id=7, source_id=42, uri="https://test.com/page")
+        source = make_source(
+            source_id=42,
+            uri="https://test.com",
+            start_pages=["https://test.com/seed"],
+        )
+        captured = {}
+
+        engine_mock = MagicMock()
+        session_mock = MagicMock()
+
+        def fake_get(model, ident):
+            model_name = getattr(model, "__name__", str(model))
+            if model_name == "Page" and ident == 7:
+                return page
+            if model_name == "Source" and ident == 42:
+                return source
+            return None
+
+        session_mock.get.side_effect = fake_get
+        session_mock.execute.return_value = MagicMock()
+        session_mock.__enter__ = lambda s: session_mock
+        session_mock.__exit__ = MagicMock(return_value=False)
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with (
+            patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
+            patch("jobs.crawler.tasks.Session", return_value=session_mock),
+            patch("jobs.crawler.tasks.subprocess.run", side_effect=fake_run),
+            patch(
+                "jobs.crawler.tasks.update_inlink_counts_task.si",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "jobs.crawler.tasks.cleanup_orphans_task.si",
+                return_value=MagicMock(),
+            ),
+            patch("jobs.crawler.tasks.chain") as chain_mock,
+            patch("jobs.crawler.tasks.schedule_refresh_project_index"),
+            patch("jobs.crawler.tasks.rebuild_boilerplate_index.apply_async"),
+        ):
+            chain_mock.return_value.apply_async = MagicMock()
+            from jobs.crawler import tasks as crawler_tasks
+
+            crawler_tasks.crawl_page_task(page.id)
+
+        payload = json.loads(captured["cmd"][-1])
+        assert captured["cmd"][-3:-1] == ["https://test.com/page", "42"]
+        assert payload["single_page_only"] is True
+        assert payload["crawler_max_pages"] == 1

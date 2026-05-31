@@ -168,6 +168,125 @@ def crawl_source_task(source_id: int):
 
 
 @app.task(
+    name="jobs.crawler.tasks.crawl_page_task",
+    queue="crawler",
+)
+def crawl_page_task(page_id: int):
+    print(f"Starting crawl for page {page_id}")
+
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            page = session.get(Page, page_id)
+            if not page:
+                print(f"Page {page_id} not found")
+                return
+            if not page.source_id:
+                print(f"Page {page_id} is not attached to a crawl source")
+                return
+            if not page.uri:
+                print(f"Page {page_id} has no URI")
+                return
+
+            source = session.get(Source, page.source_id)
+            if not source:
+                print(f"Source {page.source_id} not found for page {page_id}")
+                return
+
+            url = page.uri
+            source_id = source.id
+            crawler_payload = source.config.to_dict()
+            crawler_payload["single_page_only"] = True
+            crawler_payload["crawler_max_pages"] = 1
+
+            recent_runs = (
+                session.execute(
+                    select(CrawlRun)
+                    .where(
+                        CrawlRun.source_id == source_id,
+                        CrawlRun.finished_at.is_not(None),
+                    )
+                    .order_by(CrawlRun.started_at.desc())
+                    .limit(3)
+                )
+                .scalars()
+                .all()
+            )
+            if len(recent_runs) == 3 and all(r.was_rate_limited for r in recent_runs):
+                base_delay = int(
+                    float(
+                        crawler_payload.get(
+                            "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
+                        )
+                    )
+                )
+                doubled = min(base_delay * 2, 30)
+                crawler_payload["crawler_download_delay"] = doubled
+                print(
+                    f"Source {source_id}: 3 consecutive rate-limited runs, "
+                    f"doubling download_delay to {doubled}s"
+                )
+
+            session.execute(
+                update(CrawlRun)
+                .where(
+                    CrawlRun.source_id == source_id,
+                    CrawlRun.finished_at.is_(None),
+                )
+                .values(
+                    finished_at=datetime.now(timezone.utc),
+                    exit_reason="interrupted",
+                )
+            )
+            session.commit()
+    finally:
+        engine.dispose()
+
+    print(f"Using Scrapy crawler for page [{page_id}]: {url}")
+    config_json = json.dumps(crawler_payload)
+    runner_cmd = [
+        sys.executable,
+        "-m",
+        "jobs.crawler.crawler_runner",
+        url,
+        str(source_id),
+        config_json,
+    ]
+
+    result = subprocess.run(
+        runner_cmd,
+        capture_output=True,
+        text=True,
+        cwd=str(PROJECT_ROOT),
+    )
+
+    if result.returncode != 0:
+        print(f"Page crawler failed with exit code {result.returncode}")
+    else:
+        engine = create_sync_engine()
+        try:
+            with Session(bind=engine) as session:
+                source = session.get(Source, source_id)
+                if source:
+                    source.last_reindexed_at = datetime.now(timezone.utc)
+                    session.commit()
+        finally:
+            engine.dispose()
+
+        print(
+            "Triggering inlink update, orphan cleanup, index refresh, and boilerplate rebuild"
+        )
+        chain(
+            update_inlink_counts_task.si(source_id),
+            cleanup_orphans_task.si(source_id),
+        ).apply_async()
+        schedule_refresh_project_index()
+        rebuild_boilerplate_index.apply_async(args=[source_id], queue="embeddings")
+
+    print(f"Finished crawling page {page_id}")
+
+
+@app.task(
     name="jobs.crawler.tasks.crawl_all_sources_task",
     queue="crawler",
 )

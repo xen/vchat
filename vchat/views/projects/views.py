@@ -21,7 +21,12 @@ from aiohttp_session import get_session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
 from passlib.context import CryptContext
 
-from jobs.crawler import crawl_all_sources_task, crawl_file_task, crawl_source_task
+from jobs.crawler import (
+    crawl_all_sources_task,
+    crawl_file_task,
+    crawl_page_task,
+    crawl_source_task,
+)
 from jobs.embedder.tasks import (
     index_project,
     refresh_source_index,
@@ -594,7 +599,7 @@ async def project_edit_sources(request):
                 Source.uri,
                 Source.is_paused,
             )
-            .order_by(Source.created_at.desc())
+            .order_by(Source.is_paused.asc(), Source.created_at.desc())
         )
     ).all()
 
@@ -1146,6 +1151,30 @@ async def project_action(request):
         await flash(request, _("Crawl task started for source"), "success")
         return web.Response(text="ok", status=200)
 
+    if action == "refresh_page":
+        document = await db_session.scalar(
+            sa.select(Page).where(Page.id == int(item_id))
+        )
+        if not document:
+            raise web.HTTPNotFound()
+        if not document.source_id or not document.uri:
+            raise web.HTTPBadRequest(text="Page cannot be refreshed")
+
+        meta = dict(document.meta or {})
+        meta["force_reprocess_once"] = True
+        document.meta = meta
+        document.updated_at = datetime.now(timezone.utc)
+        await db_session.commit()
+
+        crawl_page_task.delay(document.id)
+        await admin_event("page_refresh_request", request)
+        await flash(
+            request,
+            _("Обновление страницы запущено"),
+            "success",
+        )
+        return web.Response(text="ok", status=200)
+
     if action == "refresh_source_index":
         source = await db_session.scalar(
             sa.select(Source).where(Source.id == int(item_id))
@@ -1385,9 +1414,6 @@ async def project_documents_json(request):
     )
 
     size_bytes_expr = sa.cast(Page._length, sa.BigInteger).label("size_bytes")
-    doc_type_expr = sa.func.nullif(Page.meta["doc_type"].astext, "").label(
-        "document_type"
-    )
 
     documents = (
         await request["db"].execute(
@@ -1395,8 +1421,6 @@ async def project_documents_json(request):
                 Page.id,
                 Page.title,
                 Page.uri,
-                Page.created_at,
-                Page.updated_at,
                 Page.status,
                 Page.index_status,
                 Page.is_ignored,
@@ -1404,7 +1428,6 @@ async def project_documents_json(request):
                 Source.uri.label("source_uri"),
                 size_bytes_expr,
                 chunk_counts.c.chunk_count,
-                doc_type_expr,
             )
             .join(Source, Page.source_id == Source.id)
             .outerjoin(chunk_counts, chunk_counts.c.document_id == Page.id)
@@ -1417,8 +1440,6 @@ async def project_documents_json(request):
         document_id,
         title,
         uri,
-        created_at,
-        updated_at,
         status,
         index_status,
         is_ignored,
@@ -1426,27 +1447,18 @@ async def project_documents_json(request):
         source_uri,
         size_bytes,
         chunk_count,
-        document_type,
     ) in documents:
-        doc_type_value = (
-            document_type
-            if isinstance(document_type, str) and document_type
-            else DEFAULT_DOCUMENT_TYPE
-        )
         data.append(
             {
                 "id": str(document_id),
                 "title": _display_document_title(title, uri),
                 "uri": uri or "",
                 "source": source_title or source_uri or _("Файлы"),
-                "created_at": created_at.isoformat() if created_at else None,
-                "updated_at": updated_at.isoformat() if updated_at else None,
                 "status": status,
                 "index_status": index_status,
-                "is_ignored": is_ignored,
+                "is_ignored": bool(is_ignored) or status == "low_content",
                 "size_bytes": int(size_bytes or 0),
                 "chunk_count": int(chunk_count or 0),
-                "document_type": doc_type_value,
             }
         )
 

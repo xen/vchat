@@ -23,6 +23,9 @@ class _Resp:
     def one(self):
         return self._one_row
 
+    def scalar(self):
+        return self._one_row
+
 
 class _DB:
     def __init__(self, *, execute_results=None, scalar_results=None):
@@ -92,6 +95,14 @@ def test_document_content_template_renders_structure_items() -> None:
     assert "one\ntwo" in rendered
 
 
+def test_sources_template_hides_pause_badge_in_name_column() -> None:
+    template_path = Path(__file__).resolve().parents[1] / "vchat" / "templates" / "projects" / "sources.html"
+    content = template_path.read_text(encoding="utf-8")
+
+    assert "Пауза" not in content
+    assert "pause-circle" not in content
+
+
 @pytest.mark.asyncio
 async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None:
     day = datetime(2026, 3, 1, tzinfo=timezone.utc)
@@ -137,6 +148,82 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 @pytest.mark.asyncio
+async def test_project_edit_sources_keeps_active_sources_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = _DB(
+        execute_results=[
+            _Resp(
+                all_rows=[
+                    SimpleNamespace(
+                        id=2,
+                        title="Active source",
+                        uri="https://active.local",
+                        is_paused=False,
+                        excluded=0,
+                        errors=0,
+                        pending=0,
+                        processing=0,
+                        ready=3,
+                    ),
+                    SimpleNamespace(
+                        id=1,
+                        title="Paused source",
+                        uri="https://paused.local",
+                        is_paused=True,
+                        excluded=0,
+                        errors=0,
+                        pending=0,
+                        processing=0,
+                        ready=1,
+                    ),
+                ]
+            ),
+            _Resp(
+                one_row=SimpleNamespace(
+                    excluded=0,
+                    errors=0,
+                    pending=0,
+                    processing=0,
+                    ready=4,
+                )
+            ),
+            _Resp(one_row=2.0),
+        ]
+    )
+
+    class _Redis:
+        async def llen(self, _key):
+            return 0
+
+        async def lrange(self, _key, _start, _end):
+            return []
+
+    req = _Req(db=db, app={project_views.REDIS_KEY: _Redis()})
+    monkeypatch.setattr(
+        project_views, "_project_context", lambda request: SimpleNamespace(id="global")
+    )
+
+    async def _get_session(_request):
+        return {}
+
+    monkeypatch.setattr(project_views, "get_session", _get_session)
+    monkeypatch.setattr(
+        project_views.forms, "SourceForm", lambda *args, **kwargs: SimpleNamespace()
+    )
+
+    raw = project_views.project_edit_sources.__wrapped__.__wrapped__.__wrapped__
+    payload = await raw(req)
+
+    assert [source["title"] for source in payload["sources"]] == [
+        "Active source",
+        "Paused source",
+    ]
+    assert payload["sources"][0]["is_paused"] is False
+    assert payload["sources"][1]["is_paused"] is True
+
+
+@pytest.mark.asyncio
 async def test_project_documents_and_files_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -161,15 +248,13 @@ async def test_project_documents_and_files_json(
                         doc.id,
                         doc.title,
                         doc.uri,
-                        doc.created_at,
-                        doc.updated_at,
                         doc.status,
+                        "indexed",
                         doc.is_ignored,
                         source.title,
                         source.uri,
                         120,
                         2,
-                        "html",
                     )
                 ]
             ),
@@ -179,9 +264,11 @@ async def test_project_documents_and_files_json(
     docs_fn = project_views.project_documents_json.__wrapped__
     docs_resp = await docs_fn(req_docs)
     assert docs_resp.status == 200
-    assert b'"document_type": "html"' in docs_resp.body
     assert b'"meta"' not in docs_resp.body
-    assert b'"uri"' not in docs_resp.body
+    assert b'"uri": "https://example.local/a"' in docs_resp.body
+    assert b'"created_at"' not in docs_resp.body
+    assert b'"updated_at"' not in docs_resp.body
+    assert b'"document_type"' not in docs_resp.body
 
     file_doc = SimpleNamespace(
         id=5,

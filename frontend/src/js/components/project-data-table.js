@@ -63,27 +63,6 @@ const formatBytes = (value) => {
   return `${formatted} ${units[exponent]}`
 }
 
-const DOCUMENT_TYPE_META = {
-  html: { label: 'HTML-документ', icon: 'lucide:globe' },
-  markdown: { label: 'Markdown-документ', icon: 'lucide:file-text' },
-  office: { label: 'Офисный документ', icon: 'lucide:file-spreadsheet' },
-  audio: { label: 'Аудиофайл', icon: 'lucide:file-music' },
-  video: { label: 'Видеофайл', icon: 'lucide:file-video' },
-  code: { label: 'Исходный код', icon: 'lucide:file-code' },
-  pdf: { label: 'PDF-документ', icon: 'lucide:file-text' },
-  other: { label: 'Другое', icon: 'lucide:file' },
-}
-
-const resolveDocumentType = (value) => {
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (trimmed) {
-      return trimmed
-    }
-  }
-  return 'other'
-}
-
 // ── Status group helpers ────────────────────────────────────────────────────
 
 const EXCLUDED_STATUSES = new Set([
@@ -175,50 +154,7 @@ window.useProjectDataTable = () => {
         `
   }
 
-  const formatShortDate = (isoStr) => {
-    if (!isoStr) return ''
-    const d = new Date(isoStr)
-    if (!Number.isFinite(d.getTime())) return ''
-    const day = d.getDate().toString().padStart(2, '0')
-    const month = (d.getMonth() + 1).toString().padStart(2, '0')
-    const year = d.getFullYear().toString().slice(2)
-    return `${day}.${month}.${year}`
-  }
-
   const columns = [
-    {
-      id: "actions",
-      header: "",
-      meta: { thStyle: 'width:80px', tdStyle: 'padding-right:4px' },
-      cell: (info) => {
-        const docId = info.row.original.id
-        const isIgnored = Boolean(info.row.original.is_ignored)
-        const toggleTitle = isIgnored ? "Вернуть в индекс" : "Игнорировать"
-        const toggleValue = isIgnored ? "false" : "true"
-        const toggleIcon = isIgnored ? "lucide:eye" : "lucide:eye-off"
-        const toggleClass = isIgnored
-          ? "btn btn-ghost btn-xs px-1 text-success"
-          : "btn btn-ghost btn-xs px-1 text-base-content/40"
-
-        return `
-          <div class="flex items-center">
-            <button type="button" class="btn btn-ghost btn-xs px-1"
-              data-doc-action="view" data-doc-id="${docId}" title="Открыть содержимое">
-              <iconify-icon icon="lucide:eye" class="size-3.5"></iconify-icon>
-            </button>
-            <button type="button" class="${toggleClass}"
-              data-doc-action="toggle-ignore" data-doc-id="${docId}"
-              data-doc-ignore-value="${toggleValue}" title="${toggleTitle}">
-              <iconify-icon icon="${toggleIcon}" class="size-3.5"></iconify-icon>
-            </button>
-            <button type="button" class="btn btn-ghost btn-xs px-1 text-error/50 hover:text-error"
-              data-doc-action="delete" data-doc-id="${docId}" title="Удалить">
-              <iconify-icon icon="lucide:trash-2" class="size-3.5"></iconify-icon>
-            </button>
-          </div>`
-      },
-      enableSorting: false,
-    },
     {
       accessorKey: "title",
       header: sortableHeader("Название"),
@@ -227,7 +163,6 @@ window.useProjectDataTable = () => {
         const title = escapeHtml((rawTitle || '').trim() || '[Без названия]')
         const docId = escapeHtml(info.row.original.id)
         const uri = escapeHtml(info.row.original.uri || '')
-        const dateStr = escapeHtml(formatShortDate(info.row.original.created_at))
         const group = info.row.original.group || 'processing'
         const groupInfo = GROUP_DISPLAY[group] || GROUP_DISPLAY['processing']
         const badgeHtml = `<span class="${groupInfo.cls}">${escapeHtml(groupInfo.label)}</span>`
@@ -240,7 +175,6 @@ window.useProjectDataTable = () => {
               ${uri ? `<a href="${uri}" target="_blank" rel="noopener" class="truncate min-w-0 hover:text-base-content/70 transition-colors">${uri}</a>` : ''}
               <span class="shrink-0 flex items-center gap-1.5 ml-auto pl-2">
                 ${badgeHtml}
-                ${dateStr}
               </span>
             </div>
           </div>`
@@ -299,6 +233,35 @@ window.useProjectDataTable = () => {
       },
       enableSorting: true,
       sortingFn: compareNumbers,
+    },
+    {
+      id: "actions",
+      header: "",
+      meta: { thStyle: 'width:52px', tdStyle: 'padding-left:4px' },
+      cell: (info) => {
+        const docId = info.row.original.id
+        const isIgnored = Boolean(info.row.original.is_ignored)
+        const toggleTitle = isIgnored ? "Вернуть в индекс" : "Игнорировать"
+        const toggleValue = isIgnored ? "false" : "true"
+        const toggleIcon = isIgnored ? "lucide:eye" : "lucide:eye-off"
+        const toggleClass = isIgnored
+          ? "btn btn-ghost btn-xs px-1 text-success"
+          : "btn btn-ghost btn-xs px-1 text-base-content/40"
+
+        return `
+          <div class="flex items-center justify-end">
+            <button type="button" class="${toggleClass}"
+              data-doc-action="toggle-ignore" data-doc-id="${docId}"
+              data-doc-ignore-value="${toggleValue}" title="${toggleTitle}">
+              <iconify-icon icon="${toggleIcon}" class="size-3.5"></iconify-icon>
+            </button>
+            <button type="button" class="btn btn-ghost btn-xs px-1 text-error/50 hover:text-error"
+              data-doc-action="delete" data-doc-id="${docId}" title="Удалить">
+              <iconify-icon icon="lucide:trash-2" class="size-3.5"></iconify-icon>
+            </button>
+          </div>`
+      },
+      enableSorting: false,
     },
   ]
 
@@ -483,7 +446,6 @@ window.useProjectDataTable = () => {
               const group = computeGroup(item?.status, item?.index_status, item?.is_ignored)
               return {
                 ...(item || {}),
-                document_type: resolveDocumentType(item?.document_type),
                 size_bytes: Number(item?.size_bytes ?? 0),
                 chunk_count: Number(item?.chunk_count ?? 0),
                 group,
@@ -550,6 +512,17 @@ window.useProjectDataTable = () => {
       if (!column) return
       column.setFilterValue(value)
     },
+    setTableData(nextData) {
+      this.data = nextData
+      this.table?.setOptions(prev => ({ ...prev, data: nextData }))
+
+      const pageCount = this.table?.getPageCount?.() ?? 0
+      if (pageCount > 0 && this.state.pagination.pageIndex > pageCount - 1) {
+        this.table?.setPageIndex(pageCount - 1)
+      } else {
+        this.updateDerivedState()
+      }
+    },
     registerRefreshListener() {
       if (this.refreshListener || typeof document === 'undefined') {
         return
@@ -598,8 +571,6 @@ window.useProjectDataTable = () => {
           this.toggleIgnore(docId, desired)
         } else if (target.dataset.docAction === 'delete') {
           this.deleteDocument(docId)
-        } else if (target.dataset.docAction === 'view') {
-          this.viewDocument(docId)
         }
       }
       body.addEventListener('click', this.actionListener)
@@ -633,13 +604,6 @@ window.useProjectDataTable = () => {
       }
       return Boolean(this.documentModal && this.documentModalContent)
     },
-    async viewDocument(docId) {
-      const doc = this.data.find(item => item.id === docId)
-      if (!doc) {
-        return
-      }
-      window.open(`/page/${docId}`, '_blank', 'noopener')
-    },
     async toggleIgnore(docId, desiredState) {
       const doc = this.data.find(item => item.id === docId)
       if (!doc) return
@@ -649,11 +613,19 @@ window.useProjectDataTable = () => {
 
       const ok = await this.sendRowAction(`/actions/ignore_document/${docId}`, payload)
       if (ok) {
-        doc.is_ignored = desiredState
-        doc.group = computeGroup(doc.status, doc.index_status, desiredState)
-        doc.group_order = GROUP_ORDER[doc.group] ?? 5
-        this.updateDerivedState()
-        this.emitRefreshEvent()
+        const nextData = this.data.map(item => {
+          if (item.id !== docId) {
+            return item
+          }
+          const group = computeGroup(item.status, item.index_status, desiredState)
+          return {
+            ...item,
+            is_ignored: desiredState,
+            group,
+            group_order: GROUP_ORDER[group] ?? 5,
+          }
+        })
+        this.setTableData(nextData)
       }
     },
     async deleteDocument(docId) {
@@ -665,10 +637,7 @@ window.useProjectDataTable = () => {
 
       const ok = await this.sendRowAction(`/actions/delete_document/${docId}`)
       if (ok) {
-        this.data = this.data.filter(item => item.id !== docId)
-        this.table.setOptions(prev => ({ ...prev, data: this.data }))
-        this.updateDerivedState()
-        this.emitRefreshEvent()
+        this.setTableData(this.data.filter(item => item.id !== docId))
       }
     },
     async sendRowAction(url, payload) {

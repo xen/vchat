@@ -63,6 +63,31 @@
                 </button>
             </div>
 
+            <!-- Pagination -->
+            <div class="border-base-200 border-b border-dashed px-5 py-3" x-show="!loading && pageCount > 1">
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-base-content/50 shrink-0 tabular-nums">
+                        <span x-text="pageIndex + 1"></span> / <span x-text="pageCount"></span>
+                    </span>
+                    <input
+                        type="range"
+                        class="range range-xs range-primary w-full"
+                        style="--range-fill: 0; width: 100%"
+                        :min="0"
+                        :max="pageCount - 1"
+                        step="1"
+                        :value="pageIndex"
+                        @input="setPageIndex(Number($event.target.value))"
+                    />
+                    <p class="text-base-content/70 text-sm shrink-0">
+                        Показано
+                        <span class="text-base-content font-medium" x-text="rangeStart"></span>–<span class="text-base-content font-medium" x-text="rangeEnd"></span>
+                        из
+                        <span class="text-base-content font-medium" x-text="filteredRowCount"></span>
+                    </p>
+                </div>
+            </div>
+
             <!-- Table -->
             <div class="overflow-x-auto min-h-[300px]">
                 <div x-show="loading" class="flex justify-center items-center h-40">
@@ -102,31 +127,6 @@
                         </template>
                     </tbody>
                 </table>
-            </div>
-
-            <!-- Pagination -->
-            <div class="border-base-200 border-t border-dashed px-5 py-3" x-show="!loading && pageCount > 1">
-                <div class="flex items-center gap-3">
-                    <span class="text-xs text-base-content/50 shrink-0 tabular-nums">
-                        <span x-text="pageIndex + 1"></span><span class="opacity-50"> / <span x-text="pageCount"></span></span>
-                    </span>
-                    <input
-                        type="range"
-                        class="range range-xs range-primary w-full"
-                        style="--range-fill: 0; width: 100%"
-                        :min="0"
-                        :max="pageCount - 1"
-                        step="1"
-                        :value="pageIndex"
-                        @input="setPageIndex(Number($event.target.value))"
-                    />
-                    <p class="text-base-content/70 text-sm shrink-0">
-                        Показано
-                        <span class="text-base-content font-medium" x-text="rangeStart"></span>–<span class="text-base-content font-medium" x-text="rangeEnd"></span>
-                        из
-                        <span class="text-base-content font-medium" x-text="filteredRowCount"></span>
-                    </p>
-                </div>
             </div>
         </div>
     </div>

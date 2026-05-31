@@ -136,12 +136,6 @@
                         <a href="{{ url('project_source_settings', source_id=s.id) }}"
                            class="font-medium link link-hover inline-flex items-center gap-1.5">
                             {{ s.title }}
-                            {% if s.is_paused %}
-                            <span class="badge badge-ghost badge-xs gap-1">
-                                <iconify-icon icon="lucide:pause-circle" class="size-2.5"></iconify-icon>
-                                Пауза
-                            </span>
-                            {% endif %}
                         </a>
                     </td>
                     <td>

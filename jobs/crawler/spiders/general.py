@@ -19,6 +19,7 @@ class GeneralSpider(CrawlSpider):
         self.allowed_domains = [url.split("//")[-1].split("/")[0]] if url else []
         self.start_urls = [url] if url else []
         self.config = config or {}
+        self.single_page_only = bool(self.config.get("single_page_only"))
 
         # Parse rules from config
         le_kwargs = {}
@@ -71,12 +72,16 @@ class GeneralSpider(CrawlSpider):
             return filtered_links
 
         self.rules = (
-            Rule(
-                LinkExtractor(**le_kwargs),
-                callback="parse_item",
-                follow=True,
-                process_links=process_links,
-            ),
+            ()
+            if self.single_page_only
+            else (
+                Rule(
+                    LinkExtractor(**le_kwargs),
+                    callback="parse_item",
+                    follow=True,
+                    process_links=process_links,
+                ),
+            )
         )
         super().__init__(*args, **kwargs)
 
@@ -86,6 +91,9 @@ class GeneralSpider(CrawlSpider):
 
     def start_requests(self):
         yield from super().start_requests()
+
+        if self.single_page_only:
+            return
 
         for seed_url in iter_source_seed_urls(
             self.source_id,

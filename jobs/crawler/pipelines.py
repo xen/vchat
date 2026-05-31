@@ -240,16 +240,21 @@ class DatabasePipeline:
                     )
                     return item
 
+                force_reprocess = bool((page.meta or {}).get("force_reprocess_once"))
                 effectively_unchanged = document_content_effectively_unchanged(
                     page, markdown_content
                 )
                 has_chunks = (
                     sync_document_has_chunks(session, page.id)
-                    if (effectively_unchanged and page.id is not None)
+                    if (
+                        effectively_unchanged
+                        and not force_reprocess
+                        and page.id is not None
+                    )
                     else False
                 )
 
-                content_changed = not effectively_unchanged
+                content_changed = force_reprocess or not effectively_unchanged
 
                 # Hub page detection
                 source_domain = urlparse(url).netloc
@@ -264,6 +269,7 @@ class DatabasePipeline:
                 now = datetime.now(timezone.utc)
                 item_meta = item.get("meta", {})
                 meta = dict(page.meta or {})
+                meta.pop("force_reprocess_once", None)
                 _clear_error_meta(meta)
                 meta.update(extracted_meta)
                 if item_meta:
@@ -343,7 +349,7 @@ class DatabasePipeline:
 
                 spider.logger.info("Indexed %s (changed=%s)", url, content_changed)
 
-                if effectively_unchanged and has_chunks:
+                if effectively_unchanged and has_chunks and not force_reprocess:
                     spider.logger.info(
                         "Skipping chunk refresh for %s: content unchanged", url
                     )

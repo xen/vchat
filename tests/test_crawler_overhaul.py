@@ -349,6 +349,72 @@ class TestCrawlRunCreation:
             assert run_mock.exit_reason == "finished"
             assert run_mock.finished_at is not None
 
+    def test_pipeline_force_reprocess_requeues_unchanged_page(self):
+        """force_reprocess_once should bypass unchanged-content short circuit."""
+        from jobs.crawler.pipelines import DatabasePipeline
+
+        page = SimpleNamespace(
+            id=55,
+            source_id=1,
+            uri="https://example.com/page",
+            meta={"force_reprocess_once": True},
+            is_ignored=False,
+            is_hub_page=False,
+            content_value=None,
+            stable_count=2,
+            error_count=0,
+            check_interval_days=7,
+            title="Existing",
+            index_status="indexed",
+        )
+
+        session = MagicMock()
+        session.__enter__ = lambda s: session
+        session.__exit__ = MagicMock(return_value=False)
+        session.execute.return_value.scalar_one_or_none.return_value = page
+        session.commit = MagicMock()
+
+        pipeline = DatabasePipeline.__new__(DatabasePipeline)
+        pipeline.logger = MagicMock()
+        pipeline.engine = MagicMock()
+        pipeline._crawl_run_id = None
+
+        spider = MagicMock()
+        spider.logger = MagicMock()
+
+        item = {
+            "url": "https://example.com/page",
+            "source_id": 1,
+            "content_type": "text/html",
+            "meta": {},
+        }
+
+        with (
+            patch("jobs.crawler.pipelines.Session", return_value=session),
+            patch(
+                "jobs.crawler.pipelines.extract_url_document",
+                return_value=(
+                    "same content",
+                    "Fresh title",
+                    {"extraction": {"word_count": 100}},
+                ),
+            ),
+            patch(
+                "jobs.crawler.pipelines.document_content_effectively_unchanged",
+                return_value=True,
+            ),
+            patch(
+                "jobs.crawler.pipelines.sync_document_has_chunks",
+                return_value=True,
+            ),
+            patch("jobs.crawler.pipelines.schedule_index_document") as schedule_mock,
+        ):
+            pipeline.process_item(item, spider)
+
+        assert page.index_status == "queued"
+        assert "force_reprocess_once" not in page.meta
+        schedule_mock.assert_called_once_with(55)
+
 
 # ---------------------------------------------------------------------------
 # TestPageStatusOnErrors

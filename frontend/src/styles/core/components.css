@@ -43,6 +43,37 @@
     }
 }
 
+.input {
+    @apply !outline-none;
+
+    &:focus,
+    &:focus-within {
+        @apply !outline-none !ring-0 !shadow-none;
+        box-shadow: none;
+    }
+}
+
+.input input,
+.select {
+    @apply !outline-none;
+
+    &:focus,
+    &:focus-within {
+        @apply !outline-none !ring-0 !shadow-none;
+        border-color: color-mix(in oklab, var(--color-primary) 45%, var(--color-base-300));
+        box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-primary) 25%, transparent);
+    }
+}
+
+.select select {
+    @apply !outline-none;
+
+    &:focus {
+        @apply !outline-none !ring-0 !shadow-none;
+        box-shadow: none;
+    }
+}
+
 /* == Forms == */
 
 @layer utilities {

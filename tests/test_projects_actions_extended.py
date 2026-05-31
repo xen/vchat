@@ -192,8 +192,8 @@ async def test_project_action_background_actions(
         lambda: called.append("crawl_all"),
     )
     monkeypatch.setattr(
-        project_views.refresh_project_index,
-        "delay",
+        project_views,
+        "schedule_refresh_project_index",
         lambda: called.append("refresh_project_index"),
     )
     monkeypatch.setattr(
@@ -215,6 +215,61 @@ async def test_project_action_background_actions(
         and "refresh_project_index" in called
         and "index_project" in called
     )
+
+
+@pytest.mark.asyncio
+async def test_project_action_refresh_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = SimpleNamespace(
+        id=17,
+        source_id=3,
+        uri="https://example.com/page",
+        meta={"foo": "bar"},
+        updated_at=None,
+    )
+    req = _Request(action="refresh_page", item_id="17")
+    db = _DB(scalar_values=[document])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+
+    called = []
+    events = []
+
+    async def _flash(request, msg, cat="success"):
+        _ = request, msg, cat
+        called.append("flash")
+
+    async def _admin(event, request):
+        _ = request
+        events.append(event)
+
+    monkeypatch.setattr(project_views, "flash", _flash)
+    monkeypatch.setattr(project_views, "admin_event", _admin)
+    monkeypatch.setattr(
+        project_views.crawl_page_task,
+        "delay",
+        lambda page_id: called.append(("crawl_page", page_id)),
+    )
+
+    resp = await _raw_project_action()(req)
+    assert resp.status == 200
+    assert document.meta["force_reprocess_once"] is True
+    assert db.commits == 1
+    assert ("crawl_page", 17) in called
+    assert "flash" in called
+    assert events == ["page_refresh_request"]
+
+
+@pytest.mark.asyncio
+async def test_project_action_refresh_page_rejects_non_source_page() -> None:
+    document = SimpleNamespace(id=17, source_id=None, uri=None, meta={})
+    req = _Request(action="refresh_page", item_id="17")
+    req["db"] = _DB(scalar_values=[document])
+    req["user"] = SimpleNamespace(id=1)
+
+    with pytest.raises(web.HTTPBadRequest):
+        await _raw_project_action()(req)
 
 
 @pytest.mark.asyncio
@@ -275,6 +330,7 @@ async def test_project_documents_json_serializes_rows() -> None:
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
         status="indexed",
+        index_status="indexed",
         is_ignored=False,
         meta={"doc_type": "html"},
     )
@@ -286,15 +342,13 @@ async def test_project_documents_json_serializes_rows() -> None:
                     doc.id,
                     doc.title,
                     doc.uri,
-                    doc.created_at,
-                    doc.updated_at,
                     doc.status,
+                    doc.index_status,
                     doc.is_ignored,
                     source.title,
                     source.uri,
                     123,
                     2,
-                    "html",
                 )
             ]
         ]
@@ -305,9 +359,43 @@ async def test_project_documents_json_serializes_rows() -> None:
     assert resp.status == 200
     assert '"id": "5"' in resp.text
     assert '"source": "Source A"' in resp.text
-    assert '"document_type": "html"' in resp.text
     assert '"meta"' not in resp.text
-    assert '"uri"' not in resp.text
+    assert '"uri": "https://example.com/a"' in resp.text
+    assert '"created_at"' not in resp.text
+    assert '"updated_at"' not in resp.text
+    assert '"document_type"' not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_project_documents_json_marks_low_content_as_ignored() -> None:
+    source = SimpleNamespace(id=2, title="Source A", uri="https://example.com")
+    now = datetime.now(timezone.utc)
+    req = _Request(action="noop")
+    req["db"] = _DB(
+        execute_rows=[
+            [
+                (
+                    6,
+                    "Thin page",
+                    "https://example.com/thin",
+                    "low_content",
+                    None,
+                    False,
+                    source.title,
+                    source.uri,
+                    119,
+                    0,
+                )
+            ]
+        ]
+    )
+    req["user"] = SimpleNamespace(id=1)
+
+    raw = project_views.project_documents_json.__wrapped__
+    resp = await raw(req)
+    assert resp.status == 200
+    assert '"status": "low_content"' in resp.text
+    assert '"is_ignored": true' in resp.text
 
 
 @pytest.mark.asyncio
