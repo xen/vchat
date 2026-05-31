@@ -273,30 +273,6 @@ async def test_project_action_refresh_page_rejects_non_source_page() -> None:
 
 
 @pytest.mark.asyncio
-async def test_project_action_rebuild_uploads(monkeypatch: pytest.MonkeyPatch) -> None:
-    req = _Request(action="rebuild_uploads", item_id="global")
-    db = _DB(execute_rows=[[1, 2, 3]])
-    req["db"] = db
-    req["user"] = SimpleNamespace(id=1)
-
-    delayed = []
-
-    async def _flash(request, msg, cat="success"):
-        _ = request, msg, cat
-
-    monkeypatch.setattr(project_views, "flash", _flash)
-    monkeypatch.setattr(
-        project_views.crawl_file_task,
-        "delay",
-        lambda document_id: delayed.append(document_id),
-    )
-
-    resp = await _raw_project_action()(req)
-    assert resp.status == 200
-    assert delayed == [1, 2, 3]
-
-
-@pytest.mark.asyncio
 async def test_project_action_delete_file_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -313,7 +289,6 @@ async def test_project_action_delete_file_success(
         events.append(event)
 
     monkeypatch.setattr(project_views, "admin_event", _admin)
-    monkeypatch.setattr(project_views.os.path, "exists", lambda p: False)
     resp = await _raw_project_action()(req)
     assert resp.status == 200
     assert db.deleted == [doc]

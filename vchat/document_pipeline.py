@@ -4,10 +4,8 @@ import html
 import logging
 import re
 from collections import Counter
-from pathlib import Path
 from typing import Any
 
-import pypdf
 import requests
 from bs4 import BeautifulSoup
 from docling.document_converter import DocumentConverter
@@ -554,15 +552,21 @@ def _extract_nav_title(soup: BeautifulSoup, url: str) -> str | None:
     return None
 
 
-def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, Any]]:
+def extract_url_document(
+    source_url: str,
+    html_body: str | None = None,
+    content_type: str | None = None,
+) -> tuple[str, str | None, dict[str, Any]]:
     doc_type = guess_document_type(source_url, "text/html")
 
-    # Fetch the page once to get the HTML <title> tag (the authoritative page title)
-    # and keep the body for the BeautifulSoup fallback if Docling fails.
-    response = requests.get(source_url, timeout=20, headers=DEFAULT_HTTP_HEADERS)
-    response.raise_for_status()
-    body = response.text
-    content_type = response.headers.get("Content-Type")
+    if html_body is not None:
+        body = html_body
+    else:
+        response = requests.get(source_url, timeout=20, headers=DEFAULT_HTTP_HEADERS)
+        response.raise_for_status()
+        body = response.text
+        content_type = response.headers.get("Content-Type")
+
     soup = BeautifulSoup(body, "html.parser")
     html_title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
 
@@ -605,63 +609,6 @@ def extract_url_document(source_url: str) -> tuple[str, str | None, dict[str, An
         content_type=content_type,
         doc_type=doc_type,
     )
-
-
-def extract_pdf_text(file_path: str) -> str:
-    reader = pypdf.PdfReader(file_path)
-    parts = []
-    for page in reader.pages:
-        parts.append(page.extract_text() or "")
-    return "\n\n".join(parts).strip()
-
-
-def extract_docx_text(file_path: str) -> str:
-    try:
-        import docx
-    except ImportError:
-        logger.exception("python-docx is not installed")
-        return ""
-    doc = docx.Document(file_path)
-    paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-    return "\n\n".join(paragraphs).strip()
-
-
-def extract_local_file_document(
-    file_path: str,
-) -> tuple[str, str | None, dict[str, Any]]:
-    path = Path(file_path)
-    suffix = path.suffix.lower()
-    doc_type = guess_document_type(file_path, None)
-
-    markdown, title = _docling_markdown_from_source(file_path)
-    if markdown:
-        return build_document_payload(
-            content=markdown,
-            title=title or path.name,
-            extractor="docling",
-            fallback_used=False,
-            degraded_mode=False,
-            doc_type=doc_type,
-        )
-
-    if suffix in {".txt", ".md", ".rtf"}:
-        content = path.read_text(encoding="utf-8", errors="ignore")
-    elif suffix == ".pdf":
-        content = extract_pdf_text(file_path)
-    elif suffix == ".docx":
-        content = extract_docx_text(file_path)
-    else:
-        raise ValueError(f"Unsupported file type: {suffix}")
-
-    normalized, normalized_title, meta = build_document_payload(
-        content=content,
-        title=path.name,
-        extractor="plain_text",
-        fallback_used=True,
-        degraded_mode=True,
-        doc_type=doc_type,
-    )
-    return normalized, normalized_title, meta
 
 
 def summarize_structure(structure: list[dict[str, Any]]) -> dict[str, int]:

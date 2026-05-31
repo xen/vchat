@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import jinja2
 import pytest
-from aiohttp import web
 
 from vchat.views.projects import views as project_views
 
@@ -286,52 +285,3 @@ async def test_project_documents_and_files_json(
     files_resp = await files_fn(req_files)
     assert files_resp.status == 200
     assert b"manual.pdf" in files_resp.body
-
-
-@pytest.mark.asyncio
-async def test_secure_download_and_on_upload(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    existing = tmp_path / "f.txt"
-    existing.write_text("ok", encoding="utf-8")
-
-    db = _DB(scalar_results=[SimpleNamespace(uri=str(existing))])
-    req = _Req(db=db, match_info={"file_id": "10"})
-
-    secure_fn = project_views.secure_download.__wrapped__
-    resp = await secure_fn(req)
-    assert isinstance(resp, web.FileResponse)
-
-    src_file = tmp_path / "upload.tmp"
-    src_file.write_text("u", encoding="utf-8")
-
-    class _Resource:
-        metadata_header = "filename dGVzdC50eHQ=,filetype dGV4dC9wbGFpbg=="
-        file_name = "test.txt"
-
-    class _DelayTask:
-        def __init__(self):
-            self.calls = []
-
-        def delay(self, value):
-            self.calls.append(value)
-
-    delay_task = _DelayTask()
-    monkeypatch.setattr(project_views, "crawl_file_task", delay_task)
-
-    events = []
-
-    async def _admin_event(name, request):
-        events.append((name, request))
-
-    monkeypatch.setattr(project_views, "admin_event", _admin_event)
-
-    upload_req = _Req(
-        db=db, user=SimpleNamespace(id=7, name="Uploader", email="u@example.com")
-    )
-    await project_views.on_upload(upload_req, _Resource(), src_file)
-
-    assert db.flushed == 1
-    assert db.commits >= 1
-    assert events and events[0][0] == "file_upload"
-    assert delay_task.calls == [321]

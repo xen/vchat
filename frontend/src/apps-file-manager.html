@@ -329,43 +329,9 @@
 
                                         <!--  End: Overview as Drawer -->
 
-                                        <!--  Start: Upload Button (Modal) -->
-
-                                        <button
-                                            class="btn btn-ghost border-base-300 btn-sm"
-                                            onclick="apps_file_upload_modal.showModal()"
-                                            aria-label="Upload file">
-                                            <iconify-icon icon="lucide:upload" class="size-4"></iconify-icon>
-                                            Upload
-                                        </button>
-                                        <dialog id="apps_file_upload_modal" class="modal">
-                                            <div class="modal-box">
-                                                <div class="flex items-center justify-between">
-                                                    <p class="font-medium">Upload Files</p>
-                                                    <form method="dialog">
-                                                        <button
-                                                            class="btn btn-ghost btn-sm btn-circle"
-                                                            aria-label="Close upload file modal">
-                                                            <iconify-icon icon="lucide:x" class="size-5"></iconify-icon>
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                                <div class="mt-4">
-                                                    <input data-filepond type="file" />
-                                                    <div class="mt-5 text-end">
-                                                        <button class="btn btn-primary btn-sm">
-                                                            <iconify-icon icon="lucide:arrow-down-to-line" class="size-4"></iconify-icon>
-                                                            Import
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <form method="dialog" class="modal-backdrop">
-                                                <button>close</button>
-                                            </form>
-                                        </dialog>
-
-                                        <!--  End: Upload Button (Modal) -->
+                                        <span class="text-sm text-base-content/60">
+                                            Uploads unavailable
+                                        </span>
                                     </div>
                                 </div>
                                 <div class="mt-6">
@@ -1403,14 +1369,5 @@
         <!--  End: Layout - Main -->
         <load src="partials/footer-scripts.html" />
 
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/filepond/4.32.6/filepond.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.js"></script>
-        <link
-            rel="stylesheet"
-            href="https://cdnjs.cloudflare.com/ajax/libs/filepond/4.32.6/filepond.min.css" />
-        <link
-            rel="stylesheet"
-            href="https://cdn.jsdelivr.net/npm/filepond-plugin-image-preview@4.6.12/dist/filepond-plugin-image-preview.min.css" />
-        <script src="/js/pages/file-manager.js"></script>
     </body>
 </html>

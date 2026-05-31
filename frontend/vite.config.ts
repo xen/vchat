@@ -58,9 +58,6 @@ export default defineConfig({
   publicDir: "../public",
   plugins: [injectHTML(), removecors(), tailwindcss()],
   root: "src",
-  optimizeDeps: {
-    include: ["filepond", "filepond-plugin-image-preview"],
-  },
   build: {
     outDir: "../dist",
     emptyOutDir: true,

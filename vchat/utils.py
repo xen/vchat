@@ -5,7 +5,6 @@ import os
 import uuid
 from datetime import datetime
 from functools import wraps
-from pathlib import Path
 from typing import Callable, Optional, Tuple
 from urllib.parse import urlencode
 
@@ -468,39 +467,3 @@ async def run_task(task: str, **kwargs) -> int:
     print(f"Enqueue task {task}: {payload}")
     await redis.lpush(CELERY_DEFAULT_QUEUE, payload)
     return task_id
-
-
-def save_upload_sync(file_path, content):
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-
-async def save_upload(field_storage, folder="uploads"):
-    """
-    Save uploaded file from aiohttp request
-    """
-    filename = field_storage.filename
-    if not filename:
-        return None
-
-    # Generate unique name
-    ext = os.path.splitext(filename)[1]
-    new_name = f"{uuid.uuid4()}{ext}"
-
-    # Base static path (assumed relative to this file: ../static)
-    base_path = Path(__file__).parent.parent / "media" / folder
-    if not base_path.exists():
-        base_path.mkdir(parents=True, exist_ok=True)
-
-    file_path = base_path / new_name
-
-    content = field_storage.file.read()
-
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, save_upload_sync, file_path, content)
-
-    return {
-        "name": filename,
-        "url": f"/static/{folder}/{new_name}",
-        "type": field_storage.content_type,
-    }

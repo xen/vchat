@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 import secrets
 import json
@@ -8,7 +7,6 @@ import hmac
 import uuid
 from celery.schedules import crontab
 from datetime import datetime, time, timedelta, timezone
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import quote as urlquote, unquote, urlencode as urlencode_qs, urlparse
@@ -23,7 +21,6 @@ from passlib.context import CryptContext
 
 from jobs.crawler import (
     crawl_all_sources_task,
-    crawl_file_task,
     crawl_page_task,
     crawl_source_task,
 )
@@ -88,8 +85,6 @@ __all__ = [
     "public_widget_chat",
     "project_files",
     "file_document",
-    "secure_download",
-    "on_upload",
     "source_sitemaps",
 ]
 
@@ -1090,9 +1085,6 @@ async def project_action(request):
         )
         if not document:
             raise web.HTTPNotFound(text="Page not found")
-        file_path = getattr(document, "uri", None)
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
         await db_session.delete(document)
         await db_session.commit()
         await admin_event("file_delete", request)
@@ -1227,21 +1219,6 @@ async def project_action(request):
     if action == "index_project":
         index_project.delay()
         await flash(request, _("Full rebuild task started"), "success")
-        return web.Response(text="ok", status=200)
-
-    if action == "rebuild_uploads":
-        rows = (
-            await db_session.execute(
-                sa.select(Page.id).where(
-                    Page.source_id.is_(None),
-                    Page.uri.isnot(None),
-                )
-            )
-        ).all()
-        for row in rows:
-            document_id = row[0] if isinstance(row, tuple) else row
-            crawl_file_task.delay(document_id)
-        await flash(request, _("Rebuild task started for uploaded files"), "success")
         return web.Response(text="ok", status=200)
 
     if action == "delete_source_rule":
@@ -2065,46 +2042,3 @@ async def file_document(request):
         "files_rows": files_rows,
         "current_document": document,
     }
-
-
-@login_required()
-async def secure_download(request):
-    file_id = int(request.match_info["file_id"])
-    document = await request["db"].scalar(sa.select(Page).where(Page.id == file_id))
-    if not document or not getattr(document, "uri", None):
-        raise web.HTTPNotFound(text="File not found")
-    return web.FileResponse(path=document.uri)
-
-
-async def on_upload(request, resource, file_path):
-    user = request["user"]
-    author_name = user.name.strip()
-    author_email = user.email.strip()
-    if not author_name:
-        author_name = author_email or f"user-{user.id}"
-
-    filename = getattr(resource, "file_name", None) or os.path.basename(str(file_path))
-    document = Page(
-        source_id=None,
-        title=filename,
-        uri=str(file_path),
-        content="",
-        hash_value="",
-        meta={
-            "filename": filename,
-            "doc_type": Path(filename).suffix.lstrip(".").lower()
-            or DEFAULT_DOCUMENT_TYPE,
-            "author_id": user.id,
-            "author_name": author_name,
-            "author_email": author_email,
-        },
-        status="ok",
-        index_status="queued",
-    )
-    document.length = 0
-    request["db"].add(document)
-    await request["db"].flush()
-    await request["db"].commit()
-    await admin_event("file_upload", request)
-    crawl_file_task.delay(document.id)
-    return document

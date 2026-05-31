@@ -178,10 +178,14 @@ class DatabasePipeline:
             increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
             return item
 
+        html_body = item.get("content")
+        content_type = item.get("content_type")
         markdown_content = None
         try:
             markdown_content, normalized_title, extracted_meta = extract_url_document(
-                url
+                url,
+                html_body=html_body,
+                content_type=content_type,
             )
         except Exception as exc:
             spider.logger.error("Extraction failed for %s: %s", url, exc, exc_info=True)
