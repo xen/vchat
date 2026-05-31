@@ -64,7 +64,7 @@
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         <div class="card bg-base-100 shadow">
             <div class="card-body p-4">
-                <div class="text-xs text-base-content/60 mb-1">Последнее переиндексирование</div>
+                <div class="text-xs text-base-content/60 mb-1">Дата обхода</div>
                 <div class="text-sm font-medium">
                     {% if source.last_reindexed_at %}
                         {{ source.last_reindexed_at.astimezone().strftime('%d.%m.%Y %H:%M') }}
@@ -74,21 +74,9 @@
                 </div>
             </div>
         </div>
-        <div class="card bg-base-100 shadow">
-            <div class="card-body p-4">
-                <div class="text-xs text-base-content/60 mb-1">Следующее переиндексирование</div>
-                <div class="text-sm font-medium">
-                    {% if next_reindex %}
-                        {{ next_reindex.astimezone().strftime('%d.%m.%Y %H:%M') }}
-                    {% else %}
-                        <span class="text-base-content/40">Ручной режим</span>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
         <a href="{{ url('project_view') }}?source={{ (source.title or source.uri)|urlencode }}" class="card bg-base-100 shadow hover:bg-base-200/60 transition-colors">
             <div class="card-body p-4">
-                <div class="text-xs text-base-content/60 mb-1">Найдено документов</div>
+                <div class="text-xs text-base-content/60 mb-1">Найдено страниц</div>
                 <div class="text-sm font-medium link link-hover">{{ doc_count }}</div>
             </div>
         </a>
