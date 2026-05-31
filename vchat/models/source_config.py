@@ -62,9 +62,7 @@ class SourceConfig:
                 if download_timeout_raw is None
                 else download_timeout_raw
             ),
-            crawler_max_pages=int(
-                500 if max_pages_raw is None else max_pages_raw
-            ),
+            crawler_max_pages=int(500 if max_pages_raw is None else max_pages_raw),
             rules=rules,
         )
 

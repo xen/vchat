@@ -74,6 +74,7 @@ task: venv/bin/activate  ## run a task
 lint: venv/bin/activate ## run linter
 	. venv/bin/activate && pre-commit run --hook-stage manual --files vchat jobs entry.py
 	. venv/bin/activate && ruff check --fix vchat jobs entry.py
+	. venv/bin/activate && ruff format vchat/ jobs/ entry.py
 # 	. venv/bin/activate && mypy vchat jobs entry.py
 
 security-check: ## run local Docker-based security checks

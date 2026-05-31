@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session

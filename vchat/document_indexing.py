@@ -93,10 +93,7 @@ def sync_document_has_chunks(session: Any, page_id: int) -> bool:
 
 async def async_document_has_chunks(session: Any, page_id: int) -> bool:
     return (
-        (
-            await session.execute(
-                sa.select(Chunk.id).where(Chunk.page_id == page_id).limit(1)
-            )
-        ).first()
-        is not None
-    )
+        await session.execute(
+            sa.select(Chunk.id).where(Chunk.page_id == page_id).limit(1)
+        )
+    ).first() is not None

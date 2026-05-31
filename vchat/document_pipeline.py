@@ -336,7 +336,10 @@ def _coerce_title(candidate: str | None, structure: list[dict[str, Any]]) -> str
             headings.append(value)
 
     if normalized_candidate:
-        if any(heading.casefold() == normalized_candidate.casefold() for heading in headings):
+        if any(
+            heading.casefold() == normalized_candidate.casefold()
+            for heading in headings
+        ):
             return normalized_candidate
         if headings and headings[0].casefold() in AUTH_HEADING_HINTS:
             return normalized_candidate
