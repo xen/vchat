@@ -29,6 +29,8 @@ celery_visibility_timeout: 21600 # seconds; keep long-running embedder jobs from
 
 # Debugging settings
 loglevel: info
+log_format: text
+log_config: vchat/logging.ini
 sql_echo: false
 
 time_zone: Europe/Moscow

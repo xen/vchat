@@ -25,9 +25,13 @@ from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
 )
 from vchat.settings import config as project_config
-from vchat.logging_utils import configure_json_logging
+from vchat.logging_utils import configure_logging
 
-configure_json_logging(logging.INFO)
+configure_logging(
+    logging.INFO,
+    log_format=project_config.get("log_format", "text"),
+    config_path=project_config.get("log_config"),
+)
 
 if len(sys.argv) < 3:
     print(

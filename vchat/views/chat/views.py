@@ -228,8 +228,6 @@ async def generate_suggestions(
 
     return []
 
-
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vchat.chat")
 request_logger = logging.getLogger("vchat.chat.requests")
 
