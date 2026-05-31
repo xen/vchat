@@ -283,20 +283,6 @@
                     {% endif %}
                 </div>
 
-                <div class="form-control w-full">
-                    <label class="label">
-                        <span class="label-text">{{ _('User Agent') }}</span>
-                    </label>
-                    {{ form.user_agent }}
-                    {% if form.user_agent.errors %}
-                        <div class="label">
-                            {% for error in form.user_agent.errors %}
-                                <span class="label-text-alt text-error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-
                 <div class="pt-2 flex items-center gap-2">
                     <button type="submit" class="btn btn-primary">{{ _('Сохранить') }}</button>
                     <a class="btn btn-ghost" href="{{ url('project_edit_sources') }}">{{ _('Отмена') }}</a>

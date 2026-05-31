@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
+import re
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -11,6 +13,7 @@ from aiohttp import web
 from yarl import URL
 
 from vchat.models.source_config import SourceConfig
+from vchat.views.projects.forms import SourceSettingsForm
 from vchat.views.projects import views as project_views
 
 
@@ -177,6 +180,22 @@ class TestNextReindexAt:
 
 
 class TestSourceSettingsView:
+    def test_template_references_only_existing_form_fields(self) -> None:
+        template_path = (
+            Path(__file__).resolve().parents[1]
+            / "vchat"
+            / "templates"
+            / "projects"
+            / "source_settings.html"
+        )
+        field_names = set(
+            re.findall(r"\bform\.([A-Za-z_][A-Za-z0-9_]*)\b", template_path.read_text())
+        )
+        form = SourceSettingsForm(meta={"csrf_context": {}})
+
+        missing = sorted(name for name in field_names if name not in form._fields)
+        assert missing == []
+
     @pytest.mark.asyncio
     async def test_get_returns_all_required_template_vars(self, monkeypatch):
         """Regression: source settings 500 due to missing doc_count/chunk_count vars."""
