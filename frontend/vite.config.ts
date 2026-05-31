@@ -3,6 +3,7 @@ import injectHTML from "vite-plugin-html-inject";
 import { resolve } from "node:path";
 import fs from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
+import { viteStaticCopy } from "vite-plugin-static-copy";
 
 const getHtmlFiles = (dir: string): string[] => {
   let results: string[] = [];
@@ -56,7 +57,19 @@ export default defineConfig({
     open: "/",
   },
   publicDir: "../public",
-  plugins: [injectHTML(), removecors(), tailwindcss()],
+  plugins: [
+    injectHTML(),
+    removecors(),
+    tailwindcss(),
+    viteStaticCopy({
+      targets: [
+        {
+          src: resolve(__dirname, "node_modules/monaco-editor/min/vs"),
+          dest: "assets/monaco-editor",
+        },
+      ],
+    }),
+  ],
   root: "src",
   build: {
     outDir: "../dist",

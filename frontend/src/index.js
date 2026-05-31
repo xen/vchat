@@ -12,6 +12,9 @@ import 'swiper/css/bundle';
 import SimpleBar from 'simplebar';
 import 'simplebar/dist/simplebar.css';
 import 'iconify-icon';
+import { addCollection } from 'iconify-icon';
+import lucideIcons from '@iconify-json/lucide/icons.json';
+addCollection(lucideIcons);
 
 window.Alpine = Alpine;
 window.Chart = Chart;
