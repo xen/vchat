@@ -1,0 +1,17 @@
+{% if s.is_paused %}
+<button class="btn btn-xs btn-ghost"
+    hx-post="{{ url('actions', action='resume_source', item_id=s.id) }}"
+    hx-swap="none"
+    hx-on::after-request="window.swapSourceToggleButton(event)"
+    title="Возобновить">
+    <iconify-icon icon="lucide:play" class="size-3"></iconify-icon>
+</button>
+{% else %}
+<button class="btn btn-xs btn-ghost text-warning"
+    hx-post="{{ url('actions', action='pause_source', item_id=s.id) }}"
+    hx-swap="none"
+    hx-on::after-request="window.swapSourceToggleButton(event)"
+    title="Приостановить">
+    <iconify-icon icon="lucide:pause" class="size-3"></iconify-icon>
+</button>
+{% endif %}

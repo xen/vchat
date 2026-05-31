@@ -330,6 +330,90 @@ class TestPauseResumeActions:
         assert "source_resume" in events
 
     @pytest.mark.asyncio
+    async def test_pause_source_htmx_returns_toggle_partial(self, monkeypatch):
+        source = _make_source(is_paused=False)
+        row = SimpleNamespace(
+            id=source.id,
+            title=source.title,
+            uri=source.uri,
+            is_paused=True,
+            excluded=0,
+            errors=0,
+            pending=0,
+            processing=0,
+            ready=0,
+        )
+        db = _StatsDB(scalar_values=[source], one_rows=[row])
+        req = self._make_action_req("pause_source")
+        req["db"] = db
+        req.headers["HX-Request"] = "true"
+
+        async def fake_event(*_args):
+            return None
+
+        monkeypatch.setattr(project_views, "admin_event", fake_event)
+
+        captured = {}
+
+        def fake_render(template, request, context):
+            captured["template"] = template
+            captured["request"] = request
+            captured["context"] = context
+            return "<button>pause</button>"
+
+        monkeypatch.setattr(project_views.aiohttp_jinja2, "render_string", fake_render)
+
+        raw = _raw(project_views.project_action)
+        resp = await raw(req)
+
+        assert captured["template"] == "projects/_source_toggle_button.html"
+        assert captured["context"]["s"]["id"] == source.id
+        assert captured["context"]["s"]["is_paused"] is True
+        assert resp.text == "<button>pause</button>"
+
+    @pytest.mark.asyncio
+    async def test_resume_source_htmx_returns_toggle_partial(self, monkeypatch):
+        source = _make_source(is_paused=True)
+        row = SimpleNamespace(
+            id=source.id,
+            title=source.title,
+            uri=source.uri,
+            is_paused=False,
+            excluded=0,
+            errors=0,
+            pending=0,
+            processing=0,
+            ready=0,
+        )
+        db = _StatsDB(scalar_values=[source], one_rows=[row])
+        req = self._make_action_req("resume_source")
+        req["db"] = db
+        req.headers["HX-Request"] = "true"
+
+        async def fake_event(*_args):
+            return None
+
+        monkeypatch.setattr(project_views, "admin_event", fake_event)
+
+        captured = {}
+
+        def fake_render(template, request, context):
+            captured["template"] = template
+            captured["request"] = request
+            captured["context"] = context
+            return "<button>resume</button>"
+
+        monkeypatch.setattr(project_views.aiohttp_jinja2, "render_string", fake_render)
+
+        raw = _raw(project_views.project_action)
+        resp = await raw(req)
+
+        assert captured["template"] == "projects/_source_toggle_button.html"
+        assert captured["context"]["s"]["id"] == source.id
+        assert captured["context"]["s"]["is_paused"] is False
+        assert resp.text == "<button>resume</button>"
+
+    @pytest.mark.asyncio
     async def test_pause_nonexistent_source_raises_404(self, monkeypatch):
         db = _StatsDB(scalar_values=[None])
         req = self._make_action_req("pause_source")

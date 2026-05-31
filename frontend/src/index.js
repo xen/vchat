@@ -16,6 +16,7 @@ import { addCollection } from 'iconify-icon';
 import lucideIcons from '@iconify-json/lucide/icons.json';
 addCollection(lucideIcons);
 
+window.htmx = window.htmx || globalThis.htmx;
 window.Alpine = Alpine;
 window.Chart = Chart;
 window.Swiper = Swiper;

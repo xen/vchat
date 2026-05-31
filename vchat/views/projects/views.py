@@ -457,6 +457,57 @@ def _build_progress_conditions():
     return is_excl, is_err, is_pend, is_ready, is_proc
 
 
+def _serialize_source_row(row: Any) -> dict[str, Any]:
+    source_name = row.title or row.uri or ""
+    errors = int(row.errors or 0)
+    pending = int(row.pending or 0)
+    processing = int(row.processing or 0)
+    ready = int(row.ready or 0)
+    excluded = int(row.excluded or 0)
+    return {
+        "id": row.id,
+        "title": source_name,
+        "uri": row.uri,
+        "is_paused": row.is_paused,
+        "errors": errors,
+        "pending": pending,
+        "processing": processing,
+        "ready": ready,
+        "excluded": excluded,
+        "page_url_base": "/page?" + urlencode_qs({"source": source_name}),
+    }
+
+
+async def _get_source_row_data(db_session, source_id: int) -> dict[str, Any] | None:
+    is_excl, is_err, is_pend, is_ready, is_proc = _build_progress_conditions()
+    row = (
+        await db_session.execute(
+            sa.select(
+                Source.id,
+                Source.title,
+                Source.uri,
+                Source.is_paused,
+                sa.func.count(Page.id).filter(is_excl).label("excluded"),
+                sa.func.count(Page.id).filter(is_err).label("errors"),
+                sa.func.count(Page.id).filter(is_pend).label("pending"),
+                sa.func.count(Page.id).filter(is_proc).label("processing"),
+                sa.func.count(Page.id).filter(is_ready).label("ready"),
+            )
+            .outerjoin(Page, Page.source_id == Source.id)
+            .where(Source.id == source_id)
+            .group_by(
+                Source.id,
+                Source.title,
+                Source.uri,
+                Source.is_paused,
+            )
+        )
+    ).one()
+    if not getattr(row, "id", None):
+        return None
+    return _serialize_source_row(row)
+
+
 @meta(title=_("Sources"))
 @login_required()
 @aiohttp_jinja2.template("projects/sources.html")
@@ -555,29 +606,7 @@ async def project_edit_sources(request):
         m = (s % 3600) // 60
         return f"{h}ч {m}м"
 
-    sources = []
-    for row in source_rows:
-        source_name = row.title or row.uri or ""
-        errors = int(row.errors or 0)
-        pending = int(row.pending or 0)
-        processing = int(row.processing or 0)
-        ready = int(row.ready or 0)
-        excluded = int(row.excluded or 0)
-        sources.append(
-            {
-                "id": row.id,
-                "title": source_name,
-                "uri": row.uri,
-                "is_paused": row.is_paused,
-                "errors": errors,
-                "pending": pending,
-                "processing": processing,
-                "ready": ready,
-                "excluded": excluded,
-                "page_url_base": "/page?"
-                + urlencode_qs({"source": source_name}),
-            }
-        )
+    sources = [_serialize_source_row(row) for row in source_rows]
 
     session = await get_session(request)
     form = forms.SourceForm(meta={"csrf_context": session})
@@ -1096,6 +1125,14 @@ async def project_action(request):
         source.updated_at = datetime.now(timezone.utc)
         await db_session.commit()
         await admin_event("source_pause", request)
+        if request.headers.get("HX-Request", "").lower() == "true":
+            source_row = await _get_source_row_data(db_session, int(item_id))
+            html = aiohttp_jinja2.render_string(
+                "projects/_source_toggle_button.html",
+                request,
+                {"s": source_row},
+            )
+            return web.Response(text=html, content_type="text/html")
         return web.Response(text="ok", status=200)
 
     if action == "resume_source":
@@ -1108,6 +1145,14 @@ async def project_action(request):
         source.updated_at = datetime.now(timezone.utc)
         await db_session.commit()
         await admin_event("source_resume", request)
+        if request.headers.get("HX-Request", "").lower() == "true":
+            source_row = await _get_source_row_data(db_session, int(item_id))
+            html = aiohttp_jinja2.render_string(
+                "projects/_source_toggle_button.html",
+                request,
+                {"s": source_row},
+            )
+            return web.Response(text=html, content_type="text/html")
         return web.Response(text="ok", status=200)
 
     if action == "refresh_project_index":

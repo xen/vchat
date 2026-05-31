@@ -1,0 +1,42 @@
+{% set bar_total = s.errors + s.pending + s.processing + s.ready %}
+{% set ns = namespace(visible=[]) %}
+{% for group, count, color, label in [
+    ('errors', s.errors, 'bg-error', 'Ошибки'),
+    ('pending', s.pending, 'bg-warning', 'Ожидает'),
+    ('processing', s.processing, 'bg-success', 'В обработке'),
+    ('ready', s.ready, 'bg-purple-500', 'Готово'),
+] %}
+{% if count > 0 %}{% set ns.visible = ns.visible + [(group, count, color, label)] %}{% endif %}
+{% endfor %}
+<tr id="source-row-{{ s.id }}">
+    <td>
+        <a href="{{ url('project_source_settings', source_id=s.id) }}"
+           class="font-medium link link-hover inline-flex items-center gap-1.5">
+            {{ s.title }}
+        </a>
+    </td>
+    <td>
+        <div class="flex h-3 w-full rounded overflow-hidden" style="min-width:120px">
+            {% if bar_total > 0 %}
+                {% for group, count, color, label in ns.visible %}
+                <div class="hover:opacity-75 transition-opacity cursor-pointer"
+                     style="flex: {{ count }} 1 0%; min-width: 3px; background-color: {% if group == 'errors' %}var(--color-error){% elif group == 'pending' %}var(--color-warning){% elif group == 'processing' %}var(--color-success){% else %}oklch(62.7% .265 303.9){% endif %}"
+                     title="{{ label }}: {{ count }}"
+                     onclick="location.href='{{ s.page_url_base }}&group={{ group }}'">
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="flex-1 bg-base-300 opacity-40"></div>
+            {% endif %}
+        </div>
+    </td>
+    <td class="text-center">
+        <a href="{{ s.page_url_base }}&group=excluded"
+           class="badge badge-ghost badge-sm hover:badge-neutral transition-colors {% if s.excluded == 0 %}opacity-40 pointer-events-none{% endif %}">
+            {{ s.excluded }}
+        </a>
+    </td>
+    <td onclick="event.stopPropagation()">
+        {% include "projects/_source_toggle_button.html" %}
+    </td>
+</tr>
