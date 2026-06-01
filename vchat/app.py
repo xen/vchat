@@ -4,6 +4,7 @@ from pathlib import Path
 
 import aiohttp_jinja2
 import jinja2
+import sqlalchemy as sa
 from aiohttp import web
 from aiohttp.helpers import DEBUG
 from aiohttp.web_app import Application
@@ -17,6 +18,7 @@ from vchat.app_keys import (
     REDIS_KEY,
     SETTINGS_KEY,
     SIGNER_KEY,
+    STATIC_VERSION_KEY,
 )
 from vchat.db import engine
 from vchat.i18n import _
@@ -75,11 +77,11 @@ async def create_app() -> Application:
                 (p.stat().st_mtime for p in assets_dir.glob("*") if p.is_file()),
                 default=datetime.now().timestamp(),
             )
-            app["static_version"] = str(int(latest_mtime))
+            app[STATIC_VERSION_KEY] = str(int(latest_mtime))
         else:
-            app["static_version"] = str(int(datetime.now().timestamp()))
+            app[STATIC_VERSION_KEY] = str(int(datetime.now().timestamp()))
     except Exception:
-        app["static_version"] = str(int(datetime.now().timestamp()))
+        app[STATIC_VERSION_KEY] = str(int(datetime.now().timestamp()))
     # Add the custom filter
     jinja_env: Environment = aiohttp_jinja2.get_env(app)
     jinja_env.filters["protect"] = protect
@@ -88,12 +90,20 @@ async def create_app() -> Application:
     # Setup routes
     setup_routes(app)
 
+    async def warmup_db(app):
+        import asyncio
+        asyncio.get_running_loop().slow_callback_duration = 0.5
+        from vchat.db import async_session_factory
+        async with async_session_factory() as session:
+            await session.execute(sa.text("SELECT 1"))
+
     async def close_redis(app):
         await app[REDIS_KEY].aclose()
 
     async def dispose_db(app):
         await engine.dispose()
 
+    app.on_startup.append(warmup_db)
     app.on_cleanup.append(close_redis)
     app.on_cleanup.append(dispose_db)
 
@@ -122,6 +132,6 @@ async def init_jinja(request):
         "url_for": lambda x, **kwargs: request.app.router[x].url_for(**kwargs),
         "csrf_token": csrf_token,
         "project_settings": request.app[SETTINGS_KEY],
-        "static_version": request.app.get("static_version", ""),
+        "static_version": request.app.get(STATIC_VERSION_KEY, ""),
         "_": _,
     }

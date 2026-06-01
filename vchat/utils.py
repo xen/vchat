@@ -278,7 +278,7 @@ def login_required():
                 if request.path != url:
                     query_params = {"next": request.path}
                     url = f"{url}?{urlencode(query_params)}"
-                return aiohttp.web.HTTPFound(url)
+                raise aiohttp.web.HTTPFound(url)
 
             return await func(request)
 

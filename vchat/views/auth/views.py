@@ -36,7 +36,7 @@ password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
 async def login(request):
     config = request.app[CONFIG_KEY]
     if not config.get("auth_basic_enabled", True):
-        return web.HTTPFound(location=request.app.router["login_ldap"].url_for())
+        raise web.HTTPFound(location=request.app.router["login_ldap"].url_for())
 
     session = await get_session(request)
     data = await request.post()
@@ -110,7 +110,7 @@ async def login(request):
         target = "index"
         if request.rel_url.query.get("next"):
             target = request.rel_url.query["next"]
-        return web.HTTPFound(location=request.app.router[target].url_for())
+        raise web.HTTPFound(location=request.app.router[target].url_for())
 
     return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
 
@@ -120,7 +120,7 @@ async def login(request):
 async def login_ldap(request):
     config = request.app[CONFIG_KEY]
     if not config.get("auth_ldap_enabled", False):
-        return web.HTTPFound(location=request.app.router["login"].url_for())
+        raise web.HTTPFound(location=request.app.router["login"].url_for())
 
     session = await get_session(request)
     data = await request.post()
@@ -182,7 +182,7 @@ async def login_ldap(request):
         target = "index"
         if request.rel_url.query.get("next"):
             target = request.rel_url.query["next"]
-        return web.HTTPFound(location=request.app.router[target].url_for())
+        raise web.HTTPFound(location=request.app.router[target].url_for())
 
     return {"form": form, "basic_enabled": config.get("auth_basic_enabled", True)}
 
@@ -193,4 +193,4 @@ async def logout(request):
     await admin_event("user_logout", request)
     session = await get_session(request)
     session.invalidate()
-    return web.HTTPFound(location=request.app.router["login"].url_for())
+    raise web.HTTPFound(location=request.app.router["login"].url_for())

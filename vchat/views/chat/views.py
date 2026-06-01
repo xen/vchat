@@ -1145,4 +1145,4 @@ async def chat_actions(request):
             },
         )
 
-    return web.HTTPBadRequest(text=f"Unknown action: {action}")
+    raise web.HTTPBadRequest(text=f"Unknown action: {action}")

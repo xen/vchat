@@ -16,34 +16,45 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const dismissChannel = new BroadcastChannel('vchat_toast_dismiss');
 
-    // Apply custom styles as requested
-    toastContainer.style.cssText = "position: fixed; z-index: 10000; width: 300px; top: 5rem; right: 1rem; max-height: calc(-2rem + 100vh); overflow-y: auto;";
+    toastContainer.style.cssText = "position: fixed; z-index: 10000; width: 300px; top: 5rem; right: 1rem;";
 
-    if (!badge || !itemsContainer) {
-        // Even if notification dropdown is invalid, we still want toasts to work?
-        // The original code returned early. Let's try to proceed if toastContainer exists, 
-        // but maybe we should separate the logic.
-        // For now, let's keep the return check but maybe we shouldn't if we want generic toasts.
-        // However, the user said "flash calls... send to redis... come as notifications... via websocket_handler".
-        // websocket_handler is `@login_required`.
-        // If the user is logged in, these elements should likely exist if the layout is standard.
-        // If not, we might be on a page without the navbar?
-        // Let's assume standard layout.
-        if (!badge || !itemsContainer) {
-            // If we want to support toasts even without the dropdown (e.g. minimal layout), 
-            // we should likely remove this return or verify if badge exists.
-            // But existing code returns. Let's respect it for now to avoid side effects, 
-            // or maybe relax it? User said "flash... send... displayed...". 
-            // If I return here, flash won't work on pages without notification badge.
-            // I'll proceed only if badge/itemsContainer logic is conditional, or simply modify the check.
-            // Let's modify the check to only return if we can't do EITHER.
-            if (!badge && !itemsContainer && !toastContainer) return;
+    if (!badge && !itemsContainer && !toastContainer) return;
+
+    const PEEK = 8;       // px each older toast peeks below the top one
+    const MAX_VISIBLE = 3;
+
+    function updateStack() {
+        const toasts = Array.from(toastContainer.children);
+        const n = toasts.length;
+        if (n === 0) {
+            toastContainer.style.height = '0';
+            return;
         }
+        const topH = toasts[n - 1].offsetHeight;
+        toasts.forEach((toast, i) => {
+            const depth = n - 1 - i; // 0 = newest/top
+            const clamped = Math.min(depth, MAX_VISIBLE - 1);
+            toast.style.position = 'absolute';
+            toast.style.top = '0';
+            toast.style.left = '0';
+            toast.style.right = '0';
+            toast.style.margin = '0';
+            toast.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
+            toast.style.transform = `translateY(${clamped * PEEK}px) scale(${1 - clamped * 0.04})`;
+            toast.style.zIndex = depth < MAX_VISIBLE ? String(MAX_VISIBLE - depth) : '0';
+            toast.style.opacity = depth === 0 ? '1' : depth === 1 ? '0.65' : depth < MAX_VISIBLE ? '0.35' : '0';
+            toast.style.pointerEvents = depth === 0 ? 'auto' : 'none';
+        });
+        const layers = Math.min(n, MAX_VISIBLE);
+        toastContainer.style.height = topH + (layers - 1) * PEEK + 'px';
     }
 
     function dismissToast(mid) {
         const el = toastContainer.querySelector(`[data-mid="${CSS.escape(mid)}"]`);
-        if (el) el.remove();
+        if (el) {
+            el.remove();
+            requestAnimationFrame(updateStack);
+        }
     }
 
     dismissChannel.onmessage = function (event) {
@@ -54,7 +65,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function showToast(data) {
         const mid = data.mid || data.created_at || String(Date.now());
-        // Don't show the same toast twice in this tab (e.g. if somehow delivered twice)
         if (toastContainer.querySelector(`[data-mid="${CSS.escape(mid)}"]`)) return;
 
         const alertClass = {
@@ -65,21 +75,22 @@ document.addEventListener('DOMContentLoaded', function () {
         }[data.category] || 'alert-info';
 
         const div = document.createElement('div');
-        div.className = `alert ${alertClass} mb-2 cursor-pointer`;
+        div.className = `alert ${alertClass} cursor-pointer`;
         div.dataset.mid = mid;
         div.innerHTML = `<span>${data.body}</span>`;
         div.onclick = function () {
             div.remove();
             dismissChannel.postMessage({ type: 'dismiss', mid });
+            requestAnimationFrame(updateStack);
         };
 
-        toastContainer.appendChild(div);
-
-        // Limit to 5 messages
-        const toasts = toastContainer.children;
-        if (toasts.length > 5) {
-            toasts[0].remove();
+        // Drop oldest if already at limit
+        while (toastContainer.children.length >= MAX_VISIBLE + 2) {
+            toastContainer.children[0].remove();
         }
+
+        toastContainer.appendChild(div);
+        requestAnimationFrame(updateStack);
     }
 
     function connect() {

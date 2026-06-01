@@ -16,3 +16,4 @@ SIGNER_KEY: web.AppKey[URLSafeTimedSerializer] = web.AppKey(
     "signer", URLSafeTimedSerializer
 )
 SETTINGS_KEY: web.AppKey[ConfigDict] = web.AppKey("settings", dict)
+STATIC_VERSION_KEY: web.AppKey[str] = web.AppKey("static_version", str)

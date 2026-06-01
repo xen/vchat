@@ -5,7 +5,7 @@ from aiohttp import web
 
 async def healthcheck(request):
     await request["db"].execute(sa.text("select 1;"))
-    return web.HTTPFound(request.app.router["project_view"].url_for())
+    raise web.HTTPFound(request.app.router["project_view"].url_for())
 
 
 robots = """
@@ -21,7 +21,7 @@ async def robots_txt(request):
 
 
 async def favicon(request):
-    return web.HTTPFound("/static/favicon.ico")
+    raise web.HTTPFound("/static/favicon.ico")
 
 
 async def widget_js(request):
