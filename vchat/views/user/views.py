@@ -18,8 +18,11 @@ logger = logging.getLogger(__name__)
 async def _forward_notifications(
     ws: web.WebSocketResponse, request: web.Request
 ) -> None:
-    channel = f"user_{request['user'].id}"
-    pubsub = request.app[REDIS_KEY].pubsub()
+    user_id = request["user"].id
+    channel = f"user_{user_id}"
+    key = f"flash_toast_{user_id}"
+    redis = request.app[REDIS_KEY]
+    pubsub = redis.pubsub()
     try:
         await pubsub.subscribe(channel)
         async for message in pubsub.listen():
@@ -31,6 +34,8 @@ async def _forward_notifications(
             if not data:
                 continue
             await ws.send_str(data)
+            with contextlib.suppress(RedisError):
+                await redis.lrem(key, 1, data)
     except RedisError as exc:
         logger.warning("Notifications stream unavailable for %s: %s", channel, exc)
         if not getattr(ws, "closed", False):

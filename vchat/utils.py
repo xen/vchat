@@ -139,6 +139,7 @@ async def flash(request, message, category="success"):
 
     msg_data = {
         "type": "flash",
+        "mid": str(uuid.uuid4()),
         "body": message,
         "category": category,
         "created_at": datetime.now().isoformat(),

@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', function () {
         toastContainer.className = 'toast toast-top toast-end';
         document.body.appendChild(toastContainer);
     }
-    console.log(toastContainer);
+
+    const dismissChannel = new BroadcastChannel('vchat_toast_dismiss');
 
     // Apply custom styles as requested
     toastContainer.style.cssText = "position: fixed; z-index: 10000; width: 300px; top: 5rem; right: 1rem; max-height: calc(-2rem + 100vh); overflow-y: auto;";
@@ -40,7 +41,22 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function dismissToast(mid) {
+        const el = toastContainer.querySelector(`[data-mid="${CSS.escape(mid)}"]`);
+        if (el) el.remove();
+    }
+
+    dismissChannel.onmessage = function (event) {
+        if (event.data?.type === 'dismiss' && event.data.mid) {
+            dismissToast(event.data.mid);
+        }
+    };
+
     function showToast(data) {
+        const mid = data.mid || data.created_at || String(Date.now());
+        // Don't show the same toast twice in this tab (e.g. if somehow delivered twice)
+        if (toastContainer.querySelector(`[data-mid="${CSS.escape(mid)}"]`)) return;
+
         const alertClass = {
             'error': 'alert-error',
             'success': 'alert-success',
@@ -49,44 +65,30 @@ document.addEventListener('DOMContentLoaded', function () {
         }[data.category] || 'alert-info';
 
         const div = document.createElement('div');
-        div.className = `alert ${alertClass} relative pr-10 mb-2`; // basic spacing
-        div.innerHTML = `
-            <span>${data.body}</span>
-            <button class="btn btn-sm btn-ghost btn-circle absolute right-1 top-1" aria-label="Закрыть">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-        `;
-
-        // Close button logic
-        const btn = div.querySelector('button');
-        btn.onclick = function () {
+        div.className = `alert ${alertClass} mb-2 cursor-pointer`;
+        div.dataset.mid = mid;
+        div.innerHTML = `<span>${data.body}</span>`;
+        div.onclick = function () {
             div.remove();
+            dismissChannel.postMessage({ type: 'dismiss', mid });
         };
 
-        // Append to container
         toastContainer.appendChild(div);
 
         // Limit to 5 messages
         const toasts = toastContainer.children;
         if (toasts.length > 5) {
-            // Remove the oldest (first child)
             toasts[0].remove();
         }
-
-        // Auto-remove after some time? User didn't ask for auto-close, only "if > 5... old ones disappear". 
-        // "If user doesn't close them... old should disappear".
     }
 
     function connect() {
         socket = new WebSocket(wsUrl);
 
-        socket.onopen = function () {
-            console.log('Notification WS connected');
-        };
+        socket.onopen = function () {};
 
         socket.onmessage = function (event) {
             const data = JSON.parse(event.data);
-            console.log('Notification received:', data);
 
             if (data.type === 'flash') {
                 showToast(data);
