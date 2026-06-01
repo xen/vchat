@@ -136,6 +136,9 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
             _ = stmt
             return _ExecuteResult()
 
+        def in_transaction(self):
+            return False
+
     class _Session(dict):
         def invalidate(self):
             self["invalidated"] = True
@@ -181,6 +184,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
                 password="hash",
                 email="user@example.com",
                 name="User",
+                is_ldap=False,
             )
 
     class _DB:
@@ -199,7 +203,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     login_router = {"index": _Route("/"), "login": _Route("/login/")}
     request = _Request(
         method="POST",
-        app=_App({"_": 1, REDIS_KEY: _Redis()}, router=login_router),
+        app=_App({CONFIG_KEY: {}, REDIS_KEY: _Redis()}, router=login_router),
         post_data={"email": "user@example.com", "password": "pass"},
         query={},
     )
@@ -238,7 +242,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_views, "get_session", _logout_session)
     logout_fn = auth_views.logout.__wrapped__.__wrapped__
     request2 = _Request(
-        method="GET", app=_App({"_": 1}, router={"login": _Route("/login/")})
+        method="GET", app=_App({CONFIG_KEY: {}}, router={"login": _Route("/login/")})
     )
     request2["user"] = SimpleNamespace(id=5)
     logout_resp = await logout_fn(request2)
@@ -363,7 +367,11 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
     class _Record:
         def scalar(self):
             return SimpleNamespace(
-                id=5, is_active=True, password="hash", email="user@example.com"
+                id=5,
+                is_active=True,
+                password="hash",
+                email="user@example.com",
+                is_ldap=False,
             )
 
     class _DB:
@@ -390,7 +398,7 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
     request = _Request(
         method="POST",
         app=_App(
-            {REDIS_KEY: _Redis()},
+            {CONFIG_KEY: {}, REDIS_KEY: _Redis()},
             router={"index": _Route("/"), "login": _Route("/login/")},
         ),
         post_data={"email": "user@example.com", "password": "wrong"},
@@ -462,7 +470,7 @@ async def test_login_redis_lock_blocks_parallel_checks(
     request = _Request(
         method="POST",
         app=_App(
-            {REDIS_KEY: _Redis()},
+            {CONFIG_KEY: {}, REDIS_KEY: _Redis()},
             router={"index": _Route("/"), "login": _Route("/login/")},
         ),
         post_data={"email": "user@example.com", "password": "wrong"},

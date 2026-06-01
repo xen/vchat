@@ -30,6 +30,7 @@ async def event_list(request):
     total_items = (
         await request["db"].scalar(sa.select(sa.func.count(AdminEvent.id))) or 0
     )
+
     def _href_for_page(target_page: int) -> str:
         if target_page <= 1:
             return request.path
@@ -58,6 +59,8 @@ async def event_list(request):
     )
     return {
         "events": events,
+        "page": page,
+        "total_items": total_items,
         "pagination": pagination,
     }
 

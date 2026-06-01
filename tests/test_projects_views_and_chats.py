@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from aiohttp import web
+from yarl import URL
 
 from vchat.views.projects import chats as chats_views
 from vchat.views.projects import views as project_views
@@ -101,6 +102,22 @@ async def test_history_list_builds_pagination_and_filters(
             _ = stmt
             return _RowsResult()
 
+    class _Route:
+        def __init__(self, path: str):
+            self.path = path
+
+        def url_for(self):
+            return URL(self.path)
+
+    class _Router(dict):
+        def __getitem__(self, key):
+            return super().__getitem__(key)
+
+    class _App(dict):
+        def __init__(self, *args, router=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.router = router or {}
+
     class _HistoryReq:
         def __init__(self):
             self.query = {
@@ -111,6 +128,7 @@ async def test_history_list_builds_pagination_and_filters(
                 "guardrail": "1",
                 "guardrail_reason": "passport_ru",
             }
+            self.app = _App(router=_Router({"project_history": _Route("/history")}))
             self._store = {"db": _Db()}
 
         def __getitem__(self, item):
@@ -276,22 +294,38 @@ async def test_document_link_groups_split_mutual_incoming_and_outgoing() -> None
 
     outgoing_rows = [
         (
-            SimpleNamespace(target_page_id=21, target_uri="https://example.local/mutual", target_status="ok"),
-            SimpleNamespace(id=21, title="Mutual page", uri="https://example.local/mutual"),
+            SimpleNamespace(
+                target_page_id=21,
+                target_uri="https://example.local/mutual",
+                target_status="ok",
+            ),
+            SimpleNamespace(
+                id=21, title="Mutual page", uri="https://example.local/mutual"
+            ),
         ),
         (
-            SimpleNamespace(target_page_id=22, target_uri="https://example.local/outgoing", target_status="not_indexed"),
-            SimpleNamespace(id=22, title="Outgoing page", uri="https://example.local/outgoing"),
+            SimpleNamespace(
+                target_page_id=22,
+                target_uri="https://example.local/outgoing",
+                target_status="not_indexed",
+            ),
+            SimpleNamespace(
+                id=22, title="Outgoing page", uri="https://example.local/outgoing"
+            ),
         ),
     ]
     incoming_rows = [
         (
             SimpleNamespace(source_page_id=21),
-            SimpleNamespace(id=21, title="Mutual page", uri="https://example.local/mutual"),
+            SimpleNamespace(
+                id=21, title="Mutual page", uri="https://example.local/mutual"
+            ),
         ),
         (
             SimpleNamespace(source_page_id=23),
-            SimpleNamespace(id=23, title="Incoming page", uri="https://example.local/incoming"),
+            SimpleNamespace(
+                id=23, title="Incoming page", uri="https://example.local/incoming"
+            ),
         ),
     ]
 
@@ -362,7 +396,12 @@ def test_document_links_graph_builds_nodes_and_bidirectional_edges() -> None:
     graph = project_views._document_links_graph(document, "Current", groups)
 
     assert graph["currentNodeId"] == "page-10"
-    assert {node["id"] for node in graph["nodes"]} == {"page-10", "page-21", "page-22", "page-23"}
+    assert {node["id"] for node in graph["nodes"]} == {
+        "page-10",
+        "page-21",
+        "page-22",
+        "page-23",
+    }
     node_by_id = {node["id"]: node for node in graph["nodes"]}
     assert node_by_id["page-21"]["is_external"] is True
     assert node_by_id["page-22"]["is_ignored"] is True

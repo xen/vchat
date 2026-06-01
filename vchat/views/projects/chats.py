@@ -334,7 +334,9 @@ async def history_list(request):
     def _href_for_page(target_page: int) -> str:
         query = _query_for_page(target_page)
         if query:
-            return str(request.app.router["project_history"].url_for().with_query(query))
+            return str(
+                request.app.router["project_history"].url_for().with_query(query)
+            )
         return str(request.app.router["project_history"].url_for())
 
     pagination = paginator(
