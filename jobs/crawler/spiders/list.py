@@ -2,6 +2,7 @@ import scrapy
 
 from ..items import CrawledItem
 from ..seed_urls import iter_source_seed_urls
+from ..url_rules import normalize_url_for_queue
 
 
 class ListSpider(scrapy.Spider):
@@ -11,6 +12,7 @@ class ListSpider(scrapy.Spider):
         self.list_url = url
         self.source_id = int(source_id) if source_id else None
         self.config = config or {}
+        self.source_rules = list(self.config.get("rules", []) or [])
         super().__init__(*args, **kwargs)
 
     def start_requests(self):
@@ -31,9 +33,13 @@ class ListSpider(scrapy.Spider):
 
     def parse_item(self, response):
         item = CrawledItem()
-        item["url"] = response.url
+        item["url"] = normalize_url_for_queue(response.request.url, self.source_rules)
+        item["final_url"] = normalize_url_for_queue(response.url, self.source_rules)
+        item["http_status"] = response.status
+        item["etag"] = response.headers.get("ETag", b"").decode("utf-8") or None
         item["source_id"] = self.source_id
         item["content_type"] = response.headers.get("Content-Type", b"").decode("utf-8")
         item["content"] = response.text
         item["title"] = response.xpath("//title/text()").get()
+        item["out_links"] = []
         yield item

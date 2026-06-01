@@ -68,9 +68,11 @@ def test_document_content_template_renders_structure_items() -> None:
             str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
         )
     )
+    env.globals["url"] = lambda name, document_id: f"/page/{document_id}"
     template = env.get_template("projects/document_content.html")
     rendered = template.render(
         document=SimpleNamespace(
+            id=1,
             title="Doc",
             uri=None,
             status="ready",
@@ -78,7 +80,10 @@ def test_document_content_template_renders_structure_items() -> None:
             meta={},
             content="body",
         ),
+        document_display_title="Doc",
         document_pipeline=("ready", None, None),
+        document_stats_summary="10 Б, 0 чанков, 0 слов, 0 таблиц",
+        document_crawl_summary="код —",
         document_structure=[
             {
                 "type": "list",
@@ -93,16 +98,60 @@ def test_document_content_template_renders_structure_items() -> None:
         document_extraction={},
         document_chunks=[],
         document_crawl_fields=[],
+        document_links={"mutual": [], "incoming": [], "outgoing": []},
+        document_links_graph={"currentNodeId": "page-1", "nodes": [], "links": []},
     )
     assert "one\ntwo" in rendered
 
 
-def test_document_content_template_renders_crawl_fields() -> None:
+def test_document_content_template_renders_compact_summary() -> None:
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(
             str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
         )
     )
+    env.globals["url"] = lambda name, document_id: f"/page/{document_id}"
+    template = env.get_template("projects/document_content.html")
+    rendered = template.render(
+        document=SimpleNamespace(
+            id=1,
+            title="Doc",
+            uri="https://example.local/page",
+            status="ready",
+            status_error=None,
+            meta={},
+            content="body",
+        ),
+        document_display_title="Doc",
+        document_pipeline=("ready", None, None),
+        document_stats_summary="12.4 КБ, 3 чанков, 120 слов, 1 таблиц, 88% уникальности текста",
+        document_crawl_summary="код 200, обход 01.06.2026 10:00, etag abc123",
+        document_structure=[],
+        document_outline=[],
+        document_extraction={},
+        document_chunks=[],
+        document_crawl_fields=[
+            {"label": "HTTP status", "value": "200"},
+            {"label": "Hub-страница", "value": "Нет"},
+            {"label": "ETag", "value": "abc123"},
+        ],
+        document_links={"mutual": [], "incoming": [], "outgoing": []},
+        document_links_graph={"currentNodeId": "page-1", "nodes": [], "links": []},
+    )
+    assert "Статистика:" in rendered
+    assert "12.4 КБ, 3 чанков, 120 слов, 1 таблиц, 88% уникальности текста" in rendered
+    assert "Обход:" in rendered
+    assert "код 200, обход 01.06.2026 10:00, etag abc123" in rendered
+    assert "Данные обходов" not in rendered
+
+
+def test_document_content_template_renders_document_links_widget() -> None:
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(
+            str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
+        )
+    )
+    env.globals["url"] = lambda name, document_id: f"/page/{document_id}"
     template = env.get_template("projects/document_content.html")
     rendered = template.render(
         document=SimpleNamespace(
@@ -113,22 +162,56 @@ def test_document_content_template_renders_crawl_fields() -> None:
             meta={},
             content="body",
         ),
+        document_display_title="Doc",
         document_pipeline=("ready", None, None),
+        document_stats_summary="1.0 КБ, 0 чанков, 0 слов, 0 таблиц, 100% уникальности текста",
+        document_crawl_summary="код 200, обход —",
         document_structure=[],
         document_outline=[],
         document_extraction={},
         document_chunks=[],
-        document_crawl_fields=[
-            {"label": "HTTP status", "value": "200"},
-            {"label": "Hub-страница", "value": "Нет"},
-            {"label": "ETag", "value": "abc123"},
-        ],
+        document_crawl_fields=[],
+        document_links={
+            "mutual": [
+                {
+                    "id": 11,
+                    "title": "Mutual page",
+                    "uri": "https://example.local/mutual",
+                    "status": "ok",
+                }
+            ],
+            "incoming": [
+                {
+                    "id": 12,
+                    "title": "Incoming page",
+                    "uri": "https://example.local/incoming",
+                }
+            ],
+            "outgoing": [
+                {
+                    "id": 13,
+                    "title": "Outgoing page",
+                    "uri": "https://example.local/outgoing",
+                    "status": "not_indexed",
+                }
+            ],
+        },
+        document_links_graph={
+            "currentNodeId": "page-10",
+            "nodes": [
+                {"id": "page-10", "title": "Doc", "uri": "https://example.local/page", "relation": "current", "detail_url": "/page/10"},
+                {"id": "page-11", "title": "Mutual page", "uri": "https://example.local/mutual", "relation": "mutual", "detail_url": "/page/11"},
+            ],
+            "links": [{"source": "page-10", "target": "page-11", "relation": "outgoing"}],
+        },
     )
-    assert "Данные обходов" in rendered
-    assert "HTTP status" in rendered
-    assert "200" in rendered
-    assert "Hub-страница" in rendered
-    assert "abc123" in rendered
+    assert "Связанные страницы" in rendered
+    assert "document-links-graph" in rendered
+    assert "document-links-graph-data" in rendered
+    assert "Выбранная страница" in rendered
+    assert "Игнорируемые" in rendered
+    assert "Другой домен" in rendered
+    assert "Взаимные ссылки" not in rendered
 
 
 def test_sources_template_hides_pause_badge_in_name_column() -> None:
@@ -137,6 +220,26 @@ def test_sources_template_hides_pause_badge_in_name_column() -> None:
 
     assert "Пауза" not in content
     assert "pause-circle" not in content
+
+
+def test_files_template_uses_common_toolbar_controls() -> None:
+    template_path = Path(__file__).resolve().parents[1] / "vchat" / "templates" / "projects" / "files.html"
+    content = template_path.read_text(encoding="utf-8")
+
+    assert "Добавить файл" in content
+    assert "Все авторы" in content
+    assert "x-data=\"useProjectFilesTable()\"" in content
+    assert "К списку" not in content
+
+
+def test_document_detail_template_uses_document_title_in_header() -> None:
+    template_path = Path(__file__).resolve().parents[1] / "vchat" / "templates" / "projects" / "document_detail.html"
+    content = template_path.read_text(encoding="utf-8")
+
+    assert "Структура документа" not in content
+    assert "{{ document_display_title }}" in content
+    assert "Страницы" in content
+    assert "btn btn-ghost btn-sm" not in content
 
 
 @pytest.mark.asyncio

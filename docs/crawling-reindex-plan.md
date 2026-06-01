@@ -205,6 +205,13 @@ notes               text nullable
      - hash изменился → распарсить, обновить url_count, last_content_hash, last_etag
        → страницы с изменившимся <lastmod> → повысить приоритет в очереди B
 
+4a. Для ручных действий из UI:
+   - кнопка "Переиндексировать источник" должна перед `crawl_source_task` запускать тот же discovery-этап
+     (`robots.txt` → `Sitemap:` → auto-probe `/sitemap.xml`, `/sitemap_index.xml`)
+   - кнопка "Переиндексировать все" должна делать discovery sitemap для каждого источника перед постановкой
+     общего обхода в очередь
+   - ручной запуск не должен обходить discovery только потому, что это UI-действие, а не плановый ран
+
 5. Сформировать бюджет и очередь (алгоритм ниже)
 
 6. Обходить страницы из очереди, соблюдая budget
@@ -228,9 +235,9 @@ B = crawler_max_pages  (общий бюджет)
 # Собрать кандидатов
 A = все hub-страницы источника (is_hub_page = true)
 B_pages = страницы где (now() - last_crawled_at) >= check_interval_days * interval '1 day'
-          + страницы со статусом pending
+          + страницы, которые ещё ни разу не скачивались (last_crawled_at IS NULL)
           + страницы из sitemap с изменившимся lastmod (добавляются первыми)
-C_pages = страницы со статусом error_5xx (retry)
+C_pages = страницы со статусом http_5xx (retry по status_error)
 
 # Максимальные доли корзин при полном заполнении
 cap_A = floor(B * 0.20)
@@ -500,6 +507,8 @@ AutoThrottle автоматически замедляется при задер
 | `schedule_index_page(page_id)`         | embedder | После изменения Page.content                  |
 | `refresh_project_index`                | embedder | После crawl_source_task при наличии изменений |
 | `rebuild_boilerplate_index(source_id)` | embedder | После полного кравла                          |
+| `schedule_pending_chunks`              | embedder | Celery Beat каждые 5 минут                    |
+| `ensure_pending_chunks`                | celery   | Вызывается scheduler'ом pending chunks        |
 
 Цепочка выполнения:
 ```
@@ -509,6 +518,19 @@ schedule_crawl_task
           → cleanup_orphans_task(source_id)
       → refresh_project_index  (если были изменения)
 ```
+
+### Восстановление после рестарта / деплоя
+
+- Для crawler: незавершённый `CrawlRun` при следующем запуске того же источника помечается как `interrupted`, после чего
+  формируется новая итерация из актуального состояния БД (`page`, `page_link`, `sitemap`, `last_crawled_at`,
+  `check_interval_days`, `status_error`). Это даёт безопасный restart-from-state, а не продолжение внутри старого процесса.
+- Для embedder: есть периодический добор через `schedule_pending_chunks` и `refresh_project_index`. После рестарта они
+  снова находят страницы без чанков, pending chunks и удаляют битые chunk-наборы, поэтому индексация догоняет
+  консистентное состояние без ручного вмешательства.
+- После первого полного обхода источник переходит в режим поддержания актуальности: страницы повторно попадают в очередь
+  по `check_interval_days`, sitemap sync повышает приоритет изменившихся URL, а `http_5xx` страницы уходят в retry-корзину.
+- Что ещё стоит добить отдельно: явный bootstrap-ран при старте воркера/после деплоя для `refresh_project_index` и
+  `schedule_sitemap_sync_task`, чтобы восстановление не зависело только от ближайшего Beat-тика.
 
 ---
 

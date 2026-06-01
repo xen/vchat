@@ -230,6 +230,7 @@ async def test_project_source_settings_post_site_rules(
 
     events = []
     flashes = []
+    delayed = []
 
     async def _event(name, _request):
         events.append(name)
@@ -243,6 +244,11 @@ async def test_project_source_settings_post_site_rules(
     )
     monkeypatch.setattr(project_views, "admin_event", _event)
     monkeypatch.setattr(project_views, "flash", _flash)
+    monkeypatch.setattr(
+        project_views.reapply_source_rules_task,
+        "delay",
+        lambda source_id: delayed.append(source_id),
+    )
     monkeypatch.setattr(
         project_views, "_project_context", lambda _r: SimpleNamespace(id="global")
     )
@@ -262,6 +268,7 @@ async def test_project_source_settings_post_site_rules(
         CrawlerRule(type="contains", value="/private"),
     ]
     assert events == ["source_update"]
+    assert delayed == [10]
 
 
 @pytest.mark.asyncio
@@ -296,6 +303,7 @@ async def test_add_source_includes_default_ignored_params(
             return True
 
     events = []
+    delayed = []
     delayed = []
 
     async def _event(name, _request):
@@ -362,11 +370,17 @@ async def test_delete_source_rule_removes_rule_and_commits(
     req.match_info["item_id"] = "10"
 
     events = []
+    delayed = []
 
     async def _event(name, _request):
         events.append(name)
 
     monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(
+        project_views.reapply_source_rules_task,
+        "delay",
+        lambda source_id: delayed.append(source_id),
+    )
 
     response = await _raw(project_views.project_action)(req)
     assert response.status == 200
@@ -378,5 +392,6 @@ async def test_delete_source_rule_removes_rule_and_commits(
         ),
         CrawlerRule(type="regex", value="^https://example.local/private"),
     ]
+    assert delayed == [10]
     assert source.updated_at is not None
     assert events == ["source_update"]

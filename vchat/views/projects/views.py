@@ -5,6 +5,7 @@ import json
 import hashlib
 import hmac
 import uuid
+from celery import chain
 from celery.schedules import crontab
 from datetime import datetime, time, timedelta, timezone
 from types import SimpleNamespace
@@ -18,14 +19,17 @@ from aiohttp import web
 from aiohttp_session import get_session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
 from passlib.context import CryptContext
+from sqlalchemy.orm import aliased
 
 from jobs.crawler import (
-    crawl_all_sources_task,
     crawl_page_task,
     crawl_source_task,
+    reapply_source_rules_task,
+    sitemap_sync_task,
 )
 from jobs.embedder.tasks import (
     index_project,
+    load_boilerplate_hashes,
     refresh_source_index,
     schedule_index_document,
     schedule_refresh_project_index,
@@ -39,11 +43,12 @@ from vchat.ai_providers import (
     is_provider_available,
     resolve_ai_settings,
 )
-from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
+from vchat.document_shingles import compute_trigram_hashes
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg, Chunk, Page, Sitemap, Source, User
+from vchat.models import Chat, ChatMsg, Chunk, Page, PageLink, Sitemap, Source, User
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
@@ -96,8 +101,93 @@ def _format_datetime_local(value: datetime | None) -> str:
     return value.astimezone().strftime("%d.%m.%Y %H:%M")
 
 
+def _queue_source_crawl_from_ui(source_id: int) -> None:
+    chain(
+        sitemap_sync_task.si(source_id),
+        crawl_source_task.si(source_id, skip_sitemap_sync=True),
+    ).apply_async()
+
+
 def _format_crawl_bool(value: bool) -> str:
     return "Да" if value else "Нет"
+
+
+def _format_bytes_compact(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes} Б"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} КБ"
+    if size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} МБ"
+    return f"{size_bytes / (1024 * 1024 * 1024):.1f} ГБ"
+
+
+def _document_content_size_bytes(document: Page) -> int:
+    if document.content:
+        return len(document.content.encode("utf-8"))
+    return int(getattr(document, "_length", 0) or 0)
+
+
+def _document_uniqueness_percent(
+    document: Page, boilerplate_hashes: frozenset[int]
+) -> int | None:
+    content = (document.content or "").strip()
+    if not content:
+        return None
+
+    hashes = compute_trigram_hashes(content)
+    if not hashes:
+        return 100
+    if not boilerplate_hashes:
+        return 100
+
+    overlap = len(hashes & boilerplate_hashes)
+    unique_ratio = max(0.0, 1.0 - (overlap / len(hashes)))
+    return round(unique_ratio * 100)
+
+
+async def _load_document_uniqueness_percent(db: Any, document: Page) -> int | None:
+    if not document.content:
+        return None
+    if not document.source_id:
+        return _document_uniqueness_percent(document, frozenset())
+
+    boilerplate_hashes = await db.run_sync(
+        lambda sync_db: load_boilerplate_hashes(sync_db, document.source_id)
+    )
+    return _document_uniqueness_percent(document, boilerplate_hashes)
+
+
+def _document_stats_summary(
+    document: Page,
+    chunk_rows: list[Chunk],
+    extraction: dict[str, Any],
+    uniqueness_percent: int | None,
+) -> str:
+    parts = [
+        _format_bytes_compact(_document_content_size_bytes(document)),
+        f"{len(chunk_rows)} чанков",
+        f"{int(extraction.get('word_count') or 0)} слов",
+        f"{int(extraction.get('table_count') or 0)} таблиц",
+    ]
+    if uniqueness_percent is not None:
+        parts.append(f"{uniqueness_percent}% уникальности текста")
+    return ", ".join(parts)
+
+
+def _document_crawl_summary(document: Page) -> str:
+    parts = [
+        f"код {document.http_status if document.http_status is not None else '—'}",
+        f"обход {_format_datetime_local(document.last_crawled_at)}",
+        f"изм. {_format_datetime_local(document.last_modified_at)}",
+        f"интервал {document.check_interval_days} дн.",
+        f"стабильность {document.stable_count}",
+        f"ошибок {document.error_count}",
+        f"входящих {document.inlink_count}",
+    ]
+    if document.last_etag:
+        parts.insert(3, f"etag {document.last_etag}")
+    return ", ".join(parts)
 
 
 def _document_crawl_fields(document: Page) -> list[dict[str, str]]:
@@ -147,6 +237,202 @@ def _document_crawl_fields(document: Page) -> list[dict[str, str]]:
             "value": str(document.inlink_count),
         },
     ]
+
+
+def _sort_document_link_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            (row.get("title") or "").casefold(),
+            (row.get("uri") or "").casefold(),
+        ),
+    )
+
+
+def _is_external_uri(uri: str | None, current_netloc: str | None) -> bool:
+    if not uri or not current_netloc:
+        return False
+    return urlparse(uri).netloc.casefold() != current_netloc.casefold()
+
+
+def _is_ignored_link_status(status: str | None, status_error: str | None = None) -> bool:
+    return (status or "") in {"blocked", "auth_required"} or (status_error or "") in {
+        PageStatusError.excluded_ignored.value,
+        PageStatusError.excluded_robots.value,
+        PageStatusError.excluded_rules.value,
+        PageStatusError.excluded_auth.value,
+        PageStatusError.no_content.value,
+        PageStatusError.low_content.value,
+        PageStatusError.redirect.value,
+    }
+
+
+def _resolve_document_link_status(page: Page | Any | None) -> str:
+    if page is None:
+        return "missing"
+    if getattr(page, "status_error", None) == PageStatusError.excluded_auth:
+        return "auth_required"
+    if getattr(page, "status_error", None) in (
+        PageStatusError.excluded_robots,
+        PageStatusError.excluded_rules,
+    ):
+        return "blocked"
+    if getattr(page, "last_crawled_at", None) is None:
+        return "not_indexed"
+    return "ok"
+
+
+def _document_links_graph(
+    document: Page,
+    document_display_title: str,
+    link_groups: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    current_node_id = f"page-{document.id}"
+    current_netloc = urlparse(document.uri).netloc if document.uri else None
+    nodes: list[dict[str, Any]] = [
+        {
+            "id": current_node_id,
+            "page_id": document.id,
+            "title": document_display_title,
+            "uri": document.uri,
+            "relation": "current",
+            "detail_url": f"/page/{document.id}",
+            "status": document.status,
+            "is_ignored": _is_ignored_link_status(None, document.status_error),
+            "is_external": False,
+        }
+    ]
+    links: list[dict[str, Any]] = []
+    seen_nodes: set[str] = {current_node_id}
+    seen_links: set[tuple[str, str, str]] = set()
+
+    for relation, rows in link_groups.items():
+        for row in rows:
+            node_id = f"page-{row['id']}"
+            if node_id not in seen_nodes:
+                nodes.append(
+                    {
+                        "id": node_id,
+                        "page_id": row["id"],
+                        "title": row["title"],
+                        "uri": row.get("uri"),
+                        "relation": relation,
+                        "detail_url": f"/page/{row['id']}",
+                        "status": row.get("status"),
+                        "is_ignored": _is_ignored_link_status(
+                            row.get("status"), row.get("status_error")
+                        ),
+                        "is_external": _is_external_uri(
+                            row.get("uri"), current_netloc
+                        ),
+                    }
+                )
+                seen_nodes.add(node_id)
+
+            if relation in {"incoming", "mutual"}:
+                key = (node_id, current_node_id, "incoming")
+                if key not in seen_links:
+                    links.append(
+                        {
+                            "source": node_id,
+                            "target": current_node_id,
+                            "relation": "incoming",
+                        }
+                    )
+                    seen_links.add(key)
+            if relation in {"outgoing", "mutual"}:
+                key = (current_node_id, node_id, "outgoing")
+                if key not in seen_links:
+                    links.append(
+                        {
+                            "source": current_node_id,
+                            "target": node_id,
+                            "relation": "outgoing",
+                        }
+                    )
+                    seen_links.add(key)
+
+    return {"currentNodeId": current_node_id, "nodes": nodes, "links": links}
+
+
+async def _document_link_groups(db: Any, document: Page) -> dict[str, list[dict[str, Any]]]:
+    if document.id is None:
+        return {"mutual": [], "incoming": [], "outgoing": []}
+
+    outgoing_page = aliased(Page)
+    incoming_page = aliased(Page)
+
+    outgoing_rows = (
+        await db.execute(
+            sa.select(PageLink, outgoing_page)
+            .outerjoin(outgoing_page, outgoing_page.id == PageLink.target_page_id)
+            .where(PageLink.source_page_id == document.id)
+        )
+    ).all()
+    incoming_rows = (
+        await db.execute(
+            sa.select(PageLink, incoming_page)
+            .outerjoin(incoming_page, incoming_page.id == PageLink.source_page_id)
+            .where(PageLink.target_page_id == document.id)
+        )
+    ).all()
+
+    outgoing_by_id: dict[int, dict[str, Any]] = {}
+    for link, linked_page in outgoing_rows:
+        linked_id = link.target_page_id
+        if linked_id is None or linked_id in outgoing_by_id:
+            continue
+        title = _display_document_title(
+            getattr(linked_page, "title", None),
+            link.target_uri,
+        )
+        outgoing_by_id[linked_id] = {
+            "id": linked_id,
+            "uri": link.target_uri,
+            "title": title,
+            "status": link.target_status or "unknown",
+            "status_error": getattr(linked_page, "status_error", None),
+        }
+
+    incoming_by_id: dict[int, dict[str, Any]] = {}
+    for _, linked_page in incoming_rows:
+        linked_id = getattr(linked_page, "id", None)
+        linked_uri = getattr(linked_page, "uri", None)
+        if linked_id is None or linked_id in incoming_by_id:
+            continue
+        title = _display_document_title(
+            getattr(linked_page, "title", None),
+            linked_uri,
+        )
+        incoming_by_id[linked_id] = {
+            "id": linked_id,
+            "uri": linked_uri,
+            "title": title,
+            "status": _resolve_document_link_status(linked_page),
+            "status_error": getattr(linked_page, "status_error", None),
+        }
+
+    mutual_ids = set(outgoing_by_id) & set(incoming_by_id)
+    mutual = _sort_document_link_rows(
+        [
+            {
+                **outgoing_by_id[linked_id],
+                "status": outgoing_by_id[linked_id].get("status") or "unknown",
+            }
+            for linked_id in mutual_ids
+        ]
+    )
+    outgoing = _sort_document_link_rows(
+        [row for linked_id, row in outgoing_by_id.items() if linked_id not in mutual_ids]
+    )
+    incoming = _sort_document_link_rows(
+        [row for linked_id, row in incoming_by_id.items() if linked_id not in mutual_ids]
+    )
+    return {
+        "mutual": mutual,
+        "incoming": incoming,
+        "outgoing": outgoing,
+    }
 
 
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
@@ -284,6 +570,8 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     document = await db.scalar(sa.select(Page).where(Page.id == document_id))
     if not document:
         raise web.HTTPNotFound()
+    document_links = await _document_link_groups(db, document)
+    document_display_title = _display_document_title(document.title, document.uri)
 
     chunk_rows = (
         (
@@ -309,17 +597,33 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         if isinstance(raw_meta.get("extraction"), dict)
         else {}
     )
+    uniqueness_percent = await _load_document_uniqueness_percent(db, document)
 
     return {
         "project": _project_context(request),
         "document": document,
-        "document_display_title": _display_document_title(document.title, document.uri),
+        "page_title": document_display_title,
+        "document_display_title": document_display_title,
         "document_crawl_fields": _document_crawl_fields(document),
         "document_pipeline": _document_pipeline_steps(document),
+        "document_stats_summary": _document_stats_summary(
+            document,
+            chunk_rows,
+            extraction,
+            uniqueness_percent,
+        ),
+        "document_crawl_summary": _document_crawl_summary(document),
+        "document_uniqueness_percent": uniqueness_percent,
         "document_structure": structure,
         "document_outline": outline,
         "document_extraction": extraction,
         "document_chunks": chunk_rows,
+        "document_links": document_links,
+        "document_links_graph": _document_links_graph(
+            document,
+            document_display_title,
+            document_links,
+        ),
     }
 
 
@@ -368,13 +672,15 @@ async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for doc, size_bytes, chunk_count in rows:
         raw_meta = doc.meta if isinstance(doc.meta, dict) else {}
-        author_name = raw_meta.get("author_name")
-        if not isinstance(author_name, str) or not author_name.strip():
-            author_email = raw_meta.get("author_email")
-            if isinstance(author_email, str) and author_email.strip():
-                author_name = author_email
+        author_email = raw_meta.get("author_email")
+        if isinstance(author_email, str) and author_email.strip():
+            author_display = author_email.strip()
+        else:
+            author_name = raw_meta.get("author_name")
+            if isinstance(author_name, str) and author_name.strip():
+                author_display = author_name.strip()
             else:
-                author_name = "-"
+                author_display = "-"
 
         updated_value = getattr(doc, "updated_at", None) or getattr(
             doc, "created_at", None
@@ -389,7 +695,7 @@ async def _files_rows(db_session: Any) -> list[dict[str, Any]]:
                 "document": doc,
                 "size_bytes": int(size_bytes or 0),
                 "chunk_count": int(chunk_count or 0),
-                "author_display": author_name,
+                "author_display": author_display,
                 "updated_display": updated_display,
             }
         )
@@ -700,6 +1006,7 @@ async def project_source_settings(request):
         )
 
         await db_session.commit()
+        reapply_source_rules_task.delay(source.id)
         await admin_event("source_update", request)
         await flash(request, _("Source settings updated"), "success")
         raise web.HTTPFound(request.path)
@@ -1069,7 +1376,7 @@ async def project_action(request):
         )
         if not source:
             raise web.HTTPNotFound()
-        crawl_source_task.delay(source.id)
+        _queue_source_crawl_from_ui(source.id)
         await flash(request, _("Crawl task started for source"), "success")
         return web.Response(text="ok", status=200)
 
@@ -1113,7 +1420,13 @@ async def project_action(request):
         return web.Response(text="ok", status=200)
 
     if action == "crawl_all":
-        crawl_all_sources_task.delay()
+        source_ids = (
+            await db_session.execute(
+                sa.select(Source.id).where(Source.is_paused.is_(False))
+            )
+        ).scalars().all()
+        for source_id in source_ids:
+            _queue_source_crawl_from_ui(source_id)
         await flash(request, _("Crawl task started for all sources"), "success")
         return web.Response(text="ok", status=200)
 
@@ -1191,6 +1504,7 @@ async def project_action(request):
         )
         source.updated_at = datetime.now(timezone.utc)
         await db_session.commit()
+        reapply_source_rules_task.delay(source.id)
         await admin_event("source_update", request)
         return web.Response(text="ok", status=200)
 
@@ -1934,6 +2248,7 @@ async def project_files(request):
 
     return {
         "project": _project_context(request),
+        "active_section": str(request.app.router["project_files"].url_for()),
         "files_rows": files_rows,
         "current_document": None,
     }
@@ -1983,6 +2298,7 @@ async def file_document(request):
 
     return {
         "project": _project_context(request),
+        "active_section": str(request.app.router["project_files"].url_for()),
         "files_rows": files_rows,
         "current_document": document,
     }

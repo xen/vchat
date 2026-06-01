@@ -238,3 +238,138 @@ def test_document_pipeline_steps_returns_embedder_error_description() -> None:
     assert msg is not None
     assert "Ошибка эмбеддера" in msg
     assert "Chunk 3 is too large for embedder" in msg
+
+
+def test_document_uniqueness_percent_uses_boilerplate_overlap() -> None:
+    content = (
+        "общий текст меню подвала повторяется\n"
+        "общий текст меню подвала повторяется\n"
+        "уникальный раздел страницы со смыслом\n"
+    )
+    document = SimpleNamespace(content=content)
+    boilerplate = project_views.compute_trigram_hashes(
+        "общий текст меню подвала повторяется"
+    )
+
+    uniqueness = project_views._document_uniqueness_percent(document, boilerplate)
+
+    assert uniqueness is not None
+    assert 0 < uniqueness < 100
+
+
+def test_document_stats_summary_includes_requested_metrics() -> None:
+    document = SimpleNamespace(content="слово " * 200, _length=0)
+    extraction = {"word_count": 200, "table_count": 3}
+    chunks = [SimpleNamespace(), SimpleNamespace()]
+
+    summary = project_views._document_stats_summary(document, chunks, extraction, 87)
+
+    assert "чанков" in summary
+    assert "слов" in summary
+    assert "таблиц" in summary
+    assert "87% уникальности текста" in summary
+
+
+@pytest.mark.asyncio
+async def test_document_link_groups_split_mutual_incoming_and_outgoing() -> None:
+    document = SimpleNamespace(id=10, uri="https://example.local/current")
+
+    outgoing_rows = [
+        (
+            SimpleNamespace(target_page_id=21, target_uri="https://example.local/mutual", target_status="ok"),
+            SimpleNamespace(id=21, title="Mutual page", uri="https://example.local/mutual"),
+        ),
+        (
+            SimpleNamespace(target_page_id=22, target_uri="https://example.local/outgoing", target_status="not_indexed"),
+            SimpleNamespace(id=22, title="Outgoing page", uri="https://example.local/outgoing"),
+        ),
+    ]
+    incoming_rows = [
+        (
+            SimpleNamespace(source_page_id=21),
+            SimpleNamespace(id=21, title="Mutual page", uri="https://example.local/mutual"),
+        ),
+        (
+            SimpleNamespace(source_page_id=23),
+            SimpleNamespace(id=23, title="Incoming page", uri="https://example.local/incoming"),
+        ),
+    ]
+
+    class _Res:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+    class _Db:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, stmt):
+            _ = stmt
+            self.calls += 1
+            if self.calls == 1:
+                return _Res(outgoing_rows)
+            return _Res(incoming_rows)
+
+    groups = await project_views._document_link_groups(_Db(), document)
+
+    assert [item["id"] for item in groups["mutual"]] == [21]
+    assert [item["id"] for item in groups["incoming"]] == [23]
+    assert [item["id"] for item in groups["outgoing"]] == [22]
+    assert groups["mutual"][0]["status"] == "ok"
+    assert groups["outgoing"][0]["status"] == "not_indexed"
+
+
+def test_document_links_graph_builds_nodes_and_bidirectional_edges() -> None:
+    document = SimpleNamespace(
+        id=10,
+        uri="https://example.local/current",
+        status="ready",
+        status_error=None,
+    )
+    groups = {
+        "mutual": [
+            {
+                "id": 21,
+                "title": "Mutual",
+                "uri": "https://other.local/mutual",
+                "status": "ok",
+                "status_error": None,
+            }
+        ],
+        "incoming": [
+            {
+                "id": 22,
+                "title": "Incoming",
+                "uri": "https://example.local/incoming",
+                "status": "blocked",
+                "status_error": "excluded_rules",
+            }
+        ],
+        "outgoing": [
+            {
+                "id": 23,
+                "title": "Outgoing",
+                "uri": "https://example.local/outgoing",
+                "status": "not_indexed",
+                "status_error": None,
+            }
+        ],
+    }
+
+    graph = project_views._document_links_graph(document, "Current", groups)
+
+    assert graph["currentNodeId"] == "page-10"
+    assert {node["id"] for node in graph["nodes"]} == {"page-10", "page-21", "page-22", "page-23"}
+    node_by_id = {node["id"]: node for node in graph["nodes"]}
+    assert node_by_id["page-21"]["is_external"] is True
+    assert node_by_id["page-22"]["is_ignored"] is True
+    assert node_by_id["page-23"]["is_external"] is False
+    assert ("page-21", "page-10", "incoming") in {
+        (link["source"], link["target"], link["relation"]) for link in graph["links"]
+    }
+    assert ("page-10", "page-21", "outgoing") in {
+        (link["source"], link["target"], link["relation"]) for link in graph["links"]
+    }

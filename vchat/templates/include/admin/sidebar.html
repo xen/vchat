@@ -1,6 +1,9 @@
 {% macro item(title, link, icon=None) %}
 {% set link_path = link|string %}
-{% if (link_path == '/' and request.rel_url.path == '/') or (link_path != '/' and request.rel_url.path.startswith(link_path)) %}
+{% set explicit_active = active_section if active_section is defined else None %}
+{% if explicit_active == link_path %}
+{% set active = 'menu-item false active' %}
+{% elif (link_path == '/' and request.rel_url.path == '/') or (link_path != '/' and request.rel_url.path.startswith(link_path)) %}
 {% set active = 'menu-item false active' %}
 {% else %}
 {% set active = 'menu-item false' %}

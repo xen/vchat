@@ -14,10 +14,32 @@
             <tbody>
                 {% for sm in sitemaps %}
                 <tr class="{{ 'opacity-50' if sm.is_excluded else '' }}">
-                    <td class="break-all font-mono text-xs">{{ sm.url }}</td>
+                    <td class="break-all font-mono text-xs">
+                        <div>{{ sm.url }}</div>
+                        {% if sm.discovered_from_url %}
+                            <div class="text-[11px] text-base-content/50 mt-1">из {{ sm.discovered_from_url }}</div>
+                        {% endif %}
+                        {% if sm.ignore_reason %}
+                            <div class="text-[11px] text-warning mt-1">
+                                {% if sm.ignore_reason == 'wrong_address' %}
+                                    Игнор: неправильный адрес
+                                {% elif sm.ignore_reason == 'redirect' %}
+                                    Игнор: редирект
+                                {% elif sm.ignore_reason.startswith('http_error_') %}
+                                    Игнор: ошибка скачивания {{ sm.ignore_reason.replace('http_error_', '') }}
+                                {% elif sm.ignore_reason == 'empty_body' %}
+                                    Игнор: нулевой размер
+                                {% else %}
+                                    Игнор: {{ sm.ignore_reason }}
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if sm.discovered_via == 'robots_txt' %}
                             <span class="badge badge-ghost badge-sm">robots.txt</span>
+                        {% elif sm.discovered_via == 'sitemap_index' %}
+                            <span class="badge badge-ghost badge-sm">SoS</span>
                         {% elif sm.discovered_via == 'auto_probe' %}
                             <span class="badge badge-ghost badge-sm">авто</span>
                         {% else %}

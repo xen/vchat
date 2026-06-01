@@ -4,6 +4,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import defusedxml.ElementTree as ET
 import requests
@@ -19,8 +20,10 @@ from jobs.embedder.tasks import (
     rebuild_boilerplate_index,
     schedule_refresh_project_index,
 )
+from jobs.crawler.url_rules import normalize_url_for_queue, url_allowed_by_rules
 from vchat.models.data import CrawlRun, Page, PageLink, Sitemap, Source
 from vchat.metrics import record_crawl_run
+from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
@@ -30,13 +33,60 @@ from vchat.source_settings import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_ROBOTS_CACHE_TTL = timedelta(hours=24)
+_AUTO_SITEMAP_PATHS = ("/sitemap.xml", "/sitemap_index.xml")
+SITEMAP_IGNORE_WRONG_ADDRESS = "wrong_address"
+SITEMAP_IGNORE_REDIRECT = "redirect"
+SITEMAP_IGNORE_EMPTY_BODY = "empty_body"
+SITEMAP_IGNORE_HTTP_ERROR_PREFIX = "http_error_"
+
+
+def _source_rules_payload(source: Source) -> list[dict]:
+    try:
+        payload = source.config.to_dict()
+    except Exception:
+        payload = {}
+    return list(payload.get("rules", []) or [])
+
+
+def _tracked_sources_payload(session: Session, current_source: Source) -> list[dict]:
+    tracked: list[dict] = []
+    seen_hosts: set[str] = set()
+
+    def add_source(source: Source) -> None:
+        host = (urlparse(source.uri).hostname or "").lower()
+        if not host or host in seen_hosts:
+            return
+        tracked.append(
+            {
+                "id": source.id,
+                "uri": source.uri,
+                "rules": _source_rules_payload(source),
+            }
+        )
+        seen_hosts.add(host)
+
+    add_source(current_source)
+    try:
+        sources = (
+            session.execute(
+                select(Source).where(Source.is_paused == False)  # noqa: E712
+            )
+            .scalars()
+            .all()
+        )
+        for source in sources:
+            add_source(source)
+    except Exception:
+        pass
+    return tracked
 
 
 @app.task(
     name="jobs.crawler.tasks.crawl_source_task",
     queue="celery",
 )
-def crawl_source_task(source_id: int):
+def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
     print(f"Starting crawl for source {source_id}")
 
     engine = create_sync_engine()
@@ -55,6 +105,12 @@ def crawl_source_task(source_id: int):
             source_title = source.title
             crawler_payload = source.config.to_dict()
             crawler_payload["start_pages"] = list(source.start_pages or [])
+            crawler_payload["tracked_sources"] = _tracked_sources_payload(
+                session, source
+            )
+            _refresh_source_discovery(session, source, crawler_payload)
+            if not skip_sitemap_sync:
+                _sync_sitemaps_for_source(session, source_id)
 
             recent_runs = (
                 session.execute(
@@ -198,6 +254,9 @@ def crawl_page_task(page_id: int):
             crawler_payload = source.config.to_dict()
             crawler_payload["single_page_only"] = True
             crawler_payload["crawler_max_pages"] = 1
+            crawler_payload["tracked_sources"] = _tracked_sources_payload(
+                session, source
+            )
 
             recent_runs = (
                 session.execute(
@@ -490,6 +549,69 @@ def cleanup_orphans_task(source_id: int):
         engine.dispose()
 
 
+def _page_filtered_by_source_rules(
+    page_url: str | None, source_rules: list[dict] | None
+) -> bool:
+    if not page_url:
+        return False
+
+    normalized_url = normalize_url_for_queue(page_url, source_rules)
+    if not normalized_url:
+        return False
+
+    if normalized_url != page_url:
+        return True
+
+    return not url_allowed_by_rules(normalized_url, source_rules)
+
+
+@app.task(
+    name="jobs.crawler.tasks.reapply_source_rules_task",
+    queue="celery",
+)
+def reapply_source_rules_task(source_id: int) -> int:
+    print(f"Reapplying source rules for source {source_id}")
+
+    updated_count = 0
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            source = session.get(Source, source_id)
+            if not source:
+                print(f"Source {source_id} not found, skipping rule reapply")
+                return 0
+
+            source_rules = source.config.to_dict().get("rules", [])
+            pages = (
+                session.execute(select(Page).where(Page.source_id == source_id))
+                .scalars()
+                .all()
+            )
+
+            for page in pages:
+                filtered = _page_filtered_by_source_rules(page.uri, source_rules)
+                if filtered:
+                    if page.status_error != PageStatusError.excluded_rules:
+                        page.status = PageStatus.crawler
+                        page.status_error = PageStatusError.excluded_rules
+                        updated_count += 1
+                    continue
+
+                if page.status_error == PageStatusError.excluded_rules:
+                    page.status_error = None
+                    updated_count += 1
+
+            if updated_count:
+                session.commit()
+
+        print(
+            f"Reapplied source rules for source {source_id}; updated {updated_count} pages"
+        )
+        return updated_count
+    finally:
+        engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # Sitemap sync
 # ---------------------------------------------------------------------------
@@ -500,7 +622,7 @@ _CRAWLER_USER_AGENT = config.get("crawler_user_agent", "Dzen-AI/1.0")
 
 def _fetch_sitemap(
     url: str, last_etag: str | None
-) -> tuple[int, bytes | None, str | None]:
+) -> tuple[int, bytes | None, str | None, str | None]:
     """
     Fetch a sitemap URL with conditional GET.
     Returns (status_code, body_or_None, etag_or_None).
@@ -511,30 +633,423 @@ def _fetch_sitemap(
         headers["If-None-Match"] = last_etag
 
     try:
-        resp = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+        resp = requests.get(url, headers=headers, timeout=30, allow_redirects=False)
     except requests.RequestException as exc:
         print(f"Sitemap fetch error {url}: {exc}")
-        return 0, None, None
+        return 0, None, None, None
 
     etag = resp.headers.get("ETag")
+    location = resp.headers.get("Location")
     if resp.status_code == 304:
-        return 304, None, etag
+        return 304, None, etag, location
     if resp.status_code == 200:
-        return 200, resp.content, etag
-    return resp.status_code, None, etag
+        return 200, resp.content, etag, location
+    return resp.status_code, None, etag, location
 
 
-def _parse_sitemap_urls(body: bytes) -> list[tuple[str, str | None]]:
+def _source_host(source_uri: str) -> str:
+    return (urlparse(source_uri).hostname or "").lower()
+
+
+def _is_valid_sitemap_address(source_uri: str, sitemap_url: str) -> bool:
+    try:
+        parsed = urlparse(sitemap_url)
+    except ValueError:
+        return False
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if not parsed.netloc:
+        return False
+    return (parsed.hostname or "").lower() == _source_host(source_uri)
+
+
+def _mark_sitemap_ignored(sm: Sitemap, reason: str) -> None:
+    sm.is_excluded = True
+    sm.ignore_reason = reason
+
+
+def _parse_robots_txt(body: str) -> tuple[list[str], int | None]:
+    sitemap_urls: list[str] = []
+    crawl_delay: int | None = None
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition(":")
+        if not _:
+            continue
+        key_norm = key.strip().lower()
+        value_norm = value.strip()
+        if not value_norm:
+            continue
+        if key_norm == "sitemap":
+            sitemap_urls.append(value_norm)
+        elif key_norm == "crawl-delay":
+            try:
+                crawl_delay = max(crawl_delay or 0, int(float(value_norm)))
+            except ValueError:
+                continue
+    return sitemap_urls, crawl_delay
+
+
+def _discover_sitemaps_from_robots(source_uri: str) -> tuple[list[str], int | None, str | None]:
+    robots_url = urljoin(source_uri.rstrip("/") + "/", "robots.txt")
+    headers = {"User-Agent": _CRAWLER_USER_AGENT}
+    try:
+        resp = requests.get(robots_url, headers=headers, timeout=15, allow_redirects=True)
+    except requests.RequestException as exc:
+        print(f"robots.txt fetch error {robots_url}: {exc}")
+        return [], None, None
+
+    if resp.status_code != 200:
+        print(f"robots.txt unavailable ({resp.status_code}): {robots_url}")
+        return [], None, None
+
+    body = resp.text
+    sitemap_urls, crawl_delay = _parse_robots_txt(body)
+    return sitemap_urls, crawl_delay, body
+
+
+def _probe_common_sitemaps(source_uri: str) -> list[str]:
+    discovered: list[str] = []
+    headers = {"User-Agent": _CRAWLER_USER_AGENT}
+    for path in _AUTO_SITEMAP_PATHS:
+        url = urljoin(source_uri.rstrip("/") + "/", path.lstrip("/"))
+        try:
+            resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        except requests.RequestException:
+            continue
+        if resp.status_code != 200:
+            continue
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        if "xml" in content_type or b"<urlset" in resp.content[:256] or b"<sitemapindex" in resp.content[:256]:
+            discovered.append(url)
+    return discovered
+
+
+def _upsert_sitemap(
+    session: Session,
+    *,
+    source_id: int,
+    sitemap_url: str,
+    discovered_via: str,
+    discovered_from_url: str | None = None,
+    is_excluded: bool = False,
+    ignore_reason: str | None = None,
+) -> None:
+    existing = session.execute(
+        select(Sitemap).where(
+            Sitemap.source_id == source_id,
+            Sitemap.url == sitemap_url,
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        session.add(
+            Sitemap(
+                source_id=source_id,
+                url=sitemap_url,
+                discovered_via=discovered_via,
+                discovered_from_url=discovered_from_url,
+                is_excluded=is_excluded,
+                ignore_reason=ignore_reason,
+            )
+        )
+        return
+
+    if discovered_from_url and not existing.discovered_from_url:
+        existing.discovered_from_url = discovered_from_url
+    if ignore_reason:
+        existing.is_excluded = True
+        existing.ignore_reason = ignore_reason
+
+
+def _refresh_source_discovery(
+    session: Session,
+    source: Source,
+    crawler_payload: dict,
+) -> None:
+    now = datetime.now(timezone.utc)
+    cached = source.robots_cache or {}
+    cached_at_raw = cached.get("fetched_at")
+    cached_at = None
+    if isinstance(cached_at_raw, str):
+        try:
+            cached_at = datetime.fromisoformat(cached_at_raw)
+            if cached_at.tzinfo is None:
+                cached_at = cached_at.replace(tzinfo=timezone.utc)
+        except ValueError:
+            cached_at = None
+
+    sitemap_urls: list[str] = []
+    crawl_delay: int | None = None
+    robots_body: str | None = None
+
+    if cached_at and (now - cached_at) < _ROBOTS_CACHE_TTL:
+        sitemap_urls = list(cached.get("sitemaps") or [])
+        crawl_delay = cached.get("crawl_delay")
+    else:
+        sitemap_urls, crawl_delay, robots_body = _discover_sitemaps_from_robots(source.uri)
+        source.robots_cache = {
+            "fetched_at": now.isoformat(),
+            "sitemaps": sitemap_urls,
+            "crawl_delay": crawl_delay,
+            "body": robots_body,
+        }
+
+    if crawl_delay:
+        current_delay = int(float(crawler_payload.get("crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY)))
+        crawler_payload["crawler_download_delay"] = max(current_delay, crawl_delay)
+
+    discovered_urls = [url for url in sitemap_urls if url]
+    if not discovered_urls:
+        known_count = session.execute(
+            select(func.count(Sitemap.id)).where(Sitemap.source_id == source.id)
+        ).scalar_one()
+        if known_count == 0:
+            discovered_urls.extend(_probe_common_sitemaps(source.uri))
+
+    for sitemap_url in discovered_urls:
+        normalized_sitemap_url = normalize_url_for_queue(sitemap_url)
+        if not normalized_sitemap_url:
+            continue
+        if not _is_valid_sitemap_address(source.uri, normalized_sitemap_url):
+            _upsert_sitemap(
+                session,
+                source_id=source.id,
+                sitemap_url=normalized_sitemap_url,
+                discovered_via="robots_txt" if sitemap_url in sitemap_urls else "auto_probe",
+                is_excluded=True,
+                ignore_reason=SITEMAP_IGNORE_WRONG_ADDRESS,
+            )
+            continue
+        _upsert_sitemap(
+            session,
+            source_id=source.id,
+            sitemap_url=normalized_sitemap_url,
+            discovered_via="robots_txt" if sitemap_url in sitemap_urls else "auto_probe",
+        )
+
+
+def _upsert_sitemap_pages(
+    session: Session,
+    *,
+    source_id: int,
+    parsed_entries: list[tuple[str, str | None]],
+    source_rules: list[dict] | None = None,
+) -> set[str]:
+    prioritized_urls: set[str] = set()
+    for raw_page_url, lastmod_str in parsed_entries:
+        page_url = normalize_url_for_queue(raw_page_url, source_rules)
+        if not page_url or not url_allowed_by_rules(page_url, source_rules):
+            continue
+        page = session.execute(
+            select(Page).where(
+                Page.source_id == source_id,
+                Page.uri == page_url,
+            )
+        ).scalar_one_or_none()
+        if page is None:
+            page = Page(source_id=source_id, uri=page_url)
+            page._hash = ""
+            session.add(page)
+            continue
+
+        if lastmod_str is None:
+            continue
+        try:
+            new_lastmod = datetime.fromisoformat(lastmod_str.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        existing_lastmod = page.last_modified_at
+        if existing_lastmod is None:
+            prioritized_urls.add(page_url)
+            continue
+        if existing_lastmod.tzinfo is None:
+            existing_lastmod = existing_lastmod.replace(tzinfo=timezone.utc)
+        if existing_lastmod < new_lastmod:
+            prioritized_urls.add(page_url)
+    return prioritized_urls
+
+
+def _upsert_child_sitemaps(
+    session: Session,
+    *,
+    source_id: int,
+    source_uri: str,
+    parent_sitemap_url: str,
+    parsed_entries: list[tuple[str, str | None]],
+) -> list[str]:
+    discovered_urls: list[str] = []
+    for raw_sitemap_url, _lastmod_str in parsed_entries:
+        sitemap_url = normalize_url_for_queue(raw_sitemap_url)
+        if not sitemap_url:
+            continue
+        if not _is_valid_sitemap_address(source_uri, sitemap_url):
+            _upsert_sitemap(
+                session,
+                source_id=source_id,
+                sitemap_url=sitemap_url,
+                discovered_via="sitemap_index",
+                discovered_from_url=parent_sitemap_url,
+                is_excluded=True,
+                ignore_reason=SITEMAP_IGNORE_WRONG_ADDRESS,
+            )
+            continue
+        _upsert_sitemap(
+            session,
+            source_id=source_id,
+            sitemap_url=sitemap_url,
+            discovered_via="sitemap_index",
+            discovered_from_url=parent_sitemap_url,
+        )
+        discovered_urls.append(sitemap_url)
+    return discovered_urls
+
+
+def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
+    source = session.get(Source, source_id)
+    if source is None:
+        print(f"Source {source_id} not found during sitemap sync")
+        return
+    source_rules = []
+    source_rules = [rule.to_dict() for rule in source.config.rules]
+
+    sitemaps = (
+        session.execute(
+            select(Sitemap).where(
+                Sitemap.source_id == source_id,
+                Sitemap.is_excluded.is_(False),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not sitemaps:
+        print(f"No active sitemaps for source {source_id}")
+        return
+
+    prioritized_urls: set[str] = set()
+    pending_sitemaps = list(sitemaps)
+    seen_sitemaps: set[str] = set()
+
+    while pending_sitemaps:
+        sm = pending_sitemaps.pop(0)
+        if sm.url in seen_sitemaps:
+            continue
+        seen_sitemaps.add(sm.url)
+
+        if not _is_valid_sitemap_address(source.uri, sm.url):
+            _mark_sitemap_ignored(sm, SITEMAP_IGNORE_WRONG_ADDRESS)
+            print(f"Sitemap ignored (wrong address): {sm.url}")
+            continue
+
+        status_code, body, etag, location = _fetch_sitemap(sm.url, sm.last_etag)
+
+        if status_code == 304:
+            sm.last_fetched_at = datetime.now(timezone.utc)
+            if etag:
+                sm.last_etag = etag
+            print(f"Sitemap unchanged (304): {sm.url}")
+            continue
+
+        if 300 <= status_code < 400:
+            _mark_sitemap_ignored(sm, SITEMAP_IGNORE_REDIRECT)
+            print(f"Sitemap ignored (redirect to {location}): {sm.url}")
+            continue
+
+        if status_code != 200 or body is None:
+            _mark_sitemap_ignored(sm, f"{SITEMAP_IGNORE_HTTP_ERROR_PREFIX}{status_code}")
+            print(f"Sitemap fetch failed ({status_code}): {sm.url}")
+            continue
+
+        if not body.strip():
+            _mark_sitemap_ignored(sm, SITEMAP_IGNORE_EMPTY_BODY)
+            print(f"Sitemap ignored (empty body): {sm.url}")
+            continue
+
+        sm.ignore_reason = None
+
+        new_hash = hashlib.sha256(body).hexdigest()
+        now = datetime.now(timezone.utc)
+
+        if new_hash == sm.last_content_hash:
+            sm.last_fetched_at = now
+            if etag:
+                sm.last_etag = etag
+            print(f"Sitemap hash unchanged: {sm.url}")
+            continue
+
+        document_kind, parsed_entries = _parse_sitemap_document(body)
+        if document_kind == "sitemapindex":
+            discovered_urls = _upsert_child_sitemaps(
+                session,
+                source_id=source_id,
+                source_uri=source.uri,
+                parent_sitemap_url=sm.url,
+                parsed_entries=parsed_entries,
+            )
+            if discovered_urls:
+                session.flush()
+                child_sitemaps = (
+                    session.execute(
+                        select(Sitemap).where(
+                            Sitemap.source_id == source_id,
+                            Sitemap.url.in_(discovered_urls),
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                pending_sitemaps.extend(child_sitemaps)
+        else:
+            prioritized_urls.update(
+                _upsert_sitemap_pages(
+                    session,
+                    source_id=source_id,
+                    parsed_entries=parsed_entries,
+                    source_rules=source_rules,
+                )
+            )
+
+        sm.last_content_hash = new_hash
+        sm.last_fetched_at = now
+        sm.url_count = len(parsed_entries)
+        if etag:
+            sm.last_etag = etag
+        print(
+            f"Sitemap updated: {sm.url} ({len(parsed_entries)} {document_kind} entries)"
+        )
+
+    if prioritized_urls:
+        pages_to_prioritize = (
+            session.execute(
+                select(Page).where(
+                    Page.source_id == source_id,
+                    Page.uri.in_(list(prioritized_urls)),
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for page in pages_to_prioritize:
+            page.check_interval_days = 1
+        print(f"Prioritized {len(pages_to_prioritize)} pages with changed lastmod")
+
+
+def _parse_sitemap_document(body: bytes) -> tuple[str, list[tuple[str, str | None]]]:
     """
-    Parse sitemap XML and return list of (url, lastmod_or_None).
-    Handles both <urlset> and <sitemapindex>.
+    Parse sitemap XML and return:
+    - document kind: "urlset" or "sitemapindex"
+    - list of (url, lastmod_or_None)
     """
     try:
         root = ET.fromstring(body)
     except ET.ParseError:
-        return []
+        return "unknown", []
 
     results: list[tuple[str, str | None]] = []
+    root_tag = root.tag.rsplit("}", 1)[-1]
     tag_url = f"{{{_SITEMAP_NS}}}url"
     tag_loc = f"{{{_SITEMAP_NS}}}loc"
     tag_lastmod = f"{{{_SITEMAP_NS}}}lastmod"
@@ -554,7 +1069,9 @@ def _parse_sitemap_urls(body: bytes) -> list[tuple[str, str | None]]:
                     )
                 )
 
-    return results
+    if root_tag == "sitemapindex":
+        return "sitemapindex", results
+    return "urlset", results
 
 
 @app.task(
@@ -572,94 +1089,7 @@ def sitemap_sync_task(source_id: int):
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            sitemaps = (
-                session.execute(
-                    select(Sitemap).where(
-                        Sitemap.source_id == source_id,
-                        Sitemap.is_excluded.is_(False),
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            if not sitemaps:
-                print(f"No active sitemaps for source {source_id}")
-                return
-
-            prioritized_urls: set[str] = set()
-
-            for sm in sitemaps:
-                status_code, body, etag = _fetch_sitemap(sm.url, sm.last_etag)
-
-                if status_code == 304:
-                    sm.last_fetched_at = datetime.now(timezone.utc)
-                    if etag:
-                        sm.last_etag = etag
-                    print(f"Sitemap unchanged (304): {sm.url}")
-                    continue
-
-                if status_code != 200 or body is None:
-                    print(f"Sitemap fetch failed ({status_code}): {sm.url}")
-                    continue
-
-                new_hash = hashlib.sha256(body).hexdigest()
-                now = datetime.now(timezone.utc)
-
-                if new_hash == sm.last_content_hash:
-                    sm.last_fetched_at = now
-                    if etag:
-                        sm.last_etag = etag
-                    print(f"Sitemap hash unchanged: {sm.url}")
-                    continue
-
-                parsed_entries = _parse_sitemap_urls(body)
-
-                # Mark pages whose lastmod differs from their last_modified_at
-                for page_url, lastmod_str in parsed_entries:
-                    if lastmod_str is None:
-                        continue
-                    try:
-                        new_lastmod = datetime.fromisoformat(lastmod_str.rstrip("Z"))
-                    except ValueError:
-                        continue
-                    page = session.execute(
-                        select(Page).where(
-                            Page.source_id == source_id,
-                            Page.uri == page_url,
-                        )
-                    ).scalar_one_or_none()
-                    if page is not None and (
-                        page.last_modified_at is None
-                        or page.last_modified_at.replace(tzinfo=None) < new_lastmod
-                    ):
-                        prioritized_urls.add(page_url)
-
-                sm.last_content_hash = new_hash
-                sm.last_fetched_at = now
-                sm.url_count = len(parsed_entries)
-                if etag:
-                    sm.last_etag = etag
-                print(f"Sitemap updated: {sm.url} ({len(parsed_entries)} URLs)")
-
-            # Reset check_interval_days to 1 for pages with changed lastmod
-            if prioritized_urls:
-                pages_to_prioritize = (
-                    session.execute(
-                        select(Page).where(
-                            Page.source_id == source_id,
-                            Page.uri.in_(list(prioritized_urls)),
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                for page in pages_to_prioritize:
-                    page.check_interval_days = 1
-                print(
-                    f"Prioritized {len(pages_to_prioritize)} pages with changed lastmod"
-                )
-
+            _sync_sitemaps_for_source(session, source_id)
             session.commit()
     finally:
         engine.dispose()

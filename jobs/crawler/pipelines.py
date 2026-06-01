@@ -15,10 +15,11 @@ from vchat.document_indexing import (
     sync_document_has_chunks,
 )
 from vchat.document_types import guess_document_type
-from vchat.models.data import Chunk, CrawlRun, Page
+from vchat.models.data import Chunk, CrawlRun, Page, PageLink, Source
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 from jobs.embedder.tasks import schedule_index_document
+from jobs.crawler.url_rules import normalize_url_for_queue
 
 AUTH_URL_SEGMENTS = ("/login", "/auth", "/signin", "/account/login", "/user/login")
 AUTH_QUERY_PARAMS = ("next", "return", "redirect", "next_url")
@@ -67,6 +68,81 @@ def compute_adaptive_interval(page: Page, content_changed: bool) -> int:
         return max(1, current // 2)
     else:
         return min(90, int(current * 1.5))
+
+
+def resolve_page_link_target_status(page: Page | None) -> str:
+    if page is None:
+        return "missing"
+    if page.status_error == PageStatusError.excluded_auth:
+        return "auth_required"
+    if page.status_error in (
+        PageStatusError.excluded_robots,
+        PageStatusError.excluded_rules,
+    ):
+        return "blocked"
+    if page.last_crawled_at is None:
+        return "not_indexed"
+    return "ok"
+
+
+def sync_page_links(
+    session: Session,
+    *,
+    source_page: Page,
+    source_id: int,
+    out_links: list[str] | None,
+    source_rules: list[dict] | None = None,
+) -> None:
+    if source_page.id is None or not source_page.uri:
+        return
+
+    source_rows = session.execute(select(Source.id, Source.uri)).all()
+    source_id_by_host = {
+        (urlparse(source_uri).hostname or "").lower(): tracked_source_id
+        for tracked_source_id, source_uri in source_rows
+        if source_uri
+    }
+
+    unique_links: list[str] = []
+    seen: set[str] = set()
+    for raw_url in out_links or []:
+        url = normalize_url_for_queue(raw_url or "", source_rules)
+        if not url or url == source_page.uri or url in seen:
+            continue
+        seen.add(url)
+        unique_links.append(url)
+
+    session.execute(
+        delete(PageLink).where(
+            PageLink.source_page_id == source_page.id,
+        )
+    )
+
+    for target_uri in unique_links:
+        target_host = (urlparse(target_uri).hostname or "").lower()
+        target_source_id = source_id_by_host.get(target_host, source_id)
+        target_page = session.execute(
+            select(Page).where(
+                Page.source_id == target_source_id,
+                Page.uri == target_uri,
+            )
+        ).scalars().first()
+        if target_page is None:
+            target_page = Page(source_id=target_source_id, uri=target_uri)
+            target_page._hash = ""
+            session.add(target_page)
+            session.flush()
+
+        session.add(
+            PageLink(
+                source_uri=source_page.uri,
+                target_uri=target_uri,
+                source_page_id=source_page.id,
+                target_page_id=target_page.id,
+                source_id=source_id,
+                target_status=resolve_page_link_target_status(target_page),
+            )
+        )
 
 
 def is_low_content_page(content: str, extracted_meta: dict[str, object]) -> bool:
@@ -140,6 +216,7 @@ class DatabasePipeline:
         final_url = item.get("final_url", url)
         http_status = item.get("http_status", 200)
         etag = item.get("etag")
+        source_rules = list(getattr(spider, "source_rules", []) or [])
 
         spider.logger.info(f"Pipeline received {url}")
 
@@ -235,7 +312,7 @@ class DatabasePipeline:
         try:
             with Session(bind=self.engine) as session:
                 stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)
-                page = session.execute(stmt).scalar_one_or_none()
+                page = session.execute(stmt).scalars().first()
                 is_new = page is None
 
                 if page is None:
@@ -344,6 +421,15 @@ class DatabasePipeline:
                     if fallback_title:
                         page.title = fallback_title
 
+                session.flush()
+                sync_page_links(
+                    session,
+                    source_page=page,
+                    source_id=source_id,
+                    out_links=item.get("out_links"),
+                    source_rules=source_rules,
+                )
+
                 session.commit()
 
                 if low_content:
@@ -441,7 +527,7 @@ def save_page_status(
     try:
         with Session(bind=engine) as session:
             stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)
-            page = session.execute(stmt).scalar_one_or_none()
+            page = session.execute(stmt).scalars().first()
             if page is None:
                 page = Page(source_id=source_id, uri=url)
                 page._hash = ""
@@ -490,7 +576,7 @@ def handle_error_page(
     try:
         with Session(bind=engine) as session:
             stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)
-            page = session.execute(stmt).scalar_one_or_none()
+            page = session.execute(stmt).scalars().first()
             if page is None:
                 page = Page(source_id=source_id, uri=url)
                 page._hash = ""

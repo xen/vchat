@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from jobs.crawler import tasks as crawler_tasks
+from jobs.celery import app as celery_app
 from vchat.source_settings import normalize_reindex_cron, validate_reindex_cron
 
 
@@ -49,6 +50,13 @@ def test_manual_reindex_mode_helpers() -> None:
     assert normalize_reindex_cron("manual") == "manual"
     assert validate_reindex_cron("") is True
     assert validate_reindex_cron("manual") is True
+
+
+def test_sitemap_sync_schedule_is_daily() -> None:
+    entry = celery_app.conf.beat_schedule["schedule_sitemap_sync"]
+    schedule = entry["schedule"]
+    assert schedule._orig_minute == 0
+    assert schedule._orig_hour == 3
 
 
 @pytest.mark.asyncio

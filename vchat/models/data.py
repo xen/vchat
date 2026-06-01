@@ -304,6 +304,7 @@ class Sitemap(Base):
         default="manual",
         server_default=sa.text("'manual'"),
     )
+    discovered_from_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True),
         nullable=False,
@@ -312,6 +313,7 @@ class Sitemap(Base):
     last_fetched_at: Mapped[datetime | None] = mapped_column(
         sa.TIMESTAMP(timezone=True), nullable=True
     )
+    ignore_reason: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     last_etag: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     last_content_hash: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     url_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)

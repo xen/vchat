@@ -179,7 +179,7 @@ async def test_project_action_background_actions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     req = _Request(action="crawl_all", item_id="global")
-    req["db"] = _DB()
+    req["db"] = _DB(execute_rows=[[11, 12]])
     req["user"] = SimpleNamespace(id=1)
 
     called = []
@@ -190,9 +190,9 @@ async def test_project_action_background_actions(
 
     monkeypatch.setattr(project_views, "flash", _flash)
     monkeypatch.setattr(
-        project_views.crawl_all_sources_task,
-        "delay",
-        lambda: called.append("crawl_all"),
+        project_views,
+        "_queue_source_crawl_from_ui",
+        lambda source_id: called.append(f"crawl:{source_id}"),
     )
     monkeypatch.setattr(
         project_views,
@@ -214,10 +214,38 @@ async def test_project_action_background_actions(
     resp3 = await _raw_project_action()(req)
     assert resp3.status == 200
     assert (
-        "crawl_all" in called
+        "crawl:11" in called
+        and "crawl:12" in called
         and "refresh_project_index" in called
         and "index_project" in called
     )
+
+
+@pytest.mark.asyncio
+async def test_project_action_crawl_source_runs_sitemap_discovery_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(id=7)
+    req = _Request(action="crawl_source", item_id="7")
+    req["db"] = _DB(scalar_values=[source])
+    req["user"] = SimpleNamespace(id=1)
+
+    called = []
+
+    async def _flash(request, msg, cat="success"):
+        _ = request, msg, cat
+        called.append("flash")
+
+    monkeypatch.setattr(project_views, "flash", _flash)
+    monkeypatch.setattr(
+        project_views,
+        "_queue_source_crawl_from_ui",
+        lambda source_id: called.append(f"crawl:{source_id}"),
+    )
+
+    resp = await _raw_project_action()(req)
+    assert resp.status == 200
+    assert called == ["crawl:7", "flash"]
 
 
 @pytest.mark.asyncio

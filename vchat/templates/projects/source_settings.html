@@ -5,7 +5,12 @@
         <div>
             <h1 class="text-xl font-semibold">{{ source.title or source.uri }}</h1>
             {% if source.title %}
-            <p class="text-sm text-base-content/70 break-all">{{ source.uri }}</p>
+            <a href="{{ source.uri }}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="text-sm text-base-content/70 break-all link link-hover">
+                {{ source.uri }}
+            </a>
             {% endif %}
         </div>
         <div class="flex items-center gap-2 shrink-0">

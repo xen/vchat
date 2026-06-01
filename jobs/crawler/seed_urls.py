@@ -50,10 +50,10 @@ def iter_priority_crawl_queue(
                 source_id,
                 excluded,
                 extra_filter="""
-                    is_hub_page = false AND status != 'error_5xx'
+                    is_hub_page = false
+                    AND (status_error IS NULL OR status_error != 'http_5xx')
                     AND (
-                        status = 'pending'
-                        OR last_crawled_at IS NULL
+                        last_crawled_at IS NULL
                         OR (
                             check_interval_days IS NOT NULL AND
                             last_crawled_at + (check_interval_days || ' days')::interval <= NOW()
@@ -61,7 +61,20 @@ def iter_priority_crawl_queue(
                     )
                 """,
                 limit=budget,
-                order_by="COALESCE(last_crawled_at, '1970-01-01'::timestamptz) ASC",
+                order_by="""
+                    CASE WHEN last_crawled_at IS NULL THEN 0 ELSE 1 END ASC,
+                    COALESCE(
+                        EXTRACT(
+                            EPOCH FROM (
+                                NOW() - (
+                                    last_crawled_at + (check_interval_days || ' days')::interval
+                                )
+                            )
+                        ),
+                        0
+                    ) DESC,
+                    COALESCE(last_crawled_at, '1970-01-01'::timestamptz) ASC
+                """,
             )
 
             # Basket C: error_5xx retry
@@ -69,7 +82,7 @@ def iter_priority_crawl_queue(
                 session,
                 source_id,
                 excluded,
-                extra_filter="status = 'error_5xx' AND is_hub_page = false",
+                extra_filter="status_error = 'http_5xx' AND is_hub_page = false",
                 limit=budget,
             )
 

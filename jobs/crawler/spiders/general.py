@@ -9,6 +9,7 @@ from scrapy.spiders import CrawlSpider, Rule
 
 from ..items import CrawledItem
 from ..seed_urls import iter_source_seed_urls
+from ..url_rules import ignored_query_params, normalize_url_for_queue, url_allowed_by_rules
 
 
 class GeneralSpider(CrawlSpider):
@@ -19,7 +20,10 @@ class GeneralSpider(CrawlSpider):
         self.allowed_domains = [url.split("//")[-1].split("/")[0]] if url else []
         self.start_urls = [url] if url else []
         self.config = config or {}
+        self.source_rules = list(self.config.get("rules", []) or [])
+        self.tracked_sources = list(self.config.get("tracked_sources", []) or [])
         self.single_page_only = bool(self.config.get("single_page_only"))
+        self._link_extractor = None
 
         # Parse rules from config
         le_kwargs = {}
@@ -43,40 +47,68 @@ class GeneralSpider(CrawlSpider):
         if regexes:
             le_kwargs["allow"] = regexes
 
-        # Ignored params
-        ignored_params = [
-            r["value"] for r in self.config.get("rules", []) if r["type"] == "param"
-        ]
-
         source_hostname = urlparse(url).hostname if url else None
+        tracked_sources_by_host: dict[str, dict] = {}
+        for tracked_source in self.tracked_sources:
+            tracked_uri = (tracked_source.get("uri") or "").strip()
+            tracked_host = (urlparse(tracked_uri).hostname or "").lower()
+            if not tracked_host:
+                continue
+            tracked_sources_by_host[tracked_host] = {
+                "id": tracked_source.get("id"),
+                "rules": list(tracked_source.get("rules", []) or []),
+            }
+        if source_hostname and source_hostname.lower() not in tracked_sources_by_host:
+            tracked_sources_by_host[source_hostname.lower()] = {
+                "id": self.source_id,
+                "rules": self.source_rules,
+            }
 
         def process_links(links):
             filtered_links = []
+            seen_urls: set[str] = set()
             for link in links:
-                # Strict hostname check
-                if source_hostname:
-                    link_hostname = urlparse(link.url).hostname
-                    if link_hostname != source_hostname:
-                        continue
+                raw_url = (link.url or "").strip()
+                link_hostname = (urlparse(raw_url).hostname or "").lower()
+                if not link_hostname:
+                    continue
+                target_source = tracked_sources_by_host.get(link_hostname)
+                if target_source is None:
+                    continue
+                target_rules = list(target_source.get("rules", []) or [])
+                normalized_url = normalize_url_for_queue(raw_url, target_rules)
+                if not normalized_url:
+                    continue
+
+                if not url_allowed_by_rules(normalized_url, target_rules):
+                    continue
 
                 should_ignore = False
-                if ignored_params:
-                    for param in ignored_params:
+                target_ignored_params = ignored_query_params(target_rules)
+                if target_ignored_params:
+                    for param in target_ignored_params:
                         # Check if param exists in query string
-                        if f"?{param}=" in link.url or f"&{param}=" in link.url:
+                        if f"?{param}=" in raw_url or f"&{param}=" in raw_url:
                             should_ignore = True
                             break
 
                 if not should_ignore:
+                    if normalized_url in seen_urls:
+                        continue
+                    seen_urls.add(normalized_url)
+                    link.url = normalized_url
                     filtered_links.append(link)
             return filtered_links
+
+        self._process_links = process_links
+        self._link_extractor = LinkExtractor(**le_kwargs)
 
         self.rules = (
             ()
             if self.single_page_only
             else (
                 Rule(
-                    LinkExtractor(**le_kwargs),
+                    self._link_extractor,
                     callback="parse_item",
                     follow=True,
                     process_links=process_links,
@@ -104,10 +136,20 @@ class GeneralSpider(CrawlSpider):
     def parse_item(self, response):
         print(f"Crawling {response.url}")
         item = CrawledItem()
-        item["url"] = response.url
+        item["url"] = normalize_url_for_queue(response.request.url, self.source_rules)
+        item["final_url"] = normalize_url_for_queue(response.url, self.source_rules)
+        item["http_status"] = response.status
+        item["etag"] = response.headers.get("ETag", b"").decode("utf-8") or None
         item["source_id"] = self.source_id
         item["content_type"] = response.headers.get("Content-Type", b"").decode("utf-8")
         item["content"] = response.text
+        extracted_links = []
+        if self._link_extractor is not None:
+            extracted_links = [
+                link.url
+                for link in self._process_links(self._link_extractor.extract_links(response))
+            ]
+        item["out_links"] = extracted_links
         # Extract title
         item["title"] = response.xpath("//title/text()").get()
 

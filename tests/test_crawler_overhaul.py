@@ -180,6 +180,34 @@ class TestHubPageDetection:
         assert count < 40
 
 
+class TestGeneralSpiderTrackedSources:
+    def test_process_links_keeps_links_to_other_tracked_sources(self):
+        from jobs.crawler.spiders.general import GeneralSpider
+
+        spider = GeneralSpider(
+            url="https://vbudushee.ru",
+            source_id=1,
+            config={
+                "rules": [],
+                "tracked_sources": [
+                    {"id": 1, "uri": "https://vbudushee.ru", "rules": []},
+                    {"id": 2, "uri": "https://grant.vbudushee.ru", "rules": []},
+                ],
+            },
+        )
+
+        links = [
+            SimpleNamespace(url="https://grant.vbudushee.ru/identity/account/login"),
+            SimpleNamespace(url="https://untracked.example.org/page"),
+        ]
+
+        filtered = spider._process_links(links)
+
+        assert [link.url for link in filtered] == [
+            "https://grant.vbudushee.ru/identity/account/login"
+        ]
+
+
 # ---------------------------------------------------------------------------
 # TestPriorityQueue (basket algorithm)
 # ---------------------------------------------------------------------------
@@ -213,7 +241,7 @@ class TestPriorityQueue:
                 sql = str(query)
                 if "is_hub_page = true" in sql:
                     result.all.return_value = make_rows(urls_a)
-                elif "error_5xx" in sql and "is_hub_page = false" in sql and "status != 'error_5xx'" not in sql:
+                elif "status_error = 'http_5xx'" in sql:
                     result.all.return_value = make_rows(urls_c)
                 else:
                     result.all.return_value = make_rows(urls_b)
@@ -284,6 +312,45 @@ class TestPriorityQueue:
 
             result = list(iter_priority_crawl_queue(1, budget=100))
             assert result.count(duplicate_url) == 1
+
+    def test_uses_status_error_filters_for_recrawl_and_retry(self):
+        from jobs.crawler.seed_urls import fetch_basket
+
+        session = MagicMock()
+        result = MagicMock()
+        result.all.return_value = []
+        session.execute.return_value = result
+
+        fetch_basket(
+            session,
+            1,
+            set(),
+            extra_filter=(
+                "is_hub_page = false AND (status_error IS NULL OR status_error != 'http_5xx')"
+            ),
+            limit=10,
+        )
+        executed_sql = str(session.execute.call_args.args[0])
+        assert "status_error" in executed_sql
+        assert "http_5xx" in executed_sql
+
+
+class TestUrlNormalization:
+    def test_normalize_url_for_queue_removes_fragment_and_ignored_params(self):
+        from jobs.crawler.url_rules import normalize_url_for_queue
+
+        normalized = normalize_url_for_queue(
+            "https://example.com/path/?utm_source=x&id=5#section-1",
+            [{"type": "param", "value": "utm_source"}],
+        )
+        assert normalized == "https://example.com/path/?id=5"
+
+    def test_url_allowed_by_rules_uses_regex_filters(self):
+        from jobs.crawler.url_rules import url_allowed_by_rules
+
+        rules = [{"type": "regex", "value": r"^https://example.com/course/"}]
+        assert url_allowed_by_rules("https://example.com/course/step1", rules) is True
+        assert url_allowed_by_rules("https://example.com/blog/post", rules) is False
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +439,7 @@ class TestCrawlRunCreation:
         session = MagicMock()
         session.__enter__ = lambda s: session
         session.__exit__ = MagicMock(return_value=False)
-        session.execute.return_value.scalar_one_or_none.return_value = page
+        session.execute.return_value.scalars.return_value.first.return_value = page
         session.commit = MagicMock()
 
         pipeline = DatabasePipeline.__new__(DatabasePipeline)
@@ -417,6 +484,232 @@ class TestCrawlRunCreation:
         schedule_mock.assert_called_once_with(55)
 
 
+class TestPageLinkSync:
+    def test_sync_page_links_creates_placeholders_and_links(self):
+        from jobs.crawler.pipelines import sync_page_links
+        from vchat.models.data import PageLink
+
+        source_page = SimpleNamespace(id=10, uri="https://example.com/source")
+        target_page = None
+
+        session = MagicMock()
+        session.execute.return_value.scalars.return_value.first.return_value = target_page
+
+        added_objects = []
+
+        def fake_add(obj):
+            added_objects.append(obj)
+            if obj.__class__.__name__ == "Page":
+                obj.id = 25
+
+        session.add.side_effect = fake_add
+        session.flush = MagicMock()
+
+        sync_page_links(
+            session,
+            source_page=source_page,
+            source_id=1,
+            out_links=[
+                "https://example.com/target#frag",
+                "https://example.com/target",
+                "https://example.com/source",
+            ],
+            source_rules=[],
+        )
+
+        page_links = [obj for obj in added_objects if isinstance(obj, PageLink)]
+        assert len(page_links) == 1
+        assert page_links[0].target_uri == "https://example.com/target"
+        assert page_links[0].target_status == "not_indexed"
+
+    def test_sync_page_links_attaches_cross_source_targets_to_tracked_source(self):
+        from jobs.crawler.pipelines import sync_page_links
+        from vchat.models.data import PageLink
+
+        source_page = SimpleNamespace(id=10, uri="https://example.com/source")
+
+        class _ExecuteResult:
+            def __init__(self, *, rows=None, first=None):
+                self._rows = rows or []
+                self._first = first
+
+            def all(self):
+                return self._rows
+
+            def scalars(self):
+                class _Scalars:
+                    def __init__(self, first):
+                        self._first = first
+
+                    def first(self):
+                        return self._first
+
+                return _Scalars(self._first)
+
+        session = MagicMock()
+        added_objects = []
+
+        def fake_execute(stmt):
+            sql = str(stmt)
+            if "FROM source" in sql:
+                return _ExecuteResult(
+                    rows=[
+                        (1, "https://example.com"),
+                        (2, "https://grant.vbudushee.ru"),
+                    ]
+                )
+            if "FROM page" in sql:
+                return _ExecuteResult(first=None)
+            return _ExecuteResult()
+
+        def fake_add(obj):
+            added_objects.append(obj)
+            if obj.__class__.__name__ == "Page":
+                obj.id = 25
+
+        session.execute.side_effect = fake_execute
+        session.add.side_effect = fake_add
+        session.flush = MagicMock()
+
+        sync_page_links(
+            session,
+            source_page=source_page,
+            source_id=1,
+            out_links=["https://grant.vbudushee.ru/identity/account/login"],
+            source_rules=[],
+        )
+
+        created_pages = [obj for obj in added_objects if obj.__class__.__name__ == "Page"]
+        page_links = [obj for obj in added_objects if isinstance(obj, PageLink)]
+        assert created_pages[0].source_id == 2
+        assert page_links[0].target_page_id == 25
+        assert page_links[0].target_uri == "https://grant.vbudushee.ru/identity/account/login"
+
+
+class TestSitemapDiscovery:
+    def test_parse_robots_extracts_sitemaps_and_delay(self):
+        from jobs.crawler.tasks import _parse_robots_txt
+
+        body = """
+        User-agent: *
+        Crawl-delay: 7
+        Sitemap: https://example.com/sitemap.xml
+        Sitemap: https://example.com/sitemap-news.xml
+        """
+
+        sitemap_urls, crawl_delay = _parse_robots_txt(body)
+        assert sitemap_urls == [
+            "https://example.com/sitemap.xml",
+            "https://example.com/sitemap-news.xml",
+        ]
+        assert crawl_delay == 7
+
+    def test_upsert_sitemap_pages_creates_missing_pages(self):
+        from jobs.crawler.tasks import _upsert_sitemap_pages
+
+        session = MagicMock()
+        session.execute.return_value.scalar_one_or_none.return_value = None
+
+        added_objects = []
+
+        def fake_add(obj):
+            added_objects.append(obj)
+
+        session.add.side_effect = fake_add
+
+        prioritized = _upsert_sitemap_pages(
+            session,
+            source_id=1,
+            parsed_entries=[("https://example.com/page", None)],
+            source_rules=[],
+        )
+
+        assert prioritized == set()
+        assert any(getattr(obj, "uri", None) == "https://example.com/page" for obj in added_objects)
+
+    def test_upsert_sitemap_pages_skips_urls_filtered_by_regex(self):
+        from jobs.crawler.tasks import _upsert_sitemap_pages
+
+        session = MagicMock()
+        session.execute.return_value.scalar_one_or_none.return_value = None
+
+        prioritized = _upsert_sitemap_pages(
+            session,
+            source_id=1,
+            parsed_entries=[("https://example.com/blog/post#frag", None)],
+            source_rules=[{"type": "regex", "value": r"^https://example.com/course/"}],
+        )
+
+        assert prioritized == set()
+        session.add.assert_not_called()
+
+    def test_parse_sitemap_document_detects_sitemap_index(self):
+        from jobs.crawler.tasks import _parse_sitemap_document
+
+        body = b"""<?xml version="1.0" encoding="UTF-8"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>https://example.com/sitemap-a.xml</loc><lastmod>2026-01-01</lastmod></sitemap>
+          <sitemap><loc>https://example.com/sitemap-b.xml</loc></sitemap>
+        </sitemapindex>
+        """
+
+        kind, entries = _parse_sitemap_document(body)
+        assert kind == "sitemapindex"
+        assert entries == [
+            ("https://example.com/sitemap-a.xml", "2026-01-01"),
+            ("https://example.com/sitemap-b.xml", None),
+        ]
+
+    def test_upsert_child_sitemaps_creates_sitemap_records(self):
+        from jobs.crawler.tasks import _upsert_child_sitemaps
+
+        session = MagicMock()
+        session.execute.return_value.scalar_one_or_none.return_value = None
+
+        added_objects = []
+        session.add.side_effect = added_objects.append
+
+        discovered = _upsert_child_sitemaps(
+            session,
+            source_id=1,
+            source_uri="https://example.com/",
+            parent_sitemap_url="https://example.com/sitemap.xml",
+            parsed_entries=[
+                ("https://example.com/sitemap-a.xml", None),
+                ("https://example.com/sitemap-b.xml", None),
+            ],
+        )
+
+        assert discovered == [
+            "https://example.com/sitemap-a.xml",
+            "https://example.com/sitemap-b.xml",
+        ]
+        assert all(getattr(obj, "url", "").startswith("https://example.com/sitemap-") for obj in added_objects)
+
+    def test_invalid_child_sitemap_is_added_as_excluded_with_reason(self):
+        from jobs.crawler.tasks import _upsert_child_sitemaps
+
+        session = MagicMock()
+        session.execute.return_value.scalar_one_or_none.return_value = None
+
+        added_objects = []
+        session.add.side_effect = added_objects.append
+
+        discovered = _upsert_child_sitemaps(
+            session,
+            source_id=1,
+            source_uri="https://example.com/",
+            parent_sitemap_url="https://example.com/sitemap.xml",
+            parsed_entries=[("https://other.com/sitemap.xml", None)],
+        )
+
+        assert discovered == []
+        assert added_objects[0].is_excluded is True
+        assert added_objects[0].ignore_reason == "wrong_address"
+        assert added_objects[0].discovered_via == "sitemap_index"
+        assert added_objects[0].discovered_from_url == "https://example.com/sitemap.xml"
+
+
 # ---------------------------------------------------------------------------
 # TestPageStatusOnErrors
 # ---------------------------------------------------------------------------
@@ -434,7 +727,7 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 0
             page_mock.check_interval_days = 7
-            session.execute.return_value.scalar_one_or_none.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = page_mock
             mock_session_cls.return_value = session
 
             logger = MagicMock()
@@ -463,7 +756,7 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 2
             page_mock.check_interval_days = 7
-            session.execute.return_value.scalar_one_or_none.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = page_mock
             mock_session_cls.return_value = session
 
             logger = MagicMock()
@@ -486,7 +779,7 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 0
             page_mock.meta = {}
-            session.execute.return_value.scalar_one_or_none.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = page_mock
             mock_session_cls.return_value = session
 
             logger = MagicMock()
@@ -511,7 +804,7 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 0
             page_mock.meta = {"other": "value"}
-            session.execute.return_value.scalar_one_or_none.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = page_mock
             mock_session_cls.return_value = session
 
             logger = MagicMock()
@@ -559,7 +852,7 @@ class TestPageStatusOnErrors:
                 "error": "old error",
                 "exception_class": "RuntimeError",
             }
-            session.execute.return_value.scalar_one_or_none.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = page_mock
             mock_session_cls.return_value = session
 
             from vchat.page_status import PageStatus
@@ -629,6 +922,11 @@ class TestEmbedderSkipsErrorPages:
             status_error=PageStatusError.low_content,
         )
         session = MagicMock()
-        session.execute.return_value.first.return_value = (page,)
+        session.execute.return_value.first.return_value = SimpleNamespace(
+            id=page.id,
+            source_id=1,
+            content=page.content,
+            status_error=page.status_error,
+        )
 
         assert fetch_page_context(session, 1) is None

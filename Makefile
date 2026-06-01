@@ -57,13 +57,17 @@ autoupgrade: ensure-pip ## upgrade dependencies
 
 # Celery and tasks
 celery: venv/bin/activate ## start celery (default queue + beat)
-	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery -n vchat@%h
+	@HOST=$$(hostname -s); \
+	NODE_NAME=$${CELERY_NODENAME:-vchat-celery-$${HOST}-$$$$@$${HOST}}; \
+	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery -n "$$NODE_NAME"
 
 embedder: venv/bin/activate ## start dedicated embedder workers for this host
 	. venv/bin/activate && PYTHONMALLOC=malloc python -m jobs.embedder.launcher
 
 embedder-worker: venv/bin/activate ## start a single dedicated embedder worker
-	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n vchat-embedder-$${EMBEDDER_INSTANCE_INDEX:-1}@%h
+	@HOST=$$(hostname -s); \
+	NODE_NAME=$${EMBEDDER_NODENAME:-vchat-embedder-$${HOST}-$$$$-$${EMBEDDER_INSTANCE_INDEX:-1}@$${HOST}}; \
+	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n "$$NODE_NAME"
 
 celery_stop: venv/bin/activate ## stop celery
 	. venv/bin/activate && celery -A jobs.celery control shutdown

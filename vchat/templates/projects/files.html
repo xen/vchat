@@ -2,14 +2,14 @@
 {% block content %}
 
 {% if current_document %}
-<div class="flex items-center justify-between mb-4">
-    <div class="breadcrumbs text-sm">
-        <ul>
-            <li><a href="{{ url('project_files') }}">Файлы</a></li>
-            <li>Файл #{{ current_document.id }}</li>
-        </ul>
+<div class="flex items-start justify-between gap-4 mb-6">
+    <div class="min-w-0">
+        <a href="{{ url('project_files') }}" class="inline-flex items-center gap-2 text-sm text-base-content/60 hover:text-base-content">
+            <iconify-icon icon="lucide:arrow-left" class="size-4"></iconify-icon>
+            Файлы
+        </a>
+        <h1 class="mt-2 text-lg font-medium break-words">{{ current_document.title or ('Файл #' ~ current_document.id) }}</h1>
     </div>
-    <a class="btn btn-sm btn-ghost" href="{{ url('project_files') }}">К списку</a>
 </div>
 
 <div class="card bg-base-100 shadow">
@@ -83,58 +83,96 @@
     })();
 </script>
 {% else %}
-<div class="flex items-center justify-between mb-4">
-    <p class="text-lg font-medium">Файлы</p>
+<div class="flex items-center justify-between gap-3 mb-6">
+    <h1 class="text-lg font-medium">Файлы</h1>
     <form method="post" action="{{ url('project_files') }}">
-        <button type="submit" class="btn btn-primary">Новый</button>
+        <button type="submit" class="btn btn-primary btn-sm max-sm:btn-square">
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            <span class="hidden sm:inline">Добавить файл</span>
+        </button>
     </form>
 </div>
 
-<div class="card bg-base-100 shadow">
+<div class="card bg-base-100 shadow" x-data="useProjectFilesTable()">
     <div class="card-body p-0">
-        <div class="border-base-200 flex items-center justify-between border-b border-dashed px-5 py-5">
-            <p class="font-medium">Список файлов</p>
+        <div class="border-base-200 flex items-center gap-3 border-b border-dashed px-5 py-4 flex-wrap">
+            <label class="input input-sm flex-1 min-w-[180px]">
+                <iconify-icon icon="lucide:search" class="text-base-content/70 size-4.5"></iconify-icon>
+                <input
+                    class="text-base placeholder:text-sm"
+                    type="search"
+                    x-model="search"
+                    @input="updateSearch"
+                    placeholder="Поиск по названию или автору..." />
+            </label>
+            <label class="select select-sm w-48 shrink-0">
+                <iconify-icon icon="lucide:users" class="text-base-content/70 size-4.5"></iconify-icon>
+                <select x-model="authorFilter" @change="updateAuthorFilter">
+                    <option value="">Все авторы</option>
+                    <template x-for="author in authorOptions" :key="author">
+                        <option :value="author" x-text="author"></option>
+                    </template>
+                </select>
+            </label>
         </div>
-        <div class="overflow-x-auto">
-            <table class="table" id="files-table">
-                <thead>
-                    <tr>
-                        <th>Название</th>
-                        <th>Автор</th>
-                        <th>Размер</th>
-                        <th>Чанки</th>
-                        <th>Изменен</th>
-                        <th>Action</th>
-                    </tr>
+        <div class="border-base-200 border-b border-dashed px-5 py-3" x-show="!loading && pageCount > 1">
+            <div class="flex items-center gap-3">
+                <span class="text-xs text-base-content/50 shrink-0 tabular-nums">
+                    <span x-text="pageIndex + 1"></span> / <span x-text="pageCount"></span>
+                </span>
+                <input
+                    type="range"
+                    class="range range-xs range-primary w-full"
+                    :min="0"
+                    :max="pageCount - 1"
+                    step="1"
+                    :value="pageIndex"
+                    @input="setPageIndex(Number($event.target.value))"
+                />
+                <p class="text-base-content/70 text-sm shrink-0">
+                    Показано
+                    <span class="text-base-content font-medium" x-text="rangeStart"></span>–<span class="text-base-content font-medium" x-text="rangeEnd"></span>
+                    из
+                    <span class="text-base-content font-medium" x-text="filteredRowCount"></span>
+                </p>
+            </div>
+        </div>
+        <div class="overflow-x-auto min-h-[280px]">
+            <div x-show="loading" class="flex justify-center items-center h-40">
+                <span class="loading loading-spinner loading-lg text-primary"></span>
+            </div>
+            <table class="table w-full" style="table-layout:fixed" x-show="!loading">
+                <thead x-ref="filesHead">
+                    <template x-for="headerGroup in headerGroups" :key="headerGroup.id">
+                        <tr>
+                            <template x-for="header in headerGroup.headers" :key="header.id">
+                                <th
+                                    x-bind:style="header.column.columnDef.meta?.thStyle"
+                                    x-html="flexRender(header.column.columnDef.header, header.getContext())"
+                                ></th>
+                            </template>
+                        </tr>
+                    </template>
                 </thead>
-                <tbody>
-                    {% for row in files_rows %}
-                    {% set doc = row.document %}
-                    <tr class="hover:bg-base-200/40">
-                        <td class="font-medium">{{ doc.title or doc.id }}</td>
-                        <td>{{ row.author_display }}</td>
-                        <td>{{ (row.size_bytes / 1024)|round(1) }} KB</td>
-                        <td>{{ row.chunk_count }}</td>
-                        <td>{{ row.updated_display }}</td>
-                        <td>
-                            <div class="flex items-center gap-2">
-                                <a class="btn btn-ghost btn-sm btn-square" href="{{ url('file_document', document_id=doc.id) }}" title="Редактировать" aria-label="Редактировать">
-                                    <iconify-icon icon="lucide:pencil" class="size-4"></iconify-icon>
-                                </a>
-                                <form method="post" action="{{ url('file_document', document_id=doc.id) }}" onsubmit="return confirm('Удалить файл?');">
-                                    <input type="hidden" name="action" value="delete" />
-                                    <button type="submit" class="btn btn-ghost btn-sm btn-square text-error" title="Удалить" aria-label="Удалить">
-                                        <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
-                                    </button>
-                                </form>
-                            </div>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" class="text-center text-base-content/60 py-8">Файлов пока нет.</td>
-                    </tr>
-                    {% endfor %}
+                <tbody x-ref="filesBody">
+                    <template x-if="visibleRows.length === 0">
+                        <tr>
+                            <td colspan="5" class="text-center text-base-content/60 py-8">
+                                Файлов пока нет.
+                            </td>
+                        </tr>
+                    </template>
+                    <template x-for="row in visibleRows" :key="row.id">
+                        <tr>
+                            <template x-for="cell in row.getVisibleCells()" :key="cell.id">
+                                <td
+                                    x-bind:style="cell.column.columnDef.meta?.tdStyle"
+                                    x-bind:class="cell.column.columnDef.meta?.tdClass"
+                                    x-html="flexRender(cell.column.columnDef.cell, cell.getContext())"
+                                ></td>
+                            </template>
+                        </tr>
+                    </template>
                 </tbody>
             </table>
         </div>
