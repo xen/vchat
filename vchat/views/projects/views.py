@@ -90,6 +90,65 @@ __all__ = [
 ]
 
 
+def _format_datetime_local(value: datetime | None) -> str:
+    if value is None:
+        return "—"
+    return value.astimezone().strftime("%d.%m.%Y %H:%M")
+
+
+def _format_crawl_bool(value: bool) -> str:
+    return "Да" if value else "Нет"
+
+
+def _document_crawl_fields(document: Page) -> list[dict[str, str]]:
+    return [
+        {
+            "label": "HTTP status",
+            "value": str(document.http_status) if document.http_status is not None else "—",
+        },
+        {
+            "label": "Последний обход",
+            "value": _format_datetime_local(document.last_crawled_at),
+        },
+        {
+            "label": "Последнее изменение",
+            "value": _format_datetime_local(document.last_modified_at),
+        },
+        {
+            "label": "ETag",
+            "value": document.last_etag or "—",
+        },
+        {
+            "label": "Интервал проверки, дней",
+            "value": str(document.check_interval_days),
+        },
+        {
+            "label": "Стабильных обходов подряд",
+            "value": str(document.stable_count),
+        },
+        {
+            "label": "Ошибок подряд",
+            "value": str(document.error_count),
+        },
+        {
+            "label": "Hub-страница",
+            "value": _format_crawl_bool(document.is_hub_page),
+        },
+        {
+            "label": "Ценность контента",
+            "value": (
+                f"{document.content_value:.2f}"
+                if document.content_value is not None
+                else "—"
+            ),
+        },
+        {
+            "label": "Входящих ссылок",
+            "value": str(document.inlink_count),
+        },
+    ]
+
+
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
     if row.role != "assistant":
         return []
@@ -255,6 +314,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         "project": _project_context(request),
         "document": document,
         "document_display_title": _display_document_title(document.title, document.uri),
+        "document_crawl_fields": _document_crawl_fields(document),
         "document_pipeline": _document_pipeline_steps(document),
         "document_structure": structure,
         "document_outline": outline,

@@ -65,7 +65,9 @@ async def test_debug_access_control_header_middleware() -> None:
 
 
 @pytest.mark.asyncio
-async def test_db_session_middleware(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_db_session_middleware(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     class FakeSession:
         def __init__(self) -> None:
             self.rollbacks = 0
@@ -101,6 +103,7 @@ async def test_db_session_middleware(monkeypatch: pytest.MonkeyPatch) -> None:
     ok_resp = await mw.db_session_middleware(req, _ok)
     assert ok_resp.status == 200
     assert session.rollbacks == 1
+    assert "DB transaction left open while rendering GET /a; rolling back" in caplog.text
 
     session._in_transaction = True
 

@@ -15,16 +15,16 @@ groups:
             Source {{ $labels.source_id }} has not been crawled for
             {{ $value | humanizeDuration }}. Check if the crawler is running.
 
-      # Crawler queue is large — possible backlog
+      # Default Celery queue is large — possible backlog
       - alert: CrawlerQueueHigh
-        expr: vchat_crawler_queue_size > 100
+        expr: vchat_celery_queue_size > 100
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "Crawler queue has {{ $value }} pending tasks"
+          summary: "Default Celery queue has {{ $value }} pending tasks"
           description: >
-            The crawler Celery queue has been above 100 tasks for 15 minutes.
+            The default Celery queue has been above 100 tasks for 15 minutes.
             Workers may be down or processing too slowly.
 
       # Embedder queue is large

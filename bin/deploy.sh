@@ -85,7 +85,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=$DEPLOY_PATH
-ExecStart=$DEPLOY_PATH/venv/bin/celery -A jobs.celery worker --beat --loglevel=INFO -Q celery,crawler -n vchat-celery@%H
+ExecStart=$DEPLOY_PATH/venv/bin/celery -A jobs.celery worker --beat --loglevel=INFO -Q celery -n vchat-celery@%H
 Restart=always
 Environment=PYTHONUNBUFFERED=1
 

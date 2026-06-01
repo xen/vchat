@@ -109,6 +109,11 @@ async def db_session_middleware(request, handler):
         try:
             response = await handler(request)
             if session.in_transaction():
+                logger.error(
+                    "DB transaction left open while rendering %s %s; rolling back",
+                    request.method,
+                    getattr(request, "path_qs", request.path),
+                )
                 await session.rollback()
             return response
         except Exception:

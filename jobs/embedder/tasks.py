@@ -1260,7 +1260,7 @@ def index_chat_message(msg_id: int):
         engine.dispose()
 
 
-@app.task(name="jobs.embedder.tasks.index_document", queue="embeddings")
+@app.task(name="jobs.embedder.tasks.index_document", queue="celery")
 def index_document(document_id: int):
     engine = create_sync_engine()
     redis_client = redis.from_url(REDIS_URL)
@@ -1341,7 +1341,7 @@ def pending_chunks(counted: bool = False):
     return processed
 
 
-@app.task(name="jobs.embedder.tasks.ensure_pending_chunks", queue="embeddings")
+@app.task(name="jobs.embedder.tasks.ensure_pending_chunks", queue="celery")
 def ensure_pending_chunks():
     engine = create_sync_engine()
     redis_client = redis.from_url(REDIS_URL)
@@ -1365,14 +1365,14 @@ def ensure_pending_chunks():
     return scheduled
 
 
-@app.task(name="jobs.embedder.tasks.schedule_pending_chunks", queue="embeddings")
+@app.task(name="jobs.embedder.tasks.schedule_pending_chunks", queue="celery")
 def schedule_pending_chunks():
     scheduled = schedule_ensure_pending_chunks()
     logging.info("Schedule pending chunks requested; enqueued=%s", scheduled)
     return scheduled
 
 
-@app.task(name="jobs.embedder.tasks.index_project", queue="embeddings")
+@app.task(name="jobs.embedder.tasks.index_project", queue="celery")
 def index_project():
     engine = create_sync_engine()
     try:
@@ -1396,7 +1396,7 @@ def index_project():
         schedule_index_document(doc_id)
 
 
-@app.task(name="jobs.embedder.tasks.refresh_project_index", queue="embeddings")
+@app.task(name="jobs.embedder.tasks.refresh_project_index", queue="celery")
 def refresh_project_index():
     engine = create_sync_engine()
     redis_client = redis.from_url(REDIS_URL)
@@ -1473,7 +1473,7 @@ def refresh_project_index():
             engine.dispose()
 
 
-@app.task(name="jobs.embedder.tasks.refresh_source_index", queue="embeddings")
+@app.task(name="jobs.embedder.tasks.refresh_source_index", queue="celery")
 def refresh_source_index(source_id: int):
     engine = create_sync_engine()
     try:
@@ -1610,7 +1610,7 @@ def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
 
 @app.task(
     name="jobs.embedder.tasks.rebuild_boilerplate_index",
-    queue="embeddings",
+    queue="celery",
 )
 def rebuild_boilerplate_index(source_id: int):
     engine = create_sync_engine()

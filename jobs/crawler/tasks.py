@@ -34,7 +34,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 @app.task(
     name="jobs.crawler.tasks.crawl_source_task",
-    queue="crawler",
+    queue="celery",
 )
 def crawl_source_task(source_id: int):
     print(f"Starting crawl for source {source_id}")
@@ -162,14 +162,14 @@ def crawl_source_task(source_id: int):
             cleanup_orphans_task.si(source_id),
         ).apply_async()
         schedule_refresh_project_index()
-        rebuild_boilerplate_index.apply_async(args=[source_id], queue="embeddings")
+        rebuild_boilerplate_index.delay(source_id)
 
     print(f"Finished crawling source {source_id}")
 
 
 @app.task(
     name="jobs.crawler.tasks.crawl_page_task",
-    queue="crawler",
+    queue="celery",
 )
 def crawl_page_task(page_id: int):
     print(f"Starting crawl for page {page_id}")
@@ -281,14 +281,14 @@ def crawl_page_task(page_id: int):
             cleanup_orphans_task.si(source_id),
         ).apply_async()
         schedule_refresh_project_index()
-        rebuild_boilerplate_index.apply_async(args=[source_id], queue="embeddings")
+        rebuild_boilerplate_index.delay(source_id)
 
     print(f"Finished crawling page {page_id}")
 
 
 @app.task(
     name="jobs.crawler.tasks.crawl_all_sources_task",
-    queue="crawler",
+    queue="celery",
 )
 def crawl_all_sources_task():
     """
@@ -346,7 +346,7 @@ def cron_matches_now(cron_expression: str, now: datetime) -> bool:
 
 @app.task(
     name="jobs.crawler.tasks.schedule_reindex_sources_task",
-    queue="crawler",
+    queue="celery",
 )
 def schedule_reindex_sources_task():
     print("Checking sources for scheduled reindex")
@@ -395,7 +395,7 @@ def schedule_reindex_sources_task():
 
 @app.task(
     name="jobs.crawler.tasks.update_inlink_counts_task",
-    queue="crawler",
+    queue="celery",
 )
 def update_inlink_counts_task(source_id: int):
     """Recalculate inlink_count for every page of a source from the PageLink graph."""
@@ -434,7 +434,7 @@ def update_inlink_counts_task(source_id: int):
 
 @app.task(
     name="jobs.crawler.tasks.cleanup_orphans_task",
-    queue="crawler",
+    queue="celery",
 )
 def cleanup_orphans_task(source_id: int):
     """Delete dead pages: http_status 404/410, checked ≥2 times in error, no inlinks, not start_pages."""
@@ -559,7 +559,7 @@ def _parse_sitemap_urls(body: bytes) -> list[tuple[str, str | None]]:
 
 @app.task(
     name="jobs.crawler.tasks.sitemap_sync_task",
-    queue="crawler",
+    queue="celery",
 )
 def sitemap_sync_task(source_id: int):
     """
@@ -669,7 +669,7 @@ def sitemap_sync_task(source_id: int):
 
 @app.task(
     name="jobs.crawler.tasks.schedule_sitemap_sync_task",
-    queue="crawler",
+    queue="celery",
 )
 def schedule_sitemap_sync_task():
     """Trigger sitemap_sync_task for all non-paused sources."""

@@ -191,9 +191,9 @@ class CrawlerQueueCollector:
         return []
 
     def collect(self):
-        crawler_metric = GaugeMetricFamily(
-            "vchat_crawler_queue_size",
-            "Current number of tasks in the crawler Celery queue.",
+        celery_metric = GaugeMetricFamily(
+            "vchat_celery_queue_size",
+            "Current number of tasks in the default Celery queue.",
         )
         embedder_metric = GaugeMetricFamily(
             "vchat_embedder_queue_size",
@@ -202,12 +202,12 @@ class CrawlerQueueCollector:
         try:
             broker_url = f"{config['celery_redis_uri']}{config['celery_broker_db']}"
             r = redis_lib.Redis.from_url(broker_url, decode_responses=False)
-            crawler_metric.add_metric([], float(r.llen("crawler")))
+            celery_metric.add_metric([], float(r.llen("celery")))
             embedder_metric.add_metric([], float(r.llen("embeddings")))
             r.close()
         except Exception as exc:
             logger.debug("CrawlerQueueCollector: Redis error: %s", exc)
-        yield crawler_metric
+        yield celery_metric
         yield embedder_metric
 
 

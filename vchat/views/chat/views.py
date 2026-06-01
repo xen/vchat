@@ -247,7 +247,7 @@ GIGACHAT_SUGGEST_TIMEOUT_SECONDS = float(
 )
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/3")
 SECRET_KEY = config.get("secret_key")
-CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "embeddings")
+CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "celery")
 
 # System prompt for chat
 SYSTEM_PROMPT = """## Role and Objective
@@ -933,10 +933,12 @@ async def websocket(request):
                 try:
                     await run_task(
                         task="jobs.embedder.tasks.index_chat_message",
+                        queue="embeddings",
                         msg_id=user_msg_id,
                     )
                     await run_task(
                         task="jobs.embedder.tasks.index_chat_message",
+                        queue="embeddings",
                         msg_id=assistant_msg_id,
                     )
                 except Exception as enq_exc:

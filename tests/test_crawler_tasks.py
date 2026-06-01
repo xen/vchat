@@ -196,7 +196,7 @@ class TestCrawlPageTaskPayload:
             ),
             patch("jobs.crawler.tasks.chain") as chain_mock,
             patch("jobs.crawler.tasks.schedule_refresh_project_index"),
-            patch("jobs.crawler.tasks.rebuild_boilerplate_index.apply_async"),
+            patch("jobs.crawler.tasks.rebuild_boilerplate_index.delay"),
         ):
             chain_mock.return_value.apply_async = MagicMock()
             from jobs.crawler import tasks as crawler_tasks

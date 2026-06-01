@@ -60,7 +60,7 @@ json = _MsgSpecJSON()
 
 
 REDIS_URL = config.get("redis_uri")
-CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "embeddings")
+CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "celery")
 
 DELAY_PROTECTION = 5
 
@@ -404,12 +404,14 @@ def convert_to_html(text: str) -> Tuple[str, dict]:
 redis = aioredis.from_url(REDIS_URL, decode_responses=True)
 
 
-async def run_task(task: str, **kwargs) -> int:
+async def run_task(task: str, queue: str | None = None, **kwargs) -> str:
     """
     Push a background task description into Redis list queue.
     A minimal, portable format that can be consumed by any worker process.
-    Returns the new queue length.
+    Returns the task id.
     """
+
+    queue_name = queue or CELERY_DEFAULT_QUEUE
 
     # Celery/kombu envelope
     task_id = str(uuid.uuid4())
@@ -455,7 +457,7 @@ async def run_task(task: str, **kwargs) -> int:
             "correlation_id": task_id,
             "reply_to": str(uuid.uuid4()),
             "delivery_mode": 2,
-            "delivery_info": {"exchange": "", "routing_key": CELERY_DEFAULT_QUEUE},
+            "delivery_info": {"exchange": "", "routing_key": queue_name},
             "priority": 0,
             "body_encoding": "base64",
             "delivery_tag": str(uuid.uuid4()),
@@ -465,5 +467,5 @@ async def run_task(task: str, **kwargs) -> int:
     payload = json.dumps(envelope, ensure_ascii=False)
 
     print(f"Enqueue task {task}: {payload}")
-    await redis.lpush(CELERY_DEFAULT_QUEUE, payload)
+    await redis.lpush(queue_name, payload)
     return task_id

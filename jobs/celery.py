@@ -34,6 +34,7 @@ app.autodiscover_tasks(["jobs", "jobs.crawler", "jobs.embedder"])
 app.conf.worker_prefetch_multiplier = 1
 app.conf.task_acks_late = True
 app.conf.broker_connection_retry_on_startup = True
+app.conf.task_default_queue = config.get("celery_default_queue", "celery")
 app.conf.worker_concurrency = int(config.get("celery_worker_concurrency", 4) or 4)
 app.conf.worker_max_tasks_per_child = int(
     config.get("celery_worker_max_tasks_per_child", 100) or 100
@@ -46,17 +47,17 @@ app.conf.beat_schedule = {
     "process_pending_chunks": {
         "task": "jobs.embedder.tasks.schedule_pending_chunks",
         "schedule": 300.0,
-        "options": {"queue": "embeddings"},
+        "options": {"queue": app.conf.task_default_queue},
     },
     "schedule_source_reindex": {
         "task": "jobs.crawler.tasks.schedule_reindex_sources_task",
         "schedule": crontab(),
-        "options": {"queue": "crawler"},
+        "options": {"queue": app.conf.task_default_queue},
     },
     "schedule_sitemap_sync": {
         "task": "jobs.crawler.tasks.schedule_sitemap_sync_task",
         "schedule": crontab(minute=0, hour="*/4"),
-        "options": {"queue": "crawler"},
+        "options": {"queue": app.conf.task_default_queue},
     },
 }
 

@@ -176,7 +176,7 @@ def test_metrics_helpers() -> None:
     assert metrics._normalize_guardrail_reason("output_blocked") == "output_blocked"
 
 
-def test_crawler_queue_collector_uses_broker_db_and_embeddings_queue(
+def test_crawler_queue_collector_uses_broker_db_and_default_and_embeddings_queues(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -185,7 +185,7 @@ def test_crawler_queue_collector_uses_broker_db_and_embeddings_queue(
     class _Redis:
         def llen(self, queue_name: str) -> int:
             calls.append(queue_name)
-            return {"crawler": 7, "embeddings": 11}[queue_name]
+            return {"celery": 7, "embeddings": 11}[queue_name]
 
         def close(self) -> None:
             closed.append(True)
@@ -207,7 +207,7 @@ def test_crawler_queue_collector_uses_broker_db_and_embeddings_queue(
     }
 
     assert calls[0] == "url=redis://example/42,decode=False"
-    assert calls[1:] == ["crawler", "embeddings"]
-    assert samples["vchat_crawler_queue_size"] == 7
+    assert calls[1:] == ["celery", "embeddings"]
+    assert samples["vchat_celery_queue_size"] == 7
     assert samples["vchat_embedder_queue_size"] == 11
     assert closed == [True]

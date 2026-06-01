@@ -24,7 +24,7 @@ celery_broker_db: 31
 celery_backend_db: 32
 celery_max_retries: 3
 celery_retry_delay: 5
-celery_default_queue: embeddings
+celery_default_queue: celery
 celery_visibility_timeout: 21600 # seconds; keep long-running embedder jobs from being redelivered
 celery_worker_concurrency: 4
 celery_worker_max_tasks_per_child: 100

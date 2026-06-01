@@ -92,8 +92,43 @@ def test_document_content_template_renders_structure_items() -> None:
         document_outline=[],
         document_extraction={},
         document_chunks=[],
+        document_crawl_fields=[],
     )
     assert "one\ntwo" in rendered
+
+
+def test_document_content_template_renders_crawl_fields() -> None:
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(
+            str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
+        )
+    )
+    template = env.get_template("projects/document_content.html")
+    rendered = template.render(
+        document=SimpleNamespace(
+            title="Doc",
+            uri="https://example.local/page",
+            status="ready",
+            status_error=None,
+            meta={},
+            content="body",
+        ),
+        document_pipeline=("ready", None, None),
+        document_structure=[],
+        document_outline=[],
+        document_extraction={},
+        document_chunks=[],
+        document_crawl_fields=[
+            {"label": "HTTP status", "value": "200"},
+            {"label": "Hub-страница", "value": "Нет"},
+            {"label": "ETag", "value": "abc123"},
+        ],
+    )
+    assert "Данные обходов" in rendered
+    assert "HTTP status" in rendered
+    assert "200" in rendered
+    assert "Hub-страница" in rendered
+    assert "abc123" in rendered
 
 
 def test_sources_template_hides_pause_badge_in_name_column() -> None:
