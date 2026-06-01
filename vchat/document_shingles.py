@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from typing import List
+
+import mmh3
 
 
 def extract_shingles(text: str, k: int = 10) -> List[str]:
@@ -25,8 +26,7 @@ def compute_trigram_hashes(block: str) -> frozenset[int]:
     hashes: set[int] = set()
     for i in range(len(words) - 2):
         trigram = f"{words[i]} {words[i + 1]} {words[i + 2]}"
-        raw = int(hashlib.md5(trigram.encode()).hexdigest()[:16], 16)
-        h = raw if raw < 2**63 else raw - 2**64
+        h = mmh3.hash64(trigram, signed=True)[0]
         hashes.add(h)
     return frozenset(hashes)
 
