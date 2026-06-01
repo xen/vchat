@@ -3,13 +3,13 @@ import base64
 import logging
 import os
 import uuid
+from math import ceil
 from datetime import datetime
 from functools import wraps
 from typing import Callable, Optional, Tuple
 from urllib.parse import urlencode
 
 import aiohttp
-import aiohttp_jinja2
 import markdown
 import msgspec
 import redis.asyncio as aioredis
@@ -20,7 +20,6 @@ from itsdangerous import (
     URLSafeSerializer,
     URLSafeTimedSerializer,
 )
-from markupsafe import Markup
 from yarl import URL
 
 from vchat.app_keys import CONFIG_KEY, REDIS_KEY
@@ -287,71 +286,70 @@ def login_required():
     return decorator
 
 
-def paginator(total: int, request: aiohttp.web_request.Request) -> str:
-    page_keys = ["offset", "limit"]
-    _get = request.query.get
-    limit = int(_get("limit", "10")) if _get("limit", "10").isnumeric() else 10
-    offset = int(_get("offset", "0")) if _get("offset", "0").isnumeric() else 0
-    if total < limit:
-        max_offset = 0
+def paginator(
+    total: int,
+    *,
+    page: int = 1,
+    per_page: int = 10,
+    query_factory: Callable[[int], dict[str, str] | None] | None = None,
+    href_factory: Callable[[int], str] | None = None,
+) -> dict:
+    total = max(int(total), 0)
+    per_page = max(int(per_page), 1)
+    total_pages = ceil(total / per_page) if total else 0
+    if total_pages:
+        page = min(max(int(page), 1), total_pages)
     else:
-        max_offset = (total // limit) * limit if total % limit != 0 else total - limit
-    offset_set = {0, int(max_offset)}
-    offset_set.update(
-        [
-            o
-            for o in range(offset - 2 * limit, offset + 3 * limit, limit)
-            if o >= 0 and o <= max_offset
-        ],
-    )
-    offset_set = list(offset_set)
-    offset_set.sort()
-    params = [f"limit={limit}"]
-    for key, value in request.query.items():
-        if key not in page_keys:
-            params.append(f"{key}={value}")
-    link = request.path
-    params = "&".join(params)
-    link_list = []
-    for item in offset_set:
-        if item == offset:
-            link_list.append({"name": int(item / limit) + 1, "link": ""})
-        else:
-            if max_offset - limit not in offset_set and item == max_offset:
-                link_list.append({"name": "...", "link": "#"})
-            link_list.append(
-                {
-                    "name": int(item / limit) + 1,
-                    "link": f"{link}?offset={item}&{params}",
-                },
-            )
-            if limit not in offset_set and item == 0:
-                link_list.append({"name": "...", "link": "#"})
+        page = 1
 
-    paginator_item = {
-        "next_page": (
-            f"{link}?offset={offset + limit}&{params}" if (offset < max_offset) else "#"
-        ),
-        "prev_page": (
-            f"{link}?offset={offset - limit}&{params}" if (offset >= limit) else "#"
-        ),
-        "from_pos": int(offset + 1),
-        "to_pos": int(offset + limit) if offset + limit < total else total,
-        "total_pos": total,
-        "link_list": link_list,
+    has_prev = total_pages > 0 and page > 1
+    has_next = total_pages > 0 and page < total_pages
+
+    if total_pages <= 7 and total_pages > 0:
+        page_numbers = list(range(1, total_pages + 1))
+    elif total_pages > 0:
+        page_numbers = [1]
+        if page - 2 > 2:
+            page_numbers.append(None)
+        for number in range(max(2, page - 2), min(total_pages - 1, page + 2) + 1):
+            page_numbers.append(number)
+        if total_pages - (page + 2) > 1:
+            page_numbers.append(None)
+        if total_pages > 1:
+            page_numbers.append(total_pages)
+    else:
+        page_numbers = []
+
+    pages: list[dict] = []
+    for number in page_numbers:
+        if number is None:
+            pages.append({"number": None})
+            continue
+        item = {"number": number, "is_current": number == page}
+        if query_factory is not None:
+            item["query"] = query_factory(number)
+        if href_factory is not None:
+            item["href"] = href_factory(number)
+        pages.append(item)
+
+    range_start = ((page - 1) * per_page) + 1 if total else 0
+    range_end = min(page * per_page, total) if total else 0
+
+    return {
+        "page": page,
+        "per_page": per_page,
+        "total": total,
+        "total_pages": total_pages,
+        "has_prev": has_prev,
+        "has_next": has_next,
+        "prev_query": query_factory(page - 1) if query_factory and has_prev else None,
+        "next_query": query_factory(page + 1) if query_factory and has_next else None,
+        "prev_href": href_factory(page - 1) if href_factory and has_prev else None,
+        "next_href": href_factory(page + 1) if href_factory and has_next else None,
+        "pages": pages,
+        "range_start": range_start,
+        "range_end": range_end,
     }
-
-    if paginator_item["next_page"] == paginator_item["prev_page"]:
-        return ""
-
-    # Paginator HTML is rendered from a local Jinja template.
-    return Markup(  # nosec B704
-        aiohttp_jinja2.render_string(
-            "paginator.html",
-            request,
-            {"paginator": paginator_item},
-        ),
-    )
 
 
 async def run_command(command):

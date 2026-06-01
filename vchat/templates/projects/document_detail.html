@@ -4,7 +4,11 @@
 <div class="flex flex-col gap-6">
     <div class="min-w-0">
         <div class="flex items-center justify-between gap-4">
-            <h1 class="text-lg font-medium break-words">{{ document_display_title }}</h1>
+            <h1 class="text-lg font-medium break-words">
+                <a href="{{ url('project_view') }}" class="text-base-content/50 transition-colors hover:text-base-content">Страницы</a>
+                <span class="mx-2 text-base-content/40">&gt;</span>
+                <span class="text-base-content">{{ document_display_title }}</span>
+            </h1>
             {% if document.source_id and document.uri %}
             <button hx-post="{{ url('actions', action='refresh_page', item_id=document.id) }}"
                     hx-swap="none"
@@ -15,17 +19,13 @@
             </button>
             {% endif %}
         </div>
+        {% if document.uri %}
         <div class="mt-2">
-            <a href="{{ url('project_view') }}" class="inline-flex items-center gap-1.5 text-sm text-base-content/60 hover:text-base-content">
-                <iconify-icon icon="lucide:arrow-left" class="size-4"></iconify-icon>
-                Страницы
-            </a>
-            {% if document.uri %}
-            <p class="mt-1 text-sm break-all text-base-content/60">
+            <p class="text-sm break-all text-base-content/60">
                 <a href="{{ document.uri }}" class="link link-hover" target="_blank" rel="noopener noreferrer">{{ document.uri }}</a>
             </p>
-            {% endif %}
         </div>
+        {% endif %}
     </div>
 
     {% include "projects/document_content.html" %}

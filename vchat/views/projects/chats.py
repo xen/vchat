@@ -13,7 +13,7 @@ from vchat.guardrails import mask_russian_pii
 from vchat.i18n import _
 from vchat.models import Chat, ChatMsg
 from vchat.settings import config
-from vchat.utils import login_required, meta
+from vchat.utils import login_required, meta, paginator
 
 from .views import _project_context
 
@@ -245,11 +245,7 @@ async def history_list(request):
         or 0
     )
 
-    total_pages = (total + per_page - 1) // per_page if total else 0
-    if total_pages and page > total_pages:
-        page = total_pages
-    if not total_pages:
-        page = 1
+    page = paginator(total, page=page, per_page=per_page)["page"]
 
     offset = (page - 1) * per_page if total else 0
 
@@ -314,9 +310,6 @@ async def history_list(request):
         chat.ip_address = (chat.meta or {}).get("ip_address")
         chats.append(chat)
 
-    range_start = offset + 1 if chats else 0
-    range_end = offset + len(chats) if chats else 0
-
     base_filters: dict[str, str] = {}
     if search_query:
         base_filters["search"] = search_query
@@ -338,50 +331,19 @@ async def history_list(request):
         query.update(base_filters)
         return query or None
 
-    has_prev = total_pages > 0 and page > 1
-    has_next = total_pages > 0 and page < total_pages
+    def _href_for_page(target_page: int) -> str:
+        query = _query_for_page(target_page)
+        if query:
+            return str(request.app.router["project_history"].url_for().with_query(query))
+        return str(request.app.router["project_history"].url_for())
 
-    if total_pages <= 7 and total_pages > 0:
-        page_numbers = list(range(1, total_pages + 1))
-    elif total_pages > 0:
-        page_numbers = [1]
-        if page - 2 > 2:
-            page_numbers.append(None)
-        for number in range(max(2, page - 2), min(total_pages - 1, page + 2) + 1):
-            page_numbers.append(number)
-        if total_pages - (page + 2) > 1:
-            page_numbers.append(None)
-        if total_pages > 1:
-            page_numbers.append(total_pages)
-    else:
-        page_numbers = []
-
-    pagination_pages: list[dict] = []
-    for number in page_numbers:
-        if number is None:
-            pagination_pages.append({"number": None})
-            continue
-        pagination_pages.append(
-            {
-                "number": number,
-                "is_current": number == page,
-                "query": _query_for_page(number),
-            }
-        )
-
-    pagination = {
-        "page": page,
-        "per_page": per_page,
-        "total": total,
-        "total_pages": total_pages,
-        "has_prev": has_prev,
-        "has_next": has_next,
-        "prev_query": _query_for_page(page - 1) if has_prev else None,
-        "next_query": _query_for_page(page + 1) if has_next else None,
-        "pages": pagination_pages,
-        "range_start": range_start,
-        "range_end": range_end,
-    }
+    pagination = paginator(
+        total,
+        page=page,
+        per_page=per_page,
+        query_factory=_query_for_page,
+        href_factory=_href_for_page,
+    )
 
     return {
         "project": _project_context(request),

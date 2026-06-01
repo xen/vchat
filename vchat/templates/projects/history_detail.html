@@ -5,13 +5,14 @@
     <!-- Header / Meta -->
     <div class="card bg-base-100 shadow shrink-0">
         <div class="card-body flex-col gap-4 py-4">
-            <div class="flex items-center gap-4">
-                <a href="{{ url('project_history') }}" class="btn btn-sm btn-ghost gap-2">
-                    <iconify-icon icon="lucide:arrow-left" class="size-5"></iconify-icon>
-                </a>
-                <div>
-                    <h2 class="card-title text-lg">{{ chat.title or chat.user_uid }}</h2>
-                    <div class="text-sm text-base-content/60">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <h1 class="text-lg font-medium break-words">
+                        <a href="{{ url('project_history') }}" class="text-base-content/50 transition-colors hover:text-base-content">История чатов</a>
+                        <span class="mx-2 text-base-content/40">&gt;</span>
+                        <span class="text-base-content">{{ chat.title or chat.user_uid }}</span>
+                    </h1>
+                    <div class="mt-2 text-sm text-base-content/60">
                         {{ chat.created_at.strftime('%Y-%m-%d %H:%M') }}
                     </div>
                 </div>

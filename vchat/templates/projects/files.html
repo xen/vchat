@@ -4,11 +4,11 @@
 {% if current_document %}
 <div class="flex items-start justify-between gap-4 mb-6">
     <div class="min-w-0">
-        <a href="{{ url('project_files') }}" class="inline-flex items-center gap-2 text-sm text-base-content/60 hover:text-base-content">
-            <iconify-icon icon="lucide:arrow-left" class="size-4"></iconify-icon>
-            Файлы
-        </a>
-        <h1 class="mt-2 text-lg font-medium break-words">{{ current_document.title or ('Файл #' ~ current_document.id) }}</h1>
+        <h1 class="text-lg font-medium break-words">
+            <a href="{{ url('project_files') }}" class="text-base-content/50 transition-colors hover:text-base-content">Файлы</a>
+            <span class="mx-2 text-base-content/40">&gt;</span>
+            <span class="text-base-content">{{ current_document.title or ('Файл #' ~ current_document.id) }}</span>
+        </h1>
     </div>
 </div>
 

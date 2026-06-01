@@ -93,3 +93,8 @@ Important:
 **Connection:** `postgresql://xen@localhost:5432/vchat`
 
 - Always verify record counts before and after migration to ensure data integrity.
+
+# Local UI / Browser Rules
+
+- For any `local.vchat.com`, `localhost`, or other local UI link, always open and inspect it only in the Codex in-app browser. Do not rely on `curl`, guessed HTML, or external browser state as the primary verification path when the task is about visual layout, DOM structure, CSS, or browser behavior.
+- Before changing templates or CSS to fix a visible UI issue, first confirm the real rendered DOM/state in the in-app browser. If the page cannot be inspected there because of auth, broken browser attachment, or another blocker, state that explicitly before making speculative UI changes.

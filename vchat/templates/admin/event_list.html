@@ -1,61 +1,52 @@
 {% extends "admin.html" %}
 {% set page_title = _("Журнал действий") %}
+{% import "include/admin/pagination.html" as ui_pagination %}
 
 {% block content %}
-<div class="px-4 py-6">
-  <div class="mb-6 flex items-center justify-between">
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
     <h1 class="text-lg font-medium">{{ _('Журнал действий') }}</h1>
   </div>
 
-  <div class="overflow-x-auto rounded-box border border-base-200 bg-base-100 shadow-sm">
-    <table class="table w-full">
-      <thead>
-        <tr>
-          <th>{{ _('Кто') }}</th>
-          <th>{{ _('Откуда') }}</th>
-          <th>{{ _('Действие') }}</th>
-          <th>{{ _('Дата и время') }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for item in events %}
-        {% set event_parts = item.event_name.rsplit(' @ ', 1) %}
-        <tr class="hover">
-          <td>{{ item.user_email }}</td>
-          <td>{{ item.ip_address or '-' }}</td>
-          <td>
-            <code>{{ event_parts[0] }}</code>
-            {% if event_parts|length > 1 %}
-            <div class="mt-1 text-xs">
-              <a href="{{ event_parts[1] }}" class="link link-hover">{{ event_parts[1] }}</a>
-            </div>
-            {% endif %}
-          </td>
-          <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}</td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="4" class="text-center text-base-content/60 py-8">{{ _('Записей пока нет') }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="overflow-x-auto">
+        <table class="table w-full">
+          <thead>
+            <tr>
+              <th>{{ _('Кто') }}</th>
+              <th>{{ _('Откуда') }}</th>
+              <th>{{ _('Действие') }}</th>
+              <th>{{ _('Дата и время') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in events %}
+            {% set event_parts = item.event_name.rsplit(' @ ', 1) %}
+            <tr class="hover">
+              <td>{{ item.user_email }}</td>
+              <td>{{ item.ip_address or '-' }}</td>
+              <td>
+                <code>{{ event_parts[0] }}</code>
+                {% if event_parts|length > 1 %}
+                <div class="mt-1 text-xs">
+                  <a href="{{ event_parts[1] }}" class="link link-hover">{{ event_parts[1] }}</a>
+                </div>
+                {% endif %}
+              </td>
+              <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="text-center text-base-content/60 py-8">{{ _('Записей пока нет') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
 
-  {% if total_pages > 1 %}
-  <div class="mt-4 flex items-center justify-end gap-2">
-    <a class="btn btn-sm btn-outline {% if not has_prev %}btn-disabled{% endif %}"
-       href="{% if has_prev %}{{ request.path_qs.split('?')[0] }}?page={{ page - 1 }}{% else %}#{% endif %}">
-      {{ _('Назад') }}
-    </a>
-    <span class="text-sm text-base-content/70">
-      {{ _('Страница') }} {{ page }} {{ _('из') }} {{ total_pages }}
-    </span>
-    <a class="btn btn-sm btn-outline {% if not has_next %}btn-disabled{% endif %}"
-       href="{% if has_next %}{{ request.path_qs.split('?')[0] }}?page={{ page + 1 }}{% else %}#{% endif %}">
-      {{ _('Вперёд') }}
-    </a>
+      {{ ui_pagination.render(pagination) }}
+    </div>
   </div>
-  {% endif %}
 </div>
 {% endblock %}

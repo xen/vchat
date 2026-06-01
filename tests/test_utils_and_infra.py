@@ -197,7 +197,7 @@ async def test_flash_admin_event_login_required_and_make_url(monkeypatch: pytest
     assert "a=b" in str(full)
 
 
-def test_protect_dummyjar_and_paginator(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_protect_dummyjar_and_paginator() -> None:
     token = utils.protect({"a": 1}, salt="s")
     assert utils.serializer.loads(token, b"s") == {"a": 1}
 
@@ -218,17 +218,12 @@ def test_protect_dummyjar_and_paginator(monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(StopIteration):
         list(jar)
 
-    class Req:
-        path = "/items"
-        query = {"offset": "0", "limit": "10", "q": "abc"}
-
-    def _render_string(_tpl, _request, ctx):
-        assert "paginator" in ctx
-        return "<nav>ok</nav>"
-
-    monkeypatch.setattr(utils.aiohttp_jinja2, "render_string", _render_string)
-    html = utils.paginator(101, Req())
-    assert "<nav>ok</nav>" in str(html)
+    pagination = utils.paginator(101, page=3, per_page=10)
+    assert pagination["page"] == 3
+    assert pagination["total_pages"] == 11
+    assert pagination["range_start"] == 21
+    assert pagination["range_end"] == 30
+    assert pagination["pages"][0]["number"] == 1
 
 
 @pytest.mark.asyncio

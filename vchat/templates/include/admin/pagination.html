@@ -1,0 +1,45 @@
+{% macro render(
+  pagination,
+  empty_text='Нет данных для отображения',
+  summary_template='%(start)s-%(end)s из %(total)s'
+) %}
+<div class="mt-4 flex flex-wrap items-center justify-between gap-4">
+  <p class="text-sm text-base-content/70">
+    {% if pagination.total %}
+      {{ summary_template % {
+        'start': pagination.range_start,
+        'end': pagination.range_end,
+        'total': pagination.total,
+      } }}
+    {% else %}
+      {{ empty_text }}
+    {% endif %}
+  </p>
+
+  {% if pagination.total_pages > 1 %}
+  <div class="join">
+    <a
+      class="btn btn-sm btn-outline join-item {{ 'btn-disabled pointer-events-none opacity-50' if not pagination.has_prev }}"
+      {% if pagination.prev_href %}href="{{ pagination.prev_href }}"{% else %}tabindex="-1" aria-disabled="true"{% endif %}>
+      <iconify-icon icon="lucide:arrow-left"></iconify-icon>
+    </a>
+    {% for item in pagination.pages %}
+      {% if item.number %}
+        <a
+          class="btn btn-sm join-item {{ 'btn-active' if item.is_current else 'btn-outline' }}"
+          href="{{ item.href }}">
+          {{ item.number }}
+        </a>
+      {% else %}
+        <span class="btn btn-sm btn-ghost join-item cursor-default">...</span>
+      {% endif %}
+    {% endfor %}
+    <a
+      class="btn btn-sm btn-outline join-item {{ 'btn-disabled pointer-events-none opacity-50' if not pagination.has_next }}"
+      {% if pagination.next_href %}href="{{ pagination.next_href }}"{% else %}tabindex="-1" aria-disabled="true"{% endif %}>
+      <iconify-icon icon="lucide:arrow-right"></iconify-icon>
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

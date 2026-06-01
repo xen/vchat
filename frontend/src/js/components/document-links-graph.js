@@ -21,6 +21,17 @@ const EDGE_COLORS = {
   outgoing: "#a78bfa",
 };
 
+const NODE_RADIUS = {
+  current: 13,
+  mutual: 9,
+  default: 8,
+};
+
+const NODE_LABEL_OFFSET = {
+  current: 25,
+  default: 20,
+};
+
 const truncate = (value, maxLength = 42) => {
   if (!value) return "";
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
@@ -100,15 +111,15 @@ const buildGraph = () => {
     defs
       .append("marker")
       .attr("id", `document-links-arrow-${relation}`)
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 20)
+      .attr("viewBox", "0 -4 8 8")
+      .attr("refX", 15)
       .attr("refY", 0)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
+      .attr("markerWidth", 4)
+      .attr("markerHeight", 4)
       .attr("orient", "auto")
       .append("path")
       .attr("fill", color)
-      .attr("d", "M0,-5L10,0L0,5");
+      .attr("d", "M0,-4L8,0L0,4");
   });
 
   const nodes = graph.nodes.map((node) => ({ ...node }));
@@ -123,11 +134,11 @@ const buildGraph = () => {
       d3
         .forceLink(links)
         .id((d) => d.id)
-        .distance((link) => (link.source.id === currentNodeId || link.target.id === currentNodeId ? 100 : 140))
+        .distance((link) => (link.source.id === currentNodeId || link.target.id === currentNodeId ? 92 : 128))
     )
     .force("charge", d3.forceManyBody().strength(-420))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collide", d3.forceCollide().radius((d) => (d.id === currentNodeId ? 34 : 24)))
+    .force("collide", d3.forceCollide().radius((d) => (d.id === currentNodeId ? 25 : 17)))
     .force(
       "radial",
       d3.forceRadial(
@@ -144,7 +155,7 @@ const buildGraph = () => {
     .data(links)
     .join("line")
     .attr("stroke", (d) => EDGE_COLORS[d.relation] || "#94a3b8")
-    .attr("stroke-width", (d) => (d.relation === "incoming" ? 1.8 : 2.4))
+    .attr("stroke-width", (d) => (d.relation === "incoming" ? 1.2 : 1.6))
     .attr("marker-end", (d) => `url(#document-links-arrow-${d.relation})`);
 
   const node = svg
@@ -156,20 +167,26 @@ const buildGraph = () => {
 
   node
     .append("circle")
-    .attr("r", (d) => (d.id === currentNodeId ? 18 : d.relation === "mutual" ? 13 : 11))
+    .attr("r", (d) =>
+      d.id === currentNodeId
+        ? NODE_RADIUS.current
+        : d.relation === "mutual"
+          ? NODE_RADIUS.mutual
+          : NODE_RADIUS.default
+    )
     .attr("fill", (d) => (d.is_ignored ? IGNORED_NODE_COLOR : NODE_COLORS[d.relation] || "#64748b"))
     .attr("fill-opacity", (d) => (d.is_external && !d.is_ignored ? 0.45 : 0.95))
     .attr("stroke", "#ffffff")
-    .attr("stroke-width", 2)
+    .attr("stroke-width", 1.5)
     .attr("stroke-opacity", (d) => (d.is_external && !d.is_ignored ? 0.55 : 1));
 
   node
     .append("text")
     .text((d) => truncate(d.title))
     .attr("text-anchor", "middle")
-    .attr("dy", (d) => (d.id === currentNodeId ? 34 : 28))
+    .attr("dy", (d) => (d.id === currentNodeId ? NODE_LABEL_OFFSET.current : NODE_LABEL_OFFSET.default))
     .attr("fill", "currentColor")
-    .attr("font-size", 11)
+    .attr("font-size", 10)
     .attr("opacity", (d) => (d.is_external ? 0.72 : 1))
     .attr("class", "pointer-events-none fill-base-content");
 

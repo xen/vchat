@@ -1,4 +1,5 @@
 {% extends "admin.html" %}
+{% import "include/admin/pagination.html" as ui_pagination %}
 {% block content %}
 
 <div class="flex items-center justify-between mb-6">
@@ -150,70 +151,7 @@
             </table>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-4 mt-4">
-            <p class="text-sm text-base-content/70">
-                {% if pagination.total %}
-                    {% set summary_text = '%(start)s-%(end)s из %(total)s результатов' %}
-                    {{ summary_text % {
-                        'start': pagination.range_start,
-                        'end': pagination.range_end,
-                        'total': pagination.total,
-                    } }}
-                {% else %}
-                    Нет данных для отображения
-                {% endif %}
-            </p>
-
-            {% if pagination.total_pages > 1 %}
-            <div class="join">
-                <a
-                    class="btn btn-sm btn-outline join-item {{ 'btn-disabled pointer-events-none opacity-50' if not pagination.has_prev }}"
-                    {% if pagination.has_prev %}
-                        {% if pagination.prev_query %}
-                            href="{{ url('project_history', query_=pagination.prev_query) }}"
-                        {% else %}
-                            href="{{ url('project_history') }}"
-                        {% endif %}
-                    {% else %}
-                        tabindex="-1" aria-disabled="true"
-                    {% endif %}>
-                    <iconify-icon icon="lucide:arrow-left"></iconify-icon>
-                </a>
-                {% for item in pagination.pages %}
-                    {% if item.number %}
-                        {% if item.query %}
-                            <a
-                                class="btn btn-sm join-item {{ 'btn-active' if item.is_current else 'btn-outline' }}"
-                                href="{{ url('project_history', query_=item.query) }}">
-                                {{ item.number }}
-                            </a>
-                        {% else %}
-                            <a
-                                class="btn btn-sm join-item {{ 'btn-active' if item.is_current else 'btn-outline' }}"
-                                href="{{ url('project_history') }}">
-                                {{ item.number }}
-                            </a>
-                        {% endif %}
-                    {% else %}
-                        <span class="btn btn-sm btn-ghost join-item cursor-default">...</span>
-                    {% endif %}
-                {% endfor %}
-                <a
-                    class="btn btn-sm btn-outline join-item {{ 'btn-disabled pointer-events-none opacity-50' if not pagination.has_next }}"
-                    {% if pagination.has_next %}
-                        {% if pagination.next_query %}
-                            href="{{ url('project_history', query_=pagination.next_query) }}"
-                        {% else %}
-                            href="{{ url('project_history') }}"
-                        {% endif %}
-                    {% else %}
-                        tabindex="-1" aria-disabled="true"
-                    {% endif %}>
-                    <iconify-icon icon="lucide:arrow-right"></iconify-icon>
-                </a>
-            </div>
-            {% endif %}
-        </div>
+        {{ ui_pagination.render(pagination) }}
     </div>
 </div>
 

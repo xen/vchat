@@ -1,34 +1,89 @@
 <div class="flex flex-col gap-6">
+    <style>
+        .document-indexing-wrap {
+            align-items: flex-start;
+        }
+
+        .document-indexing-steps {
+            grid-auto-columns: 8rem;
+        }
+
+        .document-indexing-steps .step {
+            min-width: 8rem;
+            min-height: 1rem;
+        }
+
+        .document-indexing-steps .step::before {
+            height: 0.25rem;
+            border-width: 0;
+        }
+
+        .document-indexing-steps .step.step-trail-success::before {
+            background-color: var(--color-success);
+            color: var(--color-success);
+        }
+
+        .document-indexing-steps .step::after,
+        .document-indexing-steps .step > .step-icon {
+            width: 1rem;
+            height: 1rem;
+            border-width: 0;
+            font-size: 0.625rem;
+        }
+
+        .document-indexing-labels {
+            display: grid;
+            grid-template-columns: repeat(3, 8rem);
+            margin-top: 0.125rem;
+            font-size: 0.75rem;
+            color: color-mix(in oklab, var(--color-base-content) 65%, transparent);
+        }
+    </style>
     <div class="space-y-1.5">
         {% set p_status, p_error, p_msg = document_pipeline %}
         {% set ERROR_ERRORS = ['http_4xx', 'http_5xx', 'extraction_failed', 'index_failed', 'embedder_failed'] %}
         {% set STEP_OF = {'crawler': 0, 'parsing': 1, 'ready': 2} %}
         {% set cur_step = STEP_OF.get(p_status, 0) %}
-        {% set steps = [('Crawler', 0), ('Parser', 1), ('Ready', 2)] %}
-        <p class="text-sm">
-            <span class="opacity-60">Индексация:</span>
-            {% for step_label, step_idx in steps %}
-                {% if step_idx < cur_step %}
-                    <span class="font-medium text-success">{{ step_label }}</span>
-                {% elif step_idx == cur_step %}
-                    {% if not p_error %}
-                        <span class="font-medium text-warning">{{ step_label }}</span>
-                    {% elif p_error in ERROR_ERRORS %}
-                        <span class="font-medium text-error">{{ step_label }}</span>
+        {% set pipeline_complete = p_status == 'ready' and not p_error %}
+        {% set steps = [('Поисковый бот', 0), ('Обработка', 1), ('Готово', 2)] %}
+        <div class="document-indexing-wrap flex flex-col gap-1.5">
+            <ul class="steps steps-horizontal document-indexing-steps font-normal">
+                {% for step_label, step_idx in steps %}
+                    {% if step_idx < cur_step or (pipeline_complete and step_idx == cur_step) %}
+                        {% set step_class = 'step step-success' %}
+                    {% elif step_idx == cur_step %}
+                        {% if not p_error %}
+                            {% set step_class = 'step step-warning' %}
+                        {% elif p_error in ERROR_ERRORS %}
+                            {% set step_class = 'step step-error' %}
+                        {% else %}
+                            {% set step_class = 'step step-neutral opacity-70' %}
+                        {% endif %}
                     {% else %}
-                        <span class="opacity-60">{{ step_label }}</span>
+                        {% set step_class = 'step opacity-35' %}
                     {% endif %}
-                {% else %}
-                    <span class="opacity-40">{{ step_label }}</span>
-                {% endif %}
-                {% if not loop.last %}
-                    <span class="opacity-40">→</span>
-                {% endif %}
-            {% endfor %}
+                    {% if step_idx > 0 and (step_idx <= cur_step or pipeline_complete) %}
+                        {% set step_class = step_class + ' step-trail-success' %}
+                    {% endif %}
+                    <li class="{{ step_class }}"></li>
+                {% endfor %}
+            </ul>
+            <div class="document-indexing-labels">
+                {% for step_label, step_idx in steps %}
+                    {% if loop.first %}
+                        {% set label_style = 'text-align:left;' %}
+                    {% elif loop.last %}
+                        {% set label_style = 'text-align:right;' %}
+                    {% else %}
+                        {% set label_style = 'text-align:center;' %}
+                    {% endif %}
+                    <span style="{{ label_style }}">{{ step_label }}</span>
+                {% endfor %}
+            </div>
             {% if p_msg %}
-                <span class="opacity-70">; {{ p_msg }}</span>
+                <p class="text-xs {% if p_error %}text-error/80{% else %}opacity-70{% endif %}">{{ p_msg }}</p>
             {% endif %}
-        </p>
+        </div>
         <p class="text-sm"><span class="opacity-60">Статистика:</span> {{ document_stats_summary }}</p>
         <p class="text-sm"><span class="opacity-60">Обход:</span> {{ document_crawl_summary }}</p>
     </div>

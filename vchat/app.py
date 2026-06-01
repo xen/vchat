@@ -24,7 +24,6 @@ from vchat.metrics import validate_multiprocess_setup
 from vchat.project_settings import init_settings_cache
 from vchat.utils import (
     make_full_url,
-    paginator,
     protect,
     protect_timed,
 )
@@ -113,7 +112,6 @@ async def init_jinja(request):
         "debug": DEBUG,
         "meta": request.get("meta"),
         "user": request.get("user"),
-        "paginate": lambda total: paginator(total, request),
         "current_year": datetime.now().year,
         "pretty_date": lambda date: date.strftime("%Y-%m-%d") if date else "",
         "pretty_datetime": lambda date: (

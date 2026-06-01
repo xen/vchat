@@ -4,7 +4,7 @@ from aiohttp_session import get_session
 
 from vchat.i18n import _
 from vchat.models import AdminEvent, User
-from vchat.utils import login_required, meta
+from vchat.utils import login_required, meta, paginator
 
 from . import forms
 
@@ -26,14 +26,22 @@ async def event_list(request):
         page = int(request.rel_url.query.get("page", "1"))
     except (TypeError, ValueError):
         page = 1
-    page = max(page, 1)
 
     total_items = (
         await request["db"].scalar(sa.select(sa.func.count(AdminEvent.id))) or 0
     )
-    total_pages = max((total_items + per_page - 1) // per_page, 1)
-    if page > total_pages:
-        page = total_pages
+    def _href_for_page(target_page: int) -> str:
+        if target_page <= 1:
+            return request.path
+        return str(request.rel_url.with_query({"page": str(target_page)}))
+
+    pagination = paginator(
+        total_items,
+        page=page,
+        per_page=per_page,
+        href_factory=_href_for_page,
+    )
+    page = pagination["page"]
 
     offset = (page - 1) * per_page
     events = (
@@ -50,11 +58,7 @@ async def event_list(request):
     )
     return {
         "events": events,
-        "page": page,
-        "total_pages": total_pages,
-        "total_items": total_items,
-        "has_prev": page > 1,
-        "has_next": page < total_pages,
+        "pagination": pagination,
     }
 
 

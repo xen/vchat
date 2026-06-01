@@ -3,7 +3,11 @@
 <div class="w-full max-w-none">
     <div class="mb-6 flex items-center justify-between gap-3">
         <div>
-            <h1 class="text-xl font-semibold">{{ source.title or source.uri }}</h1>
+            <h1 class="text-lg font-medium break-words">
+                <a href="{{ url('project_edit_sources') }}" class="text-base-content/50 transition-colors hover:text-base-content">Источники</a>
+                <span class="mx-2 text-base-content/40">&gt;</span>
+                <span class="text-base-content">{{ source.title or source.uri }}</span>
+            </h1>
             {% if source.title %}
             <a href="{{ source.uri }}"
                target="_blank"
@@ -49,7 +53,6 @@
                 <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
                 <span class="hidden sm:inline">Удалить</span>
             </button>
-            <a class="btn btn-ghost btn-sm" href="{{ url('project_edit_sources') }}">{{ _('Назад') }}</a>
         </div>
     </div>
 

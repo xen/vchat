@@ -63,36 +63,6 @@
 </form>
 {% endmacro %}
 
-{% macro show_from_to(request, total) %}
-<div
-  class="sticky bottom-0 right-0 items-center w-full p-4 bg-base-100 border-t border-base-300 sm:flex sm:justify-between">
-  <div class="flex items-center mb-4 sm:mb-0">
-    <span class="text-sm font-normal text-base-content/70">
-      {{ _('Показано') }}
-      <span class="font-semibold text-base-content">
-        {% if request.query.get('изfset')|int + request.query.get('limit')|int < total|int %} {% if
-          request.query.get('limit') %} {{ request.query.get('limit') }} {% else %} {% if total|int < 10 %} {{ total|int
-          }} {% else %} 10 {% endif %} {% endif %} {% else %} {{ total|int - request.query.get('изfset')|int }} {% endif
-          %} </span>
-          {{ _('начиная с') }}
-          <span class="font-semibold text-base-content">
-            {% if request.query.get("изfset") %}
-            {{ request.query.get('изfset') }}
-            {% else %}
-            0
-            {% endif %}
-          </span>
-          {{ _('из') }}
-          <span class="font-semibold text-base-content">
-            {{ total }}
-          </span>
-          {{ _('записей') }}
-      </span>
-  </div>
-  {{ paginate(total) }}
-</div>
-{% endmacro %}
-
 {# Theme switcher button #}
 {% macro theme_switcher() %}
 <button aria-label="{{ _('Сменить тему') }}" class="btn btn-sm btn-circle btn-ghost relative overflow-hidden"
