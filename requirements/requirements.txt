@@ -4,6 +4,8 @@
 #
 #    pip-compile --generate-hashes --output-file=requirements/requirements.txt --unsafe-package=pip requirements/requirements.in
 #
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 accelerate==1.12.0 \
     --hash=sha256:3e2091cd341423207e2f084a6654b1efcd250dc326f2a37d6dde446e07cabb11 \
     --hash=sha256:70988c352feb481887077d2ab845125024b2a137a5090d6d7a32b57d03a45df6
@@ -167,6 +169,10 @@ annotated-types==0.7.0 \
     --hash=sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53 \
     --hash=sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89
     # via pydantic
+annoy==1.17.3 ; sys_platform == "linux" \
+    --hash=sha256:9cbfebefe0a5f843eba29c6be4c84d601f4f41ad4ded0486f1b88c3b07739c15 \
+    --hash=sha256:c33a5d4d344c136c84976bfb2825760142a8bb25335165e24e11c9afbfa8c2e9
+    # via -r requirements/requirements.in
 antlr4-python3-runtime==4.9.3 \
     --hash=sha256:f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b
     # via omegaconf
@@ -266,8 +272,6 @@ beautifulsoup4==4.14.3 \
     # via
     #   -r requirements/requirements.in
     #   docling
-bonsai==1.5.5
-    # via -r requirements.in
 billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
     --hash=sha256:55f542c371209e03cd5862299b74e52e4fbcba8250ba611ad94276b369b6a85f
@@ -310,6 +314,29 @@ blis==1.3.3 \
     --hash=sha256:f20f7ad69aaffd1ce14fe77de557b6df9b61e0c9e582f75a843715d836b5c8af \
     --hash=sha256:f36c0ca84a05ee5d3dbaa38056c4423c1fc29948b17a7923dd2fed8967375d74
     # via thinc
+bonsai==1.5.5 \
+    --hash=sha256:12918054549ef567d792e7b5083bd257f98339b11b5a4f49dd717273c84f55f8 \
+    --hash=sha256:1b9d8228b3ae334dd3f9bde6bcc81fc432b07da6aacd4b2de8085b40b6f3aa5b \
+    --hash=sha256:2517590867ef77cdaaa1ceee2411703f5f1b14e1938786d7855d0a45ec835d3d \
+    --hash=sha256:28b49661a8e7e0bdec58048c473154bec4fbe151cb4c91bb3de7c3b9acddcd6e \
+    --hash=sha256:2e04a7d7c35c527e92b1835b43063a448c24e01b87b41cd54257ca0a04e24dd6 \
+    --hash=sha256:404cf47b5da153a6a88fe7a6f34fbbbb14351e742547ea683953fdaee4b22ce3 \
+    --hash=sha256:417d2c28ec91af0300c9715cc724b84a79ec3b471bc41d3a0a71009fae0cb022 \
+    --hash=sha256:5c941199b8349761c207366013e4481df52d99c83e6c10ed1372de890ea230f3 \
+    --hash=sha256:77ce92cee2136fe87643e5c5f89f096f384a8a801988416fad78c5fb98e4b746 \
+    --hash=sha256:7da307dcf0d796ab6594aabe7dc2248a58146e60e1513f0349cc5d8c7102ee55 \
+    --hash=sha256:850933a9cf5d918b14b9b2bfa4d28e8f39f55140f861a0163c8c7f7d7142d641 \
+    --hash=sha256:8b8df73b61c74d819a06cacd9df8a61e1a13e84a9fca091fd1661bb2ca7aaa4f \
+    --hash=sha256:8d0d41db8b6cf9e3f78122ae92c98f0785a8c87cf6e5929b59b36836df666b44 \
+    --hash=sha256:8ebaedbc3c344887f70b890d3e38f28509254ce4c5f622f6b2cc96f209de949f \
+    --hash=sha256:b9a6385e21c549b4ff75fa8e946bd5b08c8891e8cdf6b1c5a72baf47a3e1338b \
+    --hash=sha256:c1aa689417325ef40fd20481b00bbf4478178dcda7dfdff7348a6cb172065f2d \
+    --hash=sha256:c3c7845a4c7a361108d80c1ac6718a9d37593b8e975635e02bdd02000fc2511d \
+    --hash=sha256:ca619376ac52c97cbe785e4ccfabda2a3a9d3c3f55da8cd304753de0eb356be0 \
+    --hash=sha256:e3ea37384e6af87517b7fb467acca8001580afa47644b572c2a881206524c52b \
+    --hash=sha256:e822a8e0a02a10ee2dc2276a43538d67ab1fa4974a33f34cb763b246db6d52f7 \
+    --hash=sha256:fb9a1fcf149fb3fdabfc33a24aad0c1485a88bf619e5a36b7f0898d11b7cd03e
+    # via -r requirements/requirements.in
 boto3==1.42.9 \
     --hash=sha256:cdd4cc3e5bb08ed8a0c5cc77eca78f98f0239521de0991f14e44b788b0c639b2 \
     --hash=sha256:d21d22af9aeb1bad8e9b670a221d6534c0120f7e7baf523dafaca83f1f5c3f90
@@ -550,7 +577,6 @@ click==8.3.1 \
     #   click-didyoumean
     #   click-plugins
     #   click-repl
-    #   ocrmac
     #   typer
     #   typer-slim
     #   uvicorn
@@ -1101,7 +1127,9 @@ greenlet==3.3.0 \
     --hash=sha256:dcd2bdbd444ff340e8d6bdf54d2f206ccddbb3ccfdcd3c25bf4afaa7b8f0cf45 \
     --hash=sha256:e29f3018580e8412d6aaf5641bb7745d38c85228dacf51a73bd4e26ddf2a6a8e \
     --hash=sha256:e8e18ed6995e9e2c0b4ed264d2cf89260ab3ac7e13555b8032b25a74c6d18655
-    # via -r requirements/requirements.in
+    # via
+    #   -r requirements/requirements.in
+    #   sqlalchemy
 griffelib==2.0.2 \
     --hash=sha256:3cf20b3bc470e83763ffbf236e0076b1211bac1bc67de13daf494640f2de707e \
     --hash=sha256:925c857658fb1ba40c0772c37acbc2ab650bd794d9c1b9726922e36ea4117ea1
@@ -2005,10 +2033,6 @@ numpy==2.2.6 \
     #   thinc
     #   torchvision
     #   transformers
-ocrmac==1.0.1 \
-    --hash=sha256:1cef25426f7ae6bbd57fe3dc5553b25461ae8ad0d2b428a9bbadbf5907349024 \
-    --hash=sha256:507fe5e4cbd67b2d03f6729a52bbc11f9d0b58241134eb958a5daafd4b9d93d9
-    # via docling
 omegaconf==2.3.0 \
     --hash=sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b \
     --hash=sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7
@@ -2333,7 +2357,6 @@ pillow==12.2.0 \
     #   docling-core
     #   docling-ibm-models
     #   docling-parse
-    #   ocrmac
     #   python-pptx
     #   rapidocr
     #   torchvision
@@ -3028,73 +3051,6 @@ pymorphy3-dicts-ru==2.4.417150.4580142 \
     --hash=sha256:39ab379d4ca905bafed50f5afc3a3de6f9643605776fbcabc4d3088d4ed382b0 \
     --hash=sha256:718bac64c73c10c16073a199402657283d9b64c04188b694f6d3e9b0d85440f4
     # via pymorphy3
-pyobjc-core==12.2 \
-    --hash=sha256:17b4e003af384d3086c2f39989a0b282c5755dd1066f331cf7c9fa65febe22ce \
-    --hash=sha256:1e4216f2ec962dc13cf7f31b9bc3a7190337a0f401e7dc9de6b2d8c08b9dbb7a \
-    --hash=sha256:3137b2d14f9f2154fb5b1c092c38d15e164f68ab190c18335d76e4e7e1583f79 \
-    --hash=sha256:45fffb2b8dc0ae4480386429bd1e7fa8aabeb2eec81816d6971b33936dfcfff8 \
-    --hash=sha256:515ecf2afe168301feb66a7230d700584ce2e4b8a0ac178e19450b8898384139 \
-    --hash=sha256:51d7de4cfa32f508c6a7aac31f131b12d5e196a8dcf588e6e8d7e6337224f66d \
-    --hash=sha256:7677ed758a367bbbb5589d6f5276fb360a45c89168276c26162f61840b0fa03d \
-    --hash=sha256:9287c7c46d6ae8676b4c6c0389a8f4b5381f42ae53a47151900c08b157e5a992 \
-    --hash=sha256:a51352e478785cd7fce1604b9902125a286139caea0759cb340e59d75b594992 \
-    --hash=sha256:ac952bac8057dd0b97ee7b311c39f97cad7430b7cfbd67ca0a30135a7d17d2ab
-    # via
-    #   pyobjc-framework-cocoa
-    #   pyobjc-framework-coreml
-    #   pyobjc-framework-quartz
-    #   pyobjc-framework-vision
-pyobjc-framework-cocoa==12.2 \
-    --hash=sha256:06cb92d97d1af9d1f459ae6cf1d1a7b824c12d3aff1b709885966acd6b7208c2 \
-    --hash=sha256:0bb7cd468ca89bbc2d1d8acb930b4f4fdce8826de30a66608fc28f8880c1f6a6 \
-    --hash=sha256:20b392e2b7241caad0538dfde12143343e5dfe48f72e7df660a7548e635903dc \
-    --hash=sha256:290e544a8c2d0786a34a359d825eaad44ebaaa3b30cdd765b2755422ca39a0d2 \
-    --hash=sha256:46b6681e2b21b099ed095339c140f2c8137d6ac5658653166ee90722f9e3c621 \
-    --hash=sha256:5a0bed77b0b56074cc2b4564aae3e6e9d5da5fdf93252f50b6dbced0f7fece3a \
-    --hash=sha256:a2efad455ded551d1a033fd22245d57b71b6c065e8b52158dceed1611b5ae033 \
-    --hash=sha256:aecfd44908fa12a9291fb6ca2458ebbc611102de6784f2202a35fd5ed9f56c60 \
-    --hash=sha256:ef679740f541c52118149b558b757d1f11d9dcf30c2a23344b13a6af6a99a1ab \
-    --hash=sha256:f0bbe0abedfb24b11ff6c71e26cdefb0df001c6482f95591fad40c2688c16498
-    # via
-    #   pyobjc-framework-coreml
-    #   pyobjc-framework-quartz
-    #   pyobjc-framework-vision
-pyobjc-framework-coreml==12.2 \
-    --hash=sha256:011dc67f11144817c9cf728cb7ae3d520001c4e099f9efb6a4c9fec4c19e6413 \
-    --hash=sha256:053f03cea0e7a4ab32ffaca03825ddbf1800a6a1dee1fa0e69e5b3948c5d6a56 \
-    --hash=sha256:0ab804c7fdeedaea8fd6e1ec832a23d57913b280d3cc40419adabb0032271160 \
-    --hash=sha256:64b66797b9cc1b20d726476f78ee2e69540fad60676d5dbb120530fbd429d3c7 \
-    --hash=sha256:774a28259888c1bc247e8ed5ad14d7fc8baa975591c89669cd952e1756cd7d48 \
-    --hash=sha256:8127be60808dba7e945f69598664b1a52e1ee6331f3695da08e8642b23b10f8f \
-    --hash=sha256:82dded9d153db057aae965539cb28b4dc43391e5e07f38ac60db83061a9453ca \
-    --hash=sha256:884f1f68c7a74c56d26858051da8a1e19848be97f2c4b06b32ae93e505109583 \
-    --hash=sha256:f55eb83825308fd759e053dcb9844ae5106e371645e7dcdb0777f161d59f8280 \
-    --hash=sha256:f5ebf148cedb1ee9b5183003cdb64033e97c7f50b4d073684e0fb54e63761259
-    # via pyobjc-framework-vision
-pyobjc-framework-quartz==12.2 \
-    --hash=sha256:08f7c7b42de70875cee15f4d0e217471e382ffac44d0a5bcfd30f583b9b41adb \
-    --hash=sha256:214c19aadfd100d9202994a22fbced804f7d60f8473de6f292111cc1668f9373 \
-    --hash=sha256:2dec68f8d5b42030fb0f44bf1169a208318393f216a68048b4336649d877293a \
-    --hash=sha256:359738c88b12427a30d73a3d202002ab910e31eebf6bee4550495ec8aa64a004 \
-    --hash=sha256:4e0634ee9782e480587a074d1d08867fa7ef0d845c2f6cbaef6a48b7d2c3899f \
-    --hash=sha256:57553e7085191f9421ec78fe57a8a0c8462e39d675014ac1e4b389381f04535a \
-    --hash=sha256:6fbd127d864108103d4980292ffca32bd9c1e5f643e0abd5773fdde2918afaca \
-    --hash=sha256:8b238979d62b6e0b90d466477eee968d8f2f6720e850af2472e01cef349293b4 \
-    --hash=sha256:96201eb37192fde3abac348adacfc2d4e8af4e76d42752664d1e515f1db5d929 \
-    --hash=sha256:b343395d4790323b0376fe20c83ac468510ba19f65429323ca211708c939d107
-    # via pyobjc-framework-vision
-pyobjc-framework-vision==12.2 \
-    --hash=sha256:0e90244f98ede5ec16ac129ed4bbd7cf0ec07247bac6f06e9cb612db23a68a3b \
-    --hash=sha256:3d9080e4882e292c2d3c0726127e516a5c7774e96faf199a2c74aafcc1b6aa60 \
-    --hash=sha256:45c7d3fda44f740b4c0a9c1b86d9af137994172f2990e0650112f7eb8e77e48e \
-    --hash=sha256:47274c6167434a20be81c3506b49414f85d946a528ff930622b8a6dd758b9b95 \
-    --hash=sha256:76737fa3440c504993995537643b6529d47c1affecba426f00c716cd93a07a9b \
-    --hash=sha256:77628f8c12a2f8072e8a8ab780cd0fd716f279153dcd883ce058bf2d1843b16d \
-    --hash=sha256:b6d12bcb96d711a4b5d1743aa7b1af7dec9e2f840b0e5ec200aed262da3fb587 \
-    --hash=sha256:c08a08dd979886e2435a53714ef95af6da4a0dc1b2e37236cdd292b5b8707060 \
-    --hash=sha256:df4d7d3ccdd723334ab62e6e2051d04e3554724be90102db353874938f101e05 \
-    --hash=sha256:ed1eed217d5c86bbc09e78b4a7f1b415116a722b55948aaf7862f555c103d771
-    # via ocrmac
 pyopenssl==26.1.0 \
     --hash=sha256:115563879b2c8ccb207975705d3e491434d8c9d7c79667c902ecbf5f3bbd2ece \
     --hash=sha256:737f0a2275c5bc54f3b02137687e1a765931fb3949b9a92a825e4d33b9eec08b
