@@ -4,6 +4,7 @@
 # This script installs all required system packages for vchat
 
 set -e
+export DEBIAN_FRONTEND=noninteractive
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
@@ -17,12 +18,12 @@ echo "Installing system dependencies for vchat..."
 echo "Refreshing PostgreSQL APT repository key..."
 rm -f /etc/apt/sources.list.d/pgvector.list
 install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor --batch --yes -o /etc/apt/keyrings/postgresql.gpg
 chmod 0644 /etc/apt/keyrings/postgresql.gpg
 
 echo "Configuring PostgreSQL APT repository..."
 . /etc/os-release
-sh -c 'echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list
 
 apt-get update
 
@@ -30,6 +31,7 @@ echo "Installing system dependencies for vchat..."
 apt-get install -y \
   build-essential \
   libldap-dev \
+  libsasl2-dev \
   libpq-dev \
   libssl-dev \
   python3-dev \
@@ -48,6 +50,9 @@ apt-get install -y \
   postgresql-18-pgvector
 
 echo "Installing Python package manager uv..."
-pip3 install uv
+if ! command -v uv >/dev/null 2>&1; then
+  curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+fi
+uv --version
 
 echo "✓ All system dependencies installed successfully!"
