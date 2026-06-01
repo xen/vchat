@@ -108,10 +108,13 @@ async def db_session_middleware(request, handler):
         request["db"] = session
         try:
             response = await handler(request)
+            if session.in_transaction():
+                await session.rollback()
             return response
-        except Exception as e:
-            await session.rollback()
-            raise e
+        except Exception:
+            if session.in_transaction():
+                await session.rollback()
+            raise
 
 
 @web.middleware
@@ -144,6 +147,8 @@ async def auth_middleware(
                 )
             else:
                 request["auth_session"].invalidate()
+            if request["db"].in_transaction():
+                await request["db"].rollback()
     except Exception as e:
         logger.error("Error in auth_middleware: %s", e)
         return web.Response(text="Internal Server Error", status=500)

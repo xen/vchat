@@ -26,6 +26,9 @@ celery_max_retries: 3
 celery_retry_delay: 5
 celery_default_queue: embeddings
 celery_visibility_timeout: 21600 # seconds; keep long-running embedder jobs from being redelivered
+celery_worker_concurrency: 4
+celery_worker_max_tasks_per_child: 100
+celery_worker_max_memory_per_child_kb: 524288
 
 # Debugging settings
 loglevel: info

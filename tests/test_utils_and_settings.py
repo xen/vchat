@@ -174,3 +174,40 @@ def test_settings_yaml_load_and_validation() -> None:
 def test_metrics_helpers() -> None:
     assert metrics._safe_label(" GPT-4o Mini/1 ", "fallback") == "GPT-4o Mini/1"
     assert metrics._normalize_guardrail_reason("output_blocked") == "output_blocked"
+
+
+def test_crawler_queue_collector_uses_broker_db_and_embeddings_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    closed: list[bool] = []
+
+    class _Redis:
+        def llen(self, queue_name: str) -> int:
+            calls.append(queue_name)
+            return {"crawler": 7, "embeddings": 11}[queue_name]
+
+        def close(self) -> None:
+            closed.append(True)
+
+    monkeypatch.setitem(metrics.config, "celery_redis_uri", "redis://example/")
+    monkeypatch.setitem(metrics.config, "celery_broker_db", 42)
+    monkeypatch.setattr(
+        metrics.redis_lib.Redis,
+        "from_url",
+        lambda url, decode_responses=False: (
+            calls.append(f"url={url},decode={decode_responses}") or _Redis()
+        ),
+    )
+
+    families = list(metrics.CrawlerQueueCollector().collect())
+    samples = {
+        family.name: family.samples[0].value
+        for family in families
+    }
+
+    assert calls[0] == "url=redis://example/42,decode=False"
+    assert calls[1:] == ["crawler", "embeddings"]
+    assert samples["vchat_crawler_queue_size"] == 7
+    assert samples["vchat_embedder_queue_size"] == 11
+    assert closed == [True]

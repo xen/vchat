@@ -241,43 +241,44 @@ def test_chunk_document_text_no_filter_when_hashes_empty(monkeypatch) -> None:
 def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
     """rebuild_boilerplate_for_source counts how many pages share each trigram."""
     from jobs.embedder.tasks import rebuild_boilerplate_for_source
-    from vchat.models import SourceShingleFreq
 
-    # Build a fake session that records what gets added/deleted
-    added: list[SourceShingleFreq] = []
+    inserted_batches: list[list[dict[str, int]]] = []
     deleted_source_id: list[int] = []
+    rollbacks = []
 
     class FakeResult:
         def scalars(self):
             return self
 
-        def all(self):
+        def __iter__(self):
             # Two pages: one shared block + one unique block each
             nav = "навигация главная страница контакты о нас услуги"
-            return [
+            return iter(
+                [
                 f"{nav}\nУникальное содержание первой страницы автора блога",
                 f"{nav}\nДругое уникальное содержание второй страницы сайта",
-            ]
-
-    class FakeDeleteWhere:
-        def where(self, *args, **kwargs):
-            return self
-
-    class FakeDelete:
-        def where(self, condition):
-            # Extract source_id from condition
-            return self
+                ]
+            )
 
     class FakeSession:
-        def execute(self, stmt):
+        def __init__(self) -> None:
+            self._in_transaction = True
+
+        def execute(self, stmt, params=None):
             # Detect if it's a select or delete
             if hasattr(stmt, "is_delete") and stmt.is_delete:
                 return None
+            if hasattr(stmt, "is_insert") and stmt.is_insert:
+                inserted_batches.append(list(params or []))
+                return None
             return FakeResult()
 
-        def add(self, obj):
-            if isinstance(obj, SourceShingleFreq):
-                added.append(obj)
+        def rollback(self):
+            rollbacks.append(True)
+            self._in_transaction = False
+
+        def in_transaction(self):
+            return self._in_transaction
 
         def commit(self):
             pass
@@ -299,23 +300,35 @@ def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
 
         return Stmt()
 
+    def fake_insert(table):
+        class Stmt:
+            is_insert = True
+
+        return Stmt()
+
     import jobs.embedder.tasks as tasks_module
 
     original_sa_delete = tasks_module.sa.delete
+    original_sa_insert = tasks_module.sa.insert
     tasks_module.sa.delete = fake_delete
+    tasks_module.sa.insert = fake_insert
     try:
         count = rebuild_boilerplate_for_source(session, source_id=42)
     finally:
         tasks_module.sa.delete = original_sa_delete
+        tasks_module.sa.insert = original_sa_insert
+
+    added = [item for batch in inserted_batches for item in batch]
 
     # Some shingles from the navigation block appear in both pages → count = 2
     nav_hashes = compute_trigram_hashes(
         "навигация главная страница контакты о нас услуги"
     )
-    nav_in_added = [obj for obj in added if obj.shingle_hash in nav_hashes]
-    assert any(obj.count == 2 for obj in nav_in_added), (
+    nav_in_added = [row for row in added if row["shingle_hash"] in nav_hashes]
+    assert any(row["count"] == 2 for row in nav_in_added), (
         "Navigation trigrams must have count=2 (appear in both pages)"
     )
 
     # Total distinct shingles must match what was added
     assert count == len(added)
+    assert rollbacks == [True]

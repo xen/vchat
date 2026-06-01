@@ -25,7 +25,7 @@ from vchat.document_shingles import (
     is_boilerplate_block,
 )
 from vchat.models import ChatMsg, Chunk, Page, Source, SourceShingleFreq
-from vchat.page_status import PageStatus
+from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
@@ -69,7 +69,65 @@ EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]
 EMBEDDING_CHUNK_MAX_TOKENS = config["embedding_chunk_max_tokens"]
 EMBEDDING_CHUNK_OVERLAP_TOKENS = config["embedding_chunk_overlap_tokens"]
 EMBEDDING_CHUNK_MAX_CHARS = config["embedding_chunk_max_chars"]
+EMBEDDING_BLOCK_MAX_CHARS = max(
+    EMBEDDING_CHUNK_MAX_CHARS,
+    int(config.get("embedding_block_max_chars", 48000) or 48000),
+)
+EMBEDDING_ENTITY_SCAN_MAX_CHARS = max(
+    EMBEDDING_CHUNK_MAX_CHARS,
+    int(config.get("embedding_entity_scan_max_chars", 24000) or 24000),
+)
+SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE = max(
+    100,
+    int(config.get("source_shingle_freq_insert_batch_size", 2000) or 2000),
+)
 VEC_DIM = int(config.get("vec_dim", 2048) or 2048)
+
+ERROR_META_KEYS = (
+    "error",
+    "message",
+    "reason",
+    "exception_class",
+)
+
+
+class EmbedderDocumentError(RuntimeError):
+    def __init__(self, message: str, *, page_id: int | None = None):
+        super().__init__(message)
+        self.page_id = page_id
+
+
+@dataclass(slots=True)
+class PageChunkContext:
+    id: int
+    source_id: int | None
+    content: str
+    status_error: str | None
+
+
+def clear_error_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    for key in ERROR_META_KEYS:
+        meta.pop(key, None)
+    return meta
+
+
+def set_error_meta(
+    meta: dict[str, Any],
+    *,
+    reason: str,
+    message: str | None = None,
+    error: str | None = None,
+    exception_class: str | None = None,
+) -> dict[str, Any]:
+    clear_error_meta(meta)
+    meta["reason"] = reason
+    if message:
+        meta["message"] = message
+    if error:
+        meta["error"] = error
+    if exception_class:
+        meta["exception_class"] = exception_class
+    return meta
 
 
 def get_embed_model() -> Any:
@@ -260,7 +318,9 @@ def chunk_text_word_window(
         ix += 1
         if j >= n:
             break
-        i = max(0, j - overlap)
+        # Guarantee forward progress even when overlap is larger than the
+        # produced chunk. Without this, short chunks can loop forever.
+        i = max(i + 1, j - overlap)
     return chunks
 
 
@@ -328,6 +388,7 @@ def collect_entity_terms(
     header_text: str | None = None,
     section_path: str | None = None,
 ) -> list[str]:
+    block = block[:EMBEDDING_ENTITY_SCAN_MAX_CHARS]
     raw_terms: list[str] = []
     if header_text:
         raw_terms.extend(re.findall(r"[A-Za-zА-Яа-я0-9_.-]{3,}", header_text))
@@ -355,6 +416,65 @@ def collect_entity_terms(
         if len(entity_terms) >= 12:
             break
     return entity_terms
+
+
+def split_text_block_for_chunking(
+    text: str,
+    *,
+    max_chars: int | None = None,
+) -> list[str]:
+    if max_chars is None:
+        max_chars = EMBEDDING_BLOCK_MAX_CHARS
+
+    normalized = (text or "").strip()
+    if not normalized:
+        return []
+    if len(normalized) <= max_chars:
+        return [normalized]
+
+    segments: list[str] = []
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", normalized) if part.strip()]
+    if len(paragraphs) > 1:
+        for paragraph in paragraphs:
+            segments.extend(split_text_block_for_chunking(paragraph, max_chars=max_chars))
+        return segments
+
+    sentences = [
+        part.strip()
+        for part in re.split(r"(?<=[.!?。！？])\s+", normalized)
+        if part.strip()
+    ]
+    if len(sentences) > 1:
+        bucket: list[str] = []
+        bucket_len = 0
+        for sentence in sentences:
+            addition = len(sentence) if not bucket else len(sentence) + 1
+            if bucket and bucket_len + addition > max_chars:
+                segments.append(" ".join(bucket))
+                bucket = [sentence]
+                bucket_len = len(sentence)
+                continue
+            bucket.append(sentence)
+            bucket_len += addition
+        if bucket:
+            segments.append(" ".join(bucket))
+        return segments
+
+    start = 0
+    length = len(normalized)
+    while start < length:
+        end = min(length, start + max_chars)
+        if end < length:
+            split_at = normalized.rfind(" ", start, end)
+            if split_at > start:
+                end = split_at
+        piece = normalized[start:end].strip()
+        if piece:
+            segments.append(piece)
+        start = end
+        while start < length and normalized[start].isspace():
+            start += 1
+    return segments
 
 
 def chunk_document_text(
@@ -543,12 +663,7 @@ def chunk_document_text(
                 chunk_ix += 1
             continue
 
-        block_tokens = tokenizer(
-            block,
-            add_special_tokens=False,
-            truncation=False,
-        )["input_ids"]
-        if len(block_tokens) > 24:
+        if len(block.split()) > 24:
             summary_text = " ".join(
                 block.split()[: min(len(block.split()), 120)]
             ).strip()
@@ -578,22 +693,27 @@ def chunk_document_text(
             )
             chunk_ix += 1
 
-        defs = chunk_text_word_window(block, max_tokens=max_tokens, overlap=overlap)
-        for item in defs:
-            chunks.append(
-                ChunkData(
-                    index=chunk_ix,
-                    start=item.start,
-                    end=item.end,
-                    text=item.text,
-                    kind="text",
-                    header_text=header_text,
-                    section_path=section_path,
-                    entity_terms=entity_terms,
-                    token_count=item.token_count,
-                )
+        for segment in split_text_block_for_chunking(block):
+            defs = chunk_text_word_window(
+                segment,
+                max_tokens=max_tokens,
+                overlap=overlap,
             )
-            chunk_ix += 1
+            for item in defs:
+                chunks.append(
+                    ChunkData(
+                        index=chunk_ix,
+                        start=item.start,
+                        end=item.end,
+                        text=item.text,
+                        kind="text",
+                        header_text=header_text,
+                        section_path=section_path,
+                        entity_terms=entity_terms,
+                        token_count=item.token_count,
+                    )
+                )
+                chunk_ix += 1
 
         if entity_terms:
             projection_lines = []
@@ -626,13 +746,21 @@ def chunk_document_text(
 
 
 def fetch_page_context(session: Session, page_id: int):
-    stmt = select(Page).where(Page.id == page_id)
+    stmt = (
+        select(Page.id, Page.source_id, Page.content, Page.status_error)
+        .where(Page.id == page_id)
+    )
     row = session.execute(stmt).first()
     if not row:
         logging.warning("Page %s not found", page_id)
         return None
 
-    (doc,) = row
+    doc = PageChunkContext(
+        id=row.id,
+        source_id=row.source_id,
+        content=row.content or "",
+        status_error=row.status_error,
+    )
 
     if not doc.content:
         logging.warning("Page %s has no content", page_id)
@@ -641,6 +769,9 @@ def fetch_page_context(session: Session, page_id: int):
     if doc.status_error is not None:
         logging.info("Page %s has status_error=%s, skipping", page_id, doc.status_error)
         return None
+
+    if session.in_transaction():
+        session.rollback()
 
     return doc
 
@@ -665,24 +796,74 @@ def load_boilerplate_hashes(session: Session, source_id: int) -> frozenset[int]:
     return frozenset(rows)
 
 
+def validate_chunk_data(chunks: list[ChunkData], *, page_id: int) -> None:
+    for chunk in chunks:
+        if chunk.token_count > EMBEDDING_MAX_SEQ_LENGTH:
+            raise EmbedderDocumentError(
+                f"Chunk {chunk.index} for page {page_id} is too large for embedder "
+                f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
+                page_id=page_id,
+            )
+        if chunk.kind in {"text", "table_rows"} and len(chunk.text) > EMBEDDING_BLOCK_MAX_CHARS:
+            raise EmbedderDocumentError(
+                f"Chunk {chunk.index} for page {page_id} exceeds the block char cap "
+                f"({len(chunk.text)} chars > {EMBEDDING_BLOCK_MAX_CHARS})",
+                page_id=page_id,
+            )
+
+
+def mark_page_embedder_failed(
+    session: Session,
+    page_id: int,
+    *,
+    message: str,
+    error: str | None = None,
+    exception_class: str | None = None,
+) -> None:
+    page = session.get(Page, page_id)
+    if page is None:
+        return
+
+    page.status = PageStatus.parsing
+    page.status_error = PageStatusError.embedder_failed
+    meta = dict(page.meta or {})
+    set_error_meta(
+        meta,
+        reason=PageStatusError.embedder_failed.value,
+        message=message,
+        error=error,
+        exception_class=exception_class,
+    )
+    page.meta = meta
+    session.execute(delete(Chunk).where(Chunk.page_id == page_id))
+    session.commit()
+
+
 def materialize_page_chunks(
-    session: Session, doc: Page, user_uid: str = "system"
+    session: Session, doc: Page | PageChunkContext, user_uid: str = "system"
 ) -> int:
     boilerplate_hashes: frozenset[int] = frozenset()
     if doc.source_id is not None:
         boilerplate_hashes = load_boilerplate_hashes(session, doc.source_id)
+        if session.in_transaction():
+            session.rollback()
 
     chunks = chunk_document_text(
-        doc.content or "", boilerplate_hashes=boilerplate_hashes or None
+        doc.content or "",
+        boilerplate_hashes=boilerplate_hashes or None,
     )
+    validate_chunk_data(chunks, page_id=doc.id)
     logging.info("Materializing %s chunks for Page %s", len(chunks), doc.id)
 
     session.execute(delete(Chunk).where(Chunk.page_id == doc.id))
 
     if not chunks:
         logging.info("No content to index for Page %s", doc.id)
-        doc.status = PageStatus.ready
-        doc.status_error = None
+        session.execute(
+            sa.update(Page)
+            .where(Page.id == doc.id)
+            .values(status=PageStatus.ready, status_error=None)
+        )
         session.commit()
         return 0
 
@@ -757,6 +938,13 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
         chunk_ix,
         chunk_size,
     )
+
+    if (chunk.token_count or 0) > EMBEDDING_MAX_SEQ_LENGTH:
+        raise EmbedderDocumentError(
+            f"Chunk {chunk_ix} for page {chunk_page_id} is too large for embedder "
+            f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
+            page_id=chunk_page_id,
+        )
 
     vec = make_embed_vector(chunk_text)
     chunk.embedding = vec
@@ -1072,7 +1260,32 @@ def index_document(document_id: int):
     redis_client = redis.from_url(REDIS_URL)
     try:
         with Session(bind=engine) as session:
-            index_page_inner(session, document_id)
+            try:
+                index_page_inner(session, document_id)
+            except EmbedderDocumentError as exc:
+                logging.exception(
+                    "Embedder rejected page %s during chunk materialization",
+                    document_id,
+                )
+                mark_page_embedder_failed(
+                    session,
+                    document_id,
+                    message=str(exc),
+                    error=str(exc),
+                    exception_class=type(exc).__name__,
+                )
+            except Exception as exc:
+                logging.exception(
+                    "Unexpected embedder failure for page %s",
+                    document_id,
+                )
+                mark_page_embedder_failed(
+                    session,
+                    document_id,
+                    message="Unexpected embedder failure during document indexing.",
+                    error=str(exc),
+                    exception_class=type(exc).__name__,
+                )
     finally:
         try:
             redis_client.delete(index_document_schedule_key(document_id))
@@ -1089,7 +1302,20 @@ def pending_chunks(counted: bool = False):
     remaining = 0
     try:
         with Session(bind=engine) as session:
-            processed, remaining = run_pending_chunk_batch(session, redis_client)
+            try:
+                processed, remaining = run_pending_chunk_batch(session, redis_client)
+            except EmbedderDocumentError as exc:
+                logging.exception("Embedder rejected a pending chunk batch")
+                if exc.page_id is not None:
+                    mark_page_embedder_failed(
+                        session,
+                        exc.page_id,
+                        message=str(exc),
+                        error=str(exc),
+                        exception_class=type(exc).__name__,
+                    )
+                else:
+                    raise
     finally:
         try:
             if counted:
@@ -1319,50 +1545,61 @@ def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
     """
     from collections import Counter
 
-    rows = (
-        session.execute(
-            sa.select(Page.content).where(
-                Page.source_id == source_id,
-                Page.content.isnot(None),
-                Page.content != "",
-            )
+    content_result = session.execute(
+        sa.select(Page.content)
+        .where(
+            Page.source_id == source_id,
+            Page.content.isnot(None),
+            Page.content != "",
         )
-        .scalars()
-        .all()
+        .execution_options(yield_per=100)
     )
 
-    if not rows:
-        session.execute(
-            sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
-        )
-        session.commit()
-        return 0
-
     shingle_counts: Counter[int] = Counter()
-    for content in rows:
+    page_count = 0
+    for content in content_result.scalars():
+        page_count += 1
         blocks = extract_content_blocks(content)
         page_hashes: set[int] = set()
         for block in blocks:
             page_hashes.update(compute_trigram_hashes(block))
         shingle_counts.update(page_hashes)
 
+    if page_count == 0:
+        session.execute(
+            sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
+        )
+        session.commit()
+        return 0
+
+    if session.in_transaction():
+        session.rollback()
+
     session.execute(
         sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
     )
+
+    batch: list[dict[str, int]] = []
     for shingle_hash, count in shingle_counts.items():
-        session.add(
-            SourceShingleFreq(
-                source_id=source_id,
-                shingle_hash=shingle_hash,
-                count=count,
-            )
+        batch.append(
+            {
+                "source_id": source_id,
+                "shingle_hash": shingle_hash,
+                "count": count,
+            }
         )
+        if len(batch) >= SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE:
+            session.execute(sa.insert(SourceShingleFreq), batch)
+            batch.clear()
+
+    if batch:
+        session.execute(sa.insert(SourceShingleFreq), batch)
     session.commit()
     logging.info(
         "Rebuilt boilerplate index for source %s: %s distinct shingles from %s pages",
         source_id,
         len(shingle_counts),
-        len(rows),
+        page_count,
     )
     return len(shingle_counts)
 

@@ -34,6 +34,13 @@ app.autodiscover_tasks(["jobs", "jobs.crawler", "jobs.embedder"])
 app.conf.worker_prefetch_multiplier = 1
 app.conf.task_acks_late = True
 app.conf.broker_connection_retry_on_startup = True
+app.conf.worker_concurrency = int(config.get("celery_worker_concurrency", 4) or 4)
+app.conf.worker_max_tasks_per_child = int(
+    config.get("celery_worker_max_tasks_per_child", 100) or 100
+)
+app.conf.worker_max_memory_per_child = int(
+    config.get("celery_worker_max_memory_per_child_kb", 524288) or 524288
+)
 
 app.conf.beat_schedule = {
     "process_pending_chunks": {

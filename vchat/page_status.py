@@ -22,6 +22,7 @@ class PageStatusError(str, Enum):
 
     # Parser / Embedder
     index_failed = "index_failed"
+    embedder_failed = "embedder_failed"
 
 
 STATUS_ERROR_DESCRIPTIONS: dict[PageStatusError, str] = {
@@ -36,4 +37,5 @@ STATUS_ERROR_DESCRIPTIONS: dict[PageStatusError, str] = {
     PageStatusError.no_content: "Страница не содержит полезного текста",
     PageStatusError.low_content: "Слишком мало содержимого для индексации",
     PageStatusError.index_failed: "Ошибка при индексировании",
+    PageStatusError.embedder_failed: "Ошибка эмбеддера",
 }

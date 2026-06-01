@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from jobs.embedder import tasks
 
 
@@ -54,3 +56,167 @@ def test_chunk_text_splits_long_token() -> None:
     tasks.get_embed_model = lambda: SimpleNamespace(tokenizer=_CharTokenizer())
     chunks = tasks.chunk_text_word_window("abcdefghij")
     assert [chunk.text for chunk in chunks] == ["abcd", "efgh", "ij"]
+
+
+def test_chunk_text_progresses_when_overlap_exceeds_chunk_size() -> None:
+    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 6
+    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 400
+    tasks.EMBEDDING_CHUNK_MAX_CHARS = 15
+    tasks.get_embed_model = lambda: SimpleNamespace(tokenizer=_WordTokenizer())
+
+    chunks = tasks.chunk_text_word_window("aaaaa bbbbb ccccc ddddd")
+
+    assert [chunk.text for chunk in chunks] == [
+        "aaaaa bbbbb",
+        "bbbbb ccccc",
+        "ccccc ddddd",
+    ]
+    assert [chunk.start for chunk in chunks] == [0, 1, 2]
+
+
+def test_split_text_block_for_chunking_breaks_large_block() -> None:
+    chunks = tasks.split_text_block_for_chunking(
+        "alpha beta gamma delta epsilon zeta eta theta",
+        max_chars=12,
+    )
+    assert chunks
+    assert all(len(chunk) <= 12 for chunk in chunks)
+
+
+def test_validate_chunk_data_rejects_embedder_oversize() -> None:
+    chunk = tasks.ChunkData(
+        index=0,
+        start=0,
+        end=1,
+        text="payload",
+        kind="text",
+        token_count=tasks.EMBEDDING_MAX_SEQ_LENGTH + 1,
+    )
+
+    with pytest.raises(tasks.EmbedderDocumentError) as exc:
+        tasks.validate_chunk_data([chunk], page_id=77)
+
+    assert exc.value.page_id == 77
+    assert "too large for embedder" in str(exc.value)
+
+
+def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
+    from vchat.page_status import PageStatus, PageStatusError
+
+    executed = []
+    page = SimpleNamespace(
+        id=55,
+        status=None,
+        status_error=None,
+        meta={"existing": "value"},
+    )
+
+    class _Session:
+        def get(self, model, page_id):
+            _ = model
+            return page if page_id == 55 else None
+
+        def execute(self, stmt):
+            executed.append(stmt)
+            return None
+
+        def commit(self):
+            executed.append("commit")
+
+    tasks.mark_page_embedder_failed(
+        _Session(),
+        55,
+        message="Chunk exploded",
+        error="Chunk exploded",
+        exception_class="EmbedderDocumentError",
+    )
+
+    assert page.status == PageStatus.parsing
+    assert page.status_error == PageStatusError.embedder_failed
+    assert page.meta["reason"] == PageStatusError.embedder_failed.value
+    assert page.meta["message"] == "Chunk exploded"
+    assert page.meta["error"] == "Chunk exploded"
+    assert page.meta["exception_class"] == "EmbedderDocumentError"
+    assert executed
+
+
+def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) -> None:
+    monkeypatch.setattr(tasks, "load_boilerplate_hashes", lambda *_args: frozenset({1}))
+    monkeypatch.setattr(
+        tasks,
+        "chunk_document_text",
+        lambda *_args, **_kwargs: [
+            tasks.ChunkData(
+                index=0,
+                start=0,
+                end=1,
+                text="hello world",
+                kind="text",
+                token_count=2,
+            )
+        ],
+    )
+
+    calls = []
+    page = SimpleNamespace(id=77, source_id=9, content="hello world", status=None, status_error=None)
+
+    class _Session:
+        def __init__(self) -> None:
+            self._in_transaction = True
+
+        def in_transaction(self) -> bool:
+            return self._in_transaction
+
+        def rollback(self) -> None:
+            calls.append("rollback")
+            self._in_transaction = False
+
+        def execute(self, stmt):
+            calls.append(("execute", stmt))
+            return None
+
+        def add(self, obj):
+            calls.append(("add", obj))
+
+        def commit(self):
+            calls.append("commit")
+
+        def expunge_all(self):
+            calls.append("expunge_all")
+
+    count = tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 1
+    assert calls[0] == "rollback"
+
+
+def test_fetch_page_context_rolls_back_after_loading_snapshot() -> None:
+    row = SimpleNamespace(id=12, source_id=3, content="payload", status_error=None)
+
+    class _Result:
+        def first(self):
+            return row
+
+    class _Session:
+        def __init__(self) -> None:
+            self.rollbacks = 0
+            self._in_transaction = True
+
+        def execute(self, stmt):
+            _ = stmt
+            return _Result()
+
+        def in_transaction(self) -> bool:
+            return self._in_transaction
+
+        def rollback(self) -> None:
+            self.rollbacks += 1
+            self._in_transaction = False
+
+    session = _Session()
+    context = tasks.fetch_page_context(session, 12)
+
+    assert context is not None
+    assert context.id == 12
+    assert context.content == "payload"
+    assert session.rollbacks == 1

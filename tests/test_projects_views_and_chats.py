@@ -217,3 +217,24 @@ def test_document_pipeline_steps_returns_error_description() -> None:
     assert msg is not None
     assert "Ошибка извлечения" in msg
     assert "boom" in msg
+
+
+def test_document_pipeline_steps_returns_embedder_error_description() -> None:
+    from vchat.page_status import PageStatus, PageStatusError
+
+    document = SimpleNamespace(
+        status=PageStatus.parsing,
+        status_error=PageStatusError.embedder_failed,
+        meta={
+            "reason": "embedder_failed",
+            "message": "Chunk 3 is too large for embedder",
+        },
+    )
+
+    status, status_error, msg = project_views._document_pipeline_steps(document)
+
+    assert status == PageStatus.parsing
+    assert status_error == PageStatusError.embedder_failed
+    assert msg is not None
+    assert "Ошибка эмбеддера" in msg
+    assert "Chunk 3 is too large for embedder" in msg

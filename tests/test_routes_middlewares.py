@@ -69,9 +69,14 @@ async def test_db_session_middleware(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeSession:
         def __init__(self) -> None:
             self.rollbacks = 0
+            self._in_transaction = True
 
         async def rollback(self) -> None:
             self.rollbacks += 1
+            self._in_transaction = False
+
+        def in_transaction(self) -> bool:
+            return self._in_transaction
 
     session = FakeSession()
 
@@ -95,13 +100,16 @@ async def test_db_session_middleware(monkeypatch: pytest.MonkeyPatch) -> None:
 
     ok_resp = await mw.db_session_middleware(req, _ok)
     assert ok_resp.status == 200
+    assert session.rollbacks == 1
+
+    session._in_transaction = True
 
     async def _err(_request):
         raise RuntimeError("x")
 
     with pytest.raises(RuntimeError):
         await mw.db_session_middleware(req, _err)
-    assert session.rollbacks == 1
+    assert session.rollbacks == 2
 
 
 @pytest.mark.asyncio
@@ -116,9 +124,20 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
             )
 
     class FakeDB:
+        def __init__(self) -> None:
+            self.rollbacks = 0
+            self._in_transaction = True
+
         async def execute(self, stmt):
             assert isinstance(stmt, sa.sql.Select)
             return FakeExecResult()
+
+        def in_transaction(self) -> bool:
+            return self._in_transaction
+
+        async def rollback(self) -> None:
+            self.rollbacks += 1
+            self._in_transaction = False
 
     class FakeAuthSession(dict):
         invalidated = False
@@ -141,6 +160,7 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
 
     resp = await mw.auth_middleware(req, _handler)
     assert resp.text == "u@example"
+    assert req["db"].rollbacks == 1
 
     class FakeRedis:
         async def lrange(self, *_args):

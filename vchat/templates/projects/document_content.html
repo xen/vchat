@@ -17,7 +17,7 @@
 
                 {# Pipeline steps widget #}
                 {% set p_status, p_error, p_msg = document_pipeline %}
-                {% set ERROR_ERRORS = ['http_4xx', 'http_5xx', 'extraction_failed', 'index_failed'] %}
+                {% set ERROR_ERRORS = ['http_4xx', 'http_5xx', 'extraction_failed', 'index_failed', 'embedder_failed'] %}
                 {% set EXCL_ERRORS = ['redirect', 'excluded_auth', 'excluded_ignored', 'excluded_robots', 'excluded_rules', 'no_content', 'low_content'] %}
                 {% set STEP_OF = {'crawler': 0, 'parsing': 1, 'ready': 2} %}
                 {% set cur_step = STEP_OF.get(p_status, 0) %}

@@ -18,6 +18,7 @@ from prometheus_client import (
     multiprocess,
 )
 from prometheus_client.core import GaugeMetricFamily
+from vchat.settings import config
 
 logger = logging.getLogger("vchat.metrics")
 
@@ -199,9 +200,12 @@ class CrawlerQueueCollector:
             "Current number of tasks in the embedder Celery queue.",
         )
         try:
-            r = redis_lib.Redis(db=31, decode_responses=False)
+            broker_url = (
+                f"{config['celery_redis_uri']}{config['celery_broker_db']}"
+            )
+            r = redis_lib.Redis.from_url(broker_url, decode_responses=False)
             crawler_metric.add_metric([], float(r.llen("crawler")))
-            embedder_metric.add_metric([], float(r.llen("celery")))
+            embedder_metric.add_metric([], float(r.llen("embeddings")))
             r.close()
         except Exception as exc:
             logger.debug("CrawlerQueueCollector: Redis error: %s", exc)
