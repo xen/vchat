@@ -89,6 +89,7 @@ __all__ = [
     "source_sitemaps",
 ]
 
+
 def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
     if row.role != "assistant":
         return []

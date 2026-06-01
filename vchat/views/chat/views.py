@@ -228,6 +228,7 @@ async def generate_suggestions(
 
     return []
 
+
 logger = logging.getLogger("vchat.chat")
 request_logger = logging.getLogger("vchat.chat.requests")
 

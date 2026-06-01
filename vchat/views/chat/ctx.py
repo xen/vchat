@@ -40,9 +40,7 @@ MAX_INPUT_CONTEXT_TOKENS = 10000
 CONTEXT_SAFETY_MARGIN = 1024
 RERANK_LIMIT = 48
 RRF_K = 60
-RERANK_MODEL = cfg.get(
-    "reranker_model_id", "BAAI/bge-reranker-v2-m3"
-)
+RERANK_MODEL = cfg.get("reranker_model_id", "BAAI/bge-reranker-v2-m3")
 
 SNIPPET_INJECTION_PATTERNS = re.compile(
     r"(?i)\b(system|assistant|user|instruction|command|rules?|prompt)\b"

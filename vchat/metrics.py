@@ -200,9 +200,7 @@ class CrawlerQueueCollector:
             "Current number of tasks in the embedder Celery queue.",
         )
         try:
-            broker_url = (
-                f"{config['celery_redis_uri']}{config['celery_broker_db']}"
-            )
+            broker_url = f"{config['celery_redis_uri']}{config['celery_broker_db']}"
             r = redis_lib.Redis.from_url(broker_url, decode_responses=False)
             crawler_metric.add_metric([], float(r.llen("crawler")))
             embedder_metric.add_metric([], float(r.llen("embeddings")))

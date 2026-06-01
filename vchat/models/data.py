@@ -193,6 +193,7 @@ class Page(Base, Created, Updated):
         default=0,
         server_default=sa.text("0"),
     )
+
     @hybrid_property
     def hash_value(self) -> str:
         return self._hash

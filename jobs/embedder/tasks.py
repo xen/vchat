@@ -433,10 +433,14 @@ def split_text_block_for_chunking(
         return [normalized]
 
     segments: list[str] = []
-    paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", normalized) if part.strip()]
+    paragraphs = [
+        part.strip() for part in re.split(r"\n\s*\n+", normalized) if part.strip()
+    ]
     if len(paragraphs) > 1:
         for paragraph in paragraphs:
-            segments.extend(split_text_block_for_chunking(paragraph, max_chars=max_chars))
+            segments.extend(
+                split_text_block_for_chunking(paragraph, max_chars=max_chars)
+            )
         return segments
 
     sentences = [
@@ -746,9 +750,8 @@ def chunk_document_text(
 
 
 def fetch_page_context(session: Session, page_id: int):
-    stmt = (
-        select(Page.id, Page.source_id, Page.content, Page.status_error)
-        .where(Page.id == page_id)
+    stmt = select(Page.id, Page.source_id, Page.content, Page.status_error).where(
+        Page.id == page_id
     )
     row = session.execute(stmt).first()
     if not row:
@@ -804,7 +807,10 @@ def validate_chunk_data(chunks: list[ChunkData], *, page_id: int) -> None:
                 f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
                 page_id=page_id,
             )
-        if chunk.kind in {"text", "table_rows"} and len(chunk.text) > EMBEDDING_BLOCK_MAX_CHARS:
+        if (
+            chunk.kind in {"text", "table_rows"}
+            and len(chunk.text) > EMBEDDING_BLOCK_MAX_CHARS
+        ):
             raise EmbedderDocumentError(
                 f"Chunk {chunk.index} for page {page_id} exceeds the block char cap "
                 f"({len(chunk.text)} chars > {EMBEDDING_BLOCK_MAX_CHARS})",
@@ -1424,9 +1430,7 @@ def refresh_project_index():
                 schedule_index_document(doc_id)
 
             errored_doc_ids = (
-                session.execute(
-                    sa.select(Page.id).where(Page.status_error.isnot(None))
-                )
+                session.execute(sa.select(Page.id).where(Page.status_error.isnot(None)))
                 .scalars()
                 .all()
             )

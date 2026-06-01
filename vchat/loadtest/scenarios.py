@@ -25,9 +25,7 @@ class _ScenarioStats:
 
 
 async def run_idle_ws_scenario(config: IdleWsProfileConfig) -> IdleWsReport:
-    websocket_url = (
-        f"{config.base_url.rstrip('/')}/ws/chat/{config.payload}"
-    )
+    websocket_url = f"{config.base_url.rstrip('/')}/ws/chat/{config.payload}"
     connector = aiohttp.TCPConnector(limit=0, ssl=config.verify_ssl)
     timeout = aiohttp.ClientTimeout(
         total=None,

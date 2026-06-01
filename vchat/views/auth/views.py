@@ -50,7 +50,10 @@ async def login(request):
             form.email.errors.append(
                 _("Too many login attempts. Try again in a few seconds")
             )
-            return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
+            return {
+                "form": form,
+                "ldap_enabled": config.get("auth_ldap_enabled", False),
+            }
 
         await request.app[REDIS_KEY].set(lock_key, "1", ex=LOGIN_CHECK_LOCK_TTL_SECONDS)
 
@@ -61,7 +64,10 @@ async def login(request):
         if not user:
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
             form.email.errors.append(_("Email or password is incorrect"))
-            return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
+            return {
+                "form": form,
+                "ldap_enabled": config.get("auth_ldap_enabled", False),
+            }
         if user.is_active is False:
             form.email.errors.append(
                 _(
@@ -69,14 +75,25 @@ async def login(request):
                     "folder for the activation link, then try again."
                 )
             )
-            return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
+            return {
+                "form": form,
+                "ldap_enabled": config.get("auth_ldap_enabled", False),
+            }
         if user.is_ldap:
             form.email.errors.append(_("This account uses LDAP authentication"))
-            return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
-        if not user.password or not password_context.verify(form.password.data, user.password):
+            return {
+                "form": form,
+                "ldap_enabled": config.get("auth_ldap_enabled", False),
+            }
+        if not user.password or not password_context.verify(
+            form.password.data, user.password
+        ):
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
             form.email.errors.append(_("Wrong email or password"))
-            return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
+            return {
+                "form": form,
+                "ldap_enabled": config.get("auth_ldap_enabled", False),
+            }
 
         # Warning: always use new_session() instead of get_session() in login views
         # to guard against Session Fixation attacks!
@@ -117,15 +134,23 @@ async def login_ldap(request):
             form.email.errors.append(
                 _("Too many login attempts. Try again in a few seconds")
             )
-            return {"form": form, "basic_enabled": config.get("auth_basic_enabled", True)}
+            return {
+                "form": form,
+                "basic_enabled": config.get("auth_basic_enabled", True),
+            }
 
         await request.app[REDIS_KEY].set(lock_key, "1", ex=LOGIN_CHECK_LOCK_TTL_SECONDS)
 
-        ldap_result = await authenticate_ldap(normalized_email, form.password.data, config)
+        ldap_result = await authenticate_ldap(
+            normalized_email, form.password.data, config
+        )
         if ldap_result is None:
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
             form.email.errors.append(_("Email or password is incorrect"))
-            return {"form": form, "basic_enabled": config.get("auth_basic_enabled", True)}
+            return {
+                "form": form,
+                "basic_enabled": config.get("auth_basic_enabled", True),
+            }
 
         result = await request["db"].execute(
             sa.select(User).where(User.email == normalized_email)

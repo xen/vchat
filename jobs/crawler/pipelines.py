@@ -347,7 +347,9 @@ class DatabasePipeline:
                 session.commit()
 
                 if low_content:
-                    increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
+                    increment_run_stat(
+                        self.engine, self._crawl_run_id, "pages_excluded"
+                    )
                     spider.logger.info(
                         "Excluded %s from indexing due to low content (%s chars)",
                         url,
@@ -453,7 +455,10 @@ def save_page_status(
 
             if status_error in (PageStatusError.http_4xx, PageStatusError.http_5xx):
                 page.error_count = (page.error_count or 0) + 1
-                if status_error == PageStatusError.http_4xx and (page.error_count or 0) >= 3:
+                if (
+                    status_error == PageStatusError.http_4xx
+                    and (page.error_count or 0) >= 3
+                ):
                     page.check_interval_days = 90
             else:
                 page.error_count = 0
