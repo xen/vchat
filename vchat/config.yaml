@@ -77,6 +77,17 @@ yandex_api_key: ""
 # Base64-ключ из кабинета GigaChat для заголовка Authorization: Basic <key>
 gigachat_api_key: ""
 
+# Authentication methods: at least one must be enabled
+auth_basic_enabled: true
+auth_ldap_enabled: false
+ldap_server: "ldap://ldap.example.com:389"
+ldap_use_ssl: false
+ldap_bind_dn: ""
+ldap_bind_password: ""
+ldap_search_base: ""
+ldap_search_filter: "(mail={email})"
+ldap_attr_name: "displayName"
+
 # vchat project integration keys
 vchat_chat: "yMlHl1BjbY"
 vchat_secret: "pFMgA5ILeRKn0Zrw3cpA0MZsQ7VPRlOSXM0nh2RJNMQ"

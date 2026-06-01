@@ -15,5 +15,6 @@ class User(Base, Created, Updated):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str]
     name: Mapped[str]
-    password: Mapped[str]
+    password: Mapped[str | None]
     is_active: Mapped[bool] = mapped_column(default=False)
+    is_ldap: Mapped[bool] = mapped_column(default=False)

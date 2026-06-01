@@ -5,12 +5,12 @@
 {% block fullbody %}
 <div class="flex min-h-screen flex-col">
   <div class="grow">
-    {% call auth_page(_('Вход'), _('Чтобы получить доступ к проектам, используйте форму входа.')) %}
-    <form action="{{ url('login') }}" method="POST" class="space-y-2">
+    {% call auth_page(_('Вход через LDAP'), _('Используйте корпоративный логин и пароль.')) %}
+    <form action="{{ url('login_ldap') }}" method="POST" class="space-y-2">
       {{ form.csrf_token }}
 
       {% if form.csrf_token.errors %}
-      <div class="alert alert-ошибка">
+      <div class="alert alert-error">
         {{ form.csrf_token.errors[0] }}
       </div>
       {% endif %}
@@ -19,17 +19,17 @@
       {{ auth_input(form.password, "key-round", _('Пароль'), 'password', 'current-password') }}
 
       <button type="submit" class="btn btn-primary mt-6 w-full gap-3">
-        <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
-        {{ _('Вход в аккаунт') }}
+        <iconify-icon icon="lucide:network" class="size-4"></iconify-icon>
+        {{ _('Войти через LDAP') }}
       </button>
 
     </form>
 
-    {% if ldap_enabled %}
+    {% if basic_enabled %}
     <div class="divider mt-6 text-xs text-base-content/50">{{ _('или') }}</div>
-    <a href="{{ url('login_ldap') }}" class="btn btn-outline w-full gap-3">
-      <iconify-icon icon="lucide:network" class="size-4"></iconify-icon>
-      {{ _('Войти через LDAP') }}
+    <a href="{{ url('login') }}" class="btn btn-outline w-full gap-3">
+      <iconify-icon icon="lucide:log-in" class="size-4"></iconify-icon>
+      {{ _('Войти с паролем') }}
     </a>
     {% endif %}
     {% endcall %}
