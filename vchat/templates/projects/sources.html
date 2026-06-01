@@ -38,7 +38,7 @@
 
 {# ── Статистика ────────────────────────────────────────────────────────────── #}
 <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6 mb-4">
-    <div class="card bg-base-100 shadow">
+    <a href="{{ url('project_view') }}?group=errors" class="card bg-base-100 shadow hover:shadow-lg transition-shadow cursor-pointer">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
                 <iconify-icon icon="lucide:alert-circle" class="text-error size-7 shrink-0"></iconify-icon>
@@ -48,8 +48,8 @@
                 </dl>
             </div>
         </div>
-    </div>
-    <div class="card bg-base-100 shadow">
+    </a>
+    <a href="{{ url('project_view') }}?group=pending" class="card bg-base-100 shadow hover:shadow-lg transition-shadow cursor-pointer">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
                 <iconify-icon icon="lucide:clock" class="text-warning size-7 shrink-0"></iconify-icon>
@@ -59,8 +59,8 @@
                 </dl>
             </div>
         </div>
-    </div>
-    <div class="card bg-base-100 shadow">
+    </a>
+    <a href="{{ url('project_view') }}?group=processing" class="card bg-base-100 shadow hover:shadow-lg transition-shadow cursor-pointer">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
                 <iconify-icon icon="lucide:cpu" class="text-success size-7 shrink-0"></iconify-icon>
@@ -70,30 +70,30 @@
                 </dl>
             </div>
         </div>
-    </div>
-    <div class="card bg-base-100 shadow">
+    </a>
+    <a href="{{ url('project_view') }}?group=ready" class="card bg-base-100 shadow hover:shadow-lg transition-shadow cursor-pointer">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
-                <iconify-icon icon="lucide:check-circle" class="text-success size-7 shrink-0"></iconify-icon>
+                <iconify-icon icon="lucide:check-circle" class="text-purple-500 size-7 shrink-0"></iconify-icon>
                 <dl class="min-w-0">
                     <dt class="text-xs text-base-content/60 truncate">Готово</dt>
                     <dd class="text-xl font-semibold">{{ overall.ready }}</dd>
                 </dl>
             </div>
         </div>
-    </div>
-    <div class="card bg-base-100 shadow">
+    </a>
+    <a href="{{ url('project_view') }}?group=excluded" class="card bg-base-100 shadow hover:shadow-lg transition-shadow cursor-pointer">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
                 <iconify-icon icon="lucide:ban" class="text-base-content/50 size-7 shrink-0"></iconify-icon>
                 <dl class="min-w-0">
-                    <dt class="text-xs text-base-content/60 truncate">Исключено</dt>
+                    <dt class="text-xs text-base-content/60 truncate">Игнорировано</dt>
                     <dd class="text-xl font-semibold">{{ overall.excluded }}</dd>
                 </dl>
             </div>
         </div>
-    </div>
-    <div class="card bg-base-100 shadow">
+    </a>
+    <a href="{{ url('project_view') }}" class="card bg-base-100 shadow hover:shadow-lg transition-shadow cursor-pointer">
         <div class="card-body p-4">
             <div class="flex items-center gap-3">
                 <iconify-icon icon="lucide:files" class="text-primary size-7 shrink-0"></iconify-icon>
@@ -103,7 +103,7 @@
                 </dl>
             </div>
         </div>
-    </div>
+    </a>
 </div>
 
 {# ── Таблица источников ────────────────────────────────────────────────────── #}

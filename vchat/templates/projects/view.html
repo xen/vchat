@@ -31,11 +31,6 @@
             </div>
             <!-- Group filter chips -->
             <div class="border-base-200 flex items-center gap-1.5 border-b border-dashed px-5 py-2 flex-wrap">
-                <button @click="setGroupFilter('')"
-                        :class="groupFilter === '' ? 'btn-neutral' : 'btn-ghost text-base-content/60'"
-                        class="btn btn-xs">
-                    Все
-                </button>
                 <button @click="setGroupFilter('errors')"
                         :class="groupFilter === 'errors' ? 'btn-error' : 'btn-ghost text-error/70'"
                         class="btn btn-xs">
@@ -60,6 +55,11 @@
                         :class="groupFilter === 'excluded' ? 'btn-neutral' : 'btn-ghost text-base-content/50'"
                         class="btn btn-xs">
                     Игнорировано
+                </button>
+                <button @click="setGroupFilter('')"
+                        :class="groupFilter === '' ? 'btn-neutral' : 'btn-ghost text-base-content/60'"
+                        class="btn btn-xs">
+                    Все
                 </button>
             </div>
 
