@@ -506,7 +506,10 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
                 print(f"Source {source_id} is not crawlable, skipping")
                 return
 
-            blocking_result = check_source_blocking(source.uri)
+            blocking_result = check_source_blocking(
+                source.uri,
+                ignore_robots_txt=source.config.ignore_robots_txt,
+            )
             apply_source_blocking_result(source, blocking_result)
             if blocking_result.is_blocked:
                 blocked_status_error = (
@@ -1446,7 +1449,10 @@ def _refresh_source_discovery(
     crawler_payload: dict,
 ) -> None:
     now = datetime.now(timezone.utc)
-    cached = source.robots_cache or {}
+    ignore_robots_txt = source.config.ignore_robots_txt
+    if ignore_robots_txt:
+        source.robots_cache = None
+    cached = {} if ignore_robots_txt else source.robots_cache or {}
     cached_at_raw = cached.get("fetched_at")
     cached_at = None
     if isinstance(cached_at_raw, str):
@@ -1458,7 +1464,10 @@ def _refresh_source_discovery(
     crawl_delay: int | None = None
     robots_body: str | None = None
 
-    if cached_at and (now - cached_at) < timedelta(hours=24):
+    if ignore_robots_txt:
+        sitemap_urls = []
+        crawl_delay = None
+    elif cached_at and (now - cached_at) < timedelta(hours=24):
         sitemap_urls = list(cached.get("sitemaps") or [])
         crawl_delay = cached.get("crawl_delay")
     else:
@@ -1869,7 +1878,10 @@ def refresh_source_blocking_state(source_id: int) -> bool:
             source = session.get(Source, source_id)
             if source is None:
                 raise RuntimeError(f"Source {source_id} not found")
-            result = check_source_blocking(source.uri)
+            result = check_source_blocking(
+                source.uri,
+                ignore_robots_txt=source.config.ignore_robots_txt,
+            )
             apply_source_blocking_result(source, result)
             if result.is_blocked:
                 blocked_status_error = (

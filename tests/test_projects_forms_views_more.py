@@ -218,6 +218,7 @@ async def test_project_source_settings_post_site_rules(
         concurrent_requests = SimpleNamespace(data=5)
         download_delay = SimpleNamespace(data=1)
         download_timeout = SimpleNamespace(data=20)
+        ignore_robots_txt = SimpleNamespace(data=True)
         aws_access_key_id = SimpleNamespace(data="")
         aws_secret_access_key = SimpleNamespace(data="")
         bucket_name = SimpleNamespace(data="")
@@ -262,6 +263,7 @@ async def test_project_source_settings_post_site_rules(
     assert source.reindex_cron == "manual"
     assert source.config.crawler_download_delay == 1
     assert source.config.crawler_download_timeout == 20
+    assert source.config.ignore_robots_txt is True
     assert source.config.rules == [
         *(
             CrawlerRule(type="param", value=param)

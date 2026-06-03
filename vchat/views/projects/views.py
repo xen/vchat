@@ -118,7 +118,10 @@ async def _check_source_blocking_and_commit(
     db_session: Any,
     source: Source,
 ) -> bool:
-    result = check_source_blocking(source.uri)
+    result = check_source_blocking(
+        source.uri,
+        ignore_robots_txt=source.config.ignore_robots_txt,
+    )
     apply_source_blocking_result(source, result)
     source.updated_at = datetime.now(timezone.utc)
     await db_session.commit()
@@ -1024,6 +1027,7 @@ async def project_source_settings(request):
             "concurrent_requests": cfg.crawler_concurrent_requests,
             "download_delay": cfg.crawler_download_delay,
             "download_timeout": cfg.crawler_download_timeout,
+            "ignore_robots_txt": cfg.ignore_robots_txt,
         }
 
     form = forms.SourceSettingsForm(**form_kwargs)
@@ -1054,8 +1058,15 @@ async def project_source_settings(request):
                 if form.download_timeout.data is not None
                 else DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
             ),
+            ignore_robots_txt=bool(form.ignore_robots_txt.data),
             rules=rules,
         )
+        if source.config.ignore_robots_txt:
+            if source.blocked_reason == "robots_txt":
+                source.blocked_reason = None
+                source.blocked_message = None
+                source.blocked_checked_at = None
+            source.robots_cache = None
 
         await db_session.commit()
         reapply_source_rules_task.delay(source.id)
@@ -1564,6 +1575,7 @@ async def project_action(request):
             crawler_concurrent_requests=cfg.crawler_concurrent_requests,
             crawler_download_delay=cfg.crawler_download_delay,
             crawler_download_timeout=cfg.crawler_download_timeout,
+            ignore_robots_txt=cfg.ignore_robots_txt,
             rules=rules,
         )
         source.updated_at = datetime.now(timezone.utc)

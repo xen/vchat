@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from wtforms import (
+    BooleanField,
     Form,
     IntegerField,
     SelectField,
@@ -235,6 +236,11 @@ class SourceCrawlerSettingsForm(Form):
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
         render_kw={"class": "input input-bordered w-full"},
     )
+    ignore_robots_txt = BooleanField(
+        _("Игнорировать robots.txt"),
+        default=False,
+        render_kw={"class": "checkbox checkbox-primary"},
+    )
 
 
 class SourceSettingsForm(SourceForm):
@@ -255,6 +261,11 @@ class SourceSettingsForm(SourceForm):
         validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
         render_kw={"class": "input input-bordered w-full"},
+    )
+    ignore_robots_txt = BooleanField(
+        _("Игнорировать robots.txt"),
+        default=False,
+        render_kw={"class": "checkbox checkbox-primary"},
     )
 
 

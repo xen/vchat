@@ -53,11 +53,13 @@ class TestSourceConfigFromDict:
                 "crawler_concurrent_requests": 4,
                 "crawler_download_delay": 1,
                 "crawler_download_timeout": 60,
+                "ignore_robots_txt": True,
             }
         )
         assert cfg.crawler_concurrent_requests == 4
         assert cfg.crawler_download_delay == 1
         assert cfg.crawler_download_timeout == 60
+        assert cfg.ignore_robots_txt is True
 
     def test_parses_rules(self):
         cfg = SourceConfig.from_dict(
@@ -143,6 +145,7 @@ class TestSourceConfigToDict:
             "crawler_concurrent_requests",
             "crawler_download_delay",
             "crawler_download_timeout",
+            "ignore_robots_txt",
         }
 
     def test_round_trip(self):
@@ -150,6 +153,7 @@ class TestSourceConfigToDict:
             crawler_concurrent_requests=8,
             crawler_download_delay=1,
             crawler_download_timeout=15,
+            ignore_robots_txt=True,
             rules=[CrawlerRule(type="regex", value="^https://")],
         )
         assert SourceConfig.from_dict(original.to_dict()) == original
@@ -211,4 +215,3 @@ class TestSourceModelConfig:
     def test_old_gdrive_keys_ignored(self):
         s = SourceStub({"folder_id": "abc123", "folder_name": "Docs"})
         assert s.config == SourceConfig()
-

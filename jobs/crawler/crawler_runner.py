@@ -63,6 +63,7 @@ download_timeout = config.get(
     "crawler_download_timeout", DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
 )
 settings.set("DOWNLOAD_TIMEOUT", max(1, int(float(download_timeout))))
+settings.set("ROBOTSTXT_OBEY", not bool(config.get("ignore_robots_txt", False)))
 
 process = CrawlerProcess(settings)
 process.crawl(GeneralSpider, url=url, source_id=source_id, config=config)

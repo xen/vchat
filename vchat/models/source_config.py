@@ -30,6 +30,7 @@ class SourceConfig:
     crawler_concurrent_requests: int = DEFAULT_CRAWLER_CONCURRENT_REQUESTS
     crawler_download_delay: int = DEFAULT_CRAWLER_DOWNLOAD_DELAY
     crawler_download_timeout: int = DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
+    ignore_robots_txt: bool = False
     rules: list[CrawlerRule] = field(default_factory=list)
 
     @classmethod
@@ -60,6 +61,7 @@ class SourceConfig:
                 if download_timeout_raw is None
                 else download_timeout_raw
             ),
+            ignore_robots_txt=bool(d.get("ignore_robots_txt", False)),
             rules=rules,
         )
 
@@ -68,6 +70,7 @@ class SourceConfig:
             "crawler_concurrent_requests": self.crawler_concurrent_requests,
             "crawler_download_delay": self.crawler_download_delay,
             "crawler_download_timeout": self.crawler_download_timeout,
+            "ignore_robots_txt": self.ignore_robots_txt,
         }
         if self.rules:
             d["rules"] = [r.to_dict() for r in self.rules]

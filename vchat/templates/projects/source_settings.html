@@ -284,6 +284,16 @@
                     {% endif %}
                 </div>
 
+                <div class="form-control w-full">
+                    <label class="label cursor-pointer justify-start gap-3">
+                        {{ form.ignore_robots_txt }}
+                        <span class="label-text">{{ form.ignore_robots_txt.label.text }}</span>
+                    </label>
+                    <label class="label">
+                        <span class="label-text-alt">{{ _('Не запрашивать robots.txt и не применять его правила при обходе источника.') }}</span>
+                    </label>
+                </div>
+
                 <div class="pt-2 flex items-center gap-2">
                     <button type="submit" class="btn btn-primary">{{ _('Сохранить') }}</button>
                     <a class="btn btn-ghost" href="{{ url('project_edit_sources') }}">{{ _('Отмена') }}</a>

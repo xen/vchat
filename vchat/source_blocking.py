@@ -121,7 +121,11 @@ def _check_robots_txt(
     )
 
 
-def check_source_blocking(source_uri: str) -> SourceBlockCheckResult:
+def check_source_blocking(
+    source_uri: str,
+    *,
+    ignore_robots_txt: bool = False,
+) -> SourceBlockCheckResult:
     checked_at = datetime.now(timezone.utc)
     parsed_source = urlparse(source_uri)
     source_host = _normalize_host(parsed_source.hostname)
@@ -135,13 +139,14 @@ def check_source_blocking(source_uri: str) -> SourceBlockCheckResult:
 
     headers = {"User-Agent": _CRAWLER_USER_AGENT}
 
-    robots_result = _check_robots_txt(
-        source_uri,
-        headers=headers,
-        checked_at=checked_at,
-    )
-    if robots_result is not None:
-        return robots_result
+    if not ignore_robots_txt:
+        robots_result = _check_robots_txt(
+            source_uri,
+            headers=headers,
+            checked_at=checked_at,
+        )
+        if robots_result is not None:
+            return robots_result
 
     try:
         resp = requests.get(

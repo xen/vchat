@@ -133,10 +133,14 @@ class TestCrawlSourceTaskPayload:
 
     def test_config_json_contains_crawler_settings(self):
         source = make_source()
-        source.config = SourceConfig(crawler_concurrent_requests=4)
+        source.config = SourceConfig(
+            crawler_concurrent_requests=4,
+            ignore_robots_txt=True,
+        )
         cmd = self.run_task_capture_cmd(source)
         payload = json.loads(cmd[-1])
         assert payload["crawler_concurrent_requests"] == 4
+        assert payload["ignore_robots_txt"] is True
 
     def test_config_json_contains_rules(self):
         source = make_source(rules=[CrawlerRule(type="xpath", value="//a")])

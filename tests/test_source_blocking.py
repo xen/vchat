@@ -48,6 +48,25 @@ def test_check_source_blocking_marks_robots_disallow(monkeypatch: pytest.MonkeyP
     assert result.reason == SourceBlockedReason.robots_txt
 
 
+def test_check_source_blocking_can_skip_robots_txt(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "vchat.source_blocking._resolve_hostname",
+        lambda hostname: True,
+    )
+
+    requested_urls = []
+
+    def fake_get(url, **kwargs):
+        requested_urls.append(url)
+        return _Resp(url=url)
+
+    monkeypatch.setattr(requests, "get", fake_get)
+
+    result = check_source_blocking("https://example.com", ignore_robots_txt=True)
+    assert result.reason is None
+    assert requested_urls == ["https://example.com"]
+
+
 def test_check_source_blocking_marks_external_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "vchat.source_blocking._resolve_hostname",
