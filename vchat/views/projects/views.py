@@ -27,7 +27,7 @@ from jobs.crawler import (
     reapply_source_rules_task,
     sitemap_sync_task,
 )
-from jobs.embedder.tasks import (
+from jobs.crawler.tasks import (
     index_project,
     load_boilerplate_hashes,
     refresh_source_index,
@@ -1405,7 +1405,9 @@ async def project_action(request):
             reindex_cron=reindex_cron,
         )
         db_session.add(source)
-        is_blocked = await _check_source_blocking_and_commit(request, db_session, source)
+        is_blocked = await _check_source_blocking_and_commit(
+            request, db_session, source
+        )
         await admin_event("source_create", request)
         if not is_blocked:
             crawl_source_task.delay(source.id)

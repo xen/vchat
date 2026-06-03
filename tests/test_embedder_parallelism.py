@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from jobs.crawler import tasks as crawler_tasks
 from jobs.embedder import launcher
 from jobs.embedder import tasks as embedder_tasks
 
@@ -60,11 +61,6 @@ def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
     monkeypatch.setattr(embedder_tasks, "reserve_pending_chunk_slots", _reserve)
     monkeypatch.setattr(
         embedder_tasks,
-        "schedule_pending_chunk_tasks",
-        lambda count: scheduled_counts.append(count) or count,
-    )
-    monkeypatch.setattr(
-        embedder_tasks,
         "release_pending_chunk_slots",
         lambda _redis_client, slots=1: (_redis_client, slots),
     )
@@ -74,6 +70,7 @@ def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
     pending, scheduled = embedder_tasks.ensure_pending_chunk_workers(
         session="db-session",
         redis_client="redis-client",
+        schedule_tasks=lambda count: scheduled_counts.append(count) or count,
     )
 
     assert pending == 19
@@ -103,22 +100,22 @@ def test_schedule_ensure_pending_chunks_deduplicates(monkeypatch: pytest.MonkeyP
             closed.append(True)
 
     monkeypatch.setattr(
-        embedder_tasks.redis,
+        crawler_tasks.redis,
         "from_url",
         lambda _url: _Redis(acquired=True),
     )
     monkeypatch.setattr(
-        embedder_tasks,
+        crawler_tasks,
         "ensure_pending_chunks",
         type("_Task", (), {"delay": staticmethod(lambda: delayed.append(True))}),
     )
 
-    assert embedder_tasks.schedule_ensure_pending_chunks() is True
+    assert crawler_tasks.schedule_ensure_pending_chunks() is True
     assert delayed == [True]
     assert deleted == []
     assert closed == [True]
     assert calls == [
-        (embedder_tasks.ENSURE_PENDING_CHUNKS_SCHEDULE_KEY, 120, True),
+        (crawler_tasks.ENSURE_PENDING_CHUNKS_SCHEDULE_KEY, 120, True),
     ]
 
 
@@ -136,17 +133,17 @@ def test_schedule_ensure_pending_chunks_skips_when_already_scheduled(
             closed.append(True)
 
     monkeypatch.setattr(
-        embedder_tasks.redis,
+        crawler_tasks.redis,
         "from_url",
         lambda _url: _Redis(),
     )
     monkeypatch.setattr(
-        embedder_tasks,
+        crawler_tasks,
         "ensure_pending_chunks",
         type("_Task", (), {"delay": staticmethod(lambda: (_ for _ in ()).throw(RuntimeError))}),
     )
 
-    assert embedder_tasks.schedule_ensure_pending_chunks() is False
+    assert crawler_tasks.schedule_ensure_pending_chunks() is False
     assert closed == [True]
 
 
@@ -172,23 +169,23 @@ def test_schedule_index_document_deduplicates(monkeypatch: pytest.MonkeyPatch) -
             closed.append(True)
 
     monkeypatch.setattr(
-        embedder_tasks.redis,
+        crawler_tasks.redis,
         "from_url",
         lambda _url: _Redis(acquired=True),
     )
     monkeypatch.setattr(
-        embedder_tasks,
+        crawler_tasks,
         "index_document",
         type("_Task", (), {"delay": staticmethod(lambda doc_id: delayed.append(doc_id))}),
     )
 
-    assert embedder_tasks.schedule_index_document(77) is True
+    assert crawler_tasks.schedule_index_document(77) is True
     assert delayed == [77]
     assert deleted == []
     assert calls == [
         (
-            f"{embedder_tasks.INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}77",
-            embedder_tasks.INDEX_DOCUMENT_SCHEDULE_TTL,
+            f"{crawler_tasks.INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}77",
+            crawler_tasks.INDEX_DOCUMENT_SCHEDULE_TTL,
             True,
         )
     ]
@@ -207,17 +204,17 @@ def test_schedule_index_document_skips_duplicate(monkeypatch: pytest.MonkeyPatch
             closed.append(True)
 
     monkeypatch.setattr(
-        embedder_tasks.redis,
+        crawler_tasks.redis,
         "from_url",
         lambda _url: _Redis(),
     )
     monkeypatch.setattr(
-        embedder_tasks,
+        crawler_tasks,
         "index_document",
         type("_Task", (), {"delay": staticmethod(lambda doc_id: (_ for _ in ()).throw(RuntimeError(doc_id)))}),
     )
 
-    assert embedder_tasks.schedule_index_document(77) is False
+    assert crawler_tasks.schedule_index_document(77) is False
     assert closed == [True]
 
 

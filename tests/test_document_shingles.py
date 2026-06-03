@@ -240,7 +240,7 @@ def test_chunk_document_text_no_filter_when_hashes_empty(monkeypatch) -> None:
 
 def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
     """rebuild_boilerplate_for_source counts how many pages share each trigram."""
-    from jobs.embedder.tasks import rebuild_boilerplate_for_source
+    from jobs.crawler.tasks import rebuild_boilerplate_for_source
 
     inserted_batches: list[list[dict[str, int]]] = []
     deleted_source_id: list[int] = []
@@ -306,7 +306,7 @@ def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
 
         return Stmt()
 
-    import jobs.embedder.tasks as tasks_module
+    import jobs.crawler.tasks as tasks_module
 
     original_sa_delete = tasks_module.sa.delete
     original_sa_insert = tasks_module.sa.insert

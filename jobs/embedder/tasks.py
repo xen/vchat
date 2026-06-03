@@ -14,24 +14,18 @@ from sqlalchemy.orm import Session
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from vchat.embeddings import (
+    load_embedding_tokenizer,
     load_embedding_model,
     release_torch_cache,
     resolve_embedding_device,
 )
-from vchat.document_shingles import (
-    compute_trigram_hashes,
-    extract_content_blocks,
-    is_boilerplate_block,
-)
-from vchat.models import ChatMsg, Chunk, Page, Source, SourceShingleFreq
-from vchat.page_status import PageStatus, PageStatusError
+from vchat.document_shingles import is_boilerplate_block
+from vchat.models import ChatMsg, Chunk, Page
+from vchat.page_status import PageStatus
 from vchat.settings import config
 
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
 PENDING_CHUNKS_INFLIGHT_KEY = "vchat:embed:pending_chunks:inflight"
-ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
-REFRESH_PROJECT_INDEX_SCHEDULE_KEY = "vchat:embed:refresh_project_index:scheduled"
-INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX = "vchat:embed:index_document:scheduled:"
 PENDING_CHUNKS_BATCH_SIZE = max(
     1, int(config.get("embedding_pending_chunks_batch_size", 8) or 8)
 )
@@ -41,28 +35,13 @@ PENDING_CHUNKS_MAX_INFLIGHT = max(
 PENDING_CHUNKS_COUNTER_TTL = max(
     60, int(config.get("embedding_pending_chunks_counter_ttl_seconds", 600) or 600)
 )
-ENSURE_PENDING_CHUNKS_SCHEDULE_TTL = max(
-    30, int(config.get("embedding_ensure_pending_chunks_ttl_seconds", 120) or 120)
-)
-REFRESH_PROJECT_INDEX_SCHEDULE_TTL = max(
-    60, int(config.get("embedding_refresh_project_index_ttl_seconds", 300) or 300)
-)
-INDEX_DOCUMENT_SCHEDULE_TTL = max(
-    300,
-    int(
-        config.get(
-            "embedding_index_document_schedule_ttl_seconds",
-            config.get("celery_visibility_timeout", 21600),
-        )
-        or config.get("celery_visibility_timeout", 21600)
-    ),
-)
 EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS = max(
     0, int(config.get("embedding_model_reset_after_documents", 20) or 20)
 )
 
 # Lazy, per-process singleton
 _embed_model = None
+_embed_tokenizer = None
 _completed_documents_since_reset = 0
 EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]
 EMBEDDING_CHUNK_MAX_TOKENS = config["embedding_chunk_max_tokens"]
@@ -76,18 +55,6 @@ EMBEDDING_ENTITY_SCAN_MAX_CHARS = max(
     EMBEDDING_CHUNK_MAX_CHARS,
     int(config.get("embedding_entity_scan_max_chars", 24000) or 24000),
 )
-SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE = max(
-    100,
-    int(config.get("source_shingle_freq_insert_batch_size", 2000) or 2000),
-)
-VEC_DIM = int(config.get("vec_dim", 2048) or 2048)
-
-ERROR_META_KEYS = (
-    "error",
-    "message",
-    "reason",
-    "exception_class",
-)
 
 
 class EmbedderDocumentError(RuntimeError):
@@ -96,45 +63,19 @@ class EmbedderDocumentError(RuntimeError):
         self.page_id = page_id
 
 
-@dataclass(slots=True)
-class PageChunkContext:
-    id: int
-    source_id: int | None
-    content: str
-    status_error: str | None
-
-
-def clear_error_meta(meta: dict[str, Any]) -> dict[str, Any]:
-    for key in ERROR_META_KEYS:
-        meta.pop(key, None)
-    return meta
-
-
-def set_error_meta(
-    meta: dict[str, Any],
-    *,
-    reason: str,
-    message: str | None = None,
-    error: str | None = None,
-    exception_class: str | None = None,
-) -> dict[str, Any]:
-    clear_error_meta(meta)
-    meta["reason"] = reason
-    if message:
-        meta["message"] = message
-    if error:
-        meta["error"] = error
-    if exception_class:
-        meta["exception_class"] = exception_class
-    return meta
-
-
 def get_embed_model() -> Any:
     global _embed_model
     if _embed_model is None:
         resolved_device = resolve_embedding_device()
         _embed_model = load_embedding_model(device=resolved_device)
     return _embed_model
+
+
+def get_embed_tokenizer() -> Any:
+    global _embed_tokenizer
+    if _embed_tokenizer is None:
+        _embed_tokenizer = load_embedding_tokenizer()
+    return _embed_tokenizer
 
 
 def reset_embed_model() -> None:
@@ -207,7 +148,7 @@ def chunk_text_word_window(
     if overlap is None:
         overlap = EMBEDDING_CHUNK_OVERLAP_TOKENS
 
-    tokenizer = get_embed_model().tokenizer
+    tokenizer = get_embed_tokenizer()
     tokens = text.split()
     n = len(tokens)
     chunks: List[ChunkData] = []
@@ -324,7 +265,7 @@ def split_table_rows(table_text: str, max_tokens: int) -> list[str]:
     rows = lines[2:]
     parts: list[str] = []
     bucket: list[str] = []
-    tokenizer = get_embed_model().tokenizer
+    tokenizer = get_embed_tokenizer()
     head_tokens = len(
         tokenizer(
             "\n".join(head),
@@ -560,7 +501,7 @@ def chunk_document_text(
         ]
 
     chunk_ix = 0
-    tokenizer = get_embed_model().tokenizer
+    tokenizer = get_embed_tokenizer()
     for kind, block, header_text, section_path in blocks:
         entity_terms = collect_entity_terms(
             block,
@@ -730,56 +671,6 @@ def chunk_document_text(
     return chunks
 
 
-def fetch_page_context(session: Session, page_id: int):
-    stmt = select(Page.id, Page.source_id, Page.content, Page.status_error).where(
-        Page.id == page_id
-    )
-    row = session.execute(stmt).first()
-    if not row:
-        logging.warning("Page %s not found", page_id)
-        return None
-
-    doc = PageChunkContext(
-        id=row.id,
-        source_id=row.source_id,
-        content=row.content or "",
-        status_error=row.status_error,
-    )
-
-    if not doc.content:
-        logging.warning("Page %s has no content", page_id)
-        return None
-
-    if doc.status_error is not None:
-        logging.info("Page %s has status_error=%s, skipping", page_id, doc.status_error)
-        return None
-
-    if session.in_transaction():
-        session.rollback()
-
-    return doc
-
-
-def load_boilerplate_hashes(session: Session, source_id: int) -> frozenset[int]:
-    """Return shingle hashes that appear in >40% of pages for this source."""
-    total: int = session.execute(
-        sa.select(sa.func.count(Page.id)).where(
-            Page.source_id == source_id,
-            Page.content.isnot(None),
-            Page.content != "",
-        )
-    ).scalar_one()
-    if total < 5:
-        return frozenset()
-    rows = session.execute(
-        sa.select(SourceShingleFreq.shingle_hash).where(
-            SourceShingleFreq.source_id == source_id,
-            SourceShingleFreq.count > total * 0.4,
-        )
-    ).scalars()
-    return frozenset(rows)
-
-
 def validate_chunk_data(chunks: list[ChunkData], *, page_id: int) -> None:
     for chunk in chunks:
         if chunk.token_count > EMBEDDING_MAX_SEQ_LENGTH:
@@ -797,87 +688,6 @@ def validate_chunk_data(chunks: list[ChunkData], *, page_id: int) -> None:
                 f"({len(chunk.text)} chars > {EMBEDDING_BLOCK_MAX_CHARS})",
                 page_id=page_id,
             )
-
-
-def mark_page_embedder_failed(
-    session: Session,
-    page_id: int,
-    *,
-    message: str,
-    error: str | None = None,
-    exception_class: str | None = None,
-) -> None:
-    page = session.get(Page, page_id)
-    if page is None:
-        return
-
-    page.status = PageStatus.parsing
-    page.status_error = PageStatusError.embedder_failed
-    meta = dict(page.meta or {})
-    set_error_meta(
-        meta,
-        reason=PageStatusError.embedder_failed.value,
-        message=message,
-        error=error,
-        exception_class=exception_class,
-    )
-    page.meta = meta
-    session.execute(delete(Chunk).where(Chunk.page_id == page_id))
-    session.commit()
-
-
-def materialize_page_chunks(
-    session: Session, doc: Page | PageChunkContext, user_uid: str = "system"
-) -> int:
-    boilerplate_hashes: frozenset[int] = frozenset()
-    if doc.source_id is not None:
-        boilerplate_hashes = load_boilerplate_hashes(session, doc.source_id)
-        if session.in_transaction():
-            session.rollback()
-
-    chunks = chunk_document_text(
-        doc.content or "",
-        boilerplate_hashes=boilerplate_hashes or None,
-    )
-    validate_chunk_data(chunks, page_id=doc.id)
-    logging.info("Materializing %s chunks for Page %s", len(chunks), doc.id)
-
-    session.execute(delete(Chunk).where(Chunk.page_id == doc.id))
-
-    if not chunks:
-        logging.info("No content to index for Page %s", doc.id)
-        session.execute(
-            sa.update(Page)
-            .where(Page.id == doc.id)
-            .values(status=PageStatus.ready, status_error=None)
-        )
-        session.commit()
-        return 0
-
-    for c in chunks:
-        chunk = Chunk(
-            chat_id=None,
-            user_uid=user_uid,
-            msg_id=None,
-            page_id=doc.id,
-            chunk_ix=c.index,
-            start_offset=c.start,
-            end_offset=c.end,
-            kind=c.kind,
-            header_text=c.header_text,
-            section_path=c.section_path,
-            entity_terms=c.entity_terms,
-            token_count=c.token_count,
-            text=c.text,
-            embedding=None,
-        )
-        session.add(chunk)
-
-    session.commit()
-    # Освобождаем все вставленные Chunk ORM-объекты из identity map.
-    # chunk_document_text() уже вернул список ChunkData, они не нужны дальше.
-    session.expunge_all()
-    return len(chunks)
 
 
 def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bool:
@@ -1058,75 +868,8 @@ def release_pending_chunk_slots(redis_client: Any, slots: int = 1) -> int:
     )
 
 
-def schedule_pending_chunk_tasks(task_count: int) -> int:
-    scheduled = 0
-    for _ in range(max(0, int(task_count or 0))):
-        pending_chunks.apply_async(kwargs={"counted": True})
-        scheduled += 1
-    return scheduled
-
-
-def schedule_ensure_pending_chunks() -> bool:
-    redis_client = redis.from_url(REDIS_URL)
-    try:
-        acquired = redis_client.set(
-            ENSURE_PENDING_CHUNKS_SCHEDULE_KEY,
-            "1",
-            ex=ENSURE_PENDING_CHUNKS_SCHEDULE_TTL,
-            nx=True,
-        )
-        if not acquired:
-            return False
-
-        ensure_pending_chunks.delay()
-        return True
-    finally:
-        redis_client.close()
-
-
-def schedule_refresh_project_index() -> bool:
-    redis_client = redis.from_url(REDIS_URL)
-    try:
-        acquired = redis_client.set(
-            REFRESH_PROJECT_INDEX_SCHEDULE_KEY,
-            "1",
-            ex=REFRESH_PROJECT_INDEX_SCHEDULE_TTL,
-            nx=True,
-        )
-        if not acquired:
-            return False
-
-        refresh_project_index.delay()
-        return True
-    finally:
-        redis_client.close()
-
-
-def index_document_schedule_key(document_id: int) -> str:
-    return f"{INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}{document_id}"
-
-
-def schedule_index_document(document_id: int) -> bool:
-    redis_client = redis.from_url(REDIS_URL)
-    schedule_key = index_document_schedule_key(document_id)
-    try:
-        acquired = redis_client.set(
-            schedule_key,
-            "1",
-            ex=INDEX_DOCUMENT_SCHEDULE_TTL,
-            nx=True,
-        )
-        if not acquired:
-            return False
-
-        index_document.delay(document_id)
-        return True
-    finally:
-        redis_client.close()
-
-
 def ensure_pending_chunk_workers(
-    session: Session, redis_client: Any
+    session: Session, redis_client: Any, schedule_tasks
 ) -> tuple[int, int]:
     pending_chunk_count = count_pending_chunks(session)
     target = pending_chunk_task_target(pending_chunk_count)
@@ -1139,7 +882,7 @@ def ensure_pending_chunk_workers(
 
     scheduled = 0
     try:
-        scheduled = schedule_pending_chunk_tasks(missing)
+        scheduled = schedule_tasks(missing)
         return pending_chunk_count, scheduled
     finally:
         unscheduled = missing - scheduled
@@ -1162,23 +905,6 @@ def run_pending_chunk_batch(
 
     remaining = count_pending_chunks(session)
     return processed, remaining
-
-
-def index_page_chunks(session: Session, doc: Page) -> bool:
-    chunk_count = materialize_page_chunks(session, doc)
-    if chunk_count == 0:
-        return False
-
-    schedule_ensure_pending_chunks()
-    return True
-
-
-def index_page_inner(session: Session, page_id: int) -> bool:
-    context = fetch_page_context(session, page_id)
-    if not context:
-        return False
-
-    return index_page_chunks(session, context)
 
 
 @app.task(name="jobs.embedder.tasks.index_chat_message", queue="embeddings")
@@ -1229,46 +955,6 @@ def index_chat_message(msg_id: int):
         engine.dispose()
 
 
-@app.task(name="jobs.embedder.tasks.index_document", queue="celery")
-def index_document(document_id: int):
-    engine = create_sync_engine()
-    redis_client = redis.from_url(REDIS_URL)
-    try:
-        with Session(bind=engine) as session:
-            try:
-                index_page_inner(session, document_id)
-            except EmbedderDocumentError as exc:
-                logging.exception(
-                    "Embedder rejected page %s during chunk materialization",
-                    document_id,
-                )
-                mark_page_embedder_failed(
-                    session,
-                    document_id,
-                    message=str(exc),
-                    error=str(exc),
-                    exception_class=type(exc).__name__,
-                )
-            except Exception as exc:
-                logging.exception(
-                    "Unexpected embedder failure for page %s",
-                    document_id,
-                )
-                mark_page_embedder_failed(
-                    session,
-                    document_id,
-                    message="Unexpected embedder failure during document indexing.",
-                    error=str(exc),
-                    exception_class=type(exc).__name__,
-                )
-    finally:
-        try:
-            redis_client.delete(index_document_schedule_key(document_id))
-        finally:
-            redis_client.close()
-            engine.dispose()
-
-
 @app.task(name="jobs.embedder.tasks.pending_chunks", queue="embeddings")
 def pending_chunks(counted: bool = False):
     engine = create_sync_engine()
@@ -1282,6 +968,8 @@ def pending_chunks(counted: bool = False):
             except EmbedderDocumentError as exc:
                 logging.exception("Embedder rejected a pending chunk batch")
                 if exc.page_id is not None:
+                    from jobs.crawler.tasks import mark_page_embedder_failed
+
                     mark_page_embedder_failed(
                         session,
                         exc.page_id,
@@ -1300,7 +988,7 @@ def pending_chunks(counted: bool = False):
             engine.dispose()
 
     if remaining > 0:
-        schedule_ensure_pending_chunks()
+        app.send_task("jobs.crawler.tasks.ensure_pending_chunks", queue="celery")
 
     logging.info(
         "Processed %s pending chunks in batch; %s remaining",
@@ -1308,283 +996,3 @@ def pending_chunks(counted: bool = False):
         remaining,
     )
     return processed
-
-
-@app.task(name="jobs.embedder.tasks.ensure_pending_chunks", queue="celery")
-def ensure_pending_chunks():
-    engine = create_sync_engine()
-    redis_client = redis.from_url(REDIS_URL)
-    try:
-        with Session(bind=engine) as session:
-            pending_chunk_count, scheduled = ensure_pending_chunk_workers(
-                session, redis_client
-            )
-    finally:
-        try:
-            redis_client.delete(ENSURE_PENDING_CHUNKS_SCHEDULE_KEY)
-        finally:
-            redis_client.close()
-            engine.dispose()
-
-    logging.info(
-        "Ensured pending chunk workers for %s pending chunks; scheduled %s tasks",
-        pending_chunk_count,
-        scheduled,
-    )
-    return scheduled
-
-
-@app.task(name="jobs.embedder.tasks.schedule_pending_chunks", queue="celery")
-def schedule_pending_chunks():
-    scheduled = schedule_ensure_pending_chunks()
-    logging.info("Schedule pending chunks requested; enqueued=%s", scheduled)
-    return scheduled
-
-
-@app.task(name="jobs.embedder.tasks.index_project", queue="celery")
-def index_project():
-    engine = create_sync_engine()
-    try:
-        with Session(bind=engine) as session:
-            stmt = (
-                select(Page.id)
-                .where(Page.status_error.is_(None))
-                .where(Page.content.isnot(None))
-                .where(Page.content != "")
-            )
-            doc_ids = session.execute(stmt).scalars().all()
-    finally:
-        engine.dispose()
-
-    logging.info(
-        "Scheduling indexing for %s pages",
-        len(doc_ids),
-    )
-
-    for doc_id in doc_ids:
-        schedule_index_document(doc_id)
-
-
-@app.task(name="jobs.embedder.tasks.refresh_project_index", queue="celery")
-def refresh_project_index():
-    engine = create_sync_engine()
-    redis_client = redis.from_url(REDIS_URL)
-    try:
-        with Session(bind=engine) as session:
-            chunk_counts = (
-                sa.select(
-                    Chunk.page_id,
-                    sa.func.count(Chunk.id).label("chunk_count"),
-                )
-                .join(Page, Chunk.page_id == Page.id)
-                .group_by(Chunk.page_id)
-                .subquery()
-            )
-
-            docs_without_chunks = (
-                session.execute(
-                    sa.select(Page.id)
-                    .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
-                    .where(Page.status_error.is_(None))
-                    .where(Page.content.isnot(None))
-                    .where(Page.content != "")
-                    .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
-                )
-                .scalars()
-                .all()
-            )
-
-            for doc_id in docs_without_chunks:
-                logging.info("Scheduling page %s for refresh indexing", doc_id)
-                schedule_index_document(doc_id)
-
-            errored_doc_ids = (
-                session.execute(sa.select(Page.id).where(Page.status_error.isnot(None)))
-                .scalars()
-                .all()
-            )
-
-            if errored_doc_ids:
-                logging.info(
-                    "Removing %s chunk sets for errored pages",
-                    len(errored_doc_ids),
-                )
-                session.execute(
-                    sa.delete(Chunk).where(Chunk.page_id.in_(errored_doc_ids))
-                )
-
-            dangling_chunk_ids = (
-                session.execute(
-                    sa.select(Chunk.id)
-                    .outerjoin(Page, Chunk.page_id == Page.id)
-                    .where(Chunk.page_id.isnot(None))
-                    .where(Page.id.is_(None))
-                )
-                .scalars()
-                .all()
-            )
-
-            if dangling_chunk_ids:
-                logging.info(
-                    "Cleaning up %s chunk records for deleted pages",
-                    len(dangling_chunk_ids),
-                )
-                session.execute(
-                    sa.delete(Chunk).where(Chunk.id.in_(dangling_chunk_ids))
-                )
-
-            session.commit()
-    finally:
-        try:
-            redis_client.delete(REFRESH_PROJECT_INDEX_SCHEDULE_KEY)
-        finally:
-            redis_client.close()
-            engine.dispose()
-
-
-@app.task(name="jobs.embedder.tasks.refresh_source_index", queue="celery")
-def refresh_source_index(source_id: int):
-    engine = create_sync_engine()
-    try:
-        with Session(bind=engine) as session:
-            source = session.get(Source, source_id)
-            if not source:
-                logging.warning("Source %s not found", source_id)
-                return
-
-            chunk_counts = (
-                sa.select(
-                    Chunk.page_id,
-                    sa.func.count(Chunk.id).label("chunk_count"),
-                )
-                .join(Page, Chunk.page_id == Page.id)
-                .where(Page.source_id == source_id)
-                .group_by(Chunk.page_id)
-                .subquery()
-            )
-
-            docs_without_chunks = (
-                session.execute(
-                    sa.select(Page.id)
-                    .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
-                    .where(Page.source_id == source_id)
-                    .where(Page.status_error.is_(None))
-                    .where(Page.content.isnot(None))
-                    .where(Page.content != "")
-                    .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
-                )
-                .scalars()
-                .all()
-            )
-
-            for doc_id in docs_without_chunks:
-                logging.info(
-                    "Scheduling page %s for refresh indexing (source %s)",
-                    doc_id,
-                    source_id,
-                )
-                schedule_index_document(doc_id)
-
-            errored_doc_ids = (
-                session.execute(
-                    sa.select(Page.id).where(
-                        Page.source_id == source_id,
-                        Page.status_error.isnot(None),
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            if errored_doc_ids:
-                logging.info(
-                    "Removing %s chunk sets for errored pages in source %s",
-                    len(errored_doc_ids),
-                    source_id,
-                )
-                session.execute(
-                    sa.delete(Chunk).where(Chunk.page_id.in_(errored_doc_ids))
-                )
-
-            session.commit()
-    finally:
-        engine.dispose()
-
-
-def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
-    """Recount word-trigram shingle frequencies for all pages of a source.
-
-    Returns the number of distinct shingle hashes written.
-    """
-    from collections import Counter
-
-    content_result = session.execute(
-        sa.select(Page.content)
-        .where(
-            Page.source_id == source_id,
-            Page.content.isnot(None),
-            Page.content != "",
-        )
-        .execution_options(yield_per=100)
-    )
-
-    shingle_counts: Counter[int] = Counter()
-    page_count = 0
-    for content in content_result.scalars():
-        page_count += 1
-        blocks = extract_content_blocks(content)
-        page_hashes: set[int] = set()
-        for block in blocks:
-            page_hashes.update(compute_trigram_hashes(block))
-        shingle_counts.update(page_hashes)
-
-    if page_count == 0:
-        session.execute(
-            sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
-        )
-        session.commit()
-        return 0
-
-    if session.in_transaction():
-        session.rollback()
-
-    session.execute(
-        sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
-    )
-
-    batch: list[dict[str, int]] = []
-    for shingle_hash, count in shingle_counts.items():
-        batch.append(
-            {
-                "source_id": source_id,
-                "shingle_hash": shingle_hash,
-                "count": count,
-            }
-        )
-        if len(batch) >= SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE:
-            session.execute(sa.insert(SourceShingleFreq), batch)
-            batch.clear()
-
-    if batch:
-        session.execute(sa.insert(SourceShingleFreq), batch)
-    session.commit()
-    logging.info(
-        "Rebuilt boilerplate index for source %s: %s distinct shingles from %s pages",
-        source_id,
-        len(shingle_counts),
-        page_count,
-    )
-    return len(shingle_counts)
-
-
-@app.task(
-    name="jobs.embedder.tasks.rebuild_boilerplate_index",
-    queue="celery",
-)
-def rebuild_boilerplate_index(source_id: int):
-    engine = create_sync_engine()
-    try:
-        with Session(bind=engine) as session:
-            rebuild_boilerplate_for_source(session, source_id)
-    finally:
-        engine.dispose()

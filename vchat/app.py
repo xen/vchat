@@ -89,8 +89,10 @@ async def create_app() -> Application:
 
     async def warmup_db(app):
         import asyncio
+
         asyncio.get_running_loop().slow_callback_duration = 0.5
         from vchat.db import async_session_factory
+
         async with async_session_factory() as session:
             await session.execute(sa.text("SELECT 1"))
 

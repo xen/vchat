@@ -18,11 +18,10 @@ from vchat.document_types import guess_document_type
 from vchat.models.data import Chunk, CrawlRun, Page, PageLink, Source
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
-from jobs.embedder.tasks import schedule_index_document
+from jobs.crawler.tasks import schedule_index_document
 from jobs.crawler.url_rules import (
     normalize_url_for_queue,
     build_source_id_by_host,
-    extract_hostname,
     resolve_source_id_for_url,
 )
 
@@ -94,7 +93,9 @@ def get_page_by_uri(session: Session, uri: str) -> Page | None:
     return session.execute(select(Page).where(Page.uri == uri)).scalars().first()
 
 
-def get_or_create_page(session: Session, *, source_id: int, uri: str) -> tuple[Page, bool]:
+def get_or_create_page(
+    session: Session, *, source_id: int, uri: str
+) -> tuple[Page, bool]:
     page = get_page_by_uri(session, uri)
     created = page is None
     if page is None:
@@ -255,13 +256,41 @@ class DatabasePipeline:
             increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
             return item
 
+        html_body = item.get("content")
+        content_type = item.get("content_type")
+        markdown_content = None
+        normalized_title = None
+        extracted_meta = None
+
         # Handle 4xx errors
         if http_status and 400 <= http_status < 500:
-            handle_error_page(
-                self.engine, url, source_id, http_status, etag, self.logger
+            if html_body:
+                try:
+                    markdown_content, normalized_title, extracted_meta = (
+                        extract_url_document(
+                            url,
+                            html_body=html_body,
+                            content_type=content_type,
+                        )
+                    )
+                except Exception as exc:
+                    spider.logger.error(
+                        "Soft-4xx extraction failed for %s: %s",
+                        url,
+                        exc,
+                        exc_info=True,
+                    )
+            if not markdown_content:
+                handle_error_page(
+                    self.engine, url, source_id, http_status, etag, self.logger
+                )
+                increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
+                return item
+            spider.logger.warning(
+                "Treating HTTP %s for %s as soft-4xx because extractable content exists",
+                http_status,
+                url,
             )
-            increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
-            return item
 
         # Handle 5xx errors
         if http_status and http_status >= 500:
@@ -281,33 +310,35 @@ class DatabasePipeline:
             increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
             return item
 
-        html_body = item.get("content")
-        content_type = item.get("content_type")
-        markdown_content = None
-        try:
-            markdown_content, normalized_title, extracted_meta = extract_url_document(
-                url,
-                html_body=html_body,
-                content_type=content_type,
-            )
-        except Exception as exc:
-            spider.logger.error("Extraction failed for %s: %s", url, exc, exc_info=True)
-            save_page_status(
-                self.engine,
-                url,
-                source_id,
-                PageStatus.crawler,
-                PageStatusError.extraction_failed,
-                http_status,
-                etag,
-                self.logger,
-                reason="extraction_failed",
-                message="Document extraction failed after the page was downloaded.",
-                error=str(exc),
-                exception_class=type(exc).__name__,
-            )
-            increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
-            return item
+        if markdown_content is None:
+            try:
+                markdown_content, normalized_title, extracted_meta = (
+                    extract_url_document(
+                        url,
+                        html_body=html_body,
+                        content_type=content_type,
+                    )
+                )
+            except Exception as exc:
+                spider.logger.error(
+                    "Extraction failed for %s: %s", url, exc, exc_info=True
+                )
+                save_page_status(
+                    self.engine,
+                    url,
+                    source_id,
+                    PageStatus.crawler,
+                    PageStatusError.extraction_failed,
+                    http_status,
+                    etag,
+                    self.logger,
+                    reason="extraction_failed",
+                    message="Document extraction failed after the page was downloaded.",
+                    error=str(exc),
+                    exception_class=type(exc).__name__,
+                )
+                increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
+                return item
 
         if not markdown_content:
             save_page_status(
@@ -332,7 +363,7 @@ class DatabasePipeline:
                 page, is_new = get_or_create_page(session, source_id=source_id, uri=url)
 
                 if page.status_error == PageStatusError.excluded_ignored:
-                    page.status = PageStatus.crawler
+                    page.status = PageStatus.ready
                     page.content = ""
                     page.title = ""
                     page.length = 0
@@ -418,7 +449,7 @@ class DatabasePipeline:
                             f"({word_count or 0} words, {len(markdown_content.strip())} chars)."
                         ),
                     )
-                    page.status = PageStatus.crawler
+                    page.status = PageStatus.ready
                     page.status_error = PageStatusError.low_content
                     if page.id is not None:
                         session.execute(delete(Chunk).where(Chunk.page_id == page.id))
@@ -547,6 +578,19 @@ def save_page_status(
         if etag:
             page.last_etag = etag
 
+        if status == PageStatus.crawler and status_error in (
+            PageStatusError.http_4xx,
+            PageStatusError.redirect,
+            PageStatusError.excluded_robots,
+            PageStatusError.excluded_rules,
+            PageStatusError.excluded_auth,
+            PageStatusError.excluded_ignored,
+            PageStatusError.extraction_failed,
+            PageStatusError.no_content,
+            PageStatusError.low_content,
+        ):
+            page.status = PageStatus.ready
+
         meta = dict(page.meta or {})
         if reason:
             set_error_meta(
@@ -575,7 +619,7 @@ def handle_error_page(
         if etag:
             page.last_etag = etag
 
-        page.status = PageStatus.crawler
+        page.status = PageStatus.ready
         page.status_error = PageStatusError.http_4xx
         if page.error_count >= 2:
             page.check_interval_days = 90

@@ -135,7 +135,7 @@ async def test_run_task_enqueues_payload(monkeypatch: pytest.MonkeyPatch) -> Non
     redis = _Redis()
     monkeypatch.setattr(utils, "redis", redis)
     monkeypatch.setattr(utils, "json", pyjson)
-    task_id = await utils.run_task("jobs.embedder.tasks.index_document", doc_id=77)
+    task_id = await utils.run_task("jobs.crawler.tasks.index_document", doc_id=77)
     assert task_id
     assert any(call[0] == "lpush" for call in redis.calls)
     assert "index_document" in redis.queue[0]

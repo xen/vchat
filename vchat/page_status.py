@@ -11,6 +11,9 @@ class PageStatusError(str, Enum):
     # Crawler
     http_4xx = "http_4xx"
     http_5xx = "http_5xx"
+    site_unreachable = "site_unreachable"
+    dns_unresolved = "dns_unresolved"
+    redirect_other_domain = "redirect_other_domain"
     redirect = "redirect"
     excluded_robots = "excluded_robots"
     excluded_rules = "excluded_rules"
@@ -28,6 +31,9 @@ class PageStatusError(str, Enum):
 STATUS_ERROR_DESCRIPTIONS: dict[PageStatusError, str] = {
     PageStatusError.http_4xx: "Клиентская ошибка HTTP",
     PageStatusError.http_5xx: "Серверная ошибка HTTP",
+    PageStatusError.site_unreachable: "Главная страница недоступна",
+    PageStatusError.dns_unresolved: "Домен источника не резолвится",
+    PageStatusError.redirect_other_domain: "Главная страница редиректит на другой домен",
     PageStatusError.redirect: "Страница редиректит на другой URL",
     PageStatusError.excluded_robots: "Заблокировано правилами robots.txt",
     PageStatusError.excluded_rules: "Заблокировано правилами источника",

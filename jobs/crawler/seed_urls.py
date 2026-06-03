@@ -18,8 +18,8 @@ def iter_priority_crawl_queue(
     Yield URLs to crawl in priority order using the basket algorithm.
 
     Basket A (20% cap): hub pages (is_hub_page=True) - always crawled for discovery
-    Basket B (60% cap): pages with expired check_interval_days
-    Basket C (20% cap): error_5xx retry + status='pending'
+    Basket B (60% cap): explicit crawler backlog + pages with expired check_interval_days
+    Basket C (20% cap): error_5xx retry
 
     If a basket has fewer items than its cap, the remaining budget
     is redistributed to other non-empty baskets in order B→C→A.
@@ -46,19 +46,24 @@ def iter_priority_crawl_queue(
                 limit=None if unlimited else effective_limit,
             )
 
-            # Basket B: pages due for recrawl (interval expired) + pending
+            # Basket B: pages explicitly queued for crawl + pages due for recrawl
             basket_b = fetch_basket(
                 session,
                 source_id,
                 excluded,
                 extra_filter="""
                     is_hub_page = false
-                    AND (status_error IS NULL OR status_error != 'http_5xx')
                     AND (
-                        last_crawled_at IS NULL
+                        (status = 'crawler' AND status_error IS NULL)
                         OR (
-                            check_interval_days IS NOT NULL AND
-                            last_crawled_at + (check_interval_days || ' days')::interval <= NOW()
+                            (status_error IS NULL OR status_error != 'http_5xx')
+                            AND (
+                                last_crawled_at IS NULL
+                                OR (
+                                    check_interval_days IS NOT NULL AND
+                                    last_crawled_at + (check_interval_days || ' days')::interval <= NOW()
+                                )
+                            )
                         )
                     )
                 """,

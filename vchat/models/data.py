@@ -225,6 +225,7 @@ class Page(Base, Created, Updated):
         else:
             self._length = value
 
+
 class Chunk(Base, Created, Updated):
     __tablename__ = "chunk"
 

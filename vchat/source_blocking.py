@@ -179,7 +179,9 @@ def check_source_blocking(source_uri: str) -> SourceBlockCheckResult:
     )
 
 
-def apply_source_blocking_result(source: object, result: SourceBlockCheckResult) -> None:
+def apply_source_blocking_result(
+    source: object, result: SourceBlockCheckResult
+) -> None:
     setattr(source, "blocked_reason", result.reason.value if result.reason else None)
     setattr(source, "blocked_message", result.message if result.is_blocked else None)
     setattr(source, "blocked_checked_at", result.checked_at)

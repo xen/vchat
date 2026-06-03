@@ -4,7 +4,7 @@ from urllib.parse import urljoin, urlparse
 import sqlalchemy as sa
 from aiohttp import ClientSession, ClientTimeout, web
 
-from jobs.embedder.tasks import schedule_index_document
+from jobs.crawler.tasks import schedule_index_document
 from vchat.document_pipeline import extract_url_document
 from vchat.document_indexing import (
     async_document_has_chunks,
@@ -111,9 +111,7 @@ async def _upsert_document(
     if not content:
         raise web.HTTPInternalServerError(text="Failed to extract document content")
 
-    document = await db.scalar(
-        sa.select(Page).where(Page.uri == url)
-    )
+    document = await db.scalar(sa.select(Page).where(Page.uri == url))
     created = document is None
 
     if document is None:

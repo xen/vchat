@@ -35,7 +35,7 @@ def test_chunk_text_respects_token_limit_and_overlap() -> None:
     tasks.EMBEDDING_CHUNK_MAX_TOKENS = 6
     tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 2
     tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
-    tasks.get_embed_model = lambda: SimpleNamespace(tokenizer=_WordTokenizer())
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
     text = " ".join(f"w{i}" for i in range(20))
     chunks = tasks.chunk_text_word_window(text)
     assert chunks
@@ -53,7 +53,7 @@ def test_chunk_text_splits_long_token() -> None:
     tasks.EMBEDDING_CHUNK_MAX_TOKENS = 4
     tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 0
     tasks.EMBEDDING_CHUNK_MAX_CHARS = 4
-    tasks.get_embed_model = lambda: SimpleNamespace(tokenizer=_CharTokenizer())
+    tasks.get_embed_tokenizer = lambda: _CharTokenizer()
     chunks = tasks.chunk_text_word_window("abcdefghij")
     assert [chunk.text for chunk in chunks] == ["abcd", "efgh", "ij"]
 
@@ -62,7 +62,7 @@ def test_chunk_text_progresses_when_overlap_exceeds_chunk_size() -> None:
     tasks.EMBEDDING_CHUNK_MAX_TOKENS = 6
     tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 400
     tasks.EMBEDDING_CHUNK_MAX_CHARS = 15
-    tasks.get_embed_model = lambda: SimpleNamespace(tokenizer=_WordTokenizer())
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
     chunks = tasks.chunk_text_word_window("aaaaa bbbbb ccccc ddddd")
 
@@ -101,6 +101,7 @@ def test_validate_chunk_data_rejects_embedder_oversize() -> None:
 
 
 def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
+    from jobs.crawler import tasks as crawler_tasks
     from vchat.page_status import PageStatus, PageStatusError
 
     executed = []
@@ -123,7 +124,7 @@ def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
         def commit(self):
             executed.append("commit")
 
-    tasks.mark_page_embedder_failed(
+    crawler_tasks.mark_page_embedder_failed(
         _Session(),
         55,
         message="Chunk exploded",
@@ -141,9 +142,11 @@ def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
 
 
 def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) -> None:
-    monkeypatch.setattr(tasks, "load_boilerplate_hashes", lambda *_args: frozenset({1}))
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "load_boilerplate_hashes", lambda *_args: frozenset({1}))
     monkeypatch.setattr(
-        tasks,
+        crawler_tasks,
         "chunk_document_text",
         lambda *_args, **_kwargs: [
             tasks.ChunkData(
@@ -184,13 +187,15 @@ def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) 
         def expunge_all(self):
             calls.append("expunge_all")
 
-    count = tasks.materialize_page_chunks(_Session(), page)
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
 
     assert count == 1
     assert calls[0] == "rollback"
 
 
 def test_fetch_page_context_rolls_back_after_loading_snapshot() -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
     row = SimpleNamespace(id=12, source_id=3, content="payload", status_error=None)
 
     class _Result:
@@ -214,7 +219,7 @@ def test_fetch_page_context_rolls_back_after_loading_snapshot() -> None:
             self._in_transaction = False
 
     session = _Session()
-    context = tasks.fetch_page_context(session, 12)
+    context = crawler_tasks.fetch_page_context(session, 12)
 
     assert context is not None
     assert context.id == 12

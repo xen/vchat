@@ -4,9 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-
-import pytest
-from scrapy.http import HtmlResponse, Request
+from scrapy.http import HtmlResponse, Request, TextResponse
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +240,72 @@ class TestGeneralSpiderTrackedSources:
 
         assert item["source_id"] == 2
         assert item["url"] == "https://grant.vbudushee.ru/public/application/cards"
+
+    def test_parse_item_skips_link_extraction_for_non_html_response(self):
+        from jobs.crawler.spiders.general import GeneralSpider
+
+        spider = GeneralSpider(
+            url="https://ai-academy.ru",
+            source_id=5,
+            config={"rules": []},
+        )
+
+        request = Request("https://ai-academy.ru/upload/iblock/bb6/baseline.ipynb")
+        response = TextResponse(
+            url="https://ai-academy.ru/upload/iblock/bb6/baseline.ipynb",
+            body=b"{\"cells\": []}",
+            encoding="utf-8",
+            request=request,
+        )
+
+        item = next(iter(spider.parse_item(response)))
+
+        assert item["url"] == "https://ai-academy.ru/upload/iblock/bb6/baseline.ipynb"
+        assert item["out_links"] == []
+
+    def test_parse_item_extracts_links_from_html_404_response(self):
+        from jobs.crawler.spiders.general import GeneralSpider
+
+        with patch.object(
+            GeneralSpider,
+            "_filter_links_by_crawl_eligibility",
+            side_effect=lambda candidates: candidates,
+        ):
+            spider = GeneralSpider(
+                url="https://books.vbudushee.ru",
+                source_id=11,
+                config={
+                    "rules": [],
+                    "tracked_sources": [
+                        {
+                            "id": 11,
+                            "uri": "https://books.vbudushee.ru",
+                            "rules": [],
+                        },
+                    ],
+                },
+            )
+
+            request = Request(
+                "https://books.vbudushee.ru/books/example/",
+                meta={"handle_httpstatus_all": True},
+            )
+            response = HtmlResponse(
+                url="https://books.vbudushee.ru/books/example/",
+                status=404,
+                body=(
+                    b"<html><head><title>Book</title></head><body>"
+                    b"<a href='/books/next/'>Next</a>"
+                    b"</body></html>"
+                ),
+                encoding="utf-8",
+                request=request,
+            )
+
+            item = next(iter(spider.parse_item(response)))
+
+        assert item["http_status"] == 404
+        assert item["out_links"] == ["https://books.vbudushee.ru/books/next/"]
 
     def test_discovery_filter_skips_known_not_due_pages(self):
         from jobs.crawler.spiders.general import GeneralSpider
@@ -495,6 +559,39 @@ class TestPriorityQueue:
         executed_sql = str(session.execute.call_args.args[0])
         assert "status_error" in executed_sql
         assert "http_5xx" in executed_sql
+
+    def test_crawler_status_pages_are_seeded_even_when_not_due_for_recrawl(self):
+        from jobs.crawler.seed_urls import fetch_basket
+
+        session = MagicMock()
+        result = MagicMock()
+        result.all.return_value = []
+        session.execute.return_value = result
+
+        fetch_basket(
+            session,
+            1,
+            set(),
+            extra_filter="""
+                is_hub_page = false
+                AND (
+                    (status = 'crawler' AND status_error IS NULL)
+                    OR (
+                        (status_error IS NULL OR status_error != 'http_5xx')
+                        AND (
+                            last_crawled_at IS NULL
+                            OR (
+                                check_interval_days IS NOT NULL AND
+                                last_crawled_at + (check_interval_days || ' days')::interval <= NOW()
+                            )
+                        )
+                    )
+                )
+            """,
+            limit=10,
+        )
+        executed_sql = str(session.execute.call_args.args[0])
+        assert "(status = 'crawler' AND status_error IS NULL)" in executed_sql
 
 
 class TestUrlNormalization:
@@ -1010,8 +1107,13 @@ class TestSitemapDiscovery:
             url_count=None,
         )
 
-        session.get.return_value = source
-        session.execute.return_value.scalars.return_value.all.return_value = [sitemap]
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source
+        source_rows_result = MagicMock()
+        source_rows_result.all.return_value = [(1, "https://example.com")]
+        sitemaps_result = MagicMock()
+        sitemaps_result.scalars.return_value.all.return_value = [sitemap]
+        session.execute.side_effect = [source_result, source_rows_result, sitemaps_result]
 
         with (
             patch("jobs.crawler.tasks.datetime") as datetime_mock,
@@ -1043,8 +1145,13 @@ class TestSitemapDiscovery:
             url_count=None,
         )
 
-        session.get.return_value = source
-        session.execute.return_value.scalars.return_value.all.return_value = [sitemap]
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source
+        source_rows_result = MagicMock()
+        source_rows_result.all.return_value = [(1, "https://example.com")]
+        sitemaps_result = MagicMock()
+        sitemaps_result.scalars.return_value.all.return_value = [sitemap]
+        session.execute.side_effect = [source_result, source_rows_result, sitemaps_result]
 
         body = b"""<?xml version="1.0" encoding="UTF-8"?>
         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -1100,7 +1207,7 @@ class TestPageStatusOnErrors:
 
             handle_error_page(engine, "https://example.com/gone", 1, 404, None, logger)
 
-            assert page_mock.status == PageStatus.crawler
+            assert page_mock.status == PageStatus.ready
             assert page_mock.status_error == PageStatusError.http_4xx
             assert page_mock.http_status == 404
             assert page_mock.meta["reason"] == "http_4xx"
@@ -1276,7 +1383,7 @@ class TestPageStatusModel:
 
 class TestEmbedderSkipsErrorPages:
     def test_fetch_page_context_skips_pages_with_status_error(self):
-        from jobs.embedder.tasks import fetch_page_context
+        from jobs.crawler.tasks import fetch_page_context
         from vchat.page_status import PageStatusError
 
         page = SimpleNamespace(
@@ -1293,3 +1400,78 @@ class TestEmbedderSkipsErrorPages:
         )
 
         assert fetch_page_context(session, 1) is None
+
+
+class TestSoft404Pages:
+    def test_pipeline_treats_extractable_404_as_content_page(self):
+        from jobs.crawler.pipelines import DatabasePipeline
+        from vchat.page_status import PageStatus
+
+        page = SimpleNamespace(
+            id=25154,
+            source_id=11,
+            uri="https://books.vbudushee.ru/books/khrestomatiya-14-18-let/po-tu-storonu-siney-granitsy-otryvok-1/",
+            meta={},
+            status_error=None,
+            is_hub_page=False,
+            content_value=None,
+            stable_count=0,
+            error_count=1,
+            check_interval_days=7,
+            title="Хрестоматия",
+        )
+
+        session = MagicMock()
+        session.__enter__ = lambda s: session
+        session.__exit__ = MagicMock(return_value=False)
+        session.commit = MagicMock()
+        session.flush = MagicMock()
+        session.execute.return_value.scalars.return_value.first.return_value = page
+
+        pipeline = DatabasePipeline.__new__(DatabasePipeline)
+        pipeline.logger = MagicMock()
+        pipeline.engine = MagicMock()
+        pipeline._crawl_run_id = None
+
+        spider = MagicMock()
+        spider.logger = MagicMock()
+
+        item = {
+            "url": page.uri,
+            "source_id": 11,
+            "http_status": 404,
+            "content_type": "text/html",
+            "content": "<html></html>",
+            "meta": {},
+            "out_links": ["https://books.vbudushee.ru/books/next/"],
+        }
+
+        with (
+            patch("jobs.crawler.pipelines.Session", return_value=session),
+            patch(
+                "jobs.crawler.pipelines.extract_url_document",
+                return_value=(
+                    "# По ту сторону синей границы\n\nТекст страницы",
+                    "По ту сторону синей границы (отрывок 1)",
+                    {"extraction": {"word_count": 200}},
+                ),
+            ),
+            patch(
+                "jobs.crawler.pipelines.document_content_effectively_unchanged",
+                return_value=False,
+            ),
+            patch("jobs.crawler.pipelines.sync_page_links") as links_mock,
+            patch("jobs.crawler.pipelines.schedule_index_document") as schedule_mock,
+            patch("jobs.crawler.pipelines.handle_error_page") as error_mock,
+        ):
+            pipeline.process_item(item, spider)
+
+        error_mock.assert_not_called()
+        schedule_mock.assert_called_once_with(25154)
+        links_mock.assert_called_once()
+        assert links_mock.call_args.kwargs["out_links"] == [
+            "https://books.vbudushee.ru/books/next/"
+        ]
+        assert page.status == PageStatus.parsing
+        assert page.status_error is None
+        assert page.http_status == 404

@@ -16,6 +16,7 @@ if PROJECT_ROOT not in sys.path or sys.path.index(PROJECT_ROOT) == 0:
     sys.path.append(PROJECT_ROOT)
 
 os.environ["CELERY_WORKER_LOGLEVEL"] = config["loglevel"]
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
 app = Celery(
@@ -45,7 +46,7 @@ app.conf.worker_max_memory_per_child = int(
 
 app.conf.beat_schedule = {
     "process_pending_chunks": {
-        "task": "jobs.embedder.tasks.schedule_pending_chunks",
+        "task": "jobs.crawler.tasks.schedule_pending_chunks",
         "schedule": 300.0,
         "options": {"queue": app.conf.task_default_queue},
     },

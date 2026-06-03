@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import pycld2 as cld2
 from dateutil import parser as date_parser
 from scrapy.linkextractors import LinkExtractor
-from scrapy.http import Request
+from scrapy.http import HtmlResponse, Request
 from scrapy.spiders import CrawlSpider, Rule
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -73,7 +73,10 @@ class GeneralSpider(CrawlSpider):
                 "id": tracked_source.get("id"),
                 "rules": list(tracked_source.get("rules", []) or []),
             }
-        if source_hostname and source_hostname.lower() not in self._tracked_sources_by_host:
+        if (
+            source_hostname
+            and source_hostname.lower() not in self._tracked_sources_by_host
+        ):
             self._tracked_sources_by_host[source_hostname.lower()] = {
                 "id": self.source_id,
                 "rules": self.source_rules,
@@ -109,7 +112,9 @@ class GeneralSpider(CrawlSpider):
                     if normalized_url in seen_urls:
                         continue
                     seen_urls.add(normalized_url)
-                    target_source_id = int(target_source.get("id") or self.source_id or 0)
+                    target_source_id = int(
+                        target_source.get("id") or self.source_id or 0
+                    )
                     candidate_targets.append((link, target_source_id, normalized_url))
 
             allowed_targets = self._filter_links_by_crawl_eligibility(candidate_targets)
@@ -213,14 +218,20 @@ class GeneralSpider(CrawlSpider):
         item["content_type"] = response.headers.get("Content-Type", b"").decode("utf-8")
         item["content"] = response.text
         extracted_links = []
-        if self._link_extractor is not None:
+        if self._link_extractor is not None and isinstance(response, HtmlResponse):
             extracted_links = [
                 link.url
-                for link in self._process_links(self._link_extractor.extract_links(response))
+                for link in self._process_links(
+                    self._link_extractor.extract_links(response)
+                )
             ]
         item["out_links"] = extracted_links
-        # Extract title
-        item["title"] = response.xpath("//title/text()").get()
+        # Extract title only from HTML responses.
+        item["title"] = (
+            response.xpath("//title/text()").get()
+            if isinstance(response, HtmlResponse)
+            else None
+        )
 
         # Detect language
         try:
@@ -245,7 +256,7 @@ class GeneralSpider(CrawlSpider):
                 date = None
 
         # 2. Try meta tags if no date yet
-        if not date:
+        if not date and isinstance(response, HtmlResponse):
             date_meta = (
                 response.xpath(
                     '//meta[@property="article:published_time"]/@content'
@@ -263,7 +274,7 @@ class GeneralSpider(CrawlSpider):
                     date = None
 
         # 3. Try Schema.org if no date yet
-        if not date:
+        if not date and isinstance(response, HtmlResponse):
             schema_json = response.xpath(
                 '//script[@type="application/ld+json"]/text()'
             ).getall()
@@ -317,21 +328,18 @@ class GeneralSpider(CrawlSpider):
             now = datetime.now(timezone.utc)
             with Session(bind=self._engine) as session:
                 for target_source_id, urls in uncached_urls_by_source.items():
-                    rows = (
-                        session.execute(
-                            select(
-                                Page.uri,
-                                Page.is_hub_page,
-                                Page.last_crawled_at,
-                                Page.check_interval_days,
-                                Page.status_error,
-                            ).where(
-                                Page.source_id == target_source_id,
-                                Page.uri.in_(list(urls)),
-                            )
+                    rows = session.execute(
+                        select(
+                            Page.uri,
+                            Page.is_hub_page,
+                            Page.last_crawled_at,
+                            Page.check_interval_days,
+                            Page.status_error,
+                        ).where(
+                            Page.source_id == target_source_id,
+                            Page.uri.in_(list(urls)),
                         )
-                        .all()
-                    )
+                    ).all()
 
                     found_urls: set[str] = set()
                     for (
@@ -348,12 +356,12 @@ class GeneralSpider(CrawlSpider):
                             and check_interval_days is not None
                             and check_interval_days > 0
                         ):
-                            is_due = last_crawled_at + timedelta(
-                                days=int(check_interval_days)
-                            ) <= now
-                        self._discovery_eligibility_cache[
-                            (target_source_id, uri)
-                        ] = (
+                            is_due = (
+                                last_crawled_at
+                                + timedelta(days=int(check_interval_days))
+                                <= now
+                            )
+                        self._discovery_eligibility_cache[(target_source_id, uri)] = (
                             bool(is_hub_page)
                             or status_error == PageStatusError.http_5xx
                             or is_due

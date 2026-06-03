@@ -171,6 +171,7 @@ class ContextResult:
     policy: dict[str, Any]
     coverage: dict[str, Any]
 
+
 def load_nlp(lang: str):
     if lang not in lang_models:
         return None

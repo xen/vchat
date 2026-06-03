@@ -1,13 +1,18 @@
+import logging
 import hashlib
 import json
 import subprocess
 import sys
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 
 import defusedxml.ElementTree as ET
+import redis
 import requests
+import sqlalchemy as sa
 
 from celery.schedules import crontab
 from sqlalchemy import func, select, text, update
@@ -16,8 +21,11 @@ from sqlalchemy.orm import Session
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from jobs.embedder.tasks import (
-    rebuild_boilerplate_index,
-    schedule_refresh_project_index,
+    EMBEDDING_BLOCK_MAX_CHARS,
+    EMBEDDING_MAX_SEQ_LENGTH,
+    EmbedderDocumentError,
+    chunk_document_text,
+    ensure_pending_chunk_workers,
 )
 from jobs.crawler.url_rules import (
     normalize_url_for_queue,
@@ -25,7 +33,8 @@ from jobs.crawler.url_rules import (
     resolve_source_id_for_url,
 )
 from jobs.crawler.url_rules import url_allowed_by_rules
-from vchat.models.data import CrawlRun, Page, Sitemap, Source
+from vchat.document_shingles import compute_trigram_hashes, extract_content_blocks
+from vchat.models.data import Chunk, CrawlRun, Page, Sitemap, Source, SourceShingleFreq
 from vchat.metrics import record_crawl_run
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
@@ -39,30 +48,271 @@ from vchat.source_settings import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _CRAWL_LOCK_NAMESPACE = 90421
+REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
+ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
+REFRESH_PROJECT_INDEX_SCHEDULE_KEY = "vchat:embed:refresh_project_index:scheduled"
+INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX = "vchat:embed:index_document:scheduled:"
+ENSURE_PENDING_CHUNKS_SCHEDULE_TTL = max(
+    30, int(config.get("embedding_ensure_pending_chunks_ttl_seconds", 120) or 120)
+)
+REFRESH_PROJECT_INDEX_SCHEDULE_TTL = max(
+    60, int(config.get("embedding_refresh_project_index_ttl_seconds", 300) or 300)
+)
+INDEX_DOCUMENT_SCHEDULE_TTL = max(
+    300,
+    int(
+        config.get(
+            "embedding_index_document_schedule_ttl_seconds",
+            config.get("celery_visibility_timeout", 21600),
+        )
+        or config.get("celery_visibility_timeout", 21600)
+    ),
+)
+SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE = max(
+    100,
+    int(config.get("source_shingle_freq_insert_batch_size", 2000) or 2000),
+)
 
-def _tracked_sources_payload(session: Session, current_source: Source) -> list[dict]:
-    tracked: list[dict] = []
-    seen_hosts: set[str] = set()
 
-    sources = [current_source]
-    sources.extend(
-        session.execute(select(Source).where(Source.is_paused == False))  # noqa: E712
-        .scalars()
-        .all()
+class PageChunkContext:
+    __slots__ = ("id", "source_id", "content", "status_error")
+
+    def __init__(
+        self,
+        *,
+        id: int,
+        source_id: int | None,
+        content: str,
+        status_error: str | None,
+    ) -> None:
+        self.id = id
+        self.source_id = source_id
+        self.content = content
+        self.status_error = status_error
+
+
+def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | None:
+    row = session.execute(
+        select(Page.id, Page.source_id, Page.content, Page.status_error).where(
+            Page.id == page_id
+        )
+    ).first()
+    if not row:
+        logging.warning("Page %s not found", page_id)
+        return None
+
+    doc = PageChunkContext(
+        id=row.id,
+        source_id=row.source_id,
+        content=row.content or "",
+        status_error=row.status_error,
     )
-    for source in sources:
-        host = (urlparse(source.uri).hostname or "").lower()
-        if not host or host in seen_hosts:
-            continue
-        tracked.append(
+    if not doc.content:
+        logging.warning("Page %s has no content", page_id)
+        return None
+    if doc.status_error is not None:
+        logging.info("Page %s has status_error=%s, skipping", page_id, doc.status_error)
+        return None
+    if session.in_transaction():
+        session.rollback()
+    return doc
+
+
+def load_boilerplate_hashes(session: Session, source_id: int) -> frozenset[int]:
+    total: int = session.execute(
+        sa.select(sa.func.count(Page.id)).where(
+            Page.source_id == source_id,
+            Page.content.isnot(None),
+            Page.content != "",
+        )
+    ).scalar_one()
+    if total < 5:
+        return frozenset()
+    rows = session.execute(
+        sa.select(SourceShingleFreq.shingle_hash).where(
+            SourceShingleFreq.source_id == source_id,
+            SourceShingleFreq.count > total * 0.4,
+        )
+    ).scalars()
+    return frozenset(rows)
+
+
+def validate_chunk_data(chunks, *, page_id: int) -> None:
+    for chunk in chunks:
+        if chunk.token_count > EMBEDDING_MAX_SEQ_LENGTH:
+            raise EmbedderDocumentError(
+                f"Chunk {chunk.index} for page {page_id} is too large for embedder "
+                f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
+                page_id=page_id,
+            )
+        if (
+            chunk.kind in {"text", "table_rows"}
+            and len(chunk.text) > EMBEDDING_BLOCK_MAX_CHARS
+        ):
+            raise EmbedderDocumentError(
+                f"Chunk {chunk.index} for page {page_id} exceeds the block char cap "
+                f"({len(chunk.text)} chars > {EMBEDDING_BLOCK_MAX_CHARS})",
+                page_id=page_id,
+            )
+
+
+def mark_page_embedder_failed(
+    session: Session,
+    page_id: int,
+    *,
+    message: str,
+    error: str | None = None,
+    exception_class: str | None = None,
+) -> None:
+    page = session.get(Page, page_id)
+    if page is None:
+        return
+
+    page.status = PageStatus.parsing
+    page.status_error = PageStatusError.embedder_failed
+    meta = dict(page.meta or {})
+    meta.pop("error", None)
+    meta.pop("message", None)
+    meta.pop("reason", None)
+    meta.pop("exception_class", None)
+    meta["reason"] = PageStatusError.embedder_failed.value
+    meta["message"] = message
+    if error:
+        meta["error"] = error
+    if exception_class:
+        meta["exception_class"] = exception_class
+    page.meta = meta
+    session.execute(sa.delete(Chunk).where(Chunk.page_id == page_id))
+    session.commit()
+
+
+def materialize_page_chunks(
+    session: Session,
+    doc: Page | PageChunkContext,
+    user_uid: str = "system",
+) -> int:
+    boilerplate_hashes: frozenset[int] = frozenset()
+    if doc.source_id is not None:
+        boilerplate_hashes = load_boilerplate_hashes(session, doc.source_id)
+        if session.in_transaction():
+            session.rollback()
+
+    chunks = chunk_document_text(
+        doc.content or "",
+        boilerplate_hashes=boilerplate_hashes or None,
+    )
+    validate_chunk_data(chunks, page_id=doc.id)
+    logging.info("Materializing %s chunks for Page %s", len(chunks), doc.id)
+
+    session.execute(sa.delete(Chunk).where(Chunk.page_id == doc.id))
+
+    if not chunks:
+        logging.info("No content to index for Page %s", doc.id)
+        session.execute(
+            sa.update(Page)
+            .where(Page.id == doc.id)
+            .values(status=PageStatus.ready, status_error=None)
+        )
+        session.commit()
+        return 0
+
+    for chunk_data in chunks:
+        session.add(
+            Chunk(
+                chat_id=None,
+                user_uid=user_uid,
+                msg_id=None,
+                page_id=doc.id,
+                chunk_ix=chunk_data.index,
+                start_offset=chunk_data.start,
+                end_offset=chunk_data.end,
+                kind=chunk_data.kind,
+                header_text=chunk_data.header_text,
+                section_path=chunk_data.section_path,
+                entity_terms=chunk_data.entity_terms,
+                token_count=chunk_data.token_count,
+                text=chunk_data.text,
+                embedding=None,
+            )
+        )
+
+    session.commit()
+    session.expunge_all()
+    return len(chunks)
+
+
+def index_page_chunks(session: Session, doc: Page | PageChunkContext) -> bool:
+    chunk_count = materialize_page_chunks(session, doc)
+    if chunk_count == 0:
+        return False
+    schedule_ensure_pending_chunks()
+    return True
+
+
+def index_page_inner(session: Session, page_id: int) -> bool:
+    context = fetch_page_context(session, page_id)
+    if not context:
+        return False
+    return index_page_chunks(session, context)
+
+
+def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
+    content_result = session.execute(
+        sa.select(Page.content)
+        .where(
+            Page.source_id == source_id,
+            Page.content.isnot(None),
+            Page.content != "",
+        )
+        .execution_options(yield_per=100)
+    )
+
+    shingle_counts: Counter[int] = Counter()
+    page_count = 0
+    for content in content_result.scalars():
+        page_count += 1
+        page_hashes: set[int] = set()
+        for block in extract_content_blocks(content):
+            page_hashes.update(compute_trigram_hashes(block))
+        shingle_counts.update(page_hashes)
+
+    if page_count == 0:
+        session.execute(
+            sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
+        )
+        session.commit()
+        return 0
+
+    if session.in_transaction():
+        session.rollback()
+
+    session.execute(
+        sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
+    )
+
+    batch: list[dict[str, int]] = []
+    for shingle_hash, count in shingle_counts.items():
+        batch.append(
             {
-                "id": source.id,
-                "uri": source.uri,
-                "rules": list(source.config.to_dict().get("rules", []) or []),
+                "source_id": source_id,
+                "shingle_hash": shingle_hash,
+                "count": count,
             }
         )
-        seen_hosts.add(host)
-    return tracked
+        if len(batch) >= SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE:
+            session.execute(sa.insert(SourceShingleFreq), batch)
+            batch.clear()
+
+    if batch:
+        session.execute(sa.insert(SourceShingleFreq), batch)
+    session.commit()
+    logging.info(
+        "Rebuilt boilerplate index for source %s: %s distinct shingles from %s pages",
+        source_id,
+        len(shingle_counts),
+        page_count,
+    )
+    return len(shingle_counts)
 
 
 def _try_acquire_source_crawl_lock(session: Session, source_id: int) -> bool:
@@ -163,6 +413,77 @@ def _mark_crawl_run_finished(
         engine.dispose()
 
 
+def schedule_pending_chunk_tasks(task_count: int) -> int:
+    scheduled = 0
+    for _ in range(max(0, int(task_count or 0))):
+        app.send_task(
+            "jobs.embedder.tasks.pending_chunks",
+            kwargs={"counted": True},
+            queue="embeddings",
+        )
+        scheduled += 1
+    return scheduled
+
+
+def schedule_ensure_pending_chunks() -> bool:
+    redis_client = redis.from_url(REDIS_URL)
+    try:
+        acquired = redis_client.set(
+            ENSURE_PENDING_CHUNKS_SCHEDULE_KEY,
+            "1",
+            ex=ENSURE_PENDING_CHUNKS_SCHEDULE_TTL,
+            nx=True,
+        )
+        if not acquired:
+            return False
+
+        ensure_pending_chunks.delay()
+        return True
+    finally:
+        redis_client.close()
+
+
+def schedule_refresh_project_index() -> bool:
+    redis_client = redis.from_url(REDIS_URL)
+    try:
+        acquired = redis_client.set(
+            REFRESH_PROJECT_INDEX_SCHEDULE_KEY,
+            "1",
+            ex=REFRESH_PROJECT_INDEX_SCHEDULE_TTL,
+            nx=True,
+        )
+        if not acquired:
+            return False
+
+        refresh_project_index.delay()
+        return True
+    finally:
+        redis_client.close()
+
+
+def index_document_schedule_key(document_id: int) -> str:
+    return f"{INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}{document_id}"
+
+
+def schedule_index_document(document_id: int) -> bool:
+    redis_client = redis.from_url(REDIS_URL)
+    schedule_key = index_document_schedule_key(document_id)
+    try:
+        acquired = redis_client.set(
+            schedule_key,
+            "1",
+            ex=INDEX_DOCUMENT_SCHEDULE_TTL,
+            nx=True,
+        )
+        if not acquired:
+            return False
+
+        index_document.delay(document_id)
+        return True
+    finally:
+        redis_client.close()
+
+
 @app.task(
     name="jobs.crawler.tasks.crawl_source_task",
     queue="celery",
@@ -174,25 +495,73 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
     crawl_run_id: int | None = None
     try:
         with Session(bind=engine) as session:
-            source = session.get(Source, source_id)
+            source = session.execute(
+                select(Source).where(
+                    Source.id == source_id,
+                    Source.is_paused.is_(False),
+                    Source.blocked_reason.is_(None),
+                )
+            ).scalar_one_or_none()
             if source is None:
-                raise RuntimeError(f"Source {source_id} not found")
-
-            if source.is_paused:
-                print(f"Source {source_id} is paused, skipping")
+                print(f"Source {source_id} is not crawlable, skipping")
                 return
-            if source.blocked_reason:
+
+            blocking_result = check_source_blocking(source.uri)
+            apply_source_blocking_result(source, blocking_result)
+            if blocking_result.is_blocked:
+                blocked_status_error = (
+                    PageStatusError.excluded_robots
+                    if blocking_result.reason
+                    and blocking_result.reason.value == "robots_txt"
+                    else blocking_result.reason.value
+                )
+                session.execute(
+                    update(Page)
+                    .where(
+                        Page.source_id == source_id,
+                        Page.status == PageStatus.crawler,
+                        Page.status_error.is_(None),
+                    )
+                    .values(
+                        status=PageStatus.ready,
+                        status_error=blocked_status_error,
+                        last_crawled_at=datetime.now(timezone.utc),
+                    )
+                )
+            session.commit()
+            if blocking_result.is_blocked:
                 print(
-                    f"Source {source_id} is blocked ({source.blocked_reason}), skipping"
+                    f"Source {source_id} blocked before crawl: "
+                    f"{blocking_result.reason.value}"
                 )
                 return
 
             url = source.uri
             source_title = source.title
             crawler_payload = source.config.to_dict()
-            crawler_payload["tracked_sources"] = _tracked_sources_payload(
-                session, source
+            tracked_sources: list[dict] = []
+            seen_hosts: set[str] = set()
+            source_rows = [source]
+            source_rows.extend(
+                session.execute(select(Source).where(Source.is_paused.is_(False)))
+                .scalars()
+                .all()
             )
+            for tracked_source in source_rows:
+                host = (urlparse(tracked_source.uri).hostname or "").lower()
+                if not host or host in seen_hosts:
+                    continue
+                tracked_sources.append(
+                    {
+                        "id": tracked_source.id,
+                        "uri": tracked_source.uri,
+                        "rules": list(
+                            tracked_source.config.to_dict().get("rules", []) or []
+                        ),
+                    }
+                )
+                seen_hosts.add(host)
+            crawler_payload["tracked_sources"] = tracked_sources
             crawl_run_id = _reserve_source_crawl_run(
                 session,
                 source_id,
@@ -207,6 +576,7 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
             _refresh_source_discovery(session, source, crawler_payload)
             if not skip_sitemap_sync:
                 _sync_sitemaps_for_source(session, source_id)
+            session.commit()
 
             recent_runs = (
                 session.execute(
@@ -335,29 +705,50 @@ def crawl_page_task(page_id: int):
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            page = session.get(Page, page_id)
-            if page is None:
-                raise RuntimeError(f"Page {page_id} not found")
-            if not page.source_id:
-                raise RuntimeError(
-                    f"Page {page_id} is not attached to a crawl source"
+            row = session.execute(
+                select(Page, Source)
+                .join(Source, Source.id == Page.source_id)
+                .where(
+                    Page.id == page_id,
+                    Page.source_id.is_not(None),
+                    Page.uri.is_not(None),
+                    Source.is_paused.is_(False),
+                    Source.blocked_reason.is_(None),
                 )
-            if not page.uri:
-                raise RuntimeError(f"Page {page_id} has no URI")
-
-            source = session.get(Source, page.source_id)
-            if source is None:
+            ).one_or_none()
+            if row is None:
                 raise RuntimeError(
-                    f"Source {page.source_id} not found for page {page_id}"
+                    f"Page {page_id} is not refreshable or its source is unavailable"
                 )
+            page, source = row
 
             url = page.uri
             source_id = source.id
             crawler_payload = source.config.to_dict()
             crawler_payload["single_page_only"] = True
-            crawler_payload["tracked_sources"] = _tracked_sources_payload(
-                session, source
+            tracked_sources: list[dict] = []
+            seen_hosts: set[str] = set()
+            source_rows = [source]
+            source_rows.extend(
+                session.execute(select(Source).where(Source.is_paused.is_(False)))
+                .scalars()
+                .all()
             )
+            for tracked_source in source_rows:
+                host = (urlparse(tracked_source.uri).hostname or "").lower()
+                if not host or host in seen_hosts:
+                    continue
+                tracked_sources.append(
+                    {
+                        "id": tracked_source.id,
+                        "uri": tracked_source.uri,
+                        "rules": list(
+                            tracked_source.config.to_dict().get("rules", []) or []
+                        ),
+                    }
+                )
+                seen_hosts.add(host)
+            crawler_payload["tracked_sources"] = tracked_sources
 
             recent_runs = (
                 session.execute(
@@ -415,7 +806,9 @@ def crawl_page_task(page_id: int):
             with Session(bind=engine) as session:
                 source = session.get(Source, source_id)
                 if source is None:
-                    raise RuntimeError(f"Source {source_id} disappeared after page crawl")
+                    raise RuntimeError(
+                        f"Source {source_id} disappeared after page crawl"
+                    )
                 source.last_reindexed_at = datetime.now(timezone.utc)
                 session.commit()
         finally:
@@ -426,6 +819,255 @@ def crawl_page_task(page_id: int):
         rebuild_boilerplate_index.delay(source_id)
 
     print(f"Finished crawling page {page_id}")
+
+
+@app.task(name="jobs.crawler.tasks.index_document", queue="celery")
+def index_document(document_id: int):
+    engine = create_sync_engine()
+    redis_client = redis.from_url(REDIS_URL)
+    try:
+        with Session(bind=engine) as session:
+            try:
+                index_page_inner(session, document_id)
+            except EmbedderDocumentError as exc:
+                logging.exception(
+                    "Crawler indexing rejected page %s during chunk materialization",
+                    document_id,
+                )
+                mark_page_embedder_failed(
+                    session,
+                    document_id,
+                    message=str(exc),
+                    error=str(exc),
+                    exception_class=type(exc).__name__,
+                )
+            except Exception as exc:
+                logging.exception(
+                    "Unexpected crawler indexing failure for page %s",
+                    document_id,
+                )
+                mark_page_embedder_failed(
+                    session,
+                    document_id,
+                    message="Unexpected failure during document chunk materialization.",
+                    error=str(exc),
+                    exception_class=type(exc).__name__,
+                )
+    finally:
+        try:
+            redis_client.delete(index_document_schedule_key(document_id))
+        finally:
+            redis_client.close()
+            engine.dispose()
+
+
+@app.task(name="jobs.crawler.tasks.ensure_pending_chunks", queue="celery")
+def ensure_pending_chunks():
+    engine = create_sync_engine()
+    redis_client = redis.from_url(REDIS_URL)
+    try:
+        with Session(bind=engine) as session:
+            pending_chunk_count, scheduled = ensure_pending_chunk_workers(
+                session,
+                redis_client,
+                schedule_pending_chunk_tasks,
+            )
+    finally:
+        try:
+            redis_client.delete(ENSURE_PENDING_CHUNKS_SCHEDULE_KEY)
+        finally:
+            redis_client.close()
+            engine.dispose()
+
+    logging.info(
+        "Ensured pending chunk workers for %s pending chunks; scheduled %s tasks",
+        pending_chunk_count,
+        scheduled,
+    )
+    return scheduled
+
+
+@app.task(name="jobs.crawler.tasks.schedule_pending_chunks", queue="celery")
+def schedule_pending_chunks():
+    scheduled = schedule_ensure_pending_chunks()
+    logging.info("Schedule pending chunks requested; enqueued=%s", scheduled)
+    return scheduled
+
+
+@app.task(name="jobs.crawler.tasks.index_project", queue="celery")
+def index_project():
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            stmt = (
+                select(Page.id)
+                .where(Page.status_error.is_(None))
+                .where(Page.content.isnot(None))
+                .where(Page.content != "")
+            )
+            doc_ids = session.execute(stmt).scalars().all()
+    finally:
+        engine.dispose()
+
+    logging.info("Scheduling indexing for %s pages", len(doc_ids))
+    for doc_id in doc_ids:
+        schedule_index_document(doc_id)
+
+
+@app.task(name="jobs.crawler.tasks.refresh_project_index", queue="celery")
+def refresh_project_index():
+    engine = create_sync_engine()
+    redis_client = redis.from_url(REDIS_URL)
+    try:
+        with Session(bind=engine) as session:
+            chunk_counts = (
+                sa.select(
+                    Chunk.page_id,
+                    sa.func.count(Chunk.id).label("chunk_count"),
+                )
+                .join(Page, Chunk.page_id == Page.id)
+                .group_by(Chunk.page_id)
+                .subquery()
+            )
+
+            docs_without_chunks = (
+                session.execute(
+                    sa.select(Page.id)
+                    .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
+                    .where(Page.status_error.is_(None))
+                    .where(Page.content.isnot(None))
+                    .where(Page.content != "")
+                    .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
+                )
+                .scalars()
+                .all()
+            )
+
+            for doc_id in docs_without_chunks:
+                logging.info("Scheduling page %s for refresh indexing", doc_id)
+                schedule_index_document(doc_id)
+
+            errored_doc_ids = (
+                session.execute(sa.select(Page.id).where(Page.status_error.isnot(None)))
+                .scalars()
+                .all()
+            )
+
+            if errored_doc_ids:
+                logging.info(
+                    "Removing %s chunk sets for errored pages",
+                    len(errored_doc_ids),
+                )
+                session.execute(
+                    sa.delete(Chunk).where(Chunk.page_id.in_(errored_doc_ids))
+                )
+
+            dangling_chunk_ids = (
+                session.execute(
+                    sa.select(Chunk.id)
+                    .outerjoin(Page, Chunk.page_id == Page.id)
+                    .where(Chunk.page_id.isnot(None))
+                    .where(Page.id.is_(None))
+                )
+                .scalars()
+                .all()
+            )
+
+            if dangling_chunk_ids:
+                logging.info(
+                    "Cleaning up %s chunk records for deleted pages",
+                    len(dangling_chunk_ids),
+                )
+                session.execute(
+                    sa.delete(Chunk).where(Chunk.id.in_(dangling_chunk_ids))
+                )
+
+            session.commit()
+    finally:
+        try:
+            redis_client.delete(REFRESH_PROJECT_INDEX_SCHEDULE_KEY)
+        finally:
+            redis_client.close()
+            engine.dispose()
+
+
+@app.task(name="jobs.crawler.tasks.refresh_source_index", queue="celery")
+def refresh_source_index(source_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            source = session.get(Source, source_id)
+            if not source:
+                logging.warning("Source %s not found", source_id)
+                return
+
+            chunk_counts = (
+                sa.select(
+                    Chunk.page_id,
+                    sa.func.count(Chunk.id).label("chunk_count"),
+                )
+                .join(Page, Chunk.page_id == Page.id)
+                .where(Page.source_id == source_id)
+                .group_by(Chunk.page_id)
+                .subquery()
+            )
+
+            docs_without_chunks = (
+                session.execute(
+                    sa.select(Page.id)
+                    .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
+                    .where(Page.source_id == source_id)
+                    .where(Page.status_error.is_(None))
+                    .where(Page.content.isnot(None))
+                    .where(Page.content != "")
+                    .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
+                )
+                .scalars()
+                .all()
+            )
+
+            for doc_id in docs_without_chunks:
+                logging.info(
+                    "Scheduling page %s for refresh indexing (source %s)",
+                    doc_id,
+                    source_id,
+                )
+                schedule_index_document(doc_id)
+
+            errored_doc_ids = (
+                session.execute(
+                    sa.select(Page.id).where(
+                        Page.source_id == source_id,
+                        Page.status_error.isnot(None),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if errored_doc_ids:
+                logging.info(
+                    "Removing %s chunk sets for errored pages in source %s",
+                    len(errored_doc_ids),
+                    source_id,
+                )
+                session.execute(
+                    sa.delete(Chunk).where(Chunk.page_id.in_(errored_doc_ids))
+                )
+
+            session.commit()
+    finally:
+        engine.dispose()
+
+
+@app.task(name="jobs.crawler.tasks.rebuild_boilerplate_index", queue="celery")
+def rebuild_boilerplate_index(source_id: int):
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            rebuild_boilerplate_for_source(session, source_id)
+    finally:
+        engine.dispose()
 
 
 @app.task(
@@ -571,10 +1213,10 @@ def schedule_reindex_sources_task():
                         Source.is_paused == False,
                         Source.blocked_reason.is_(None),
                     )
+                )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
 
             for source in sources:
                 if not source_is_due_for_reindex(source, now):
@@ -605,6 +1247,7 @@ def schedule_reindex_sources_task():
     print(f"Queueing scheduled reindex for {len(queued_ids)} sources")
     for source_id in queued_ids:
         crawl_source_task.delay(source_id)
+
 
 @app.task(
     name="jobs.crawler.tasks.reapply_source_rules_task",
@@ -690,6 +1333,8 @@ def _fetch_sitemap(
     if resp.status_code == 200:
         return 200, resp.content, etag, location
     return resp.status_code, None, etag, location
+
+
 def _is_valid_sitemap_address(source_uri: str, sitemap_url: str) -> bool:
     parsed = urlparse(sitemap_url)
     if parsed.scheme not in {"http", "https"}:
@@ -725,7 +1370,9 @@ def _parse_robots_txt(body: str) -> tuple[list[str], int | None]:
     return sitemap_urls, crawl_delay
 
 
-def _discover_sitemaps_from_robots(source_uri: str) -> tuple[list[str], int | None, str | None]:
+def _discover_sitemaps_from_robots(
+    source_uri: str,
+) -> tuple[list[str], int | None, str | None]:
     robots_url = urljoin(source_uri.rstrip("/") + "/", "robots.txt")
     headers = {"User-Agent": _CRAWLER_USER_AGENT}
     resp = requests.get(robots_url, headers=headers, timeout=15, allow_redirects=True)
@@ -748,7 +1395,11 @@ def _probe_common_sitemaps(source_uri: str) -> list[str]:
         if resp.status_code != 200:
             continue
         content_type = (resp.headers.get("Content-Type") or "").lower()
-        if "xml" in content_type or b"<urlset" in resp.content[:256] or b"<sitemapindex" in resp.content[:256]:
+        if (
+            "xml" in content_type
+            or b"<urlset" in resp.content[:256]
+            or b"<sitemapindex" in resp.content[:256]
+        ):
             discovered.append(url)
     return discovered
 
@@ -811,7 +1462,9 @@ def _refresh_source_discovery(
         sitemap_urls = list(cached.get("sitemaps") or [])
         crawl_delay = cached.get("crawl_delay")
     else:
-        sitemap_urls, crawl_delay, robots_body = _discover_sitemaps_from_robots(source.uri)
+        sitemap_urls, crawl_delay, robots_body = _discover_sitemaps_from_robots(
+            source.uri
+        )
         source.robots_cache = {
             "fetched_at": now.isoformat(),
             "sitemaps": sitemap_urls,
@@ -820,7 +1473,13 @@ def _refresh_source_discovery(
         }
 
     if crawl_delay:
-        current_delay = int(float(crawler_payload.get("crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY)))
+        current_delay = int(
+            float(
+                crawler_payload.get(
+                    "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
+                )
+            )
+        )
         crawler_payload["crawler_download_delay"] = max(current_delay, crawl_delay)
 
     discovered_urls = [url for url in sitemap_urls if url]
@@ -840,7 +1499,9 @@ def _refresh_source_discovery(
                 session,
                 source_id=source.id,
                 sitemap_url=normalized_sitemap_url,
-                discovered_via="robots_txt" if sitemap_url in sitemap_urls else "auto_probe",
+                discovered_via="robots_txt"
+                if sitemap_url in sitemap_urls
+                else "auto_probe",
                 is_excluded=True,
                 ignore_reason="wrong_address",
             )
@@ -849,8 +1510,46 @@ def _refresh_source_discovery(
             session,
             source_id=source.id,
             sitemap_url=normalized_sitemap_url,
-            discovered_via="robots_txt" if sitemap_url in sitemap_urls else "auto_probe",
+            discovered_via="robots_txt"
+            if sitemap_url in sitemap_urls
+            else "auto_probe",
         )
+
+    robots_body_text = None
+    if robots_body is not None:
+        robots_body_text = robots_body
+    else:
+        cached_body = (source.robots_cache or {}).get("body")
+        if isinstance(cached_body, str) and cached_body.strip():
+            robots_body_text = cached_body
+
+    if robots_body_text:
+        parser = RobotFileParser()
+        parser.set_url(urljoin(source.uri.rstrip("/") + "/", "robots.txt"))
+        parser.read()
+        queued_pages = session.execute(
+            select(Page.id, Page.uri).where(
+                Page.source_id == source.id,
+                Page.status == PageStatus.crawler,
+                Page.status_error.is_(None),
+                Page.uri.is_not(None),
+            )
+        ).all()
+        blocked_page_ids = [
+            page_id
+            for page_id, page_uri in queued_pages
+            if page_uri and not parser.can_fetch(_CRAWLER_USER_AGENT, page_uri)
+        ]
+        if blocked_page_ids:
+            session.execute(
+                update(Page)
+                .where(Page.id.in_(blocked_page_ids))
+                .values(
+                    status=PageStatus.ready,
+                    status_error=PageStatusError.excluded_robots,
+                    last_crawled_at=datetime.now(timezone.utc),
+                )
+            )
 
 
 def _upsert_sitemap_pages(
@@ -871,7 +1570,9 @@ def _upsert_sitemap_pages(
             source_id_by_host or {},
             fallback_source_id=source_id,
         )
-        page = session.execute(select(Page).where(Page.uri == page_url)).scalar_one_or_none()
+        page = session.execute(
+            select(Page).where(Page.uri == page_url)
+        ).scalar_one_or_none()
         if page is None:
             page = Page(source_id=page_source_id, uri=page_url)
             page._hash = ""
@@ -928,10 +1629,16 @@ def _upsert_child_sitemaps(
 
 
 def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
-    source = session.get(Source, source_id)
+    source = session.execute(
+        select(Source).where(
+            Source.id == source_id,
+            Source.is_paused.is_(False),
+            Source.blocked_reason.is_(None),
+        )
+    ).scalar_one_or_none()
     if source is None:
-        raise RuntimeError(f"Source {source_id} not found during sitemap sync")
-    source_rules = []
+        print(f"Source {source_id} is not eligible for sitemap sync, skipping")
+        return
     source_rules = [rule.to_dict() for rule in source.config.rules]
     source_rows = session.execute(select(Source.id, Source.uri)).all()
     source_id_by_host = build_source_id_by_host(source_rows)
@@ -968,9 +1675,8 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
             continue
 
         now = datetime.now(timezone.utc)
-        if (
-            sm.last_fetched_at is not None
-            and sm.last_fetched_at > now - timedelta(days=1)
+        if sm.last_fetched_at is not None and sm.last_fetched_at > now - timedelta(
+            days=1
         ):
             print(f"Sitemap fetch skipped (<24h since last check): {sm.url}")
             continue
@@ -1121,14 +1827,6 @@ def sitemap_sync_task(source_id: int):
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            source = session.get(Source, source_id)
-            if source is None:
-                raise RuntimeError(f"Source {source_id} not found during sitemap sync")
-            if source.blocked_reason:
-                print(
-                    f"Source {source_id} is blocked ({source.blocked_reason}), sitemap sync skipped"
-                )
-                return
             _sync_sitemaps_for_source(session, source_id)
             session.commit()
     finally:
@@ -1173,6 +1871,25 @@ def refresh_source_blocking_state(source_id: int) -> bool:
                 raise RuntimeError(f"Source {source_id} not found")
             result = check_source_blocking(source.uri)
             apply_source_blocking_result(source, result)
+            if result.is_blocked:
+                blocked_status_error = (
+                    PageStatusError.excluded_robots
+                    if result.reason and result.reason.value == "robots_txt"
+                    else result.reason.value
+                )
+                session.execute(
+                    update(Page)
+                    .where(
+                        Page.source_id == source_id,
+                        Page.status == PageStatus.crawler,
+                        Page.status_error.is_(None),
+                    )
+                    .values(
+                        status=PageStatus.ready,
+                        status_error=blocked_status_error,
+                        last_crawled_at=datetime.now(timezone.utc),
+                    )
+                )
             source.updated_at = datetime.now(timezone.utc)
             session.commit()
             return result.is_blocked

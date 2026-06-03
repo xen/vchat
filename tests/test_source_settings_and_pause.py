@@ -451,18 +451,15 @@ class TestPauseResumeActions:
 
 class TestCrawlerSkipsPausedSources:
     def test_crawl_source_task_skips_paused_source(self):
-        """crawl_source_task exits early when source.is_paused is True."""
+        """crawl_source_task exits early when source is not crawlable."""
         from jobs.crawler.tasks import crawl_source_task
-
-        source = _make_source(is_paused=True)
 
         with patch("jobs.crawler.tasks.create_sync_engine") as mock_engine:
             engine = MagicMock()
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
-            session.get.return_value = source
-            session.execute.return_value = MagicMock()
+            session.execute.return_value = MagicMock(scalar_one_or_none=lambda: None)
             mock_engine.return_value = engine
             engine.__enter__ = lambda s: engine
             engine.__exit__ = MagicMock(return_value=False)
@@ -473,7 +470,7 @@ class TestCrawlerSkipsPausedSources:
                 with patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=111), \
                      patch("jobs.crawler.tasks._refresh_source_discovery"), \
                      patch("subprocess.run") as mock_run:
-                    crawl_source_task(source.id)
+                    crawl_source_task(10)
                     mock_run.assert_not_called()
 
     def test_crawl_source_task_proceeds_when_not_paused(self):
@@ -487,35 +484,53 @@ class TestCrawlerSkipsPausedSources:
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
-            session.get.return_value = source
-            session.execute.return_value = MagicMock()
             mock_engine.return_value = engine
             engine.dispose = MagicMock()
+
+            def fake_execute(stmt):
+                stmt_text = str(stmt)
+                if "FROM source" in stmt_text and "WHERE source.id" in stmt_text:
+                    return MagicMock(scalar_one_or_none=lambda: source)
+                if "crawl_run" in stmt_text:
+                    return MagicMock(scalars=lambda: MagicMock(all=lambda: []))
+                if "FROM source" in stmt_text:
+                    return MagicMock(scalars=lambda: MagicMock(all=lambda: []))
+                return MagicMock()
+
+            session.execute.side_effect = fake_execute
 
             with patch("jobs.crawler.tasks.Session") as mock_session_cls:
                 mock_session_cls.return_value = session
 
-                with patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=111), \
+                with patch(
+                    "jobs.crawler.tasks.check_source_blocking",
+                    return_value=SimpleNamespace(
+                        is_blocked=False,
+                        reason=None,
+                        message=None,
+                        checked_at=None,
+                    ),
+                ), \
+                     patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=111), \
                      patch("jobs.crawler.tasks._refresh_source_discovery"), \
+                     patch("jobs.crawler.tasks._sync_sitemaps_for_source"), \
                      patch("subprocess.run") as mock_run:
                     mock_run.return_value = MagicMock(returncode=1)
                     crawl_source_task(source.id)
                     mock_run.assert_called_once()
 
     def test_crawl_source_task_skips_blocked_source(self):
-        """crawl_source_task exits early when source.blocked_reason is set."""
+        """crawl_source_task exits early when source is blocked before crawl."""
         from jobs.crawler.tasks import crawl_source_task
 
         source = _make_source(is_paused=False)
-        source.blocked_reason = "robots_txt"
 
         with patch("jobs.crawler.tasks.create_sync_engine") as mock_engine:
             engine = MagicMock()
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
-            session.get.return_value = source
-            session.execute.return_value = MagicMock()
+            session.execute.return_value = MagicMock(scalar_one_or_none=lambda: source)
             mock_engine.return_value = engine
             engine.__enter__ = lambda s: engine
             engine.__exit__ = MagicMock(return_value=False)
@@ -523,6 +538,14 @@ class TestCrawlerSkipsPausedSources:
             with patch("jobs.crawler.tasks.Session") as mock_session_cls:
                 mock_session_cls.return_value = session
 
-                with patch("subprocess.run") as mock_run:
+                with patch(
+                    "jobs.crawler.tasks.check_source_blocking",
+                    return_value=SimpleNamespace(
+                        is_blocked=True,
+                        reason=SimpleNamespace(value="robots_txt"),
+                        message="blocked by robots",
+                        checked_at=None,
+                    ),
+                ), patch("subprocess.run") as mock_run:
                     crawl_source_task(source.id)
                     mock_run.assert_not_called()
