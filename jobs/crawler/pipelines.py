@@ -20,6 +20,11 @@ from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 from jobs.embedder.tasks import schedule_index_document
 from jobs.crawler.url_rules import normalize_url_for_queue
+from jobs.crawler.source_routing import (
+    build_source_id_by_host,
+    extract_hostname,
+    resolve_source_id_for_url,
+)
 
 AUTH_URL_SEGMENTS = ("/login", "/auth", "/signin", "/account/login", "/user/login")
 AUTH_QUERY_PARAMS = ("next", "return", "redirect", "next_url")
@@ -85,6 +90,20 @@ def resolve_page_link_target_status(page: Page | None) -> str:
     return "ok"
 
 
+def get_page_by_uri(session: Session, uri: str) -> Page | None:
+    return session.execute(select(Page).where(Page.uri == uri)).scalars().first()
+
+
+def get_or_create_page(session: Session, *, source_id: int, uri: str) -> tuple[Page, bool]:
+    page = get_page_by_uri(session, uri)
+    created = page is None
+    if page is None:
+        page = Page(source_id=source_id, uri=uri)
+        page._hash = ""
+        session.add(page)
+    return page, created
+
+
 def sync_page_links(
     session: Session,
     *,
@@ -97,11 +116,7 @@ def sync_page_links(
         return
 
     source_rows = session.execute(select(Source.id, Source.uri)).all()
-    source_id_by_host = {
-        (urlparse(source_uri).hostname or "").lower(): tracked_source_id
-        for tracked_source_id, source_uri in source_rows
-        if source_uri
-    }
+    source_id_by_host = build_source_id_by_host(source_rows)
 
     unique_links: list[str] = []
     seen: set[str] = set()
@@ -119,26 +134,22 @@ def sync_page_links(
     )
 
     for target_uri in unique_links:
-        target_host = (urlparse(target_uri).hostname or "").lower()
-        target_source_id = source_id_by_host.get(target_host, source_id)
-        target_page = session.execute(
-            select(Page).where(
-                Page.source_id == target_source_id,
-                Page.uri == target_uri,
-            )
-        ).scalars().first()
-        if target_page is None:
-            target_page = Page(source_id=target_source_id, uri=target_uri)
-            target_page._hash = ""
-            session.add(target_page)
-            session.flush()
+        target_source_id = resolve_source_id_for_url(target_uri, source_id_by_host)
+        target_page = None
+        if target_source_id is not None:
+            target_page = get_page_by_uri(session, target_uri)
+            if target_page is None:
+                target_page = Page(source_id=target_source_id, uri=target_uri)
+                target_page._hash = ""
+                session.add(target_page)
+                session.flush()
 
         session.add(
             PageLink(
                 source_uri=source_page.uri,
                 target_uri=target_uri,
                 source_page_id=source_page.id,
-                target_page_id=target_page.id,
+                target_page_id=target_page.id if target_page is not None else None,
                 source_id=source_id,
                 target_status=resolve_page_link_target_status(target_page),
             )
@@ -198,6 +209,16 @@ class DatabasePipeline:
 
     def open_spider(self, spider):
         source_id = getattr(spider, "source_id", None)
+        configured_run_id = getattr(spider, "crawl_run_id", None)
+        if isinstance(configured_run_id, int):
+            normalized_run_id = configured_run_id
+        elif isinstance(configured_run_id, str) and configured_run_id.strip().isdigit():
+            normalized_run_id = int(configured_run_id)
+        else:
+            normalized_run_id = None
+        if normalized_run_id:
+            self._crawl_run_id = normalized_run_id
+            return
         if source_id:
             try:
                 with Session(bind=self.engine) as session:
@@ -311,13 +332,7 @@ class DatabasePipeline:
 
         try:
             with Session(bind=self.engine) as session:
-                stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)
-                page = session.execute(stmt).scalars().first()
-                is_new = page is None
-
-                if page is None:
-                    page = Page(source_id=source_id, uri=url)
-                    session.add(page)
+                page, is_new = get_or_create_page(session, source_id=source_id, uri=url)
 
                 if page.status_error == PageStatusError.excluded_ignored:
                     page.status = PageStatus.crawler
@@ -526,12 +541,7 @@ def save_page_status(
 ) -> None:
     try:
         with Session(bind=engine) as session:
-            stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)
-            page = session.execute(stmt).scalars().first()
-            if page is None:
-                page = Page(source_id=source_id, uri=url)
-                page._hash = ""
-                session.add(page)
+            page, _ = get_or_create_page(session, source_id=source_id, uri=url)
 
             page.status = status
             page.status_error = status_error
@@ -575,12 +585,7 @@ def handle_error_page(
 ) -> None:
     try:
         with Session(bind=engine) as session:
-            stmt = select(Page).where(Page.source_id == source_id, Page.uri == url)
-            page = session.execute(stmt).scalars().first()
-            if page is None:
-                page = Page(source_id=source_id, uri=url)
-                page._hash = ""
-                session.add(page)
+            page, _ = get_or_create_page(session, source_id=source_id, uri=url)
 
             page.http_status = http_status
             page.last_crawled_at = datetime.now(timezone.utc)

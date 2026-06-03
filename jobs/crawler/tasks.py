@@ -11,7 +11,7 @@ import requests
 
 from celery import chain
 from celery.schedules import crontab
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
 from jobs.celery import app
@@ -20,11 +20,16 @@ from jobs.embedder.tasks import (
     rebuild_boilerplate_index,
     schedule_refresh_project_index,
 )
+from jobs.crawler.source_routing import (
+    build_source_id_by_host,
+    resolve_source_id_for_url,
+)
 from jobs.crawler.url_rules import normalize_url_for_queue, url_allowed_by_rules
-from vchat.models.data import CrawlRun, Page, PageLink, Sitemap, Source
+from vchat.models.data import CrawlRun, Page, Sitemap, Source
 from vchat.metrics import record_crawl_run
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
+from vchat.source_blocking import apply_source_blocking_result, check_source_blocking
 from vchat.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_REINDEX_CRON,
@@ -34,7 +39,9 @@ from vchat.source_settings import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _ROBOTS_CACHE_TTL = timedelta(hours=24)
+_SITEMAP_FETCH_INTERVAL = timedelta(days=1)
 _AUTO_SITEMAP_PATHS = ("/sitemap.xml", "/sitemap_index.xml")
+_CRAWL_LOCK_NAMESPACE = 90421
 SITEMAP_IGNORE_WRONG_ADDRESS = "wrong_address"
 SITEMAP_IGNORE_REDIRECT = "redirect"
 SITEMAP_IGNORE_EMPTY_BODY = "empty_body"
@@ -82,6 +89,110 @@ def _tracked_sources_payload(session: Session, current_source: Source) -> list[d
     return tracked
 
 
+def _try_acquire_source_crawl_lock(session: Session, source_id: int) -> bool:
+    try:
+        result = session.execute(
+            text("SELECT pg_try_advisory_lock(:namespace, :source_id)"),
+            {"namespace": _CRAWL_LOCK_NAMESPACE, "source_id": source_id},
+        )
+        return bool(result.scalar_one())
+    except Exception:
+        return True
+
+
+def _release_source_crawl_lock(session: Session, source_id: int) -> None:
+    try:
+        session.execute(
+            text("SELECT pg_advisory_unlock(:namespace, :source_id)"),
+            {"namespace": _CRAWL_LOCK_NAMESPACE, "source_id": source_id},
+        )
+    except Exception:
+        pass
+
+
+def _find_active_crawl_run(
+    session: Session,
+    source_id: int,
+    *,
+    now: datetime,
+    max_crawl_age: timedelta,
+):
+    return session.execute(
+        select(CrawlRun).where(
+            CrawlRun.source_id == source_id,
+            CrawlRun.finished_at.is_(None),
+            CrawlRun.started_at >= now - max_crawl_age,
+        )
+    ).scalar_one_or_none()
+
+
+def _reserve_source_crawl_run(
+    session: Session,
+    source_id: int,
+    *,
+    now: datetime,
+    max_crawl_age: timedelta = timedelta(days=30),
+) -> int | None:
+    if not _try_acquire_source_crawl_lock(session, source_id):
+        return None
+
+    try:
+        active_run = _find_active_crawl_run(
+            session,
+            source_id,
+            now=now,
+            max_crawl_age=max_crawl_age,
+        )
+        if active_run:
+            return None
+
+        session.execute(
+            update(CrawlRun)
+            .where(
+                CrawlRun.source_id == source_id,
+                CrawlRun.finished_at.is_(None),
+            )
+            .values(
+                finished_at=now,
+                exit_reason="interrupted",
+            )
+        )
+
+        run = CrawlRun(source_id=source_id, started_at=now)
+        session.add(run)
+        session.flush()
+        session.commit()
+        return run.id
+    finally:
+        _release_source_crawl_lock(session, source_id)
+
+
+def _mark_crawl_run_finished(
+    source_id: int,
+    crawl_run_id: int | None,
+    *,
+    exit_reason: str,
+    notes: str | None = None,
+) -> None:
+    if not crawl_run_id:
+        return
+
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            run = session.get(CrawlRun, crawl_run_id)
+            if not run or run.source_id != source_id:
+                return
+            if run.finished_at is None:
+                run.finished_at = datetime.now(timezone.utc)
+            run.exit_reason = exit_reason
+            if notes:
+                run.notes = notes
+            session.commit()
+    finally:
+        engine.dispose()
+
+
 @app.task(
     name="jobs.crawler.tasks.crawl_source_task",
     queue="celery",
@@ -90,69 +201,84 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
     print(f"Starting crawl for source {source_id}")
 
     engine = create_sync_engine()
+    crawl_run_id: int | None = None
     try:
-        with Session(bind=engine) as session:
-            source = session.get(Source, source_id)
-            if not source:
-                print(f"Source {source_id} not found")
-                return
+        try:
+            with Session(bind=engine) as session:
+                source = session.get(Source, source_id)
+                if not source:
+                    print(f"Source {source_id} not found")
+                    return
 
-            if source.is_paused:
-                print(f"Source {source_id} is paused, skipping")
-                return
-
-            url = source.uri
-            source_title = source.title
-            crawler_payload = source.config.to_dict()
-            crawler_payload["start_pages"] = list(source.start_pages or [])
-            crawler_payload["tracked_sources"] = _tracked_sources_payload(
-                session, source
-            )
-            _refresh_source_discovery(session, source, crawler_payload)
-            if not skip_sitemap_sync:
-                _sync_sitemaps_for_source(session, source_id)
-
-            recent_runs = (
-                session.execute(
-                    select(CrawlRun)
-                    .where(
-                        CrawlRun.source_id == source_id,
-                        CrawlRun.finished_at.is_not(None),
+                if source.is_paused:
+                    print(f"Source {source_id} is paused, skipping")
+                    return
+                if source.blocked_reason:
+                    print(
+                        f"Source {source_id} is blocked ({source.blocked_reason}), skipping"
                     )
-                    .order_by(CrawlRun.started_at.desc())
-                    .limit(3)
+                    return
+
+                url = source.uri
+                source_title = source.title
+                crawler_payload = source.config.to_dict()
+                crawler_payload["tracked_sources"] = _tracked_sources_payload(
+                    session, source
                 )
-                .scalars()
-                .all()
-            )
-            if len(recent_runs) == 3 and all(r.was_rate_limited for r in recent_runs):
-                base_delay = int(
-                    float(
-                        crawler_payload.get(
-                            "crawler_download_delay", DEFAULT_CRAWLER_DOWNLOAD_DELAY
+                crawl_run_id = _reserve_source_crawl_run(
+                    session,
+                    source_id,
+                    now=datetime.now(timezone.utc),
+                )
+                if crawl_run_id is None:
+                    print(
+                        f"Source {source_id}: crawl already reserved or running, skipping"
+                    )
+                    return
+                crawler_payload["crawl_run_id"] = crawl_run_id
+                _refresh_source_discovery(session, source, crawler_payload)
+                if not skip_sitemap_sync:
+                    _sync_sitemaps_for_source(session, source_id)
+
+                recent_runs = (
+                    session.execute(
+                        select(CrawlRun)
+                        .where(
+                            CrawlRun.source_id == source_id,
+                            CrawlRun.finished_at.is_not(None),
+                        )
+                        .order_by(CrawlRun.started_at.desc())
+                        .limit(3)
+                    )
+                    .scalars()
+                    .all()
+                )
+                if len(recent_runs) == 3 and all(
+                    r.was_rate_limited for r in recent_runs
+                ):
+                    base_delay = int(
+                        float(
+                            crawler_payload.get(
+                                "crawler_download_delay",
+                                DEFAULT_CRAWLER_DOWNLOAD_DELAY,
+                            )
                         )
                     )
-                )
-                doubled = min(base_delay * 2, 30)
-                crawler_payload["crawler_download_delay"] = doubled
-                print(
-                    f"Source {source_id}: 3 consecutive rate-limited runs, "
-                    f"doubling download_delay to {doubled}s"
-                )
-
-            # Mark any existing incomplete CrawlRun for this source as interrupted
-            session.execute(
-                update(CrawlRun)
-                .where(
-                    CrawlRun.source_id == source_id,
-                    CrawlRun.finished_at.is_(None),
-                )
-                .values(
-                    finished_at=datetime.now(timezone.utc),
-                    exit_reason="interrupted",
-                )
+                    doubled = min(base_delay * 2, 30)
+                    crawler_payload["crawler_download_delay"] = doubled
+                    print(
+                        f"Source {source_id}: 3 consecutive rate-limited runs, "
+                        f"doubling download_delay to {doubled}s"
+                    )
+        except Exception as exc:
+            _mark_crawl_run_finished(
+                source_id,
+                crawl_run_id,
+                exit_reason="error",
+                notes=f"crawl bootstrap failed: {exc}",
             )
-            session.commit()
+            raise
+
     finally:
         engine.dispose()
 
@@ -167,15 +293,30 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
         config_json,
     ]
 
-    result = subprocess.run(
-        runner_cmd,
-        capture_output=True,
-        text=True,
-        cwd=str(PROJECT_ROOT),
-    )
+    try:
+        result = subprocess.run(
+            runner_cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+        )
+    except Exception as exc:
+        _mark_crawl_run_finished(
+            source_id,
+            crawl_run_id,
+            exit_reason="error",
+            notes=f"crawler_runner launch failed: {exc}",
+        )
+        raise
 
     if result.returncode != 0:
         print(f"Crawler failed with exit code {result.returncode}")
+        _mark_crawl_run_finished(
+            source_id,
+            crawl_run_id,
+            exit_reason="error",
+            notes=f"crawler_runner exit code {result.returncode}",
+        )
     else:
         engine = create_sync_engine()
         try:
@@ -214,8 +355,8 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
             "Triggering inlink update, orphan cleanup, index refresh, and boilerplate rebuild"
         )
         chain(
-            update_inlink_counts_task.si(source_id),
-            cleanup_orphans_task.si(source_id),
+            update_inlink_counts_task.si(),
+            cleanup_orphans_task.si(),
         ).apply_async()
         schedule_refresh_project_index()
         rebuild_boilerplate_index.delay(source_id)
@@ -253,7 +394,6 @@ def crawl_page_task(page_id: int):
             source_id = source.id
             crawler_payload = source.config.to_dict()
             crawler_payload["single_page_only"] = True
-            crawler_payload["crawler_max_pages"] = 1
             crawler_payload["tracked_sources"] = _tracked_sources_payload(
                 session, source
             )
@@ -285,19 +425,6 @@ def crawl_page_task(page_id: int):
                     f"Source {source_id}: 3 consecutive rate-limited runs, "
                     f"doubling download_delay to {doubled}s"
                 )
-
-            session.execute(
-                update(CrawlRun)
-                .where(
-                    CrawlRun.source_id == source_id,
-                    CrawlRun.finished_at.is_(None),
-                )
-                .values(
-                    finished_at=datetime.now(timezone.utc),
-                    exit_reason="interrupted",
-                )
-            )
-            session.commit()
     finally:
         engine.dispose()
 
@@ -336,8 +463,8 @@ def crawl_page_task(page_id: int):
             "Triggering inlink update, orphan cleanup, index refresh, and boilerplate rebuild"
         )
         chain(
-            update_inlink_counts_task.si(source_id),
-            cleanup_orphans_task.si(source_id),
+            update_inlink_counts_task.si(),
+            cleanup_orphans_task.si(),
         ).apply_async()
         schedule_refresh_project_index()
         rebuild_boilerplate_index.delay(source_id)
@@ -358,7 +485,10 @@ def crawl_all_sources_task():
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            stmt = select(Source).where(Source.is_paused == False)  # noqa: E712
+            stmt = select(Source).where(  # noqa: E712
+                Source.is_paused == False,
+                Source.blocked_reason.is_(None),
+            )
             sources = session.execute(stmt).scalars().all()
 
             if not sources:
@@ -403,6 +533,30 @@ def cron_matches_now(cron_expression: str, now: datetime) -> bool:
     return schedule.is_due(now - timedelta(seconds=60)).is_due
 
 
+def source_is_due_for_reindex(source: Source, now: datetime) -> bool:
+    cron_expression = normalize_reindex_cron(
+        getattr(source, "reindex_cron", None) or DEFAULT_REINDEX_CRON
+    )
+    if is_manual_reindex(cron_expression):
+        return False
+
+    minute, hour, day_of_month, month_of_year, day_of_week = cron_expression.split(" ")
+    schedule = crontab(
+        minute=minute,
+        hour=hour,
+        day_of_month=day_of_month,
+        month_of_year=month_of_year,
+        day_of_week=day_of_week,
+        nowfun=lambda: now,
+    )
+    last_reference = normalize_datetime(getattr(source, "last_reindexed_at", None))
+    created_at = normalize_datetime(getattr(source, "created_at", None))
+    baseline = last_reference or created_at or (now - timedelta(days=366))
+    if baseline > now:
+        baseline = now
+    return schedule.is_due(baseline).is_due
+
+
 @app.task(
     name="jobs.crawler.tasks.schedule_reindex_sources_task",
     queue="celery",
@@ -411,6 +565,8 @@ def schedule_reindex_sources_task():
     print("Checking sources for scheduled reindex")
 
     now = datetime.now(timezone.utc)
+    # CrawlRun older than this is considered zombie (worker died without closing the run)
+    max_crawl_age = timedelta(days=30)
     queued_ids: list[int] = []
 
     engine = create_sync_engine()
@@ -418,25 +574,31 @@ def schedule_reindex_sources_task():
         with Session(bind=engine) as session:
             sources = (
                 session.execute(
-                    select(Source).where(Source.is_paused == False)  # noqa: E712
-                )
-                .scalars()
-                .all()
+                    select(Source).where(  # noqa: E712
+                        Source.is_paused == False,
+                        Source.blocked_reason.is_(None),
+                    )
             )
+            .scalars()
+            .all()
+        )
 
             for source in sources:
-                cron_expression = normalize_reindex_cron(
-                    getattr(source, "reindex_cron", None) or DEFAULT_REINDEX_CRON
+                if not source_is_due_for_reindex(source, now):
+                    continue
+
+                # Skip if an active (non-zombie) crawl is already running for this source
+                active_run = _find_active_crawl_run(
+                    session,
+                    source.id,
+                    now=now,
+                    max_crawl_age=max_crawl_age,
                 )
-
-                if is_manual_reindex(cron_expression):
-                    continue
-
-                if not cron_matches_now(cron_expression, now):
-                    continue
-
-                last_reindex = normalize_datetime(source.last_reindexed_at)
-                if last_reindex and (now - last_reindex) < timedelta(days=1):
+                if active_run:
+                    print(
+                        f"Source {source.id}: crawl already running "
+                        f"(run id={active_run.id}, started {active_run.started_at}), skipping"
+                    )
                     continue
 
                 queued_ids.append(source.id)
@@ -456,37 +618,35 @@ def schedule_reindex_sources_task():
     name="jobs.crawler.tasks.update_inlink_counts_task",
     queue="celery",
 )
-def update_inlink_counts_task(source_id: int):
-    """Recalculate inlink_count for every page of a source from the PageLink graph."""
-    print(f"Updating inlink counts for source {source_id}")
+def update_inlink_counts_task():
+    """Recalculate inlink_count for every page from the PageLink graph."""
+    print("Updating inlink counts for all pages")
 
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            inlink_rows = session.execute(
-                select(
-                    PageLink.target_page_id,
-                    func.count(PageLink.id).label("cnt"),
+            updated_pages = session.execute(
+                text(
+                    """
+                    UPDATE page AS p
+                    SET inlink_count = COALESCE(link_counts.cnt, 0)
+                    FROM page AS p0
+                    LEFT JOIN (
+                        SELECT
+                            target_page_id,
+                            COUNT(*)::integer AS cnt
+                        FROM page_link
+                        WHERE target_page_id IS NOT NULL
+                        GROUP BY target_page_id
+                    ) AS link_counts
+                        ON link_counts.target_page_id = p0.id
+                    WHERE p.id = p0.id
+                    """
                 )
-                .where(PageLink.target_page_id.is_not(None))
-                .group_by(PageLink.target_page_id)
-            ).all()
-
-            count_map: dict[int, int] = {
-                row.target_page_id: row.cnt for row in inlink_rows
-            }
-
-            pages = (
-                session.execute(select(Page).where(Page.source_id == source_id))
-                .scalars()
-                .all()
             )
-
-            for page in pages:
-                page.inlink_count = count_map.get(page.id, 0)
-
             session.commit()
-            print(f"Updated inlink counts for {len(pages)} pages in source {source_id}")
+            updated_count = updated_pages.rowcount or 0
+            print(f"Updated inlink counts for {updated_count} pages")
     finally:
         engine.dispose()
 
@@ -495,56 +655,31 @@ def update_inlink_counts_task(source_id: int):
     name="jobs.crawler.tasks.cleanup_orphans_task",
     queue="celery",
 )
-def cleanup_orphans_task(source_id: int):
-    """Delete dead pages: http_status 404/410, checked ≥2 times in error, no inlinks, not start_pages."""
-    print(f"Running orphan cleanup for source {source_id}")
+def cleanup_orphans_task():
+    """Delete dead pages: http_status 404/410, checked ≥2 times in error, no inlinks."""
+    print("Running orphan cleanup for all sources")
 
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
-            source = session.get(Source, source_id)
-            if not source:
-                print(f"Source {source_id} not found, skipping cleanup")
-                return
-
-            start_page_uris: set[str] = set(source.start_pages or [])
-
-            candidates = (
-                session.execute(
-                    select(Page).where(
-                        Page.source_id == source_id,
-                        Page.http_status.in_([404, 410]),
-                        Page.error_count >= 2,
-                        Page.inlink_count == 0,
-                        Page.is_hub_page.is_(False),
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            to_delete = [p for p in candidates if p.uri not in start_page_uris]
-            if not to_delete:
-                print(f"No orphan pages to delete for source {source_id}")
-                return
-
-            page_ids = [p.id for p in to_delete]
-
-            # Clear PageLink records referencing these pages before deletion
-            session.execute(
-                delete(PageLink).where(
-                    or_(
-                        PageLink.source_page_id.in_(page_ids),
-                        PageLink.target_page_id.in_(page_ids),
-                    )
+            deleted_pages = session.execute(
+                text(
+                    """
+                    DELETE FROM page AS p
+                    WHERE p.http_status IN (404, 410)
+                      AND p.error_count >= 2
+                      AND p.inlink_count = 0
+                      AND p.is_hub_page IS FALSE
+                    """
                 )
             )
-
-            for page in to_delete:
-                session.delete(page)
+            deleted_count = deleted_pages.rowcount or 0
+            if deleted_count == 0:
+                print("No orphan pages to delete")
+                return
 
             session.commit()
-            print(f"Deleted {len(to_delete)} orphan pages for source {source_id}")
+            print(f"Deleted {deleted_count} orphan pages")
     finally:
         engine.dispose()
 
@@ -836,20 +971,21 @@ def _upsert_sitemap_pages(
     source_id: int,
     parsed_entries: list[tuple[str, str | None]],
     source_rules: list[dict] | None = None,
+    source_id_by_host: dict[str, int] | None = None,
 ) -> set[str]:
     prioritized_urls: set[str] = set()
     for raw_page_url, lastmod_str in parsed_entries:
         page_url = normalize_url_for_queue(raw_page_url, source_rules)
         if not page_url or not url_allowed_by_rules(page_url, source_rules):
             continue
-        page = session.execute(
-            select(Page).where(
-                Page.source_id == source_id,
-                Page.uri == page_url,
-            )
-        ).scalar_one_or_none()
+        page_source_id = resolve_source_id_for_url(
+            page_url,
+            source_id_by_host or {},
+            fallback_source_id=source_id,
+        )
+        page = session.execute(select(Page).where(Page.uri == page_url)).scalar_one_or_none()
         if page is None:
-            page = Page(source_id=source_id, uri=page_url)
+            page = Page(source_id=page_source_id, uri=page_url)
             page._hash = ""
             session.add(page)
             continue
@@ -857,15 +993,15 @@ def _upsert_sitemap_pages(
         if lastmod_str is None:
             continue
         try:
-            new_lastmod = datetime.fromisoformat(lastmod_str.replace("Z", "+00:00"))
+            new_lastmod = normalize_datetime(
+                datetime.fromisoformat(lastmod_str.replace("Z", "+00:00"))
+            )
         except ValueError:
             continue
-        existing_lastmod = page.last_modified_at
+        existing_lastmod = normalize_datetime(page.last_modified_at)
         if existing_lastmod is None:
             prioritized_urls.add(page_url)
             continue
-        if existing_lastmod.tzinfo is None:
-            existing_lastmod = existing_lastmod.replace(tzinfo=timezone.utc)
         if existing_lastmod < new_lastmod:
             prioritized_urls.add(page_url)
     return prioritized_urls
@@ -913,6 +1049,8 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
         return
     source_rules = []
     source_rules = [rule.to_dict() for rule in source.config.rules]
+    source_rows = session.execute(select(Source.id, Source.uri)).all()
+    source_id_by_host = build_source_id_by_host(source_rows)
 
     sitemaps = (
         session.execute(
@@ -944,10 +1082,18 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
             print(f"Sitemap ignored (wrong address): {sm.url}")
             continue
 
+        now = datetime.now(timezone.utc)
+        if (
+            sm.last_fetched_at is not None
+            and sm.last_fetched_at > now - _SITEMAP_FETCH_INTERVAL
+        ):
+            print(f"Sitemap fetch skipped (<24h since last check): {sm.url}")
+            continue
+
         status_code, body, etag, location = _fetch_sitemap(sm.url, sm.last_etag)
 
         if status_code == 304:
-            sm.last_fetched_at = datetime.now(timezone.utc)
+            sm.last_fetched_at = now
             if etag:
                 sm.last_etag = etag
             print(f"Sitemap unchanged (304): {sm.url}")
@@ -971,7 +1117,6 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
         sm.ignore_reason = None
 
         new_hash = hashlib.sha256(body).hexdigest()
-        now = datetime.now(timezone.utc)
 
         if new_hash == sm.last_content_hash:
             sm.last_fetched_at = now
@@ -1009,6 +1154,7 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
                     source_id=source_id,
                     parsed_entries=parsed_entries,
                     source_rules=source_rules,
+                    source_id_by_host=source_id_by_host,
                 )
             )
 
@@ -1089,6 +1235,15 @@ def sitemap_sync_task(source_id: int):
     engine = create_sync_engine()
     try:
         with Session(bind=engine) as session:
+            source = session.get(Source, source_id)
+            if source is None:
+                print(f"Source {source_id} not found during sitemap sync")
+                return
+            if source.blocked_reason:
+                print(
+                    f"Source {source_id} is blocked ({source.blocked_reason}), sitemap sync skipped"
+                )
+                return
             _sync_sitemaps_for_source(session, source_id)
             session.commit()
     finally:
@@ -1111,7 +1266,10 @@ def schedule_sitemap_sync_task():
             source_ids = [
                 row[0]
                 for row in session.execute(
-                    select(Source.id).where(Source.is_paused.is_(False))
+                    select(Source.id).where(
+                        Source.is_paused.is_(False),
+                        Source.blocked_reason.is_(None),
+                    )
                 ).all()
             ]
     finally:
@@ -1119,5 +1277,21 @@ def schedule_sitemap_sync_task():
 
     for source_id in source_ids:
         sitemap_sync_task.delay(source_id)
+
+
+def refresh_source_blocking_state(source_id: int) -> bool:
+    engine = create_sync_engine()
+    try:
+        with Session(bind=engine) as session:
+            source = session.get(Source, source_id)
+            if source is None:
+                return False
+            result = check_source_blocking(source.uri)
+            apply_source_blocking_result(source, result)
+            source.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            return result.is_blocked
+    finally:
+        engine.dispose()
 
     print(f"Queued sitemap sync for {len(source_ids)} sources")

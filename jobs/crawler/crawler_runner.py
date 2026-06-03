@@ -64,9 +64,6 @@ download_timeout = config.get(
 )
 settings.set("DOWNLOAD_TIMEOUT", max(1, int(float(download_timeout))))
 
-max_pages = int(config.get("crawler_max_pages") or 500)
-settings.set("CLOSESPIDER_PAGECOUNT", max_pages)
-
 process = CrawlerProcess(settings)
 process.crawl(GeneralSpider, url=url, source_id=source_id, config=config)
 process.start()  # This blocks until crawling is finished

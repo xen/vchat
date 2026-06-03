@@ -11,7 +11,7 @@ from aiohttp import web
 from vchat.db import async_session_factory
 from vchat.guardrails import mask_russian_pii
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg
+from vchat.models import Chat, ChatMsg, Page
 from vchat.settings import config
 from vchat.utils import login_required, meta, paginator
 
@@ -55,6 +55,70 @@ GUARDRAIL_FILTER_OPTIONS: list[tuple[str, str]] = [
     ("input_blocked", "Блокировка входного сообщения"),
     ("output_blocked", "Блокировка ответа"),
 ]
+
+
+def _history_message_sources(row: ChatMsg) -> list[dict[str, object]]:
+    payload = None
+    if row.full_context:
+        try:
+            payload = json.loads(row.full_context)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = None
+    if isinstance(payload, dict) and isinstance(payload.get("sources"), list):
+        raw_items = payload["sources"]
+    else:
+        raw_items = getattr(row, "used_chunks", None) or []
+
+    sources: list[dict[str, object]] = []
+    seen: set[tuple[object, ...]] = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        page_url = item.get("page_url") or item.get("uri")
+        title = item.get("title")
+        display_path = item.get("display_path") or title
+        key = (
+            item.get("citation_id"),
+            page_url,
+            display_path,
+            item.get("section_path"),
+            item.get("header_text"),
+            item.get("kind"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append(
+            {
+                "citation_id": item.get("citation_id"),
+                "uri": item.get("uri"),
+                "page_url": page_url,
+                "title": title,
+                "display_path": display_path,
+                "kind": item.get("kind"),
+                "header_text": item.get("header_text"),
+                "section_path": item.get("section_path"),
+            }
+        )
+    return sources
+
+
+async def _mark_deleted_history_sources(db, messages: list[ChatMsg]) -> None:
+    page_urls = {
+        source["page_url"]
+        for msg in messages
+        for source in getattr(msg, "context_sources", [])
+        if source.get("page_url")
+    }
+    if not page_urls:
+        return
+
+    existing_rows = await db.execute(sa.select(Page.uri).where(Page.uri.in_(page_urls)))
+    existing_urls = {row.uri for row in existing_rows}
+    for msg in messages:
+        for source in getattr(msg, "context_sources", []):
+            page_url = source.get("page_url")
+            source["page_deleted"] = bool(page_url) and page_url not in existing_urls
 
 
 @meta(title=_("Chats"))
@@ -444,7 +508,7 @@ async def history_detail(request):
         msg.guardrail_rules = [
             GUARDRAIL_REASON_LABELS.get(rule, rule) for rule in unique_reasons
         ]
-        msg.context_sources = []
+        msg.context_sources = _history_message_sources(msg)
         msg.reason_code = None
         if msg.role == "assistant" and msg.full_context:
             try:
@@ -452,17 +516,14 @@ async def history_detail(request):
             except (TypeError, ValueError, json.JSONDecodeError):
                 payload = None
             if isinstance(payload, dict):
-                msg.context_sources = [
-                    item
-                    for item in payload.get("sources", [])
-                    if isinstance(item, dict)
-                ]
                 policy = (
                     payload.get("policy")
                     if isinstance(payload.get("policy"), dict)
                     else {}
                 )
                 msg.reason_code = policy.get("reason_code")
+
+    await _mark_deleted_history_sources(request["db"], messages)
 
     return {
         "project": _project_context(request),

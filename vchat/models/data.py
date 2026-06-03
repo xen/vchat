@@ -91,12 +91,6 @@ class Source(Base, Created, Updated):
     def config(self, value: "SourceConfig") -> None:
         self._config = value.to_dict()
 
-    start_pages: Mapped[list[str]] = mapped_column(
-        sa.ARRAY(sa.Text),
-        nullable=False,
-        default=list,
-        server_default=sa.text("'{}'"),
-    )
     reindex_cron: Mapped[str] = mapped_column(
         sa.String(100),
         nullable=False,
@@ -113,6 +107,12 @@ class Source(Base, Created, Updated):
         nullable=False,
         default=False,
         server_default=sa.text("false"),
+    )
+    blocked_reason: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    blocked_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    blocked_checked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
     )
 
 
@@ -327,15 +327,19 @@ class PageLink(Base):
     target_uri: Mapped[str] = mapped_column(sa.Text, nullable=False)
     source_page_id: Mapped[int | None] = mapped_column(
         sa.Integer,
-        ForeignKey("page.id", ondelete="SET NULL"),
+        ForeignKey("page.id", ondelete="CASCADE"),
         nullable=True,
     )
     target_page_id: Mapped[int | None] = mapped_column(
         sa.Integer,
-        ForeignKey("page.id", ondelete="SET NULL"),
+        ForeignKey("page.id", ondelete="CASCADE"),
         nullable=True,
     )
-    source_id: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    source_id: Mapped[int | None] = mapped_column(
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     target_status: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
     found_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True),

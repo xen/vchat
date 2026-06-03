@@ -10,6 +10,25 @@ stages:
   - test
   - deploy
 
+pytest:
+  stage: test
+  cache:
+    <<: *commit_cache
+  before_script:
+    - make setup
+  script:
+    - make test
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    when: always
+    paths:
+      - $CI_PROJECT_DIR/htmlcov/
+      - $CI_PROJECT_DIR/coverage.xml
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: $CI_PROJECT_DIR/coverage.xml
+
 ruff lint:
   stage: test
   cache:

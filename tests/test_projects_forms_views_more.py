@@ -182,6 +182,8 @@ async def test_project_source_settings_post_site_rules(
         type="site",
         title="Old",
         uri="https://old",
+        blocked_reason=None,
+        blocked_message=None,
         reindex_cron="0 3 * * 1",
         config={"rules": [{"type": "contains", "value": "x"}]},
         updated_at=None,
@@ -312,6 +314,12 @@ async def test_add_source_includes_default_ignored_params(
     monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(project_views.forms, "SourceForm", lambda *args, **kwargs: _Form())
     monkeypatch.setattr(project_views, "admin_event", _event)
+    async def _not_blocked(request, db_session, source):
+        _ = request, source
+        await db_session.commit()
+        return False
+
+    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _not_blocked)
     monkeypatch.setattr(
         project_views.crawl_source_task,
         "delay",
@@ -338,6 +346,62 @@ async def test_add_source_includes_default_ignored_params(
     )
     assert events == ["source_create"]
     assert delayed == [source.id]
+
+
+@pytest.mark.asyncio
+async def test_add_source_persists_blocked_source_without_enqueue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _PostData(dict):
+        def getall(self, key, default=None):
+            return default or []
+
+    db = _DB()
+    req = _Req(method="POST", post_data=_PostData(url="https://blocked.example"))
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    req.headers["X-CSRFToken"] = "token"
+    req.app[project_views.SIGNER_KEY] = SimpleNamespace(loads=lambda token, max_age: 1)
+    req.match_info["action"] = "add_source"
+    req.match_info["item_id"] = "global"
+
+    async def _session(_request):
+        return {"user_id": 1}
+
+    class _Form:
+        url = SimpleNamespace(data="https://blocked.example")
+        reindex_cron = SimpleNamespace(data="")
+
+        def validate(self):
+            return True
+
+    events = []
+    delayed = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    monkeypatch.setattr(project_views, "get_session", _session)
+    monkeypatch.setattr(project_views.forms, "SourceForm", lambda *args, **kwargs: _Form())
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    async def _blocked(request, db_session, source):
+        _ = request, db_session, source
+        return True
+
+    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _blocked)
+    monkeypatch.setattr(
+        project_views.crawl_source_task,
+        "delay",
+        lambda source_id: delayed.append(source_id),
+    )
+
+    response = await _raw(project_views.project_action)(req)
+    assert response.status == 200
+    assert response.headers["HX-Refresh"] == "true"
+    assert db.commits == 0
+    assert len(db.added) == 1
+    assert events == ["source_create"]
+    assert delayed == []
 
 
 @pytest.mark.asyncio

@@ -205,6 +205,78 @@ async def test_history_detail_masks_pii_and_maps_guardrail_labels(
 
 
 @pytest.mark.asyncio
+async def test_history_detail_uses_used_chunks_snapshot_and_marks_deleted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chat = SimpleNamespace(id="chat-1", title="Demo", meta={})
+    msgs = [
+        SimpleNamespace(
+            role="assistant",
+            text="Ответ",
+            full_context="",
+            used_chunks=[
+                {
+                    "citation_id": 0,
+                    "uri": "https://docs.example.com/a",
+                    "page_url": "https://docs.example.com/a",
+                    "title": "Doc A",
+                    "display_path": "Doc A / Section",
+                    "section_path": "Section",
+                    "kind": "text",
+                }
+            ],
+            guardrail_reasons=None,
+            guardrail_triggered=False,
+            guardrail_stage=None,
+        )
+    ]
+
+    class _Scalars:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+    class _Res:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def scalars(self):
+            return _Scalars(self._rows)
+
+        def __iter__(self):
+            return iter(self._rows)
+
+    class _Db:
+        def __init__(self):
+            self.calls = 0
+
+        async def scalar(self, stmt):
+            _ = stmt
+            return chat
+
+        async def execute(self, stmt):
+            _ = stmt
+            self.calls += 1
+            if self.calls == 1:
+                return _Res(msgs)
+            return _Res([])
+
+    request = _Req(db=_Db(), match_info={"chat_id": "chat-1"})
+    monkeypatch.setattr(
+        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
+    )
+
+    raw = chats_views.history_detail.__wrapped__.__wrapped__.__wrapped__
+    payload = await raw(request)
+    source = payload["messages"][0].context_sources[0]
+    assert source["page_url"] == "https://docs.example.com/a"
+    assert source["display_path"] == "Doc A / Section"
+    assert source["page_deleted"] is True
+
+
+@pytest.mark.asyncio
 async def test_history_detail_404_when_chat_missing() -> None:
     class _Db:
         async def scalar(self, stmt):

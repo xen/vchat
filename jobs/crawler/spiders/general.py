@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 import pycld2 as cld2
@@ -6,14 +7,21 @@ from dateutil import parser as date_parser
 from scrapy.linkextractors import LinkExtractor
 from scrapy.http import Request
 from scrapy.spiders import CrawlSpider, Rule
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from ..items import CrawledItem
 from ..seed_urls import iter_source_seed_urls
 from ..url_rules import ignored_query_params, normalize_url_for_queue, url_allowed_by_rules
+from jobs.db import create_sync_engine
+from jobs.crawler.source_routing import extract_hostname
+from vchat.models.data import Page
+from vchat.page_status import PageStatusError
 
 
 class GeneralSpider(CrawlSpider):
     name = "general"
+    _HTTP_STATUS_META = {"handle_httpstatus_all": True}
 
     def __init__(self, url=None, source_id=None, config=None, *args, **kwargs):
         self.source_id = int(source_id) if source_id else None
@@ -23,7 +31,11 @@ class GeneralSpider(CrawlSpider):
         self.source_rules = list(self.config.get("rules", []) or [])
         self.tracked_sources = list(self.config.get("tracked_sources", []) or [])
         self.single_page_only = bool(self.config.get("single_page_only"))
+        self.crawl_run_id = self.config.get("crawl_run_id")
         self._link_extractor = None
+        self._discovery_eligibility_cache: dict[tuple[int, str], bool] = {}
+        self._engine = create_sync_engine()
+        self._tracked_sources_by_host: dict[str, dict] = {}
 
         # Parse rules from config
         le_kwargs = {}
@@ -48,18 +60,17 @@ class GeneralSpider(CrawlSpider):
             le_kwargs["allow"] = regexes
 
         source_hostname = urlparse(url).hostname if url else None
-        tracked_sources_by_host: dict[str, dict] = {}
         for tracked_source in self.tracked_sources:
             tracked_uri = (tracked_source.get("uri") or "").strip()
-            tracked_host = (urlparse(tracked_uri).hostname or "").lower()
+            tracked_host = extract_hostname(tracked_uri)
             if not tracked_host:
                 continue
-            tracked_sources_by_host[tracked_host] = {
+            self._tracked_sources_by_host[tracked_host] = {
                 "id": tracked_source.get("id"),
                 "rules": list(tracked_source.get("rules", []) or []),
             }
-        if source_hostname and source_hostname.lower() not in tracked_sources_by_host:
-            tracked_sources_by_host[source_hostname.lower()] = {
+        if source_hostname and source_hostname.lower() not in self._tracked_sources_by_host:
+            self._tracked_sources_by_host[source_hostname.lower()] = {
                 "id": self.source_id,
                 "rules": self.source_rules,
             }
@@ -67,12 +78,10 @@ class GeneralSpider(CrawlSpider):
         def process_links(links):
             filtered_links = []
             seen_urls: set[str] = set()
+            candidate_targets: list[tuple[object, int, str]] = []
             for link in links:
                 raw_url = (link.url or "").strip()
-                link_hostname = (urlparse(raw_url).hostname or "").lower()
-                if not link_hostname:
-                    continue
-                target_source = tracked_sources_by_host.get(link_hostname)
+                target_source = self._resolve_tracked_source(raw_url)
                 if target_source is None:
                     continue
                 target_rules = list(target_source.get("rules", []) or [])
@@ -96,8 +105,13 @@ class GeneralSpider(CrawlSpider):
                     if normalized_url in seen_urls:
                         continue
                     seen_urls.add(normalized_url)
-                    link.url = normalized_url
-                    filtered_links.append(link)
+                    target_source_id = int(target_source.get("id") or self.source_id or 0)
+                    candidate_targets.append((link, target_source_id, normalized_url))
+
+            allowed_targets = self._filter_links_by_crawl_eligibility(candidate_targets)
+            for link, _, normalized_url in allowed_targets:
+                link.url = normalized_url
+                filtered_links.append(link)
             return filtered_links
 
         self._process_links = process_links
@@ -112,17 +126,41 @@ class GeneralSpider(CrawlSpider):
                     callback="parse_item",
                     follow=True,
                     process_links=process_links,
+                    process_request="process_request",
                 ),
             )
         )
         super().__init__(*args, **kwargs)
+
+    def _resolve_tracked_source(self, url: str | None) -> dict | None:
+        host = extract_hostname(url)
+        if not host:
+            return None
+        return self._tracked_sources_by_host.get(host)
+
+    def _request_source_context(self, url: str | None) -> tuple[int | None, list[dict]]:
+        target_source = self._resolve_tracked_source(url)
+        if target_source is None:
+            return self.source_id, list(self.source_rules)
+        return int(target_source.get("id") or self.source_id or 0), list(
+            target_source.get("rules", []) or []
+        )
 
     def parse_start_url(self, response, **kwargs):
         """Index start URLs as content (not just extract links from them)."""
         return self.parse_item(response)
 
     def start_requests(self):
-        yield from super().start_requests()
+        for url in self.start_urls:
+            yield Request(
+                url,
+                dont_filter=True,
+                meta={
+                    **self._HTTP_STATUS_META,
+                    "target_source_id": self.source_id,
+                    "target_source_rules": list(self.source_rules),
+                },
+            )
 
         if self.single_page_only:
             return
@@ -131,16 +169,43 @@ class GeneralSpider(CrawlSpider):
             self.source_id,
             exclude=self.start_urls,
         ):
-            yield Request(seed_url, dont_filter=False)
+            yield Request(
+                seed_url,
+                dont_filter=False,
+                meta={
+                    **self._HTTP_STATUS_META,
+                    "target_source_id": self.source_id,
+                    "target_source_rules": list(self.source_rules),
+                },
+            )
+
+    def process_request(self, request, response):
+        request.meta.update(self._HTTP_STATUS_META)
+        source_id, source_rules = self._request_source_context(request.url)
+        request.meta["target_source_id"] = source_id
+        request.meta["target_source_rules"] = list(source_rules)
+        return request
 
     def parse_item(self, response):
         print(f"Crawling {response.url}")
         item = CrawledItem()
-        item["url"] = normalize_url_for_queue(response.request.url, self.source_rules)
-        item["final_url"] = normalize_url_for_queue(response.url, self.source_rules)
+        final_source = self._resolve_tracked_source(response.url)
+        if final_source is not None:
+            page_source_id = int(final_source.get("id") or self.source_id or 0)
+            page_rules = list(final_source.get("rules", []) or [])
+        else:
+            page_source_id = int(
+                response.request.meta.get("target_source_id") or self.source_id or 0
+            )
+            page_rules = list(
+                response.request.meta.get("target_source_rules") or self.source_rules
+            )
+
+        item["url"] = normalize_url_for_queue(response.request.url, page_rules)
+        item["final_url"] = normalize_url_for_queue(response.url, page_rules)
         item["http_status"] = response.status
         item["etag"] = response.headers.get("ETag", b"").decode("utf-8") or None
-        item["source_id"] = self.source_id
+        item["source_id"] = page_source_id
         item["content_type"] = response.headers.get("Content-Type", b"").decode("utf-8")
         item["content"] = response.text
         extracted_links = []
@@ -223,3 +288,83 @@ class GeneralSpider(CrawlSpider):
 
         # We don't save content here, pipeline handles it via docling
         yield item
+
+    def closed(self, reason):
+        self._engine.dispose()
+
+    def _filter_links_by_crawl_eligibility(
+        self,
+        candidates: list[tuple[object, int, str]],
+    ) -> list[tuple[object, int, str]]:
+        if not candidates:
+            return []
+
+        uncached_urls_by_source: dict[int, set[str]] = {}
+        for _, target_source_id, normalized_url in candidates:
+            cache_key = (target_source_id, normalized_url)
+            if cache_key not in self._discovery_eligibility_cache:
+                uncached_urls_by_source.setdefault(target_source_id, set()).add(
+                    normalized_url
+                )
+
+        if uncached_urls_by_source:
+            now = datetime.now(timezone.utc)
+            try:
+                with Session(bind=self._engine) as session:
+                    for target_source_id, urls in uncached_urls_by_source.items():
+                        rows = (
+                            session.execute(
+                                select(
+                                    Page.uri,
+                                    Page.is_hub_page,
+                                    Page.last_crawled_at,
+                                    Page.check_interval_days,
+                                    Page.status_error,
+                                ).where(
+                                    Page.source_id == target_source_id,
+                                    Page.uri.in_(list(urls)),
+                                )
+                            )
+                            .all()
+                        )
+
+                        found_urls: set[str] = set()
+                        for (
+                            uri,
+                            is_hub_page,
+                            last_crawled_at,
+                            check_interval_days,
+                            status_error,
+                        ) in rows:
+                            found_urls.add(uri)
+                            is_due = last_crawled_at is None
+                            if (
+                                not is_due
+                                and check_interval_days is not None
+                                and check_interval_days > 0
+                            ):
+                                is_due = last_crawled_at + timedelta(
+                                    days=int(check_interval_days)
+                                ) <= now
+                            self._discovery_eligibility_cache[(target_source_id, uri)] = (
+                                bool(is_hub_page)
+                                or status_error == PageStatusError.http_5xx
+                                or is_due
+                            )
+
+                        for missing_url in urls - found_urls:
+                            self._discovery_eligibility_cache[
+                                (target_source_id, missing_url)
+                            ] = True
+            except Exception:
+                for target_source_id, urls in uncached_urls_by_source.items():
+                    for normalized_url in urls:
+                        self._discovery_eligibility_cache[
+                            (target_source_id, normalized_url)
+                        ] = True
+
+        return [
+            candidate
+            for candidate in candidates
+            if self._discovery_eligibility_cache.get((candidate[1], candidate[2]), True)
+        ]

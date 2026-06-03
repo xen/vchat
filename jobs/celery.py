@@ -51,7 +51,7 @@ app.conf.beat_schedule = {
     },
     "schedule_source_reindex": {
         "task": "jobs.crawler.tasks.schedule_reindex_sources_task",
-        "schedule": crontab(),
+        "schedule": crontab(minute=0),
         "options": {"queue": app.conf.task_default_queue},
     },
     "schedule_sitemap_sync": {

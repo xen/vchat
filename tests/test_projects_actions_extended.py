@@ -237,6 +237,11 @@ async def test_project_action_crawl_source_runs_sitemap_discovery_chain(
         called.append("flash")
 
     monkeypatch.setattr(project_views, "flash", _flash)
+    async def _not_blocked(request, db_session, source):
+        _ = request, db_session, source
+        return False
+
+    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _not_blocked)
     monkeypatch.setattr(
         project_views,
         "_queue_source_crawl_from_ui",
@@ -246,6 +251,38 @@ async def test_project_action_crawl_source_runs_sitemap_discovery_chain(
     resp = await _raw_project_action()(req)
     assert resp.status == 200
     assert called == ["crawl:7", "flash"]
+
+
+@pytest.mark.asyncio
+async def test_project_action_crawl_source_does_not_enqueue_blocked_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(id=7, uri="https://blocked.example")
+    req = _Request(action="crawl_source", item_id="7")
+    req["db"] = _DB(scalar_values=[source])
+    req["user"] = SimpleNamespace(id=1)
+
+    called = []
+
+    async def _flash(request, msg, cat="success"):
+        _ = request, msg, cat
+        called.append("flash")
+
+    monkeypatch.setattr(project_views, "flash", _flash)
+    async def _blocked(request, db_session, source):
+        _ = request, db_session, source
+        return True
+
+    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _blocked)
+    monkeypatch.setattr(
+        project_views,
+        "_queue_source_crawl_from_ui",
+        lambda source_id: called.append(f"crawl:{source_id}"),
+    )
+
+    resp = await _raw_project_action()(req)
+    assert resp.status == 200
+    assert called == []
 
 
 @pytest.mark.asyncio

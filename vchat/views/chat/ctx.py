@@ -989,6 +989,7 @@ def _build_source_payloads(snippets: list[Snippet]) -> list[dict[str, Any]]:
             {
                 "citation_id": citation_id,
                 "uri": snippet.uri,
+                "page_url": snippet.uri,
                 "title": snippet.title,
                 "display_path": snippet.display_path,
                 "kind": snippet.kind,
@@ -1010,6 +1011,7 @@ def _build_used_chunks(snippets: list[Snippet]) -> list[dict[str, Any]]:
                 "chunk_ix": snippet.chunk_ix,
                 "src": snippet.src,
                 "uri": snippet.uri,
+                "page_url": snippet.uri,
                 "title": snippet.title,
                 "display_path": snippet.display_path,
                 "kind": snippet.kind,

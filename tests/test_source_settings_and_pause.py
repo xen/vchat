@@ -120,6 +120,8 @@ def _make_source(source_id=10, uri="https://example.com", is_paused=False):
     s.last_reindexed_at = None
     s.config = SourceConfig()
     s.is_paused = is_paused
+    s.blocked_reason = None
+    s.blocked_message = None
     s.updated_at = None
     return s
 
@@ -337,6 +339,8 @@ class TestPauseResumeActions:
             title=source.title,
             uri=source.uri,
             is_paused=True,
+            blocked_reason=None,
+            blocked_message=None,
             excluded=0,
             errors=0,
             pending=0,
@@ -379,6 +383,8 @@ class TestPauseResumeActions:
             title=source.title,
             uri=source.uri,
             is_paused=False,
+            blocked_reason=None,
+            blocked_message=None,
             excluded=0,
             errors=0,
             pending=0,
@@ -464,7 +470,8 @@ class TestCrawlerSkipsPausedSources:
             with patch("jobs.crawler.tasks.Session") as mock_session_cls:
                 mock_session_cls.return_value = session
 
-                with patch("subprocess.run") as mock_run:
+                with patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=111), \
+                     patch("subprocess.run") as mock_run:
                     crawl_source_task(source.id)
                     mock_run.assert_not_called()
 
@@ -487,7 +494,33 @@ class TestCrawlerSkipsPausedSources:
             with patch("jobs.crawler.tasks.Session") as mock_session_cls:
                 mock_session_cls.return_value = session
 
-                with patch("subprocess.run") as mock_run:
+                with patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=111), \
+                     patch("subprocess.run") as mock_run:
                     mock_run.return_value = MagicMock(returncode=1)
                     crawl_source_task(source.id)
                     mock_run.assert_called_once()
+
+    def test_crawl_source_task_skips_blocked_source(self):
+        """crawl_source_task exits early when source.blocked_reason is set."""
+        from jobs.crawler.tasks import crawl_source_task
+
+        source = _make_source(is_paused=False)
+        source.blocked_reason = "robots_txt"
+
+        with patch("jobs.crawler.tasks.create_sync_engine") as mock_engine:
+            engine = MagicMock()
+            session = MagicMock()
+            session.__enter__ = lambda s: session
+            session.__exit__ = MagicMock(return_value=False)
+            session.get.return_value = source
+            session.execute.return_value = MagicMock()
+            mock_engine.return_value = engine
+            engine.__enter__ = lambda s: engine
+            engine.__exit__ = MagicMock(return_value=False)
+
+            with patch("jobs.crawler.tasks.Session") as mock_session_cls:
+                mock_session_cls.return_value = session
+
+                with patch("subprocess.run") as mock_run:
+                    crawl_source_task(source.id)
+                    mock_run.assert_not_called()

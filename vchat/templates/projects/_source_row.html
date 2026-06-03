@@ -10,10 +10,18 @@
 {% endfor %}
 <tr id="source-row-{{ s.id }}">
     <td class="w-[32%]">
-        <a href="{{ url('project_source_settings', source_id=s.id) }}"
-           class="block truncate font-medium link link-hover">
-            {{ s.title }}
-        </a>
+        <div class="flex items-center gap-2 min-w-0">
+            {% if s.blocked_reason %}
+            <span class="text-error shrink-0"
+                  title="{{ s.blocked_label }}{% if s.blocked_message %}: {{ s.blocked_message }}{% endif %}">
+                <iconify-icon icon="lucide:shield-x" class="size-4"></iconify-icon>
+            </span>
+            {% endif %}
+            <a href="{{ url('project_source_settings', source_id=s.id) }}"
+               class="block truncate font-medium link link-hover min-w-0">
+                {{ s.title }}
+            </a>
+        </div>
     </td>
     <td class="w-[140px]">
         <div class="flex h-3 w-full rounded overflow-hidden" style="min-width:120px">

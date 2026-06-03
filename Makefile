@@ -155,8 +155,13 @@ docs: ## convert all docs in docs/ to .docx
 			-o "docs/word/$$(basename "$${f%.md}.docx")"; \
 	done
 
-test: venv/bin/activate ## run tests
-	. venv/bin/activate && pytest -v --tb=short --disable-warnings
+test: venv/bin/activate ## run tests with coverage
+	venv/bin/pytest -v --tb=short --disable-warnings \
+		--cov=vchat \
+		--cov=jobs \
+		--cov-report=term-missing:skip-covered \
+		--cov-report=xml:coverage.xml \
+		--cov-report=html:htmlcov
 
 help: ## display this help message
 	@echo "Please use \`make <target>' where <target> is one of"

@@ -117,7 +117,7 @@ async def _upsert_document(
         raise web.HTTPInternalServerError(text="Failed to extract document content")
 
     document = await db.scalar(
-        sa.select(Page).where(Page.source_id == source_id, Page.uri == url)
+        sa.select(Page).where(Page.uri == url)
     )
     created = document is None
 

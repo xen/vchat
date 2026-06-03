@@ -43,7 +43,7 @@ from vchat.ai_providers import (
     is_provider_available,
     resolve_ai_settings,
 )
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.document_shingles import compute_trigram_hashes
@@ -62,6 +62,11 @@ from vchat.source_settings import (
     MANUAL_REINDEX_MODE,
     is_manual_reindex,
     normalize_reindex_cron,
+)
+from vchat.source_blocking import (
+    apply_source_blocking_result,
+    check_source_blocking,
+    describe_blocked_reason,
 )
 from vchat.settings import config
 from vchat.page_status import PageStatus, PageStatusError, STATUS_ERROR_DESCRIPTIONS
@@ -106,6 +111,26 @@ def _queue_source_crawl_from_ui(source_id: int) -> None:
         sitemap_sync_task.si(source_id),
         crawl_source_task.si(source_id, skip_sitemap_sync=True),
     ).apply_async()
+
+
+async def _check_source_blocking_and_commit(
+    request: web.Request,
+    db_session: Any,
+    source: Source,
+) -> bool:
+    result = check_source_blocking(source.uri)
+    apply_source_blocking_result(source, result)
+    source.updated_at = datetime.now(timezone.utc)
+    await db_session.commit()
+
+    if result.is_blocked:
+        await flash(
+            request,
+            result.message or _("Source is blocked for crawling"),
+            "error",
+        )
+        return True
+    return False
 
 
 def _format_crawl_bool(value: bool) -> str:
@@ -194,7 +219,9 @@ def _document_crawl_fields(document: Page) -> list[dict[str, str]]:
     return [
         {
             "label": "HTTP status",
-            "value": str(document.http_status) if document.http_status is not None else "—",
+            "value": str(document.http_status)
+            if document.http_status is not None
+            else "—",
         },
         {
             "label": "Последний обход",
@@ -255,7 +282,9 @@ def _is_external_uri(uri: str | None, current_netloc: str | None) -> bool:
     return urlparse(uri).netloc.casefold() != current_netloc.casefold()
 
 
-def _is_ignored_link_status(status: str | None, status_error: str | None = None) -> bool:
+def _is_ignored_link_status(
+    status: str | None, status_error: str | None = None
+) -> bool:
     return (status or "") in {"blocked", "auth_required"} or (status_error or "") in {
         PageStatusError.excluded_ignored.value,
         PageStatusError.excluded_robots.value,
@@ -322,9 +351,7 @@ def _document_links_graph(
                         "is_ignored": _is_ignored_link_status(
                             row.get("status"), row.get("status_error")
                         ),
-                        "is_external": _is_external_uri(
-                            row.get("uri"), current_netloc
-                        ),
+                        "is_external": _is_external_uri(row.get("uri"), current_netloc),
                     }
                 )
                 seen_nodes.add(node_id)
@@ -355,7 +382,9 @@ def _document_links_graph(
     return {"currentNodeId": current_node_id, "nodes": nodes, "links": links}
 
 
-async def _document_link_groups(db: Any, document: Page) -> dict[str, list[dict[str, Any]]]:
+async def _document_link_groups(
+    db: Any, document: Page
+) -> dict[str, list[dict[str, Any]]]:
     if document.id is None:
         return {"mutual": [], "incoming": [], "outgoing": []}
 
@@ -395,7 +424,7 @@ async def _document_link_groups(db: Any, document: Page) -> dict[str, list[dict[
         }
 
     incoming_by_id: dict[int, dict[str, Any]] = {}
-    for _, linked_page in incoming_rows:
+    for _link, linked_page in incoming_rows:
         linked_id = getattr(linked_page, "id", None)
         linked_uri = getattr(linked_page, "uri", None)
         if linked_id is None or linked_id in incoming_by_id:
@@ -423,10 +452,18 @@ async def _document_link_groups(db: Any, document: Page) -> dict[str, list[dict[
         ]
     )
     outgoing = _sort_document_link_rows(
-        [row for linked_id, row in outgoing_by_id.items() if linked_id not in mutual_ids]
+        [
+            row
+            for linked_id, row in outgoing_by_id.items()
+            if linked_id not in mutual_ids
+        ]
     )
     incoming = _sort_document_link_rows(
-        [row for linked_id, row in incoming_by_id.items() if linked_id not in mutual_ids]
+        [
+            row
+            for linked_id, row in incoming_by_id.items()
+            if linked_id not in mutual_ids
+        ]
     )
     return {
         "mutual": mutual,
@@ -833,6 +870,9 @@ def _serialize_source_row(row: Any) -> dict[str, Any]:
         "title": source_name,
         "uri": row.uri,
         "is_paused": row.is_paused,
+        "blocked_reason": row.blocked_reason,
+        "blocked_message": row.blocked_message,
+        "blocked_label": describe_blocked_reason(row.blocked_reason),
         "errors": errors,
         "pending": pending,
         "processing": processing,
@@ -851,6 +891,8 @@ async def _get_source_row_data(db_session, source_id: int) -> dict[str, Any] | N
                 Source.title,
                 Source.uri,
                 Source.is_paused,
+                Source.blocked_reason,
+                Source.blocked_message,
                 sa.func.count(Page.id).filter(is_excl).label("excluded"),
                 sa.func.count(Page.id).filter(is_err).label("errors"),
                 sa.func.count(Page.id).filter(is_pend).label("pending"),
@@ -864,6 +906,8 @@ async def _get_source_row_data(db_session, source_id: int) -> dict[str, Any] | N
                 Source.title,
                 Source.uri,
                 Source.is_paused,
+                Source.blocked_reason,
+                Source.blocked_message,
             )
         )
     ).one()
@@ -888,6 +932,8 @@ async def project_edit_sources(request):
                 Source.title,
                 Source.uri,
                 Source.is_paused,
+                Source.blocked_reason,
+                Source.blocked_message,
                 sa.func.count(Page.id).filter(is_excl).label("excluded"),
                 sa.func.count(Page.id).filter(is_err).label("errors"),
                 sa.func.count(Page.id).filter(is_pend).label("pending"),
@@ -900,8 +946,14 @@ async def project_edit_sources(request):
                 Source.title,
                 Source.uri,
                 Source.is_paused,
+                Source.blocked_reason,
+                Source.blocked_message,
             )
-            .order_by(Source.is_paused.asc(), Source.created_at.desc())
+            .order_by(
+                Source.is_paused.asc(),
+                Source.blocked_reason.isnot(None).desc(),
+                Source.created_at.desc(),
+            )
         )
     ).all()
 
@@ -1049,6 +1101,7 @@ async def project_source_settings(request):
     return {
         "project": _project_context(request),
         "source": source,
+        "source_blocked_label": describe_blocked_reason(source.blocked_reason),
         "form": form,
         "doc_count": int(doc_stats_row.doc_count or 0),
         "doc_size_bytes": int(doc_stats_row.doc_size_bytes or 0),
@@ -1352,9 +1405,10 @@ async def project_action(request):
             reindex_cron=reindex_cron,
         )
         db_session.add(source)
-        await db_session.commit()
+        is_blocked = await _check_source_blocking_and_commit(request, db_session, source)
         await admin_event("source_create", request)
-        crawl_source_task.delay(source.id)
+        if not is_blocked:
+            crawl_source_task.delay(source.id)
         response = web.Response(text="ok")
         response.headers["HX-Refresh"] = "true"
         return response
@@ -1376,8 +1430,9 @@ async def project_action(request):
         )
         if not source:
             raise web.HTTPNotFound()
-        _queue_source_crawl_from_ui(source.id)
-        await flash(request, _("Crawl task started for source"), "success")
+        if not await _check_source_blocking_and_commit(request, db_session, source):
+            _queue_source_crawl_from_ui(source.id)
+            await flash(request, _("Crawl task started for source"), "success")
         return web.Response(text="ok", status=200)
 
     if action == "refresh_page":
@@ -1421,10 +1476,17 @@ async def project_action(request):
 
     if action == "crawl_all":
         source_ids = (
-            await db_session.execute(
-                sa.select(Source.id).where(Source.is_paused.is_(False))
+            (
+                await db_session.execute(
+                    sa.select(Source.id).where(
+                        Source.is_paused.is_(False),
+                        Source.blocked_reason.is_(None),
+                    )
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for source_id in source_ids:
             _queue_source_crawl_from_ui(source_id)
         await flash(request, _("Crawl task started for all sources"), "success")

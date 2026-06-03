@@ -95,12 +95,10 @@ class TestSourceConfigFromDict:
             {
                 "aws_access_key_id": "should-be-gone",
                 "folder_id": "should-be-gone",
-                "start_pages": ["https://example.com"],
                 "sitemaps": ["https://example.com/sitemap.xml"],
             }
         )
         assert not hasattr(cfg, "aws_access_key_id")
-        assert not hasattr(cfg, "start_pages")
         assert not hasattr(cfg, "sitemaps")
 
     def test_falls_back_to_defaults_on_null_values(self):
@@ -114,14 +112,6 @@ class TestSourceConfigFromDict:
     def test_preserves_zero_delay(self):
         cfg = SourceConfig.from_dict({"crawler_download_delay": 0})
         assert cfg.crawler_download_delay == 0
-
-    def test_reads_crawler_max_pages(self):
-        cfg = SourceConfig.from_dict({"crawler_max_pages": 200})
-        assert cfg.crawler_max_pages == 200
-
-    def test_default_crawler_max_pages(self):
-        cfg = SourceConfig.from_dict({})
-        assert cfg.crawler_max_pages == 500
 
 
 # ---------------------------------------------------------------------------
@@ -139,9 +129,8 @@ class TestSourceConfigToDict:
         d = cfg.to_dict()
         assert d["rules"] == [{"type": "css", "value": "a"}]
 
-    def test_no_start_pages_or_sitemaps(self):
+    def test_no_sitemaps(self):
         d = SourceConfig().to_dict()
-        assert "start_pages" not in d
         assert "sitemaps" not in d
 
     def test_no_user_agent_in_dict(self):
@@ -154,7 +143,6 @@ class TestSourceConfigToDict:
             "crawler_concurrent_requests",
             "crawler_download_delay",
             "crawler_download_timeout",
-            "crawler_max_pages",
         }
 
     def test_round_trip(self):
@@ -162,7 +150,6 @@ class TestSourceConfigToDict:
             crawler_concurrent_requests=8,
             crawler_download_delay=1,
             crawler_download_timeout=15,
-            crawler_max_pages=200,
             rules=[CrawlerRule(type="regex", value="^https://")],
         )
         assert SourceConfig.from_dict(original.to_dict()) == original
@@ -225,23 +212,3 @@ class TestSourceModelConfig:
         s = SourceStub({"folder_id": "abc123", "folder_name": "Docs"})
         assert s.config == SourceConfig()
 
-
-# ---------------------------------------------------------------------------
-# Crawler tasks payload
-# ---------------------------------------------------------------------------
-
-
-class TestCrawlerTasksPayload:
-    def test_payload_contains_start_pages(self):
-        cfg = SourceConfig(crawler_concurrent_requests=2)
-        payload = cfg.to_dict()
-        payload["start_pages"] = ["https://a.com/1"]
-
-        assert payload["start_pages"] == ["https://a.com/1"]
-        assert payload["crawler_concurrent_requests"] == 2
-
-    def test_config_to_dict_unchanged_after_payload_mutation(self):
-        cfg = SourceConfig()
-        d = cfg.to_dict()
-        d["start_pages"] = ["https://x.com"]
-        assert "start_pages" not in cfg.to_dict()
