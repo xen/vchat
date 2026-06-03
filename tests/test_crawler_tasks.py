@@ -84,6 +84,7 @@ class TestCrawlSourceTaskPayload:
             patch("jobs.crawler.tasks.Session", return_value=session_mock),
             patch("jobs.crawler.tasks.subprocess.run", side_effect=fake_run),
             patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=321),
+            patch("jobs.crawler.tasks._refresh_source_discovery"),
             patch("jobs.crawler.tasks._sync_sitemaps_for_source"),
             patch("jobs.embedder.tasks.refresh_project_index"),
         ):
@@ -191,26 +192,13 @@ class TestCrawlPageTaskPayload:
             captured["cmd"] = cmd
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        update_sig_mock = MagicMock(return_value=MagicMock())
-        cleanup_sig_mock = MagicMock(return_value=MagicMock())
-
         with (
             patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
             patch("jobs.crawler.tasks.Session", return_value=session_mock),
             patch("jobs.crawler.tasks.subprocess.run", side_effect=fake_run),
-            patch(
-                "jobs.crawler.tasks.update_inlink_counts_task.si",
-                update_sig_mock,
-            ),
-            patch(
-                "jobs.crawler.tasks.cleanup_orphans_task.si",
-                cleanup_sig_mock,
-            ),
-            patch("jobs.crawler.tasks.chain") as chain_mock,
             patch("jobs.crawler.tasks.schedule_refresh_project_index"),
             patch("jobs.crawler.tasks.rebuild_boilerplate_index.delay"),
         ):
-            chain_mock.return_value.apply_async = MagicMock()
             from jobs.crawler import tasks as crawler_tasks
 
             crawler_tasks.crawl_page_task(page.id)
@@ -219,35 +207,6 @@ class TestCrawlPageTaskPayload:
         assert captured["cmd"][-3:-1] == ["https://test.com/page", "42"]
         assert payload["single_page_only"] is True
         assert "crawler_max_pages" not in payload
-        update_sig_mock.assert_called_once_with()
-        cleanup_sig_mock.assert_called_once_with()
-
-
-class TestUpdateInlinkCountsTask:
-    def test_updates_all_pages_in_single_execute(self):
-        engine_mock = MagicMock()
-        session_mock = MagicMock()
-        execute_result = MagicMock()
-        execute_result.rowcount = 17
-        session_mock.execute.return_value = execute_result
-        session_mock.__enter__ = lambda s: session_mock
-        session_mock.__exit__ = MagicMock(return_value=False)
-
-        with (
-            patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
-            patch("jobs.crawler.tasks.Session", return_value=session_mock),
-        ):
-            from jobs.crawler import tasks as crawler_tasks
-
-            crawler_tasks.update_inlink_counts_task()
-
-        session_mock.execute.assert_called_once()
-        session_mock.commit.assert_called_once_with()
-        sql = str(session_mock.execute.call_args.args[0])
-        assert "UPDATE page AS p" in sql
-        assert "FROM page AS p0" in sql
-        assert "LEFT JOIN (" in sql
-        assert "FROM page_link" in sql
 
 
 class TestReapplySourceRulesTask:
@@ -357,37 +316,3 @@ class TestReapplySourceRulesTask:
 
         assert updated == 0
         assert page.status_error == PageStatusError.excluded_ignored
-
-
-class TestCleanupOrphansTask:
-    def test_deletes_orphans_with_single_global_delete(self):
-        engine_mock = MagicMock()
-        session_mock = MagicMock()
-        session_mock.__enter__ = lambda s: session_mock
-        session_mock.__exit__ = MagicMock(return_value=False)
-
-        delete_result = SimpleNamespace(rowcount=3)
-        executed = []
-
-        def fake_execute(statement, *args, **kwargs):
-            executed.append(statement)
-            return delete_result
-
-        session_mock.execute.side_effect = fake_execute
-
-        with (
-            patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
-            patch("jobs.crawler.tasks.Session", return_value=session_mock),
-        ):
-            from jobs.crawler import tasks as crawler_tasks
-
-            crawler_tasks.cleanup_orphans_task()
-
-        assert len(executed) == 1
-        sql = str(executed[0])
-        assert "DELETE FROM page AS p" in sql
-        assert "USING source AS s" not in sql
-        assert "p.source_id = s.id" not in sql
-        assert "p.uri = ANY(" not in sql
-        session_mock.delete.assert_not_called()
-        session_mock.commit.assert_called_once()

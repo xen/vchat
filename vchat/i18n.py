@@ -132,14 +132,14 @@ def _(message: str, *args: Any, **kwargs: Any) -> str:
     if kwargs:
         try:
             return text % kwargs
-        except Exception:
+        except (TypeError, ValueError, KeyError):
             try:
                 return text.format(**kwargs)
-            except Exception:
+            except (IndexError, KeyError, ValueError):
                 return text
     if args:
         try:
             return text % args
-        except Exception:
+        except (TypeError, ValueError):
             return text
     return text

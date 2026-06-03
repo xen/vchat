@@ -72,7 +72,7 @@ from vchat.settings import config
 from vchat.page_status import PageStatus, PageStatusError, STATUS_ERROR_DESCRIPTIONS
 from vchat.utils import admin_event, flash, login_required, meta
 
-from vchat.views.admin import forms as admin_forms
+from vchat.views.admin.views import CreateUserForm, UserPasswordForm
 
 from . import forms
 
@@ -528,7 +528,7 @@ def next_reindex_at(cron_expr: str, now: datetime) -> datetime | None:
             nowfun=lambda: now,
         )
         return now + schedule.remaining_estimate(now)
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -1161,7 +1161,7 @@ async def project_action(request):
     if action == "user_create":
         session = await get_session(request)
         data = await request.post()
-        form = admin_forms.CreateUserForm(data, meta={"csrf_context": session})
+        form = CreateUserForm(data, meta={"csrf_context": session})
         users = (
             (await db_session.execute(sa.select(User).order_by(User.id.desc())))
             .scalars()
@@ -1220,7 +1220,7 @@ async def project_action(request):
 
         session = await get_session(request)
         data = await request.post() if request.method == "POST" else None
-        form = admin_forms.UserPasswordForm(data, meta={"csrf_context": session})
+        form = UserPasswordForm(data, meta={"csrf_context": session})
 
         if request.method == "POST":
             if not form.validate():
@@ -1841,7 +1841,7 @@ async def project_stats(request):
     )
     token_usage_res = (await db.execute(token_usage_query)).all()
 
-    all_providers = get_ai_provider_options(include_disabled=True)
+    all_providers = get_ai_provider_options()
     provider_labels = {item["id"]: item["title"] for item in all_providers}
     model_labels = {}
     for item in all_providers:

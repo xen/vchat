@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import pytest
+from aiohttp import web
 from types import SimpleNamespace
 from yarl import URL
-
-import pytest
 
 from vchat.i18n import _
 from vchat import utils as vchat_utils
@@ -57,7 +57,9 @@ async def test_frontend_healthcheck_redirects_to_project_view() -> None:
         "db": SimpleNamespace(execute=lambda *_a, **_k: _AsyncNoop()),
         "app": SimpleNamespace(router=_FakeRouter({"project_view": _FakeRouterItem("/")})),
     })
-    response = await frontend.healthcheck(request)  # type: ignore[arg-type]
+    with pytest.raises(web.HTTPFound) as exc_info:
+        await frontend.healthcheck(request)  # type: ignore[arg-type]
+    response = exc_info.value
     assert response.status == 302
     assert str(response.location) == "/"
 
@@ -121,7 +123,7 @@ async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(admin_views, "_get_users", _fake_get_users)
     monkeypatch.setattr(admin_views, "get_session", _fake_get_session)
     monkeypatch.setattr(vchat_utils, "get_session", _fake_get_session)
-    monkeypatch.setattr(admin_views.forms, "CreateUserForm", lambda meta=None: {"meta": meta})
+    monkeypatch.setattr(admin_views, "CreateUserForm", lambda meta=None: {"meta": meta})
 
     request = _FakeRequest({
         "db": SimpleNamespace(),

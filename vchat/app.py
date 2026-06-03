@@ -70,17 +70,14 @@ async def create_app() -> Application:
         loader=jinja2.PackageLoader("vchat", "templates"),
     )
     app[aiohttp_jinja2.static_root_key] = "/static/"
-    try:
-        assets_dir = Path("frontend/dist/assets")
-        if assets_dir.exists():
-            latest_mtime = max(
-                (p.stat().st_mtime for p in assets_dir.glob("*") if p.is_file()),
-                default=datetime.now().timestamp(),
-            )
-            app[STATIC_VERSION_KEY] = str(int(latest_mtime))
-        else:
-            app[STATIC_VERSION_KEY] = str(int(datetime.now().timestamp()))
-    except Exception:
+    assets_dir = Path("frontend/dist/assets")
+    if assets_dir.exists():
+        latest_mtime = max(
+            (p.stat().st_mtime for p in assets_dir.glob("*") if p.is_file()),
+            default=datetime.now().timestamp(),
+        )
+        app[STATIC_VERSION_KEY] = str(int(latest_mtime))
+    else:
         app[STATIC_VERSION_KEY] = str(int(datetime.now().timestamp()))
     # Add the custom filter
     jinja_env: Environment = aiohttp_jinja2.get_env(app)

@@ -189,8 +189,9 @@ async def test_flash_admin_event_login_required_and_make_url(monkeypatch: pytest
     async def _protected(request):
         return web.Response(text="ok")
 
-    resp = await _protected(r)
-    assert isinstance(resp, web.HTTPFound)
+    with pytest.raises(web.HTTPFound) as exc_info:
+        await _protected(r)
+    resp = exc_info.value
     assert "next=%2Fprivate" in str(resp.location)
 
     full = utils.make_full_url(r, "x", id=5, query_={"a": "b"})

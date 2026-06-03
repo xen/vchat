@@ -16,6 +16,23 @@ probes or OS/architecture-specific branches.
 If a declared Python dependency is missing on a server, fix the environment and
 any required system build dependencies instead of adding code-level fallbacks.
 
+## Error Handling / Legacy Policy
+
+Default to fail-fast behavior.
+
+- Do not add fallback logic, graceful degradation, tolerant signatures, silent
+  retries, or backward-compatibility shims unless I explicitly ask for them.
+- If the database, Redis, Celery, network, or another dependency is broken, let
+  the code fail loudly with a full traceback.
+- Do not hide infrastructure or data problems behind `try/except` unless the
+  exception is re-raised or I explicitly asked for a recovery path.
+- Prefer deleting obsolete code over preserving legacy entrypoints “just in
+  case”.
+- Do not keep deprecated task names, old call paths, compatibility wrappers, or
+  migration-era glue unless I explicitly approved that exact tradeoff.
+- Every time you think a legacy/backward-compatibility layer might be needed,
+  stop and ask me a direct question first instead of implementing it.
+
 # Test Server Database Access
 
 **Server:** `deploy@cdn.okumy.com` (тестовый сервер)

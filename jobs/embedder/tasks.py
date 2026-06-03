@@ -2,7 +2,6 @@ import logging
 import math
 import re
 import time
-import hashlib
 import gc
 from dataclasses import dataclass
 from typing import Any, List
@@ -172,29 +171,11 @@ def maybe_reset_embed_model_after_document() -> bool:
 def make_embed_vector(text: str) -> List[float]:
     if not text:
         return []
-    try:
-        emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
-        vec = emb[0].tolist()
-        if any(math.isnan(v) for v in vec):
-            raise ValueError("embedding model returned NaN vector")
-        return vec
-    except Exception as exc:
-        logging.exception(
-            "Embedding model failed; using deterministic fallback vector: %s",
-            exc,
-        )
-        seed = hashlib.sha256(text.encode("utf-8")).digest()
-        values: list[float] = []
-        while len(values) < VEC_DIM:
-            seed = hashlib.sha256(seed).digest()
-            for byte_value in seed:
-                values.append((byte_value / 127.5) - 1.0)
-                if len(values) == VEC_DIM:
-                    break
-        norm = sum(v * v for v in values) ** 0.5
-        if norm > 0:
-            values = [v / norm for v in values]
-        return values
+    emb = get_embed_model().encode([text], normalize_embeddings=True, batch_size=1)
+    vec = emb[0].tolist()
+    if any(math.isnan(v) for v in vec):
+        raise ValueError("embedding model returned NaN vector")
+    return vec
 
 
 @dataclass(frozen=True)
@@ -1097,12 +1078,8 @@ def schedule_ensure_pending_chunks() -> bool:
         if not acquired:
             return False
 
-        try:
-            ensure_pending_chunks.delay()
-            return True
-        except Exception:
-            redis_client.delete(ENSURE_PENDING_CHUNKS_SCHEDULE_KEY)
-            raise
+        ensure_pending_chunks.delay()
+        return True
     finally:
         redis_client.close()
 
@@ -1119,12 +1096,8 @@ def schedule_refresh_project_index() -> bool:
         if not acquired:
             return False
 
-        try:
-            refresh_project_index.delay()
-            return True
-        except Exception:
-            redis_client.delete(REFRESH_PROJECT_INDEX_SCHEDULE_KEY)
-            raise
+        refresh_project_index.delay()
+        return True
     finally:
         redis_client.close()
 
@@ -1146,12 +1119,8 @@ def schedule_index_document(document_id: int) -> bool:
         if not acquired:
             return False
 
-        try:
-            index_document.delay(document_id)
-            return True
-        except Exception:
-            redis_client.delete(schedule_key)
-            raise
+        index_document.delay(document_id)
+        return True
     finally:
         redis_client.close()
 

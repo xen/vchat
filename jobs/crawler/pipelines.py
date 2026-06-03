@@ -19,8 +19,8 @@ from vchat.models.data import Chunk, CrawlRun, Page, PageLink, Source
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 from jobs.embedder.tasks import schedule_index_document
-from jobs.crawler.url_rules import normalize_url_for_queue
-from jobs.crawler.source_routing import (
+from jobs.crawler.url_rules import (
+    normalize_url_for_queue,
     build_source_id_by_host,
     extract_hostname,
     resolve_source_id_for_url,
@@ -220,16 +220,13 @@ class DatabasePipeline:
             self._crawl_run_id = normalized_run_id
             return
         if source_id:
-            try:
-                with Session(bind=self.engine) as session:
-                    run = CrawlRun(
-                        source_id=source_id, started_at=datetime.now(timezone.utc)
-                    )
-                    session.add(run)
-                    session.commit()
-                    self._crawl_run_id = run.id
-            except Exception as exc:
-                self.logger.warning("Failed to create CrawlRun: %s", exc)
+            with Session(bind=self.engine) as session:
+                run = CrawlRun(
+                    source_id=source_id, started_at=datetime.now(timezone.utc)
+                )
+                session.add(run)
+                session.commit()
+                self._crawl_run_id = run.id
 
     def process_item(self, item, spider):
         url = item["url"]
@@ -476,15 +473,7 @@ class DatabasePipeline:
                     session.commit()
                 else:
                     session.commit()
-                    try:
-                        schedule_index_document(page.id)
-                    except Exception as embed_exc:
-                        spider.logger.error(
-                            "Failed to schedule chunking for %s: %s",
-                            url,
-                            embed_exc,
-                            exc_info=True,
-                        )
+                    schedule_index_document(page.id)
         except Exception as e:
             spider.logger.error(f"Error processing {url}: {e}", exc_info=True)
             save_page_status(
@@ -506,15 +495,12 @@ class DatabasePipeline:
 
     def close_spider(self, spider):
         if self._crawl_run_id:
-            try:
-                with Session(bind=self.engine) as session:
-                    run = session.get(CrawlRun, self._crawl_run_id)
-                    if run and run.finished_at is None:
-                        run.finished_at = datetime.now(timezone.utc)
-                        run.exit_reason = "finished"
-                        session.commit()
-            except Exception:
-                pass
+            with Session(bind=self.engine) as session:
+                run = session.get(CrawlRun, self._crawl_run_id)
+                if run and run.finished_at is None:
+                    run.finished_at = datetime.now(timezone.utc)
+                    run.exit_reason = "finished"
+                    session.commit()
         self.engine.dispose()
 
 
@@ -539,88 +525,79 @@ def save_page_status(
     error: str | None = None,
     exception_class: str | None = None,
 ) -> None:
-    try:
-        with Session(bind=engine) as session:
-            page, _ = get_or_create_page(session, source_id=source_id, uri=url)
+    with Session(bind=engine) as session:
+        page, _ = get_or_create_page(session, source_id=source_id, uri=url)
 
-            page.status = status
-            page.status_error = status_error
-            page.last_crawled_at = datetime.now(timezone.utc)
-            if http_status:
-                page.http_status = http_status
+        page.status = status
+        page.status_error = status_error
+        page.last_crawled_at = datetime.now(timezone.utc)
+        if http_status:
+            page.http_status = http_status
 
-            if status_error in (PageStatusError.http_4xx, PageStatusError.http_5xx):
-                page.error_count = (page.error_count or 0) + 1
-                if (
-                    status_error == PageStatusError.http_4xx
-                    and (page.error_count or 0) >= 3
-                ):
-                    page.check_interval_days = 90
-            else:
-                page.error_count = 0
+        if status_error in (PageStatusError.http_4xx, PageStatusError.http_5xx):
+            page.error_count = (page.error_count or 0) + 1
+            if (
+                status_error == PageStatusError.http_4xx
+                and (page.error_count or 0) >= 3
+            ):
+                page.check_interval_days = 90
+        else:
+            page.error_count = 0
 
-            if etag:
-                page.last_etag = etag
+        if etag:
+            page.last_etag = etag
 
-            meta = dict(page.meta or {})
-            if reason:
-                set_error_meta(
-                    meta,
-                    reason=reason,
-                    message=message,
-                    error=error,
-                    exception_class=exception_class,
-                )
-            else:
-                clear_error_meta(meta)
-            page.meta = meta
+        meta = dict(page.meta or {})
+        if reason:
+            set_error_meta(
+                meta,
+                reason=reason,
+                message=message,
+                error=error,
+                exception_class=exception_class,
+            )
+        else:
+            clear_error_meta(meta)
+        page.meta = meta
 
-            session.commit()
-    except Exception as exc:
-        logger.error("Failed to save page status for %s: %s", url, exc, exc_info=True)
+        session.commit()
 
 
 def handle_error_page(
     engine, url: str, source_id: int, http_status: int, etag: str | None, logger
 ) -> None:
-    try:
-        with Session(bind=engine) as session:
-            page, _ = get_or_create_page(session, source_id=source_id, uri=url)
+    with Session(bind=engine) as session:
+        page, _ = get_or_create_page(session, source_id=source_id, uri=url)
 
-            page.http_status = http_status
-            page.last_crawled_at = datetime.now(timezone.utc)
-            page.error_count = (page.error_count or 0) + 1
-            if etag:
-                page.last_etag = etag
+        page.http_status = http_status
+        page.last_crawled_at = datetime.now(timezone.utc)
+        page.error_count = (page.error_count or 0) + 1
+        if etag:
+            page.last_etag = etag
 
-            page.status = PageStatus.crawler
-            page.status_error = PageStatusError.http_4xx
-            if page.error_count >= 2:
-                page.check_interval_days = 90
+        page.status = PageStatus.crawler
+        page.status_error = PageStatusError.http_4xx
+        if page.error_count >= 2:
+            page.check_interval_days = 90
 
-            meta = dict(page.meta or {})
-            set_error_meta(
-                meta,
-                reason="http_4xx",
-                message=f"Source returned HTTP {http_status}.",
-                error=f"HTTP {http_status}",
-            )
-            page.meta = meta
+        meta = dict(page.meta or {})
+        set_error_meta(
+            meta,
+            reason="http_4xx",
+            message=f"Source returned HTTP {http_status}.",
+            error=f"HTTP {http_status}",
+        )
+        page.meta = meta
 
-            session.commit()
-    except Exception as exc:
-        logger.error("Failed to handle error page %s: %s", url, exc, exc_info=True)
+        session.commit()
 
 
 def increment_run_stat(engine, crawl_run_id: int | None, field: str) -> None:
     if not crawl_run_id:
         return
-    try:
-        with Session(bind=engine) as session:
-            run = session.get(CrawlRun, crawl_run_id)
-            if run:
-                current = getattr(run, field, 0) or 0
-                setattr(run, field, current + 1)
-                session.commit()
-    except Exception:
-        pass
+    with Session(bind=engine) as session:
+        run = session.get(CrawlRun, crawl_run_id)
+        if run:
+            current = getattr(run, field, 0) or 0
+            setattr(run, field, current + 1)
+            session.commit()

@@ -457,18 +457,6 @@ async def history_detail(request):
         )
         related_chats = (await request["db"].execute(related_stmt)).scalars().all()
 
-    def _legacy_guardrail_info(
-        full_context: str | None,
-    ) -> tuple[str | None, list[str]]:
-        if not full_context or not full_context.startswith("guardrail_blocked"):
-            return None, []
-        marker, _, reasons_part = full_context.partition("|")
-        stage = marker.removeprefix("guardrail_blocked_").strip() or None
-        reasons = []
-        if reasons_part:
-            reasons = [r.strip() for r in reasons_part.split(",") if r.strip()]
-        return stage, reasons
-
     for msg in messages:
         masked_text = msg.text
         has_pii = False
@@ -489,12 +477,9 @@ async def history_detail(request):
         else:
             msg.text_display = msg.text
 
-        legacy_stage, legacy_reasons = _legacy_guardrail_info(msg.full_context)
         reasons = []
         if msg.guardrail_reasons:
             reasons.extend(msg.guardrail_reasons)
-        if legacy_reasons:
-            reasons.extend(legacy_reasons)
         seen = set()
         unique_reasons = []
         for reason in reasons:
@@ -502,8 +487,8 @@ async def history_detail(request):
                 seen.add(reason)
                 unique_reasons.append(reason)
 
-        stage = msg.guardrail_stage or legacy_stage
-        msg.guardrail_hit = bool(msg.guardrail_triggered or legacy_reasons)
+        stage = msg.guardrail_stage
+        msg.guardrail_hit = bool(msg.guardrail_triggered)
         msg.guardrail_stage_display = GUARDRAIL_STAGE_LABELS.get(stage, stage)
         msg.guardrail_rules = [
             GUARDRAIL_REASON_LABELS.get(rule, rule) for rule in unique_reasons

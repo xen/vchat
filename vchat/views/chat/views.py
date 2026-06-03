@@ -10,6 +10,7 @@ import aiohttp
 import redis.asyncio as aioredis
 import sqlalchemy as sa
 from aiohttp import web
+from aiohttp.client_exceptions import ContentTypeError
 from guardrails import GuardrailTripwireTriggered
 from itsdangerous import (
     BadSignature,
@@ -595,20 +596,26 @@ async def websocket(request):
         reasons: set[str],
         stage: str,
     ) -> tuple[int, int]:
-        marker = f"guardrail_blocked_{stage}|{','.join(sorted(reasons))}"
+        payload = json.dumps(
+            {
+                "policy": {"reason_code": f"guardrail_blocked_{stage}"},
+                "guardrail_stage": stage,
+                "guardrail_reasons": sorted(reasons),
+            }
+        )
         async with async_session_factory() as db:
             res_user = await db.execute(
                 sa.insert(ChatMsg)
                 .values(
                     text=user_text,
                     role="user",
-                    full_context=marker,
+                    full_context=payload,
                     chat_id=chat_id_ctx.get(),
                     user_uid=str(user_id_ctx.get()),
                     created_at=sa.func.now(),
-                    guardrail_triggered=False,
-                    guardrail_stage=None,
-                    guardrail_reasons=None,
+                    guardrail_triggered=True,
+                    guardrail_stage=stage,
+                    guardrail_reasons=sorted(reasons) or None,
                 )
                 .returning(ChatMsg.id)
             )
@@ -619,7 +626,7 @@ async def websocket(request):
                 .values(
                     text=assistant_text,
                     role="assistant",
-                    full_context=marker,
+                    full_context=payload,
                     chat_id=chat_id_ctx.get(),
                     user_uid=str(user_id_ctx.get()),
                     created_at=sa.func.now(),
@@ -1065,7 +1072,7 @@ async def chat_actions(request):
 
         try:
             payload = await request.json()
-        except Exception:
+        except (ContentTypeError, json.JSONDecodeError, ValueError):
             form = await request.post()
             payload = dict(form)
 

@@ -107,12 +107,7 @@ async def _upsert_document(
 ) -> tuple[str, int]:
     db = request["db"]
 
-    try:
-        content, meta_from_fetch, title = await _extract_content(url)
-    except Exception as exc:
-        raise web.HTTPInternalServerError(
-            text=f"Failed to extract document content: {exc}"
-        )
+    content, meta_from_fetch, title = await _extract_content(url)
     if not content:
         raise web.HTTPInternalServerError(text="Failed to extract document content")
 
@@ -175,10 +170,7 @@ async def update_document(request: web.Request) -> web.Response:
     if not _is_host_allowed(parsed.hostname, source_hosts):
         return _error("Domain is not allowed", status=403)
 
-    try:
-        status, redirect_url, final_status = await _resolve_url_state(url)
-    except Exception as exc:
-        return _error(f"Failed to fetch URL: {exc}", status=500)
+    status, redirect_url, final_status = await _resolve_url_state(url)
 
     if status == 404:
         await _delete_document_by_url(request, url)
@@ -213,10 +205,7 @@ async def update_document(request: web.Request) -> web.Response:
         if source_id is None:
             return _error("No source found for redirect target domain", status=403)
 
-        try:
-            await _upsert_document(request, source_id, redirect_url)
-        except web.HTTPException as exc:
-            return _error(exc.text, status=500)
+        await _upsert_document(request, source_id, redirect_url)
 
         return web.json_response(
             {
@@ -235,10 +224,7 @@ async def update_document(request: web.Request) -> web.Response:
     if source_id is None:
         return _error("No source found for domain", status=403)
 
-    try:
-        await _upsert_document(request, source_id, url)
-    except web.HTTPException as exc:
-        return _error(exc.text, status=500)
+    await _upsert_document(request, source_id, url)
 
     return web.json_response(
         {

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import jinja2
 import pytest
 
+from vchat.app_keys import REDIS_KEY
 from vchat.views.projects import views as project_views
 
 
@@ -294,27 +295,31 @@ async def test_project_edit_sources_keeps_active_sources_first(
         execute_results=[
             _Resp(
                 all_rows=[
-                    SimpleNamespace(
-                        id=2,
-                        title="Active source",
-                        uri="https://active.local",
-                        is_paused=False,
-                        excluded=0,
-                        errors=0,
-                        pending=0,
-                        processing=0,
-                        ready=3,
+                        SimpleNamespace(
+                            id=2,
+                            title="Active source",
+                            uri="https://active.local",
+                            is_paused=False,
+                            blocked_reason=None,
+                            blocked_message=None,
+                            excluded=0,
+                            errors=0,
+                            pending=0,
+                            processing=0,
+                            ready=3,
                     ),
-                    SimpleNamespace(
-                        id=1,
-                        title="Paused source",
-                        uri="https://paused.local",
-                        is_paused=True,
-                        excluded=0,
-                        errors=0,
-                        pending=0,
-                        processing=0,
-                        ready=1,
+                        SimpleNamespace(
+                            id=1,
+                            title="Paused source",
+                            uri="https://paused.local",
+                            is_paused=True,
+                            blocked_reason=None,
+                            blocked_message=None,
+                            excluded=0,
+                            errors=0,
+                            pending=0,
+                            processing=0,
+                            ready=1,
                     ),
                 ]
             ),
@@ -338,7 +343,7 @@ async def test_project_edit_sources_keeps_active_sources_first(
         async def lrange(self, _key, _start, _end):
             return []
 
-    req = _Req(db=db, app={project_views.REDIS_KEY: _Redis()})
+    req = _Req(db=db, app={REDIS_KEY: _Redis()})
     monkeypatch.setattr(
         project_views, "_project_context", lambda request: SimpleNamespace(id="global")
     )

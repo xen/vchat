@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from types import SimpleNamespace
 
+import msgspec
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
@@ -33,7 +34,8 @@ def test_project_settings_normalize_merge_and_getters(monkeypatch: pytest.Monkey
     assert ps.get_setting_int(app, "a", 5) == 1
     assert ps.get_setting_int(app, "bad_int", 5) == 5
     assert ps.get_setting_json(app, "json", []) == [1]
-    assert ps.get_setting_json(app, "bad_json", [9]) == [9]
+    with pytest.raises(msgspec.DecodeError):
+        ps.get_setting_json(app, "bad_json", [9])
 
 
 @pytest.mark.asyncio
@@ -77,7 +79,9 @@ async def test_project_settings_load_and_apply(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
-async def test_project_settings_upsert_error_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_settings_upsert_raises_db_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _Stmt:
         excluded = SimpleNamespace(value="v")
 
@@ -91,10 +95,10 @@ async def test_project_settings_upsert_error_branch(monkeypatch: pytest.MonkeyPa
 
     class _Session:
         async def execute(self, _stmt):
-            raise ps.SQLAlchemyError("boom")
+            raise RuntimeError("boom")
 
-    result = await ps.upsert_settings(_Session(), {"a": 1})
-    assert result == {}
+    with pytest.raises(RuntimeError, match="boom"):
+        await ps.upsert_settings(_Session(), {"a": 1})
 
 
 def test_cors_match_helpers() -> None:

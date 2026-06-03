@@ -181,7 +181,7 @@ async def admin_event(event_name: str, request) -> None:
             try:
                 referer_url = URL(referer)
                 page_value = referer_url.path_qs or referer_url.path or ""
-            except Exception:
+            except ValueError:
                 page_value = ""
     if not page_value:
         page_value = str(

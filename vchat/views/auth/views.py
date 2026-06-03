@@ -1,23 +1,26 @@
 import asyncio
+import logging
 
 import aiohttp_jinja2
 import sqlalchemy as sa
+import bonsai
 from aiohttp import web
 from aiohttp_session import get_session, new_session
+from datetime import timedelta
 from passlib.context import CryptContext
+from wtforms import Form, PasswordField, StringField, validators
+from wtforms.csrf.session import SessionCSRF
 
 from vchat.app_keys import CONFIG_KEY, REDIS_KEY
 from vchat.i18n import _
 from vchat.middlewares import UserInfo
 from vchat.models import User
+from vchat.settings import config
 from vchat.utils import (
     admin_event,
     login_required,
     meta,
 )
-
-from . import forms
-from .ldap import authenticate_ldap
 
 __all__ = [
     "login",
@@ -25,10 +28,90 @@ __all__ = [
     "logout",
 ]
 
+logger = logging.getLogger(__name__)
+
 
 LOGIN_FAILURE_DELAY_SECONDS = 3
 LOGIN_CHECK_LOCK_TTL_SECONDS = LOGIN_FAILURE_DELAY_SECONDS
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
+
+
+class LoginForm(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = config["secret_key"]
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=20)
+
+    email = StringField(
+        _("Your email"),
+        [
+            validators.Length(
+                min=6,
+                max=254,
+                message=_("Length from 6 to 254 characters"),
+            ),
+            validators.Email(message=_("Enter a valid email")),
+            validators.DataRequired(message=_("Required field")),
+        ],
+        render_kw={"placeholder": _("name@company.com")},
+    )
+    password = PasswordField(
+        _("Your password"),
+        [
+            validators.Length(
+                min=4, max=35, message=_("Length from 4 to 35 characters")
+            ),
+            validators.DataRequired(message=_("Required field")),
+        ],
+        render_kw={"placeholder": _("Password")},
+    )
+
+
+async def authenticate_ldap(email: str, password: str, config: dict) -> dict | None:
+    server = config["ldap_server"]
+    use_ssl = config.get("ldap_use_ssl", False)
+    bind_dn = config.get("ldap_bind_dn", "")
+    bind_password = config.get("ldap_bind_password", "")
+    search_base = config["ldap_search_base"]
+    search_filter = config["ldap_search_filter"].format(email=email)
+    attr_name = config.get("ldap_attr_name", "displayName")
+
+    service_client = bonsai.LDAPClient(server, tls=use_ssl)
+    if bind_dn:
+        service_client.set_credentials("SIMPLE", user=bind_dn, password=bind_password)
+
+    try:
+        async with service_client.connect(is_async=True) as conn:
+            results = await conn.search(
+                base=search_base,
+                scope=bonsai.LDAPSearchScope.SUB,
+                filter_exp=search_filter,
+                attrlist=[attr_name],
+            )
+    except bonsai.LDAPError:
+        logger.exception("LDAP service bind or search failed for %s", email)
+        return None
+
+    if not results:
+        return None
+
+    user_entry = results[0]
+    user_dn = str(user_entry.dn)
+    name_values = user_entry.get(attr_name, [])
+    name = name_values[0] if name_values else email
+
+    user_client = bonsai.LDAPClient(server, tls=use_ssl)
+    user_client.set_credentials("SIMPLE", user=user_dn, password=password)
+
+    try:
+        async with user_client.connect(is_async=True):
+            return {"email": email, "name": name}
+    except bonsai.AuthenticationError:
+        return None
+    except bonsai.LDAPError:
+        logger.exception("LDAP user bind failed for dn=%s", user_dn)
+        return None
 
 
 @meta(title=_("Login to vchat"))
@@ -40,7 +123,7 @@ async def login(request):
 
     session = await get_session(request)
     data = await request.post()
-    form = forms.LoginForm(data, meta={"csrf_context": session})
+    form = LoginForm(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
         normalized_email = (form.email.data or "").strip().lower()
@@ -124,7 +207,7 @@ async def login_ldap(request):
 
     session = await get_session(request)
     data = await request.post()
-    form = forms.LoginForm(data, meta={"csrf_context": session})
+    form = LoginForm(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
         normalized_email = (form.email.data or "").strip().lower()

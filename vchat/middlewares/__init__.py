@@ -131,32 +131,28 @@ async def auth_middleware(
     if request.path.startswith("/static/"):
         return await handler(request)
 
-    try:
-        request["auth_session"] = await get_session(request)
-        request["user"] = None
+    request["auth_session"] = await get_session(request)
+    request["user"] = None
 
-        user_id = request["auth_session"].get("user_id")
-        if user_id is not None:
-            result = await request["db"].execute(
-                sa.select(User.id, User.email, User.name, User.is_active).where(
-                    User.id == user_id
-                )
+    user_id = request["auth_session"].get("user_id")
+    if user_id is not None:
+        result = await request["db"].execute(
+            sa.select(User.id, User.email, User.name, User.is_active).where(
+                User.id == user_id
             )
-            row = result.first()
-            if row:
-                request["user"] = UserInfo(
-                    id=row.id,
-                    email=row.email,
-                    name=row.name,
-                    is_active=row.is_active,
-                )
-            else:
-                request["auth_session"].invalidate()
-            if request["db"].in_transaction():
-                await request["db"].rollback()
-    except Exception as e:
-        logger.error("Error in auth_middleware: %s", e)
-        return web.Response(text="Internal Server Error", status=500)
+        )
+        row = result.first()
+        if row:
+            request["user"] = UserInfo(
+                id=row.id,
+                email=row.email,
+                name=row.name,
+                is_active=row.is_active,
+            )
+        else:
+            request["auth_session"].invalidate()
+        if request["db"].in_transaction():
+            await request["db"].rollback()
 
     return await handler(request)
 

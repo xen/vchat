@@ -68,7 +68,4 @@ def run_gc(*_, **__):
 
 
 # Import tasks to register them with Celery when autodiscovery is limited
-try:
-    import jobs  # noqa: F401
-except ImportError:
-    pass  # jobs package might not be available in minimal environments
+import jobs  # noqa: F401

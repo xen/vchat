@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from guardrails import GuardrailsAsyncOpenAI
 from presidio_analyzer import (
     AnalyzerEngine,
     Pattern,
@@ -20,8 +21,6 @@ from vchat.ai_providers import BaseAIProvider
 from vchat.settings import config
 
 logger = logging.getLogger("vchat.guardrails")
-
-GuardrailsAsyncOpenAI: Any = None
 
 _cached_client: Any | None = None
 _cached_key: tuple[str, str] | None = None
@@ -141,27 +140,8 @@ def _enabled(key: str, default: bool = True) -> bool:
     return bool(config.get(key, default))
 
 
-def _get_guardrails_client_class() -> Any | None:
-    global GuardrailsAsyncOpenAI
-    if GuardrailsAsyncOpenAI is not None:
-        return GuardrailsAsyncOpenAI
-
-    try:
-        from guardrails import GuardrailsAsyncOpenAI as client_class
-    except Exception as exc:
-        logger.warning("Failed to import GuardrailsAsyncOpenAI: %s", exc)
-        return None
-
-    GuardrailsAsyncOpenAI = client_class
-    return client_class
-
-
 def get_guardrails_client(*, api_key: str, base_url: str) -> Any | None:
     if not _enabled("openai_guardrails_enabled", True):
-        return None
-
-    client_class = _get_guardrails_client_class()
-    if client_class is None:
         return None
 
     global _cached_client, _cached_key
@@ -170,7 +150,7 @@ def get_guardrails_client(*, api_key: str, base_url: str) -> Any | None:
         return _cached_client
 
     try:
-        _cached_client = client_class(
+        _cached_client = GuardrailsAsyncOpenAI(
             config=_OPENAI_GUARDRAILS_PIPELINE,
             raise_guardrail_errors=False,
             api_key=api_key,
@@ -355,11 +335,8 @@ def detect_russian_pii_reasons(text: str) -> set[str]:
         "oms_ru": _RU_OMS_RE,
     }
     for reason, pattern in regex_map.items():
-        try:
-            if pattern.search(text):
-                reasons.add(reason)
-        except Exception:  # nosec B112
-            continue
+        if pattern.search(text):
+            reasons.add(reason)
     if reasons:
         reasons.add("russian_pii")
     return reasons

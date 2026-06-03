@@ -4,7 +4,6 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.exc import SQLAlchemyError
 
 from vchat.app_keys import SETTINGS_KEY
 from vchat.db import async_session_factory
@@ -40,15 +39,10 @@ def merge_with_defaults(values: dict[str, str | None]) -> dict[str, str | None]:
 
 
 async def load_settings_map() -> dict[str, str | None]:
-    try:
-        async with async_session_factory() as session:
-            rows = (
-                await session.execute(sa.select(Settings.key, Settings.value))
-            ).all()
-        values = {row.key: row.value for row in rows}
-        return merge_with_defaults(values)
-    except SQLAlchemyError:
-        return merge_with_defaults({})
+    async with async_session_factory() as session:
+        rows = (await session.execute(sa.select(Settings.key, Settings.value))).all()
+    values = {row.key: row.value for row in rows}
+    return merge_with_defaults(values)
 
 
 async def init_settings_cache(app) -> None:
@@ -76,10 +70,7 @@ def get_setting_json(app, key: str, default: Any):
     raw = get_setting(app, key)
     if raw is None or raw == "":
         return default
-    try:
-        return json.loads(raw)
-    except Exception:
-        return default
+    return json.loads(raw)
 
 
 async def upsert_settings(session, updates: dict[str, Any]) -> dict[str, str | None]:
@@ -94,11 +85,8 @@ async def upsert_settings(session, updates: dict[str, Any]) -> dict[str, str | N
         index_elements=[Settings.key],
         set_={"value": stmt.excluded.value},
     )
-    try:
-        await session.execute(stmt)
-        return cleaned
-    except SQLAlchemyError:
-        return {}
+    await session.execute(stmt)
+    return cleaned
 
 
 async def apply_settings_updates(

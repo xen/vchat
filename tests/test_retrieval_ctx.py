@@ -26,7 +26,7 @@ from vchat.views.chat.ctx import (
     crossrerank,
     reciprocal_rank_fusion,
 )
-from vchat.views.chat import retrieval_config as rcnf
+from vchat.views.chat import ctx as rcnf
 
 
 # ─────────────────────────────────────────────────────────────────────────────

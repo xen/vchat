@@ -225,11 +225,6 @@ class Page(Base, Created, Updated):
         else:
             self._length = value
 
-
-# Backward-compatible alias
-Document = Page
-
-
 class Chunk(Base, Created, Updated):
     __tablename__ = "chunk"
 

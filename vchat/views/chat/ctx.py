@@ -5,9 +5,11 @@ import contextvars
 import json
 import logging
 import re
+from collections import namedtuple
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+import pycld2 as cld2
 import sqlalchemy as sa
 import tiktoken
 from pgvector.sqlalchemy import Vector
@@ -18,8 +20,25 @@ from vchat.embeddings import load_embedding_model
 from vchat.models import ChatMsg
 from vchat.settings import config
 
-from . import retrieval_config as rcnf
-from ._types import Msg
+Msg = namedtuple("Message", ["role", "content"])
+
+RERANK_FIELD_WEIGHTS = {
+    "header_text": 0.15,
+    "section_path": 0.12,
+    "entity_terms": 0.10,
+}
+RERANK_OVERLAP_WEIGHT = 0.08
+RERANK_KIND_BONUS: dict[str, float] = {
+    "text": 0.12,
+    "section_summary": 0.05,
+    "summary": 0.05,
+}
+RERANK_TABLE_MODE_BONUS: dict[str, float] = {
+    "table": 0.20,
+    "table_rows": 0.20,
+}
+RERANK_SUMMARY_ZERO_OVERLAP_PENALTY = 0.12
+RERANK_DOC_MIN_RATIO_TO_BEST = 0.55
 
 logger = logging.getLogger(__name__)
 cfg = config
@@ -152,41 +171,22 @@ class ContextResult:
     policy: dict[str, Any]
     coverage: dict[str, Any]
 
-
-def get_cld2():
-    try:
-        import pycld2 as cld2  # type: ignore[import]
-    except ImportError:
-        return None
-    return cld2
-
-
-cld2: Any | None = get_cld2()
-
-
 def load_nlp(lang: str):
     if lang not in lang_models:
         return None
     if lang in _nlps:
         return _nlps[lang]
-    try:
-        import spacy  # type: ignore[import]
+    import spacy  # type: ignore[import]
 
-        nlp = spacy.load(lang_models[lang])
-        _nlps[lang] = nlp
-        return nlp
-    except Exception:
-        logger.exception("Failed to load spaCy model for %s", lang)
-        return None
+    nlp = spacy.load(lang_models[lang])
+    _nlps[lang] = nlp
+    return nlp
 
 
 def detect_lang(text: str) -> str | None:
-    detector = cld2
-    if not detector:
-        return None
     try:
-        is_reliable, _, details = detector.detect(text)
-    except Exception:
+        is_reliable, _, details = cld2.detect(text)
+    except ValueError:
         return None
     if is_reliable:
         lang = details[0][1]
@@ -327,16 +327,13 @@ def text_summarizer(text: str, ratio: float, lang: str | None = None) -> str:
 
     nlp = nlps.get(lang or "")
     if callable(nlp):
-        try:
-            doc = nlp(source)
-            sentences = [
-                getattr(sent, "text", "").strip() for sent in getattr(doc, "sents", [])
-            ]
-            summary = " ".join(part for part in sentences if part).strip()
-            if summary:
-                source = summary
-        except Exception:  # nosec B110
-            pass
+        doc = nlp(source)
+        sentences = [
+            getattr(sent, "text", "").strip() for sent in getattr(doc, "sents", [])
+        ]
+        summary = " ".join(part for part in sentences if part).strip()
+        if summary:
+            source = summary
 
     trimmed = source[: min(len(source), max(1, target))].strip()
     if len(source) > len(trimmed):
@@ -496,32 +493,28 @@ def loadrerank():
     global _rerank_model
     if _rerank_model is not None:
         return _rerank_model
-    try:
-        import sys
+    import sys
 
-        import torch
-        from sentence_transformers import CrossEncoder  # type: ignore[import]
+    import torch
+    from sentence_transformers import CrossEncoder  # type: ignore[import]
 
-        forced = cfg.get("reranker_device", "").strip().lower()
-        if forced:
-            device = forced
-        elif sys.platform == "darwin" and torch.backends.mps.is_available():
-            device = "mps"
-        elif sys.platform.startswith("linux") and torch.cuda.is_available():
-            device = "cuda"
-        else:
-            device = "cpu"
+    forced = cfg.get("reranker_device", "").strip().lower()
+    if forced:
+        device = forced
+    elif sys.platform == "darwin" and torch.backends.mps.is_available():
+        device = "mps"
+    elif sys.platform.startswith("linux") and torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
 
-        _rerank_model = CrossEncoder(
-            RERANK_MODEL,
-            device=device,
-            max_length=512,
-            local_files_only=True,
-        )
-        logger.info("Rerank model loaded on device=%s", device)
-    except Exception:
-        logger.exception("Cross-encoder reranker is unavailable")
-        _rerank_model = False
+    _rerank_model = CrossEncoder(
+        RERANK_MODEL,
+        device=device,
+        max_length=512,
+        local_files_only=True,
+    )
+    logger.info("Rerank model loaded on device=%s", device)
     return _rerank_model
 
 
@@ -734,11 +727,7 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
             snippet_text = sanitize_snippet_text(snippet_text)
         pairs.append((query, snippet_text))
 
-    try:
-        scores = model.predict(pairs, show_progress_bar=False)
-    except Exception:
-        logger.exception("Cross-encoder rerank failed, falling back to RRF")
-        return ranked[:RERANK_LIMIT]
+    scores = model.predict(pairs, show_progress_bar=False)
 
     rescored: list[Snippet] = []
     for snippet, score in zip(ranked[:RERANK_LIMIT], scores, strict=True):
@@ -751,28 +740,28 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
         overlap = 0
         for term in profile["lexical_terms"]:
             if term in header_text:
-                boosted += rcnf.RERANK_FIELD_WEIGHTS["header_text"]
+                boosted += RERANK_FIELD_WEIGHTS["header_text"]
                 overlap += 1
             if term in section_path:
-                boosted += rcnf.RERANK_FIELD_WEIGHTS["section_path"]
+                boosted += RERANK_FIELD_WEIGHTS["section_path"]
                 overlap += 1
             if term in entity_terms:
-                boosted += rcnf.RERANK_FIELD_WEIGHTS["entity_terms"]
+                boosted += RERANK_FIELD_WEIGHTS["entity_terms"]
                 overlap += 1
             if term in snippet_text_lower:
                 overlap += 1
 
         if overlap:
-            boosted += min(overlap, 4) * rcnf.RERANK_OVERLAP_WEIGHT
+            boosted += min(overlap, 4) * RERANK_OVERLAP_WEIGHT
 
-        if profile["table_mode"] and snippet.kind in rcnf.RERANK_TABLE_MODE_BONUS:
-            boosted += rcnf.RERANK_TABLE_MODE_BONUS[snippet.kind]
+        if profile["table_mode"] and snippet.kind in RERANK_TABLE_MODE_BONUS:
+            boosted += RERANK_TABLE_MODE_BONUS[snippet.kind]
 
-        if snippet.kind in rcnf.RERANK_KIND_BONUS:
-            boosted += rcnf.RERANK_KIND_BONUS[snippet.kind]
+        if snippet.kind in RERANK_KIND_BONUS:
+            boosted += RERANK_KIND_BONUS[snippet.kind]
 
         if snippet.kind in {"section_summary", "summary"} and overlap == 0:
-            boosted -= rcnf.RERANK_SUMMARY_ZERO_OVERLAP_PENALTY
+            boosted -= RERANK_SUMMARY_ZERO_OVERLAP_PENALTY
 
         rescored.append(
             Snippet(**{**asdict(snippet), "rerank_score": round(boosted, 6)})
@@ -829,7 +818,7 @@ def filter_snippets_by_document_relevance(snippets: list[Snippet]) -> list[Snipp
     if best_score <= 0:
         return snippets
 
-    min_doc_score = best_score * rcnf.RERANK_DOC_MIN_RATIO_TO_BEST
+    min_doc_score = best_score * RERANK_DOC_MIN_RATIO_TO_BEST
     allowed_docs = {
         doc_key for doc_key, score in doc_best_scores.items() if score >= min_doc_score
     }

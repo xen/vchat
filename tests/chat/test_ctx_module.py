@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from vchat.views.chat import ctx as ctx_mod
-from vchat.views.chat._types import Msg
+from vchat.views.chat.ctx import Msg
 
 
 class _MappingsResult:

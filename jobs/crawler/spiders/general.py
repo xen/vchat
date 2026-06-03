@@ -11,10 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..items import CrawledItem
-from ..seed_urls import iter_source_seed_urls
-from ..url_rules import ignored_query_params, normalize_url_for_queue, url_allowed_by_rules
+from ..seed_urls import iter_priority_crawl_queue
+from ..url_rules import (
+    ignored_query_params,
+    normalize_url_for_queue,
+    url_allowed_by_rules,
+    extract_hostname,
+)
 from jobs.db import create_sync_engine
-from jobs.crawler.source_routing import extract_hostname
 from vchat.models.data import Page
 from vchat.page_status import PageStatusError
 
@@ -165,7 +169,7 @@ class GeneralSpider(CrawlSpider):
         if self.single_page_only:
             return
 
-        for seed_url in iter_source_seed_urls(
+        for seed_url in iter_priority_crawl_queue(
             self.source_id,
             exclude=self.start_urls,
         ):
@@ -225,7 +229,7 @@ class GeneralSpider(CrawlSpider):
                 lang = details[0][1]
             else:
                 lang = None
-        except Exception:
+        except ValueError:
             lang = None
 
         # Detect date
@@ -237,8 +241,8 @@ class GeneralSpider(CrawlSpider):
                 date = date_parser.parse(
                     response.headers["Last-Modified"].decode("utf-8")
                 ).isoformat()
-            except Exception:
-                pass
+            except (TypeError, ValueError, OverflowError):
+                date = None
 
         # 2. Try meta tags if no date yet
         if not date:
@@ -255,8 +259,8 @@ class GeneralSpider(CrawlSpider):
             if date_meta:
                 try:
                     date = date_parser.parse(date_meta).isoformat()
-                except Exception:
-                    pass
+                except (TypeError, ValueError, OverflowError):
+                    date = None
 
         # 3. Try Schema.org if no date yet
         if not date:
@@ -273,6 +277,8 @@ class GeneralSpider(CrawlSpider):
                             break
                     elif isinstance(data, list):
                         for item in data:
+                            if not isinstance(item, dict):
+                                continue
                             date_val = item.get("datePublished") or item.get(
                                 "dateModified"
                             )
@@ -281,7 +287,7 @@ class GeneralSpider(CrawlSpider):
                                 break
                         if date:
                             break
-                except Exception:
+                except (TypeError, ValueError, OverflowError, json.JSONDecodeError):
                     continue
 
         item["meta"] = {"lang": lang, "date": date}
@@ -309,58 +315,53 @@ class GeneralSpider(CrawlSpider):
 
         if uncached_urls_by_source:
             now = datetime.now(timezone.utc)
-            try:
-                with Session(bind=self._engine) as session:
-                    for target_source_id, urls in uncached_urls_by_source.items():
-                        rows = (
-                            session.execute(
-                                select(
-                                    Page.uri,
-                                    Page.is_hub_page,
-                                    Page.last_crawled_at,
-                                    Page.check_interval_days,
-                                    Page.status_error,
-                                ).where(
-                                    Page.source_id == target_source_id,
-                                    Page.uri.in_(list(urls)),
-                                )
+            with Session(bind=self._engine) as session:
+                for target_source_id, urls in uncached_urls_by_source.items():
+                    rows = (
+                        session.execute(
+                            select(
+                                Page.uri,
+                                Page.is_hub_page,
+                                Page.last_crawled_at,
+                                Page.check_interval_days,
+                                Page.status_error,
+                            ).where(
+                                Page.source_id == target_source_id,
+                                Page.uri.in_(list(urls)),
                             )
-                            .all()
+                        )
+                        .all()
+                    )
+
+                    found_urls: set[str] = set()
+                    for (
+                        uri,
+                        is_hub_page,
+                        last_crawled_at,
+                        check_interval_days,
+                        status_error,
+                    ) in rows:
+                        found_urls.add(uri)
+                        is_due = last_crawled_at is None
+                        if (
+                            not is_due
+                            and check_interval_days is not None
+                            and check_interval_days > 0
+                        ):
+                            is_due = last_crawled_at + timedelta(
+                                days=int(check_interval_days)
+                            ) <= now
+                        self._discovery_eligibility_cache[
+                            (target_source_id, uri)
+                        ] = (
+                            bool(is_hub_page)
+                            or status_error == PageStatusError.http_5xx
+                            or is_due
                         )
 
-                        found_urls: set[str] = set()
-                        for (
-                            uri,
-                            is_hub_page,
-                            last_crawled_at,
-                            check_interval_days,
-                            status_error,
-                        ) in rows:
-                            found_urls.add(uri)
-                            is_due = last_crawled_at is None
-                            if (
-                                not is_due
-                                and check_interval_days is not None
-                                and check_interval_days > 0
-                            ):
-                                is_due = last_crawled_at + timedelta(
-                                    days=int(check_interval_days)
-                                ) <= now
-                            self._discovery_eligibility_cache[(target_source_id, uri)] = (
-                                bool(is_hub_page)
-                                or status_error == PageStatusError.http_5xx
-                                or is_due
-                            )
-
-                        for missing_url in urls - found_urls:
-                            self._discovery_eligibility_cache[
-                                (target_source_id, missing_url)
-                            ] = True
-            except Exception:
-                for target_source_id, urls in uncached_urls_by_source.items():
-                    for normalized_url in urls:
+                    for missing_url in urls - found_urls:
                         self._discovery_eligibility_cache[
-                            (target_source_id, normalized_url)
+                            (target_source_id, missing_url)
                         ] = True
 
         return [

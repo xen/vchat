@@ -74,7 +74,7 @@ class BaseAIProvider:
                 enc = tiktoken.encoding_for_model(target.id)
             else:
                 enc = tiktoken.get_encoding("cl100k_base")
-        except Exception:
+        except (KeyError, ValueError):
             enc = tiktoken.get_encoding("cl100k_base")
         return len(enc.encode(text or ""))
 
@@ -159,13 +159,6 @@ class GigaChatProvider(BaseAIProvider):
             max_tokens=4096,
             tokenizer_name="cl100k_base",
         ),
-        ModelInfo(
-            "gigachat-pro",
-            "GigaChat Pro (legacy id)",
-            context_window=32768,
-            max_tokens=4096,
-            tokenizer_name="cl100k_base",
-        ),
     ]
 
     @property
@@ -234,16 +227,12 @@ def _iter_providers() -> Iterable[BaseAIProvider]:
         yield cls()
 
 
-def list_ai_providers(*, include_disabled: bool = False) -> list[BaseAIProvider]:
-    # include_disabled kept for compatibility; all providers are returned
+def list_ai_providers() -> list[BaseAIProvider]:
     return list(_iter_providers())
 
 
-def get_ai_provider_options(*, include_disabled: bool = False) -> list[dict[str, Any]]:
-    return [
-        provider.to_dict()
-        for provider in list_ai_providers(include_disabled=include_disabled)
-    ]
+def get_ai_provider_options() -> list[dict[str, Any]]:
+    return [provider.to_dict() for provider in list_ai_providers()]
 
 
 def get_provider(provider_id: str) -> BaseAIProvider:
@@ -253,11 +242,8 @@ def get_provider(provider_id: str) -> BaseAIProvider:
     raise ValueError(f"Unknown AI provider '{provider_id}'")
 
 
-def get_provider_choices(*, include_disabled: bool = False) -> list[tuple[str, str]]:
-    return [
-        (provider.id, provider.title)
-        for provider in list_ai_providers(include_disabled=include_disabled)
-    ]
+def get_provider_choices() -> list[tuple[str, str]]:
+    return [(provider.id, provider.title) for provider in list_ai_providers()]
 
 
 def get_models_for_provider(provider_id: str) -> list[dict[str, str]]:
@@ -271,7 +257,7 @@ def get_model_choices(provider_id: str) -> list[tuple[str, str]]:
 
 
 def get_default_provider_id() -> str:
-    providers = list_ai_providers(include_disabled=False)
+    providers = list_ai_providers()
     if not providers:
         raise RuntimeError("No AI providers configured")
     return providers[0].id

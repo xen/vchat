@@ -60,6 +60,6 @@ def validate_reindex_cron(value: str | None) -> bool:
             month_of_year=month_of_year,
             day_of_week=day_of_week,
         )
-    except Exception:
+    except ValueError:
         return False
     return True

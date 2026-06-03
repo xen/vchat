@@ -9,11 +9,6 @@ from vchat.settings import config
 
 
 def detect_best_device() -> str:
-    try:
-        import torch
-    except Exception:
-        return "cpu"
-
     if torch.cuda.is_available():
         return "cuda"
 
@@ -35,17 +30,9 @@ def resolve_embedding_device(preferred: str | None = None) -> str:
         return detect_best_device()
 
     if normalized == "cuda":
-        try:
-            import torch
-        except Exception:
-            return "cpu"
         return "cuda" if torch.cuda.is_available() else "cpu"
 
     if normalized == "mps":
-        try:
-            import torch
-        except Exception:
-            return "cpu"
         mps_backend = getattr(torch.backends, "mps", None)
         return "mps" if (mps_backend and mps_backend.is_available()) else "cpu"
 

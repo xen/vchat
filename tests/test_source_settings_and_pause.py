@@ -471,6 +471,7 @@ class TestCrawlerSkipsPausedSources:
                 mock_session_cls.return_value = session
 
                 with patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=111), \
+                     patch("jobs.crawler.tasks._refresh_source_discovery"), \
                      patch("subprocess.run") as mock_run:
                     crawl_source_task(source.id)
                     mock_run.assert_not_called()
@@ -495,6 +496,7 @@ class TestCrawlerSkipsPausedSources:
                 mock_session_cls.return_value = session
 
                 with patch("jobs.crawler.tasks._reserve_source_crawl_run", return_value=111), \
+                     patch("jobs.crawler.tasks._refresh_source_discovery"), \
                      patch("subprocess.run") as mock_run:
                     mock_run.return_value = MagicMock(returncode=1)
                     crawl_source_task(source.id)

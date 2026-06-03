@@ -114,9 +114,9 @@ async def test_login_required_redirects_when_unauthorized(
 
     req = _Req(app=_App(), path="/stats")
     req["user"] = None
-    resp = await _protected(req)
-    assert isinstance(resp, web.HTTPFound)
-    assert "next=%2Fstats" in resp.location
+    with pytest.raises(web.HTTPFound) as exc:
+        await _protected(req)
+    assert "next=%2Fstats" in exc.value.location
 
 
 def test_make_full_url_and_meta_decorator() -> None:

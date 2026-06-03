@@ -147,18 +147,3 @@ def fetch_basket(
         params,
     ).all()
     return [r.uri for r in rows if r.uri and r.uri.strip() not in excluded]
-
-
-# Keep old name as alias for backward compatibility
-def iter_source_seed_urls(
-    source_id: int | None,
-    *,
-    exclude=None,
-    batch_size: int | None = None,
-) -> Iterator[str]:
-    """Legacy alias. Use iter_priority_crawl_queue for new code."""
-    yield from iter_priority_crawl_queue(
-        source_id,
-        exclude=list(exclude or []),
-        budget=batch_size,
-    )

@@ -197,7 +197,12 @@ async def test_user_forward_notifications_covers_message_paths() -> None:
     request = _Req(
         {
             "user": SimpleNamespace(id=7),
-            "app": {user_views.REDIS_KEY: SimpleNamespace(pubsub=lambda: pubsub)},
+            "app": {
+                user_views.REDIS_KEY: SimpleNamespace(
+                    pubsub=lambda: pubsub,
+                    lrem=lambda *args, **kwargs: _awaitable_append([], None),
+                )
+            },
         }
     )
     ws = SimpleNamespace(send_str=lambda payload: _awaitable_append(sent, payload))

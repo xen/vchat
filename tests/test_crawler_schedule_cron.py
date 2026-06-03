@@ -20,6 +20,7 @@ class _SessionCtx:
     def __init__(self, sources, active_run_ids: set[int] | None = None):
         self._sources = sources
         self._active_run_ids: set[int] = active_run_ids or set()
+        self._text_calls = 0
 
     def __enter__(self):
         return self
@@ -46,9 +47,18 @@ class _SessionCtx:
                 if queried_id in self._active_run_ids:
                     active_run = SimpleNamespace(id=queried_id, started_at=None)
             return SimpleNamespace(scalar_one_or_none=lambda: active_run)
+        if "UPDATE page AS p" in stmt_str:
+            self._text_calls += 1
+            return SimpleNamespace(rowcount=17)
+        if "DELETE FROM page AS p" in stmt_str:
+            self._text_calls += 1
+            return SimpleNamespace(rowcount=3)
         return SimpleNamespace(
             scalars=lambda: SimpleNamespace(all=lambda: self._sources)
         )
+
+    def commit(self):
+        return None
 
 
 @pytest.mark.parametrize(
@@ -159,14 +169,17 @@ async def test_schedule_reindex_sources_task_skips_active_and_non_matching(
             return now
 
     delayed_ids: list[int] = []
+    session_holder: dict[str, _SessionCtx] = {}
+
+    def _make_session(bind=None):
+        _ = bind
+        session = _SessionCtx(sources, active_run_ids={2})
+        session_holder["session"] = session
+        return session
 
     monkeypatch.setattr(crawler_tasks, "datetime", _FrozenDateTime)
     monkeypatch.setattr(crawler_tasks, "create_sync_engine", lambda: _Engine())
-    monkeypatch.setattr(
-        crawler_tasks,
-        "Session",
-        lambda bind=None: _SessionCtx(sources, active_run_ids={2}),
-    )
+    monkeypatch.setattr(crawler_tasks, "Session", _make_session)
     monkeypatch.setattr(
         crawler_tasks.crawl_source_task,
         "delay",
@@ -176,3 +189,4 @@ async def test_schedule_reindex_sources_task_skips_active_and_non_matching(
     crawler_tasks.schedule_reindex_sources_task()
 
     assert delayed_ids == [1, 4]
+    assert session_holder["session"]._text_calls == 2

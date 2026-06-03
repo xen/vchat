@@ -219,7 +219,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _admin_event(name, req):
         _ = name, req
 
-    monkeypatch.setattr(auth_views.forms, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "LoginForm", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
     monkeypatch.setattr(auth_views.password_context, "verify", lambda raw, hashed: True)
@@ -227,9 +227,9 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # strip decorators (meta + template)
     login_fn = auth_views.login.__wrapped__.__wrapped__
-    login_resp = await login_fn(request)
-    assert isinstance(login_resp, web.HTTPFound)
-    assert str(login_resp.location) == "/"
+    with pytest.raises(web.HTTPFound) as exc:
+        await login_fn(request)
+    assert str(exc.value.location) == "/"
     assert request["user"].id == 5
 
     class _LogoutSession(dict):
@@ -245,9 +245,9 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
         method="GET", app=_App({CONFIG_KEY: {}}, router={"login": _Route("/login/")})
     )
     request2["user"] = SimpleNamespace(id=5)
-    logout_resp = await logout_fn(request2)
-    assert isinstance(logout_resp, web.HTTPFound)
-    assert str(logout_resp.location) == "/login/"
+    with pytest.raises(web.HTTPFound) as exc:
+        await logout_fn(request2)
+    assert str(exc.value.location) == "/login/"
 
 
 @pytest.mark.asyncio
@@ -405,7 +405,7 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views.forms, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "LoginForm", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
     monkeypatch.setattr(
@@ -477,7 +477,7 @@ async def test_login_redis_lock_blocks_parallel_checks(
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views.forms, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "LoginForm", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
 
