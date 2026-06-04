@@ -18,6 +18,7 @@ from vchat.document_types import guess_document_type
 from vchat.models.data import Chunk, CrawlRun, Page, PageLink, Source
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
+from vchat.triggers import source_trigger_rules_match_url
 from jobs.crawler.tasks import schedule_index_document
 from jobs.crawler.url_rules import (
     normalize_url_for_queue,
@@ -98,10 +99,13 @@ def get_or_create_page(
 ) -> tuple[Page, bool]:
     page = get_page_by_uri(session, uri)
     created = page is None
+    source = session.get(Source, source_id)
     if page is None:
         page = Page(source_id=source_id, uri=uri)
         page._hash = ""
         session.add(page)
+    if source is not None:
+        page.has_triggers = source_trigger_rules_match_url(source, uri)
     return page, created
 
 
@@ -144,6 +148,12 @@ def sync_page_links(
                 target_page._hash = ""
                 session.add(target_page)
                 session.flush()
+            target_source = session.get(Source, target_source_id)
+            if target_source is not None:
+                target_page.has_triggers = source_trigger_rules_match_url(
+                    target_source,
+                    target_uri,
+                )
 
         session.add(
             PageLink(

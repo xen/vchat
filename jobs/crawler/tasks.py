@@ -1063,7 +1063,7 @@ def refresh_source_index(source_id: int):
         engine.dispose()
 
 
-@app.task(name="jobs.crawler.tasks.rebuild_boilerplate_index", queue="celery")
+@app.task(name="jobs.embedder.tasks.rebuild_boilerplate_index", queue="embeddings")
 def rebuild_boilerplate_index(source_id: int):
     engine = create_sync_engine()
     try:

@@ -22,6 +22,12 @@ def setup_routes(app: web.Application) -> None:
     add("GET", "/demo", frontend.demo_page, name="demo_page")
     add("GET", "/widget", frontend.widget_js, name="widget")
     add("GET", "/js", frontend.widget_js, name="widget_js")
+    add(
+        "GET",
+        "/api/triggers/resolve",
+        frontend.widget_triggers_resolve,
+        name="widget_triggers_resolve",
+    )
     add("*", "/robots.txt", frontend.robots_txt)
     add("*", "/favicon.ico", frontend.favicon)
 
@@ -80,6 +86,13 @@ def setup_routes(app: web.Application) -> None:
     )
     add("GET", "/stats", projects.project_stats, name="project_stats")
     add("*", "/files", projects.project_files, name="project_files")
+    add("*", "/triggers", projects.project_triggers, name="project_triggers")
+    add(
+        "GET",
+        "/triggers/count",
+        projects.project_trigger_rule_count,
+        name="project_trigger_rule_count",
+    )
     add(
         "*",
         r"/file/{document_id:[0-9]+}",

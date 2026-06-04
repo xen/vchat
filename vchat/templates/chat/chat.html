@@ -470,20 +470,27 @@
     }
 
 
-    const submitMessage = () => {
-      const text = promptEl.value.trim();
+    const submitMessage = (options = {}) => {
+      const providedText = typeof options.text === 'string' ? options.text : null;
+      const text = (providedText !== null ? providedText : promptEl.value).trim();
       if (!text) return;
 
       appendMsg(text, 'user');
       setSending(true);
 
+      const payload = options.triggerId
+        ? JSON.stringify({ type: 'trigger_prompt', page_id: options.pageId || null, trigger_key: options.triggerId, text })
+        : text;
+
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         connect();
-        setTimeout(() => ws && ws.send(text), 100);
+        setTimeout(() => ws && ws.send(payload), 100);
       } else {
-        ws.send(text);
+        ws.send(payload);
       }
-      promptEl.value = '';
+      if (providedText === null) {
+        promptEl.value = '';
+      }
     };
 
     formEl.addEventListener('submit', (e) => {
@@ -511,6 +518,22 @@
         e.preventDefault();
         submitMessage();
       }
+    });
+
+    window.addEventListener('message', (event) => {
+      const data = event.data || {};
+      if (!data || data.type !== 'vchat_trigger') {
+        return;
+      }
+      const text = String(data.text || '').trim();
+      if (!text) {
+        return;
+      }
+      submitMessage({
+        text,
+        pageId: data.page_id || null,
+        triggerId: data.trigger_key || null,
+      });
     });
 
     for (const message of initialMessages) {

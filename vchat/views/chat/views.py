@@ -16,6 +16,7 @@ from itsdangerous import (
     BadSignature,
     URLSafeSerializer,
 )
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from vchat.ai_providers import (
     BaseAIProvider,
@@ -34,9 +35,10 @@ from vchat.guardrails import (
 from vchat.gigachat_oauth import get_gigachat_access_token
 from vchat.logging_utils import log_json
 from vchat.metrics import record_chat_request
-from vchat.models import Chat, ChatMsg
+from vchat.models import Chat, ChatMsg, TriggerResponseCache
 from vchat.project_settings import get_setting
 from vchat.settings import config
+from vchat.triggers import trigger_prompt_hash
 from vchat.utils import json, run_task
 
 from .ctx import chat_id_ctx, get_context, user_id_ctx
@@ -583,6 +585,156 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
     yield {"event": "assistant_message", "message": assistant_message}
 
 
+def _cached_response_sources(full_context: str) -> list[dict[str, Any]]:
+    if not full_context:
+        return []
+    payload = json.loads(full_context)
+    if isinstance(payload, dict) and isinstance(payload.get("sources"), list):
+        return [item for item in payload["sources"] if isinstance(item, dict)]
+    return []
+
+
+async def load_trigger_response_cache(
+    *,
+    page_id: int,
+    trigger_key: str,
+    user_text: str,
+) -> TriggerResponseCache | None:
+    async with async_session_factory() as db:
+        return await db.scalar(
+            sa.select(TriggerResponseCache).where(
+                TriggerResponseCache.page_id == page_id,
+                TriggerResponseCache.trigger_key == trigger_key,
+                TriggerResponseCache.prompt_hash == trigger_prompt_hash(user_text),
+            )
+        )
+
+
+async def save_trigger_response_cache(
+    *,
+    page_id: int,
+    trigger_key: str,
+    user_text: str,
+    response_text: str,
+    full_context: str,
+    used_chunks: list[dict],
+    tokens: int,
+    provider: str | None,
+    model: str | None,
+) -> None:
+    stmt = pg_insert(TriggerResponseCache).values(
+        page_id=page_id,
+        trigger_key=trigger_key,
+        prompt_hash=trigger_prompt_hash(user_text),
+        response_text=response_text,
+        full_context=full_context,
+        used_chunks=used_chunks,
+        provider=provider,
+        model=model,
+        tokens=tokens,
+        updated_at=sa.func.now(),
+    )
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_trigger_response_cache_page_trigger_prompt",
+        set_={
+            "response_text": stmt.excluded.response_text,
+            "full_context": stmt.excluded.full_context,
+            "used_chunks": stmt.excluded.used_chunks,
+            "provider": stmt.excluded.provider,
+            "model": stmt.excluded.model,
+            "tokens": stmt.excluded.tokens,
+            "updated_at": sa.func.now(),
+        },
+    )
+    async with async_session_factory() as db:
+        await db.execute(stmt)
+        await db.commit()
+
+
+async def stream_cached_trigger_response(
+    *,
+    ws: web.WebSocketResponse,
+    cached_response: TriggerResponseCache,
+    user_text: str,
+) -> None:
+    response_text = cached_response.response_text or ""
+    full_context = cached_response.full_context or ""
+    sources = _cached_response_sources(full_context)
+    serializer = URLSafeSerializer(SECRET_KEY)
+
+    async with async_session_factory() as db:
+        user_result = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=user_text,
+                role="user",
+                full_context="",
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                guardrail_triggered=False,
+                guardrail_stage=None,
+                guardrail_reasons=None,
+            )
+            .returning(ChatMsg.id)
+        )
+        user_msg_id = user_result.scalar_one()
+
+        assistant_result = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=response_text,
+                role="assistant",
+                full_context=full_context,
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                used_chunks=cached_response.used_chunks or [],
+                tokens=cached_response.tokens,
+                provider=cached_response.provider,
+                model=cached_response.model,
+                guardrail_triggered=False,
+                guardrail_stage=None,
+                guardrail_reasons=None,
+            )
+            .returning(ChatMsg.id)
+        )
+        assistant_msg_id = assistant_result.scalar_one()
+        await db.commit()
+
+    for offset in range(0, len(response_text), 96):
+        await ws.send_json(
+            {
+                "ok": True,
+                "content": response_text[offset : offset + 96],
+                "partial": True,
+            }
+        )
+
+    signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
+    await ws.send_json(
+        {
+            "ok": True,
+            "content": "",
+            "partial": False,
+            "sources": sources,
+            "msg_id": assistant_msg_id,
+            "signed_msg_id": signed_msg_id,
+        }
+    )
+
+    await run_task(
+        task="jobs.embedder.tasks.index_chat_message",
+        queue="embeddings",
+        msg_id=user_msg_id,
+    )
+    await run_task(
+        task="jobs.embedder.tasks.index_chat_message",
+        queue="embeddings",
+        msg_id=assistant_msg_id,
+    )
+
+
 async def websocket(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
@@ -676,11 +828,32 @@ async def websocket(request):
                 break
 
             user_text = ""
+            trigger_page_id: int | None = None
+            trigger_key: str | None = None
             if msg.type == web.WSMsgType.TEXT:
                 if msg.data.strip().lower() == "ping":
                     await ws.send_str("pong")
                     continue
-                user_text = msg.data
+                raw_user_text = msg.data
+                if raw_user_text.lstrip().startswith("{"):
+                    try:
+                        parsed_payload = json.loads(raw_user_text)
+                    except json.JSONDecodeError:
+                        parsed_payload = None
+                    if (
+                        isinstance(parsed_payload, dict)
+                        and parsed_payload.get("type") == "trigger_prompt"
+                    ):
+                        user_text = str(parsed_payload.get("text") or "")
+                        raw_page_id = parsed_payload.get("page_id")
+                        raw_trigger_key = parsed_payload.get("trigger_key")
+                        if raw_page_id is not None and raw_trigger_key:
+                            trigger_page_id = int(raw_page_id)
+                            trigger_key = str(raw_trigger_key)
+                    else:
+                        user_text = raw_user_text
+                else:
+                    user_text = raw_user_text
 
             if not user_text:
                 continue
@@ -731,6 +904,20 @@ async def websocket(request):
                         }
                     )
                     continue
+
+                if trigger_page_id is not None and trigger_key:
+                    cached_response = await load_trigger_response_cache(
+                        page_id=trigger_page_id,
+                        trigger_key=trigger_key,
+                        user_text=user_text,
+                    )
+                    if cached_response is not None:
+                        await stream_cached_trigger_response(
+                            ws=ws,
+                            cached_response=cached_response,
+                            user_text=user_text,
+                        )
+                        continue
 
                 await redis.publish(
                     f"chat_monitor:{chat_id_ctx.get()}",
@@ -935,6 +1122,26 @@ async def websocket(request):
                         "signed_msg_id": signed_msg_id,
                     }
                 )
+
+                if trigger_page_id is not None and trigger_key and total_content:
+                    await save_trigger_response_cache(
+                        page_id=trigger_page_id,
+                        trigger_key=trigger_key,
+                        user_text=user_text,
+                        response_text=total_content,
+                        full_context=json.dumps(
+                            {
+                                "policy": context_policy,
+                                "coverage": coverage,
+                                "sources": sources,
+                            },
+                            ensure_ascii=False,
+                        ),
+                        used_chunks=used_chunks,
+                        tokens=total_tokens,
+                        provider=assistant_provider,
+                        model=assistant_model,
+                    )
 
                 # Enqueue Celery-compatible background tasks (shared Redis queue)
                 try:

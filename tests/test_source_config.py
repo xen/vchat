@@ -43,6 +43,7 @@ class TestSourceConfigFromDict:
         assert cfg.crawler_download_delay == DEFAULT_CRAWLER_DOWNLOAD_DELAY
         assert cfg.crawler_download_timeout == DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
         assert cfg.rules == []
+        assert cfg.trigger_rules == []
 
     def test_empty_dict(self):
         assert SourceConfig.from_dict({}) == SourceConfig()
@@ -73,6 +74,18 @@ class TestSourceConfigFromDict:
         assert len(cfg.rules) == 2
         assert cfg.rules[0] == CrawlerRule(type="xpath", value="//a")
         assert cfg.rules[1] == CrawlerRule(type="css", value="a.nav")
+
+    def test_parses_trigger_rules(self):
+        cfg = SourceConfig.from_dict(
+            {
+                "trigger_rules": [
+                    {"type": "regex", "value": "^https://example.com/docs/"}
+                ]
+            }
+        )
+        assert cfg.trigger_rules == [
+            CrawlerRule(type="regex", value="^https://example.com/docs/")
+        ]
 
     def test_skips_rules_with_empty_value(self):
         cfg = SourceConfig.from_dict(
@@ -125,11 +138,17 @@ class TestSourceConfigToDict:
     def test_no_rules_key_when_empty(self):
         d = SourceConfig().to_dict()
         assert "rules" not in d
+        assert "trigger_rules" not in d
 
     def test_rules_key_present_when_nonempty(self):
         cfg = SourceConfig(rules=[CrawlerRule(type="css", value="a")])
         d = cfg.to_dict()
         assert d["rules"] == [{"type": "css", "value": "a"}]
+
+    def test_trigger_rules_key_present_when_nonempty(self):
+        cfg = SourceConfig(trigger_rules=[CrawlerRule(type="regex", value="^https://")])
+        d = cfg.to_dict()
+        assert d["trigger_rules"] == [{"type": "regex", "value": "^https://"}]
 
     def test_no_sitemaps(self):
         d = SourceConfig().to_dict()
@@ -155,6 +174,7 @@ class TestSourceConfigToDict:
             crawler_download_timeout=15,
             ignore_robots_txt=True,
             rules=[CrawlerRule(type="regex", value="^https://")],
+            trigger_rules=[CrawlerRule(type="regex", value="/product/")],
         )
         assert SourceConfig.from_dict(original.to_dict()) == original
 
@@ -197,9 +217,7 @@ class TestSourceModelConfig:
         assert s._config["crawler_concurrent_requests"] == 4
 
     def test_getter_reads_stored_dict(self):
-        s = SourceStub(
-            {"crawler_concurrent_requests": 2}
-        )
+        s = SourceStub({"crawler_concurrent_requests": 2})
         assert s.config.crawler_concurrent_requests == 2
 
     def test_old_s3_keys_ignored(self):

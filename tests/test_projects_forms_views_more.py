@@ -185,7 +185,7 @@ async def test_project_source_settings_post_site_rules(
         blocked_reason=None,
         blocked_message=None,
         reindex_cron="0 3 * * 1",
-        config={"rules": [{"type": "contains", "value": "x"}]},
+        config=SourceConfig.from_dict({"rules": [{"type": "contains", "value": "x"}]}),
         updated_at=None,
     )
     db = _DB(scalar_values=[source])
@@ -265,10 +265,7 @@ async def test_project_source_settings_post_site_rules(
     assert source.config.crawler_download_timeout == 20
     assert source.config.ignore_robots_txt is True
     assert source.config.rules == [
-        *(
-            CrawlerRule(type="param", value=param)
-            for param in DEFAULT_IGNORED_PARAMS
-        ),
+        *(CrawlerRule(type="param", value=param) for param in DEFAULT_IGNORED_PARAMS),
         CrawlerRule(type="contains", value="/private"),
     ]
     assert events == ["source_update"]
@@ -314,14 +311,19 @@ async def test_add_source_includes_default_ignored_params(
         events.append(name)
 
     monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "SourceForm", lambda *args, **kwargs: _Form())
+    monkeypatch.setattr(
+        project_views.forms, "SourceForm", lambda *args, **kwargs: _Form()
+    )
     monkeypatch.setattr(project_views, "admin_event", _event)
+
     async def _not_blocked(request, db_session, source):
         _ = request, source
         await db_session.commit()
         return False
 
-    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _not_blocked)
+    monkeypatch.setattr(
+        project_views, "_check_source_blocking_and_commit", _not_blocked
+    )
     monkeypatch.setattr(
         project_views.crawl_source_task,
         "delay",
@@ -384,8 +386,11 @@ async def test_add_source_persists_blocked_source_without_enqueue(
         events.append(name)
 
     monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "SourceForm", lambda *args, **kwargs: _Form())
+    monkeypatch.setattr(
+        project_views.forms, "SourceForm", lambda *args, **kwargs: _Form()
+    )
     monkeypatch.setattr(project_views, "admin_event", _event)
+
     async def _blocked(request, db_session, source):
         _ = request, db_session, source
         return True

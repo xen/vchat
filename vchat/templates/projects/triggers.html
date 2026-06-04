@@ -1,0 +1,270 @@
+{% extends "admin.html" %}
+{% block content %}
+
+<div class="flex flex-col gap-6">
+    <div class="flex items-center justify-between gap-4">
+        <h1 class="text-lg font-medium">Триггер</h1>
+        <form method="POST" action="{{ url('project_triggers') }}">
+            {{ form.csrf_token }}
+            <input type="hidden" name="action" value="generate">
+            <button class="btn btn-secondary btn-sm gap-2" type="submit">
+                <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
+                Сгенерировать
+            </button>
+        </form>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-3">
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Триггеров</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.total_triggers }}</div>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Страниц с триггерами</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.pages_with_triggers }}</div>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Кэшированных ответов</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.cached_responses }}</div>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url('project_triggers') }}" class="max-w-5xl">
+        {{ form.csrf_token }}
+        <input type="hidden" name="action" value="save">
+
+        <div class="rounded-box border border-base-300 bg-base-100 p-5">
+            <div class="form-control w-full">
+                <label class="label">
+                    <span class="label-text">Стандартные триггеры</span>
+                </label>
+                {{ form.default_templates }}
+                <label class="label">
+                    <span class="label-text-alt">Один шаблон на строку. Используйте <code>{title}</code> для подстановки заголовка страницы.</span>
+                </label>
+                {% if form.default_templates.errors %}
+                    <div class="label">
+                        {% for error in form.default_templates.errors %}
+                            <span class="label-text-alt text-error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="mt-6 rounded-box border border-base-300 bg-base-100 p-5">
+            <div class="flex items-center justify-between gap-3">
+                <h2 class="font-medium">Regex-правила страниц</h2>
+            </div>
+            <label class="label">
+                <span class="label-text-alt">Правила хранятся в настройках источника. Одна include-regex строка на правило, без lookaround, backreference и вложенных повторов.</span>
+            </label>
+            <div class="mb-4 text-sm text-base-content/70">
+                <div class="font-medium text-base-content">Примеры</div>
+                <ul class="mt-2 list-disc space-y-1 pl-5">
+                    <li>
+                        Любые страницы в блоге:
+                        <code class="break-all">^https://www\.example\.com/blog/.*</code>
+                    </li>
+                    <li>
+                        Продукты с числовым id:
+                        <code class="break-all">^https://www\.example\.com/product\?id=[0-9]+$</code>
+                    </li>
+                </ul>
+            </div>
+            <div class="mt-3 overflow-x-auto">
+                <table class="table table-zebra w-full">
+                    <thead>
+                        <tr>
+                            <th class="w-56">Сайт</th>
+                            <th>Regex</th>
+                            <th class="w-40 text-right">Затронуто страниц</th>
+                            <th class="w-16"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in source_trigger_rows %}
+                            {% set source = row.source %}
+                            {% set rule_rows = row.rule_rows %}
+                            {% for rule_row in rule_rows %}
+                                {% set rule = rule_row.rule %}
+                                <tr class="trigger-rule-row align-top" data-source-id="{{ source.id }}">
+                                    {% if loop.first %}
+                                        <td rowspan="{{ rule_rows|length }}" class="align-top">
+                                            <div class="font-medium">{{ source.title or source.uri }}</div>
+                                            <div class="mt-1 break-all text-xs text-base-content/60">{{ source.uri }}</div>
+                                            <button type="button"
+                                                    class="btn btn-outline btn-primary btn-xs mt-3"
+                                                    data-add-trigger-rule="{{ source.id }}">
+                                                Добавить правило
+                                            </button>
+                                        </td>
+                                    {% endif %}
+                                    <td>
+                                        <input type="text"
+                                               name="source_trigger_rules_{{ source.id }}[]"
+                                               value="{{ rule.value if rule else '' }}"
+                                               class="input input-bordered input-sm w-full font-mono"
+                                               placeholder="^https://example.com/docs/"
+                                               data-trigger-rule-input
+                                               data-source-id="{{ source.id }}">
+                                    </td>
+                                    <td class="text-right">
+                                        <span class="badge badge-outline {{ 'hidden' if not rule else '' }}" data-trigger-rule-count>
+                                            {{ rule_row.affected_count if rule else '' }}
+                                        </span>
+                                    </td>
+                                    <td class="text-right">
+                                        <button type="button"
+                                                class="btn btn-square btn-sm btn-ghost text-error"
+                                                data-remove-trigger-rule
+                                                title="Удалить">
+                                            <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+                                        </button>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="4" class="text-sm text-base-content/60">Источники пока не добавлены.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="mt-6 flex items-center gap-2">
+            <button class="btn btn-primary" type="submit">Сохранить</button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block extra_bottom %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const countUrl = {{ url('project_trigger_rule_count')|string|tojson }};
+
+    async function refreshRuleCount(input) {
+        const value = input.value.trim();
+        const row = input.closest('tr[data-source-id]');
+        const badge = row?.querySelector('[data-trigger-rule-count]');
+        if (!badge) return;
+        badge.classList.add('hidden');
+        badge.textContent = '';
+        input.classList.remove('input-error');
+        input.removeAttribute('title');
+        if (!value) return;
+
+        const url = new URL(countUrl, window.location.origin);
+        url.searchParams.set('source_id', input.dataset.sourceId || row.getAttribute('data-source-id'));
+        url.searchParams.set('pattern', value);
+        badge.textContent = '...';
+        badge.classList.remove('hidden');
+        const response = await fetch(url.toString(), { credentials: 'same-origin' });
+        const payload = await response.json();
+        if (!response.ok || !payload.ok) {
+            badge.classList.add('hidden');
+            badge.textContent = '';
+            input.classList.add('input-error');
+            input.title = payload.error || 'Некорректное правило';
+            return;
+        }
+        badge.textContent = payload.count;
+        badge.classList.toggle('hidden', payload.count === null || payload.count === undefined);
+    }
+
+    document.querySelectorAll('[data-trigger-rule-input]').forEach(function(input) {
+        input.addEventListener('blur', function() {
+            refreshRuleCount(input).catch(function(error) {
+                input.classList.add('input-error');
+                input.title = String(error);
+            });
+        });
+    });
+
+    document.querySelectorAll('[data-add-trigger-rule]').forEach(function(button) {
+        button.addEventListener('click', function() {
+            const sourceId = button.getAttribute('data-add-trigger-rule');
+            const firstRow = document.querySelector(`tr[data-source-id="${sourceId}"]`);
+            if (!firstRow) return;
+
+            const rows = Array.from(document.querySelectorAll(`tr[data-source-id="${sourceId}"]`));
+            const lastRow = rows[rows.length - 1];
+            const sourceCell = firstRow.querySelector('td[rowspan]');
+            if (sourceCell) {
+                sourceCell.setAttribute('rowspan', String(rows.length + 1));
+            }
+
+            const tr = document.createElement('tr');
+            tr.className = 'trigger-rule-row align-top';
+            tr.setAttribute('data-source-id', sourceId);
+            tr.innerHTML = `
+                <td>
+                    <input type="text"
+                           name="source_trigger_rules_${sourceId}[]"
+                           class="input input-bordered input-sm w-full font-mono"
+                           placeholder="^https://example.com/docs/"
+                           data-trigger-rule-input
+                           data-source-id="${sourceId}">
+                </td>
+                <td class="text-right">
+                    <span class="badge badge-outline hidden" data-trigger-rule-count></span>
+                </td>
+                <td class="text-right">
+                    <button type="button"
+                            class="btn btn-square btn-sm btn-ghost text-error"
+                            data-remove-trigger-rule
+                            title="Удалить">
+                        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+                    </button>
+                </td>
+            `;
+            lastRow.after(tr);
+            const input = tr.querySelector('input');
+            input?.addEventListener('blur', function() {
+                refreshRuleCount(input).catch(function(error) {
+                    input.classList.add('input-error');
+                    input.title = String(error);
+                });
+            });
+            input?.focus();
+        });
+    });
+
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('[data-remove-trigger-rule]');
+        if (!button) return;
+        const row = button.closest('tr[data-source-id]');
+        if (!row) return;
+        const sourceId = row.getAttribute('data-source-id');
+        const rows = Array.from(document.querySelectorAll(`tr[data-source-id="${sourceId}"]`));
+        if (rows.length === 1) {
+            const input = row.querySelector('input');
+            if (input) input.value = '';
+            const badge = row.querySelector('[data-trigger-rule-count]');
+            if (badge) {
+                badge.classList.add('hidden');
+                badge.textContent = '';
+            }
+            return;
+        }
+        const firstRow = rows[0];
+        const sourceCell = firstRow.querySelector('td[rowspan]');
+        if (row === firstRow && sourceCell) {
+            const nextRow = rows[1];
+            nextRow.insertBefore(sourceCell, nextRow.firstElementChild);
+        }
+        row.remove();
+        const nextRows = Array.from(document.querySelectorAll(`tr[data-source-id="${sourceId}"]`));
+        const nextSourceCell = nextRows[0]?.querySelector('td[rowspan]');
+        if (nextSourceCell) {
+            nextSourceCell.setAttribute('rowspan', String(nextRows.length));
+        }
+    });
+});
+</script>
+{% endblock %}

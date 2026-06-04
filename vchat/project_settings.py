@@ -19,6 +19,7 @@ SETTINGS_DEFAULTS: dict[str, str] = {
     "project.agent_name": "",
     "project.welcome_message": "",
     "project.secret": "",
+    "triggers.default_templates": "",
 }
 
 

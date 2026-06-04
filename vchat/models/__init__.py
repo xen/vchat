@@ -11,6 +11,7 @@ from .data import (
     PageLink,
     CrawlRun,
     SourceShingleFreq,
+    TriggerResponseCache,
 )
 from .admin_event import AdminEvent
 
@@ -29,5 +30,6 @@ __all__ = [
     "PageLink",
     "CrawlRun",
     "SourceShingleFreq",
+    "TriggerResponseCache",
     "AdminEvent",
 ]

@@ -2,6 +2,13 @@ import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp import web
 
+from vchat.triggers import (
+    find_page_by_url,
+    load_default_trigger_templates,
+    page_trigger_items,
+    render_default_triggers,
+)
+
 
 async def healthcheck(request):
     await request["db"].execute(sa.text("select 1;"))
@@ -26,8 +33,50 @@ async def favicon(request):
 
 async def widget_js(request):
     widget_chat_path = str(request.app.router["public_widget_chat"].url_for())
+    trigger_resolve_path = str(request.app.router["widget_triggers_resolve"].url_for())
     return aiohttp_jinja2.render_template(
-        "js/widget.js", request, {"widget_chat_path": widget_chat_path}
+        "js/widget.js",
+        request,
+        {
+            "widget_chat_path": widget_chat_path,
+            "trigger_resolve_path": trigger_resolve_path,
+        },
+    )
+
+
+async def widget_triggers_resolve(request):
+    page_url = request.query.get("url", "")
+    title = request.query.get("title", "")
+    page = await find_page_by_url(request["db"], page_url)
+    if page is not None:
+        triggers = page_trigger_items(page)
+        if triggers:
+            return web.json_response(
+                {
+                    "page_id": page.id,
+                    "source": "page",
+                    "triggers": [
+                        {
+                            "page_id": page.id,
+                            "key": trigger["key"],
+                            "text": trigger["text"],
+                            "source": trigger["source"],
+                        }
+                        for trigger in triggers
+                    ],
+                }
+            )
+
+    default_title = title or (page.title if page is not None else "")
+    return web.json_response(
+        {
+            "page_id": page.id if page is not None else None,
+            "source": "default",
+            "triggers": render_default_triggers(
+                load_default_trigger_templates(request.app),
+                default_title,
+            ),
+        }
     )
 
 

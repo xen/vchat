@@ -30,6 +30,7 @@ app.conf.broker_transport_options = {
 
 # Autodiscover tasks from job packages so workers pick up every queue
 app.autodiscover_tasks(["jobs", "jobs.crawler", "jobs.embedder"])
+app.conf.imports = ("jobs.crawler.tasks", "jobs.embedder.tasks")
 
 
 app.conf.worker_prefetch_multiplier = 1
@@ -68,5 +69,4 @@ def run_gc(*_, **__):
     gc.collect()
 
 
-# Import tasks to register them with Celery when autodiscovery is limited
-import jobs  # noqa: F401
+# Task modules are loaded through Celery's loader via app.conf.imports.

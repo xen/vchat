@@ -48,7 +48,17 @@ from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.document_shingles import compute_trigram_hashes
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg, Chunk, Page, PageLink, Sitemap, Source, User
+from vchat.models import (
+    Chat,
+    ChatMsg,
+    Chunk,
+    Page,
+    PageLink,
+    Sitemap,
+    Source,
+    TriggerResponseCache,
+    User,
+)
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
@@ -70,6 +80,17 @@ from vchat.source_blocking import (
 )
 from vchat.settings import config
 from vchat.page_status import PageStatus, PageStatusError, STATUS_ERROR_DESCRIPTIONS
+from vchat.triggers import (
+    TRIGGER_DEFAULTS_SETTING,
+    TriggerPatternError,
+    apply_source_trigger_rules,
+    build_page_trigger_items,
+    generate_trigger_texts_for_page,
+    load_default_trigger_templates,
+    page_trigger_items,
+    trigger_pattern_matches_url,
+    validate_trigger_pattern,
+)
 from vchat.utils import admin_event, flash, login_required, meta
 
 from vchat.views.admin.views import CreateUserForm, UserPasswordForm
@@ -93,6 +114,8 @@ __all__ = [
     "project_chat",
     "project_stats",
     "project_integration",
+    "project_triggers",
+    "project_trigger_rule_count",
     "public_widget_chat",
     "project_files",
     "file_document",
@@ -638,6 +661,33 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         else {}
     )
     uniqueness_percent = await _load_document_uniqueness_percent(db, document)
+    trigger_rows = page_trigger_items(document)
+    trigger_keys = [trigger["key"] for trigger in trigger_rows]
+    cache_rows = []
+    if trigger_keys:
+        cache_rows = (
+            (
+                await db.execute(
+                    sa.select(TriggerResponseCache)
+                    .where(TriggerResponseCache.page_id == document.id)
+                    .where(TriggerResponseCache.trigger_key.in_(trigger_keys))
+                    .order_by(TriggerResponseCache.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+    caches_by_trigger: dict[str, list[TriggerResponseCache]] = {}
+    for cache in cache_rows:
+        caches_by_trigger.setdefault(cache.trigger_key, []).append(cache)
+
+    document_triggers = [
+        {
+            "trigger": trigger,
+            "caches": caches_by_trigger.get(trigger["key"], []),
+        }
+        for trigger in trigger_rows
+    ]
 
     return {
         "project": _project_context(request),
@@ -664,6 +714,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
             document_display_title,
             document_links,
         ),
+        "document_triggers": document_triggers,
     }
 
 
@@ -829,6 +880,243 @@ async def project_edit(request):
         "is_owner": True,
         "ai_provider_options": get_ai_provider_options(),
     }
+
+
+def _trigger_lines(raw: str | None) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for line in (raw or "").splitlines():
+        value = line.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _compile_trigger_patterns(patterns: list[str]) -> None:
+    for pattern in patterns:
+        validate_trigger_pattern(pattern)
+
+
+async def _count_source_trigger_pattern(
+    db_session: Any,
+    *,
+    source_id: int,
+    pattern: str,
+) -> int:
+    validate_trigger_pattern(pattern)
+    value = pattern.strip()
+    if not value:
+        return 0
+    rows = (
+        await db_session.execute(
+            sa.select(Page.uri)
+            .where(Page.source_id == source_id)
+            .where(Page.uri.is_not(None))
+        )
+    ).scalars()
+    return sum(1 for uri in rows if trigger_pattern_matches_url(uri or "", value))
+
+
+async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
+    db_session = request["db"]
+    sources = list(
+        (
+            await db_session.execute(
+                sa.select(Source).order_by(Source.title.asc(), Source.uri.asc())
+            )
+        ).scalars()
+    )
+    source_trigger_rows = []
+    for source in sources:
+        rule_rows = []
+        for rule in source.config.trigger_rules:
+            rule_rows.append(
+                {
+                    "rule": rule,
+                    "affected_count": await _count_source_trigger_pattern(
+                        db_session,
+                        source_id=source.id,
+                        pattern=rule.value,
+                    ),
+                }
+            )
+        if not rule_rows:
+            rule_rows.append({"rule": None, "affected_count": None})
+        source_trigger_rows.append({"source": source, "rule_rows": rule_rows})
+    if form is None:
+        form = forms.TriggerSettingsForm(
+            meta={"csrf_context": await get_session(request)},
+            data={
+                "default_templates": "\n".join(
+                    load_default_trigger_templates(request.app)
+                )
+            },
+        )
+    trigger_pages = list(
+        (
+            await db_session.execute(
+                sa.select(Page.triggers).where(Page.has_triggers.is_(True))
+            )
+        ).scalars()
+    )
+    total_triggers = sum(
+        len(items) for items in trigger_pages if isinstance(items, list)
+    )
+    pages_with_triggers = await db_session.scalar(
+        sa.select(sa.func.count(Page.id)).where(Page.has_triggers.is_(True))
+    )
+    cached_responses = await db_session.scalar(
+        sa.select(sa.func.count(TriggerResponseCache.id))
+    )
+    return {
+        "project": _project_context(request),
+        "active_section": str(request.app.router["project_triggers"].url_for()),
+        "form": form,
+        "source_trigger_rows": source_trigger_rows,
+        "stats": {
+            "total_triggers": int(total_triggers or 0),
+            "pages_with_triggers": int(pages_with_triggers or 0),
+            "cached_responses": int(cached_responses or 0),
+        },
+    }
+
+
+async def _pages_for_trigger_generation(db_session: Any, limit: int = 20) -> list[Page]:
+    return list(
+        (
+            await db_session.execute(
+                sa.select(Page)
+                .where(Page.has_triggers.is_(True))
+                .where(Page.uri.is_not(None))
+                .where(Page.content.is_not(None))
+                .where(Page.content != "")
+                .where(Page.status == PageStatus.ready)
+                .where(Page.status_error.is_(None))
+                .where(sa.or_(Page.triggers.is_(None), Page.triggers == []))
+                .order_by(Page.updated_at.desc().nullslast(), Page.id.desc())
+                .limit(limit)
+            )
+        ).scalars()
+    )
+
+
+async def _generate_missing_triggers(request: web.Request) -> int:
+    db_session = request["db"]
+    pages = await _pages_for_trigger_generation(db_session)
+    created = 0
+    for page in pages:
+        texts = await generate_trigger_texts_for_page(request.app, page)
+        items = build_page_trigger_items(texts, source="generated")
+        page.triggers = items
+        page.updated_at = datetime.now(timezone.utc)
+        created += len(items)
+    return created
+
+
+@meta(title="Триггер")
+@login_required()
+@aiohttp_jinja2.template("projects/triggers.html")
+async def project_triggers(request):
+    db_session = request["db"]
+    session = await get_session(request)
+    data = await request.post() if request.method == "POST" else None
+    form = forms.TriggerSettingsForm(
+        meta={"csrf_context": session},
+        formdata=data,
+        data={
+            "default_templates": "\n".join(load_default_trigger_templates(request.app))
+        },
+    )
+
+    if request.method == "POST":
+        action = (data.get("action") or "save").strip()
+        if action == "generate":
+            created = await _generate_missing_triggers(request)
+            await db_session.commit()
+            await flash(request, f"Создано триггеров: {created}", "success")
+            raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+
+        if form.validate():
+            default_templates = _trigger_lines(form.default_templates.data)
+            await apply_settings_updates(
+                request.app,
+                db_session,
+                {TRIGGER_DEFAULTS_SETTING: default_templates},
+            )
+            matched = 0
+            sources = list((await db_session.execute(sa.select(Source))).scalars())
+            for source in sources:
+                source_patterns = [
+                    value.strip()
+                    for value in data.getall(f"source_trigger_rules_{source.id}[]")
+                    if value.strip()
+                ]
+                try:
+                    _compile_trigger_patterns(source_patterns)
+                except (TriggerPatternError, re.error) as exc:
+                    await flash(request, f"Некорректный regex: {exc}", "error")
+                    return await _load_trigger_settings_context(request, form)
+
+                cfg = source.config
+                source.config = SourceConfig(
+                    crawler_concurrent_requests=cfg.crawler_concurrent_requests,
+                    crawler_download_delay=cfg.crawler_download_delay,
+                    crawler_download_timeout=cfg.crawler_download_timeout,
+                    ignore_robots_txt=cfg.ignore_robots_txt,
+                    rules=cfg.rules,
+                    trigger_rules=[
+                        CrawlerRule(type="regex", value=pattern)
+                        for pattern in source_patterns
+                    ],
+                )
+                source.updated_at = datetime.now(timezone.utc)
+                await apply_source_trigger_rules(db_session, source)
+                matched += (
+                    await db_session.scalar(
+                        sa.select(sa.func.count(Page.id)).where(
+                            Page.source_id == source.id,
+                            Page.has_triggers.is_(True),
+                        )
+                    )
+                    or 0
+                )
+            await db_session.commit()
+            await flash(
+                request,
+                f"Настройки сохранены. Страниц под правилами: {matched}",
+                "success",
+            )
+            raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+
+    return await _load_trigger_settings_context(request, form)
+
+
+@login_required()
+async def project_trigger_rule_count(request):
+    db_session = request["db"]
+    try:
+        source_id = int(request.query.get("source_id", "0"))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Invalid source_id")
+    pattern = (request.query.get("pattern") or "").strip()
+    if not pattern:
+        return web.json_response({"ok": True, "count": None})
+
+    source = await db_session.scalar(sa.select(Source.id).where(Source.id == source_id))
+    if source is None:
+        raise web.HTTPNotFound(text="Source not found")
+
+    try:
+        count = await _count_source_trigger_pattern(
+            db_session,
+            source_id=source_id,
+            pattern=pattern,
+        )
+    except (TriggerPatternError, re.error) as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    return web.json_response({"ok": True, "count": count})
 
 
 def _build_progress_conditions():
@@ -1033,6 +1321,7 @@ async def project_source_settings(request):
     form = forms.SourceSettingsForm(**form_kwargs)
 
     if request.method == "POST" and form.validate():
+        current_cfg = source.config
         source.title = form.title.data
         source.reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
         source.updated_at = datetime.now(timezone.utc)
@@ -1060,6 +1349,7 @@ async def project_source_settings(request):
             ),
             ignore_robots_txt=bool(form.ignore_robots_txt.data),
             rules=rules,
+            trigger_rules=current_cfg.trigger_rules,
         )
         if source.config.ignore_robots_txt:
             if source.blocked_reason == "robots_txt":
@@ -1577,6 +1867,7 @@ async def project_action(request):
             crawler_download_timeout=cfg.crawler_download_timeout,
             ignore_robots_txt=cfg.ignore_robots_txt,
             rules=rules,
+            trigger_rules=cfg.trigger_rules,
         )
         source.updated_at = datetime.now(timezone.utc)
         await db_session.commit()

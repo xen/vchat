@@ -128,6 +128,23 @@ class WorkspaceForm(Form):
             self.model.data = get_default_model_id(self.provider.data)
 
 
+class TriggerSettingsForm(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = config["secret_key"]
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=20)
+
+    default_templates = TextAreaField(
+        _("Стандартные триггеры"),
+        validators=[
+            validators.Optional(),
+            validators.Length(max=4000, message=_("Length up to 4000 characters")),
+        ],
+        render_kw={"class": "textarea textarea-bordered w-full", "rows": "8"},
+    )
+
+
 class SourceForm(Form):
     class Meta:
         csrf = True

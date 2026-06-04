@@ -1,5 +1,6 @@
 import hashlib
 from datetime import datetime
+from typing import Any
 
 import pycld2 as cld2
 import sqlalchemy as sa
@@ -193,6 +194,14 @@ class Page(Base, Created, Updated):
         default=0,
         server_default=sa.text("0"),
     )
+    has_triggers: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+        index=True,
+    )
+    triggers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
     @hybrid_property
     def hash_value(self) -> str:
@@ -394,6 +403,39 @@ class SourceShingleFreq(Base):
     shingle_hash: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
     count: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=0, server_default=sa.text("0")
+    )
+
+
+class TriggerResponseCache(Base, Created, Updated):
+    __tablename__ = "trigger_response_cache"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "page_id",
+            "trigger_key",
+            "prompt_hash",
+            name="uq_trigger_response_cache_page_trigger_prompt",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        sa.Integer,
+        ForeignKey("page.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trigger_key: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    prompt_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    response_text: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    full_context: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    used_chunks: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    provider: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
+    tokens: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
     )
 
 
