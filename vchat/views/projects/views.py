@@ -900,6 +900,15 @@ def _compile_trigger_patterns(patterns: list[str]) -> None:
         validate_trigger_pattern(pattern)
 
 
+def _source_trigger_display(source: Source) -> dict[str, str]:
+    parsed = urlparse(source.uri or "")
+    host = parsed.netloc or source.uri or ""
+    title = (source.title or "").strip()
+    if not title or title == host or title == (source.uri or "").rstrip("/"):
+        return {"name": host, "hint": "", "full_uri": source.uri or ""}
+    return {"name": title, "hint": host, "full_uri": source.uri or ""}
+
+
 async def _count_source_trigger_pattern(
     db_session: Any,
     *,
@@ -951,7 +960,13 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
             )
         if not rule_rows:
             rule_rows.append({"rule": None, "affected_count": None})
-        source_trigger_rows.append({"source": source, "rule_rows": rule_rows})
+        source_trigger_rows.append(
+            {
+                "source": source,
+                "source_display": _source_trigger_display(source),
+                "rule_rows": rule_rows,
+            }
+        )
     if form is None:
         form = forms.TriggerSettingsForm(
             meta={"csrf_context": await get_session(request)},

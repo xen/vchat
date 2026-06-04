@@ -85,16 +85,23 @@
                     <tbody>
                         {% for row in source_trigger_rows %}
                             {% set source = row.source %}
+                            {% set source_display = row.source_display %}
                             {% set rule_rows = row.rule_rows %}
                             {% for rule_row in rule_rows %}
                                 {% set rule = rule_row.rule %}
                                 <tr class="trigger-rule-row align-top" data-source-id="{{ source.id }}">
                                     {% if loop.first %}
                                         <td rowspan="{{ rule_rows|length }}" class="align-top">
-                                            <div class="font-medium">{{ source.title or source.uri }}</div>
-                                            <div class="mt-1 break-all text-xs text-base-content/60">{{ source.uri }}</div>
+                                            <div class="font-medium truncate" title="{{ source_display.full_uri }}">
+                                                {{ source_display.name }}
+                                            </div>
+                                            {% if source_display.hint %}
+                                                <div class="mt-0.5 truncate text-xs text-base-content/50" title="{{ source_display.full_uri }}">
+                                                    {{ source_display.hint }}
+                                                </div>
+                                            {% endif %}
                                             <button type="button"
-                                                    class="btn btn-outline btn-primary btn-xs mt-3"
+                                                    class="btn btn-outline btn-primary btn-xs mt-2"
                                                     data-add-trigger-rule="{{ source.id }}">
                                                 Добавить правило
                                             </button>
