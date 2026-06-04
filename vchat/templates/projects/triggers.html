@@ -4,24 +4,14 @@
 <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between gap-4">
         <h1 class="text-lg font-medium">Триггеры</h1>
-        <div class="flex items-center gap-2">
-            <form method="POST" action="{{ url('project_triggers') }}">
-                {{ form.csrf_token }}
-                <input type="hidden" name="action" value="generate">
-                <button class="btn btn-secondary btn-sm gap-2" type="submit">
-                    <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
-                    Сгенерировать
-                </button>
-            </form>
-            <form method="POST" action="{{ url('project_triggers') }}" onsubmit="return window.confirm('Очистить все сгенерированные триггеры и кэши ответов?');">
-                {{ form.csrf_token }}
-                <input type="hidden" name="action" value="clear">
-                <button class="btn btn-error btn-outline btn-sm gap-2" type="submit">
-                    <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
-                    Очистить триггеры и кэши ответов
-                </button>
-            </form>
-        </div>
+        <form method="POST" action="{{ url('project_triggers') }}">
+            {{ form.csrf_token }}
+            <input type="hidden" name="action" value="generate">
+            <button class="btn btn-secondary btn-sm gap-2" type="submit">
+                <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
+                Сгенерировать
+            </button>
+        </form>
     </div>
 
     <div class="rounded-box border border-base-300 bg-base-100 p-5 text-sm text-base-content/70">
@@ -176,6 +166,21 @@
             <button class="btn btn-primary" type="submit">Сохранить</button>
         </div>
     </form>
+
+    <div class="max-w-5xl rounded-box border border-error/30 bg-error/5 p-5">
+        <div class="font-medium text-error">Опасная зона</div>
+        <div class="mt-1 text-sm text-base-content/70">
+            Очистка удалит все сгенерированные триггеры и кэши ответов для них.
+        </div>
+        <form class="mt-4" method="POST" action="{{ url('project_triggers') }}" onsubmit="return window.confirm('Очистить все сгенерированные триггеры и кэши ответов?');">
+            {{ form.csrf_token }}
+            <input type="hidden" name="action" value="clear">
+            <button class="btn btn-error btn-outline btn-sm gap-2" type="submit">
+                <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
+                Очистить триггеры и кэши ответов
+            </button>
+        </form>
+    </div>
 </div>
 
 {% endblock %}
