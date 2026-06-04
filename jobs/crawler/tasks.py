@@ -56,6 +56,9 @@ def _advisory_lock_namespace(name: str) -> int:
 
 _CRAWL_LOCK_NAMESPACE = _advisory_lock_namespace("vchat:crawl-source")
 _DOCUMENT_INDEX_LOCK_NAMESPACE = _advisory_lock_namespace("vchat:document-index")
+_BOILERPLATE_REBUILD_LOCK_NAMESPACE = _advisory_lock_namespace(
+    "vchat:boilerplate-rebuild"
+)
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
 ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
 REFRESH_PROJECT_INDEX_SCHEDULE_KEY = "vchat:embed:refresh_project_index:scheduled"
@@ -82,6 +85,33 @@ PAGE_SHINGLE_INSERT_BATCH_SIZE = max(
     int(config.get("page_shingle_insert_batch_size", 2000) or 2000),
 )
 _BOILERPLATE_HASH_CACHE: dict[int, frozenset[int]] = {}
+
+
+def _blocked_reason_to_page_status_error(blocked_reason: str) -> str | PageStatusError:
+    if blocked_reason == "robots_txt":
+        return PageStatusError.excluded_robots
+    return blocked_reason
+
+
+def mark_blocked_source_pages_ready(
+    session: Session,
+    *,
+    source_id: int,
+    blocked_reason: str,
+) -> None:
+    session.execute(
+        update(Page)
+        .where(
+            Page.source_id == source_id,
+            Page.status == PageStatus.crawler,
+            Page.status_error.is_(None),
+        )
+        .values(
+            status=PageStatus.ready,
+            status_error=_blocked_reason_to_page_status_error(blocked_reason),
+            last_crawled_at=datetime.now(timezone.utc),
+        )
+    )
 
 
 class PageChunkContext:
@@ -407,6 +437,13 @@ def index_page_inner(session: Session, page_id: int) -> bool:
 
 
 def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(:namespace, :source_id)"),
+        {
+            "namespace": _BOILERPLATE_REBUILD_LOCK_NAMESPACE,
+            "source_id": source_id,
+        },
+    )
     _BOILERPLATE_HASH_CACHE.pop(source_id, None)
     session.execute(sa.delete(PageShingle).where(PageShingle.source_id == source_id))
 
@@ -641,6 +678,20 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
                 )
             ).scalar_one_or_none()
             if source is None:
+                blocked_source = session.execute(
+                    select(Source.id, Source.blocked_reason).where(
+                        Source.id == source_id,
+                        Source.is_paused.is_(False),
+                        Source.blocked_reason.isnot(None),
+                    )
+                ).one_or_none()
+                if blocked_source is not None:
+                    mark_blocked_source_pages_ready(
+                        session,
+                        source_id=blocked_source.id,
+                        blocked_reason=blocked_source.blocked_reason,
+                    )
+                    session.commit()
                 print(f"Source {source_id} is not crawlable, skipping")
                 return
 
@@ -650,24 +701,10 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
             )
             apply_source_blocking_result(source, blocking_result)
             if blocking_result.is_blocked:
-                blocked_status_error = (
-                    PageStatusError.excluded_robots
-                    if blocking_result.reason
-                    and blocking_result.reason.value == "robots_txt"
-                    else blocking_result.reason.value
-                )
-                session.execute(
-                    update(Page)
-                    .where(
-                        Page.source_id == source_id,
-                        Page.status == PageStatus.crawler,
-                        Page.status_error.is_(None),
-                    )
-                    .values(
-                        status=PageStatus.ready,
-                        status_error=blocked_status_error,
-                        last_crawled_at=datetime.now(timezone.utc),
-                    )
+                mark_blocked_source_pages_ready(
+                    session,
+                    source_id=source_id,
+                    blocked_reason=blocking_result.reason.value,
                 )
             session.commit()
             if blocking_result.is_blocked:
@@ -1832,7 +1869,8 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
             print(f"Sitemap fetch skipped (<24h since last check): {sm.url}")
             continue
 
-        status_code, body, etag, location = _fetch_sitemap(sm.url, sm.last_etag)
+        fetch_etag = None if force_page_rehydrate else sm.last_etag
+        status_code, body, etag, location = _fetch_sitemap(sm.url, fetch_etag)
 
         if status_code == 304:
             sm.last_fetched_at = now
@@ -2025,23 +2063,10 @@ def refresh_source_blocking_state(source_id: int) -> bool:
             )
             apply_source_blocking_result(source, result)
             if result.is_blocked:
-                blocked_status_error = (
-                    PageStatusError.excluded_robots
-                    if result.reason and result.reason.value == "robots_txt"
-                    else result.reason.value
-                )
-                session.execute(
-                    update(Page)
-                    .where(
-                        Page.source_id == source_id,
-                        Page.status == PageStatus.crawler,
-                        Page.status_error.is_(None),
-                    )
-                    .values(
-                        status=PageStatus.ready,
-                        status_error=blocked_status_error,
-                        last_crawled_at=datetime.now(timezone.utc),
-                    )
+                mark_blocked_source_pages_ready(
+                    session,
+                    source_id=source_id,
+                    blocked_reason=result.reason.value,
                 )
             source.updated_at = datetime.now(timezone.utc)
             session.commit()

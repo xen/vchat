@@ -330,6 +330,50 @@ class TestCrawlSourceTaskFiltering:
         reserve_mock.assert_not_called()
         run_mock.assert_not_called()
 
+    def test_already_blocked_source_marks_clean_crawler_pages_ready(self):
+        engine_mock = MagicMock()
+        session_mock = MagicMock()
+        session_mock.__enter__ = lambda s: session_mock
+        session_mock.__exit__ = MagicMock(return_value=False)
+
+        execute_calls = []
+
+        def fake_execute(stmt):
+            execute_calls.append(stmt)
+            stmt_text = str(stmt)
+            if "source.blocked_reason IS NULL" in stmt_text:
+                return MagicMock(scalar_one_or_none=lambda: None)
+            if "source.blocked_reason IS NOT NULL" in stmt_text:
+                return MagicMock(
+                    one_or_none=lambda: SimpleNamespace(
+                        id=42,
+                        blocked_reason="robots_txt",
+                    )
+                )
+            return MagicMock()
+
+        session_mock.execute.side_effect = fake_execute
+
+        with (
+            patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
+            patch("jobs.crawler.tasks.Session", return_value=session_mock),
+            patch("jobs.crawler.tasks._reserve_source_crawl_run") as reserve_mock,
+            patch("jobs.crawler.tasks.check_source_blocking") as blocking_mock,
+            patch("jobs.crawler.tasks.subprocess.run") as run_mock,
+        ):
+            from jobs.crawler import tasks as crawler_tasks
+
+            crawler_tasks.crawl_source_task(42)
+
+        reserve_mock.assert_not_called()
+        blocking_mock.assert_not_called()
+        run_mock.assert_not_called()
+        session_mock.commit.assert_called_once()
+        update_stmt = execute_calls[2]
+        params = update_stmt.compile().params
+        assert params["status"] == "ready"
+        assert params["status_error"] == PageStatusError.excluded_robots
+
     def test_blocked_source_marks_clean_crawler_pages_ready(self):
         source = make_source(source_id=42, uri="https://example.com")
         engine_mock = MagicMock()

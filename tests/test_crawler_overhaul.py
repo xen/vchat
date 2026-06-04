@@ -1272,7 +1272,7 @@ class TestSitemapDiscovery:
             datetime_mock.now.return_value = now
             _sync_sitemaps_for_source(session, 1)
 
-        fetch_mock.assert_called_once_with("https://example.com/sitemap.xml", "etag-1")
+        fetch_mock.assert_called_once_with("https://example.com/sitemap.xml", None)
         upsert_pages_mock.assert_called_once()
         assert sitemap.last_fetched_at == now
         assert sitemap.last_etag == "etag-2"
