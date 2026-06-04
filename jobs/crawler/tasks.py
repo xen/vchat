@@ -81,6 +81,7 @@ PAGE_SHINGLE_INSERT_BATCH_SIZE = max(
     100,
     int(config.get("page_shingle_insert_batch_size", 2000) or 2000),
 )
+_BOILERPLATE_HASH_CACHE: dict[int, frozenset[int]] = {}
 
 
 class PageChunkContext:
@@ -140,6 +141,10 @@ def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | Non
 
 
 def load_boilerplate_hashes(session: Session, source_id: int) -> frozenset[int]:
+    cached = _BOILERPLATE_HASH_CACHE.get(source_id)
+    if cached is not None:
+        return cached
+
     total: int = session.execute(
         sa.select(sa.func.count(Page.id)).where(
             Page.source_id == source_id,
@@ -155,7 +160,9 @@ def load_boilerplate_hashes(session: Session, source_id: int) -> frozenset[int]:
         .group_by(PageShingle.shingle_hash)
         .having(sa.func.count(sa.distinct(PageShingle.page_id)) > total * 0.4)
     ).scalars()
-    return frozenset(rows)
+    hashes = frozenset(rows)
+    _BOILERPLATE_HASH_CACHE[source_id] = hashes
+    return hashes
 
 
 def page_shingle_rows(
@@ -187,6 +194,7 @@ def update_page_shingles(
     session.execute(sa.delete(PageShingle).where(PageShingle.page_id == page_id))
     if source_id is None or not content:
         return 0
+    _BOILERPLATE_HASH_CACHE.pop(source_id, None)
 
     rows = page_shingle_rows(page_id=page_id, source_id=source_id, content=content)
     if rows:
@@ -204,6 +212,7 @@ async def async_update_page_shingles(
     await session.execute(sa.delete(PageShingle).where(PageShingle.page_id == page_id))
     if source_id is None or not content:
         return 0
+    _BOILERPLATE_HASH_CACHE.pop(source_id, None)
 
     rows = page_shingle_rows(page_id=page_id, source_id=source_id, content=content)
     if rows:
@@ -350,7 +359,11 @@ def materialize_page_chunks(
         )
 
     mark_page_chunks_current(session, doc)
-    session.execute(sa.update(Page).where(Page.id == doc.id).values(meta=doc.meta))
+    session.execute(
+        sa.update(Page)
+        .where(Page.id == doc.id)
+        .values(status=PageStatus.ready, status_error=None, meta=doc.meta)
+    )
     session.commit()
     session.expunge_all()
     return len(chunks)
@@ -394,6 +407,7 @@ def index_page_inner(session: Session, page_id: int) -> bool:
 
 
 def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
+    _BOILERPLATE_HASH_CACHE.pop(source_id, None)
     session.execute(sa.delete(PageShingle).where(PageShingle.source_id == source_id))
 
     content_result = session.execute(
