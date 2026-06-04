@@ -1141,7 +1141,7 @@ async def project_triggers(request):
             for source in sources:
                 source_patterns = [
                     value.strip()
-                    for value in data.getall(f"source_trigger_rules_{source.id}[]")
+                    for value in data.getall(f"source_trigger_rules_{source.id}[]", [])
                     if value.strip()
                 ]
                 try:
