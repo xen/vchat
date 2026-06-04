@@ -170,9 +170,9 @@
     <div class="max-w-5xl p-5">
         <div class="font-medium">Опасная зона</div>
         <div class="mt-1 text-sm text-base-content/70">
-            Очистка удалит все сгенерированные триггеры и кэши ответов для них.
+            Очистка удалит сгенерированные триггеры и кэши ответов только для источников с правилами триггеров.
         </div>
-        <form class="mt-4" method="POST" action="{{ url('project_triggers') }}" onsubmit="return window.confirm('Очистить все сгенерированные триггеры и кэши ответов?');">
+        <form class="mt-4" method="POST" action="{{ url('project_triggers') }}" onsubmit="return window.confirm('Очистить сгенерированные триггеры и кэши ответов для источников с правилами триггеров?');">
             {{ form.csrf_token }}
             <input type="hidden" name="action" value="clear">
             <button class="btn btn-error btn-outline btn-sm gap-2" type="submit">

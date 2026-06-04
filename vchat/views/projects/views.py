@@ -1096,14 +1096,36 @@ async def project_triggers(request):
             await flash(request, f"Создано триггеров: {created}", "success")
             raise web.HTTPFound(request.app.router["project_triggers"].url_for())
         if action == "clear":
+            sources_with_trigger_rules = list(
+                (await db_session.execute(sa.select(Source))).scalars()
+            )
+            source_ids = [
+                source.id
+                for source in sources_with_trigger_rules
+                if source.config.trigger_rules
+            ]
+            if not source_ids:
+                await flash(request, "Нет источников с правилами триггеров", "info")
+                raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+
+            page_ids = sa.select(Page.id).where(Page.source_id.in_(source_ids))
+            await db_session.execute(
+                sa.delete(TriggerResponseCache).where(
+                    TriggerResponseCache.page_id.in_(page_ids)
+                )
+            )
             await db_session.execute(
                 sa.update(Page)
+                .where(Page.source_id.in_(source_ids))
                 .where(Page.triggers.is_not(None))
                 .values(triggers=None, updated_at=datetime.now(timezone.utc))
             )
-            await db_session.execute(sa.delete(TriggerResponseCache))
             await db_session.commit()
-            await flash(request, "Триггеры и кэши ответов очищены", "success")
+            await flash(
+                request,
+                f"Триггеры и кэши ответов очищены для источников: {len(source_ids)}",
+                "success",
+            )
             raise web.HTTPFound(request.app.router["project_triggers"].url_for())
 
         if form.validate():
