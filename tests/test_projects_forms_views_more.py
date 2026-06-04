@@ -219,6 +219,7 @@ async def test_project_source_settings_post_site_rules(
         download_delay = SimpleNamespace(data=1)
         download_timeout = SimpleNamespace(data=20)
         ignore_robots_txt = SimpleNamespace(data=True)
+        allow_custom_triggers = SimpleNamespace(data=True)
         aws_access_key_id = SimpleNamespace(data="")
         aws_secret_access_key = SimpleNamespace(data="")
         bucket_name = SimpleNamespace(data="")
@@ -256,6 +257,13 @@ async def test_project_source_settings_post_site_rules(
         project_views, "_project_context", lambda _r: SimpleNamespace(id="global")
     )
 
+    async def _apply_source_trigger_rules(*_args):
+        return 0
+
+    monkeypatch.setattr(
+        project_views, "apply_source_trigger_rules", _apply_source_trigger_rules
+    )
+
     with pytest.raises(web.HTTPFound):
         await _raw(project_views.project_source_settings)(req)
     assert db.commits == 1
@@ -264,6 +272,10 @@ async def test_project_source_settings_post_site_rules(
     assert source.config.crawler_download_delay == 1
     assert source.config.crawler_download_timeout == 20
     assert source.config.ignore_robots_txt is True
+    assert source.config.allow_custom_triggers is True
+    assert source.config.trigger_rules == [
+        CrawlerRule(type="regex", value=project_views.DEFAULT_SOURCE_TRIGGER_PATTERN)
+    ]
     assert source.config.rules == [
         *(CrawlerRule(type="param", value=param) for param in DEFAULT_IGNORED_PARAMS),
         CrawlerRule(type="contains", value="/private"),

@@ -2,6 +2,7 @@ import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp import web
 
+from vchat.models import Source
 from vchat.triggers import (
     find_page_by_url,
     load_default_trigger_templates,
@@ -49,6 +50,19 @@ async def widget_triggers_resolve(request):
     title = request.query.get("title", "")
     page = await find_page_by_url(request["db"], page_url)
     if page is not None:
+        source = None
+        if page.source_id:
+            source = await request["db"].scalar(
+                sa.select(Source).where(Source.id == page.source_id)
+            )
+        if not source or not source.config.allow_custom_triggers:
+            return web.json_response(
+                {
+                    "page_id": page.id,
+                    "source": "disabled",
+                    "triggers": [],
+                }
+            )
         triggers = page_trigger_items(page)
         if triggers:
             return web.json_response(

@@ -3,15 +3,41 @@
 
 <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between gap-4">
-        <h1 class="text-lg font-medium">Триггер</h1>
-        <form method="POST" action="{{ url('project_triggers') }}">
-            {{ form.csrf_token }}
-            <input type="hidden" name="action" value="generate">
-            <button class="btn btn-secondary btn-sm gap-2" type="submit">
-                <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
-                Сгенерировать
-            </button>
-        </form>
+        <h1 class="text-lg font-medium">Триггеры</h1>
+        <div class="flex items-center gap-2">
+            <form method="POST" action="{{ url('project_triggers') }}">
+                {{ form.csrf_token }}
+                <input type="hidden" name="action" value="generate">
+                <button class="btn btn-secondary btn-sm gap-2" type="submit">
+                    <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
+                    Сгенерировать
+                </button>
+            </form>
+            <form method="POST" action="{{ url('project_triggers') }}" onsubmit="return window.confirm('Очистить все сгенерированные триггеры и кэши ответов?');">
+                {{ form.csrf_token }}
+                <input type="hidden" name="action" value="clear">
+                <button class="btn btn-error btn-outline btn-sm gap-2" type="submit">
+                    <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
+                    Очистить триггеры и кэши ответов
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="rounded-box border border-base-300 bg-base-100 p-5 text-sm text-base-content/70">
+        <div class="font-medium text-base-content">Как работают триггеры</div>
+        <p class="mt-2">
+            Триггеры генерируются на основании содержимого страницы и показываются рядом с виджетом как контекстное приглашение начать диалог.
+            Они помогают увеличить взаимодействие пользователя с виджетом, потому что связаны с текущей страницей.
+        </p>
+        <p class="mt-2">
+            Если для страницы еще нет сгенерированных триггеров, виджет использует стандартные шаблоны.
+            Сгенерированные триггеры и кэши ответов можно посмотреть на странице информации о странице.
+        </p>
+        <p class="mt-2">
+            Regex-правила определяют, на каких страницах уместно показывать триггеры.
+            Чтобы триггеры начали работать для источника, включите пользовательские триггеры на странице настройки источника.
+        </p>
     </div>
 
     <div class="grid gap-4 md:grid-cols-3">
@@ -63,6 +89,10 @@
                 <div class="font-medium text-base-content">Примеры</div>
                 <ul class="mt-2 list-disc space-y-1 pl-5">
                     <li>
+                        Любые страницы сайта:
+                        <code class="break-all">^/.*</code>
+                    </li>
+                    <li>
                         Любые страницы в блоге:
                         <code class="break-all">^/blog/.*</code>
                     </li>
@@ -100,11 +130,6 @@
                                                     {{ source_display.hint }}
                                                 </div>
                                             {% endif %}
-                                            <button type="button"
-                                                    class="btn btn-outline btn-primary btn-xs mt-2"
-                                                    data-add-trigger-rule="{{ source.id }}">
-                                                Добавить правило
-                                            </button>
                                         </td>
                                     {% endif %}
                                     <td>
@@ -132,13 +157,19 @@
                                 </tr>
                             {% endfor %}
                         {% else %}
-                            <tr>
-                                <td colspan="4" class="text-sm text-base-content/60">Источники пока не добавлены.</td>
+                            <tr data-empty-trigger-rules>
+                                <td colspan="4" class="text-sm text-base-content/60">Правил пока нет.</td>
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            {% if source_options %}
+                <button type="button" class="btn btn-sm btn-outline btn-primary mt-3" data-add-trigger-rule>
+                    <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+                    Добавить правило
+                </button>
+            {% endif %}
         </div>
 
         <div class="mt-6 flex items-center gap-2">
@@ -154,6 +185,47 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const countUrl = {{ url('project_trigger_rule_count')|string|tojson }};
+    const sourceOptions = {{ source_options|tojson }};
+    const tableBody = document.querySelector('table tbody');
+
+    function triggerRuleRows() {
+        return Array.from(document.querySelectorAll('tr.trigger-rule-row'));
+    }
+
+    function toggleEmptyRow() {
+        const emptyRow = document.querySelector('[data-empty-trigger-rules]');
+        if (!emptyRow) return;
+        emptyRow.classList.toggle('hidden', triggerRuleRows().length > 0);
+    }
+
+    function updateRuleInputSource(row) {
+        const select = row.querySelector('[data-trigger-source-select]');
+        const input = row.querySelector('[data-trigger-rule-input]');
+        const sourceId = select?.value || row.getAttribute('data-source-id') || input?.dataset.sourceId || '';
+        row.setAttribute('data-source-id', sourceId);
+        if (input) {
+            input.dataset.sourceId = sourceId;
+            input.name = `source_trigger_rules_${sourceId}[]`;
+        }
+    }
+
+    function bindRuleInput(input) {
+        input.addEventListener('blur', function() {
+            refreshRuleCount(input).catch(function(error) {
+                input.classList.add('input-error');
+                input.title = String(error);
+            });
+        });
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+    }
 
     async function refreshRuleCount(input) {
         const value = input.value.trim();
@@ -184,32 +256,26 @@ document.addEventListener('DOMContentLoaded', function() {
         badge.classList.toggle('hidden', payload.count === null || payload.count === undefined);
     }
 
-    document.querySelectorAll('[data-trigger-rule-input]').forEach(function(input) {
-        input.addEventListener('blur', function() {
-            refreshRuleCount(input).catch(function(error) {
-                input.classList.add('input-error');
-                input.title = String(error);
-            });
-        });
-    });
+    document.querySelectorAll('[data-trigger-rule-input]').forEach(bindRuleInput);
 
     document.querySelectorAll('[data-add-trigger-rule]').forEach(function(button) {
         button.addEventListener('click', function() {
-            const sourceId = button.getAttribute('data-add-trigger-rule');
-            const firstRow = document.querySelector(`tr[data-source-id="${sourceId}"]`);
-            if (!firstRow) return;
-
-            const rows = Array.from(document.querySelectorAll(`tr[data-source-id="${sourceId}"]`));
-            const lastRow = rows[rows.length - 1];
-            const sourceCell = firstRow.querySelector('td[rowspan]');
-            if (sourceCell) {
-                sourceCell.setAttribute('rowspan', String(rows.length + 1));
-            }
+            if (!tableBody || !sourceOptions.length) return;
+            const sourceId = String(sourceOptions[0].id);
+            const selectOptions = sourceOptions.map(function(source) {
+                const label = source.hint ? `${source.name} (${source.hint})` : source.name;
+                return `<option value="${escapeHtml(source.id)}">${escapeHtml(label)}</option>`;
+            }).join('');
 
             const tr = document.createElement('tr');
             tr.className = 'trigger-rule-row align-top';
             tr.setAttribute('data-source-id', sourceId);
             tr.innerHTML = `
+                <td>
+                    <select class="select select-bordered select-sm w-full" data-trigger-source-select>
+                        ${selectOptions}
+                    </select>
+                </td>
                 <td>
                     <input type="text"
                            name="source_trigger_rules_${sourceId}[]"
@@ -230,14 +296,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     </button>
                 </td>
             `;
-            lastRow.after(tr);
+            const emptyRow = document.querySelector('[data-empty-trigger-rules]');
+            if (emptyRow) emptyRow.classList.add('hidden');
+            tableBody.appendChild(tr);
+            const select = tr.querySelector('[data-trigger-source-select]');
             const input = tr.querySelector('input');
-            input?.addEventListener('blur', function() {
-                refreshRuleCount(input).catch(function(error) {
-                    input.classList.add('input-error');
-                    input.title = String(error);
-                });
+            select?.addEventListener('change', function() {
+                updateRuleInputSource(tr);
+                const badge = tr.querySelector('[data-trigger-rule-count]');
+                if (badge) {
+                    badge.classList.add('hidden');
+                    badge.textContent = '';
+                }
             });
+            updateRuleInputSource(tr);
+            if (input) bindRuleInput(input);
             input?.focus();
         });
     });
@@ -249,29 +322,26 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!row) return;
         const sourceId = row.getAttribute('data-source-id');
         const rows = Array.from(document.querySelectorAll(`tr[data-source-id="${sourceId}"]`));
-        if (rows.length === 1) {
-            const input = row.querySelector('input');
-            if (input) input.value = '';
-            const badge = row.querySelector('[data-trigger-rule-count]');
-            if (badge) {
-                badge.classList.add('hidden');
-                badge.textContent = '';
-            }
-            return;
-        }
-        const firstRow = rows[0];
-        const sourceCell = firstRow.querySelector('td[rowspan]');
-        if (row === firstRow && sourceCell) {
-            const nextRow = rows[1];
+        const groupedRows = rows.filter(function(sourceRow) {
+            return !sourceRow.querySelector('[data-trigger-source-select]');
+        });
+        const firstRow = groupedRows[0];
+        const sourceCell = firstRow?.querySelector('td[rowspan]');
+        if (row === firstRow && sourceCell && groupedRows.length > 1) {
+            const nextRow = groupedRows[1];
             nextRow.insertBefore(sourceCell, nextRow.firstElementChild);
         }
         row.remove();
-        const nextRows = Array.from(document.querySelectorAll(`tr[data-source-id="${sourceId}"]`));
+        const nextRows = Array.from(document.querySelectorAll(`tr[data-source-id="${sourceId}"]`)).filter(function(sourceRow) {
+            return !sourceRow.querySelector('[data-trigger-source-select]');
+        });
         const nextSourceCell = nextRows[0]?.querySelector('td[rowspan]');
         if (nextSourceCell) {
             nextSourceCell.setAttribute('rowspan', String(nextRows.length));
         }
+        toggleEmptyRow();
     });
+    toggleEmptyRow();
 });
 </script>
 {% endblock %}

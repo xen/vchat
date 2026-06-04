@@ -81,6 +81,7 @@ from vchat.source_blocking import (
 from vchat.settings import config
 from vchat.page_status import PageStatus, PageStatusError, STATUS_ERROR_DESCRIPTIONS
 from vchat.triggers import (
+    DEFAULT_SOURCE_TRIGGER_PATTERN,
     TRIGGER_DEFAULTS_SETTING,
     TriggerPatternError,
     apply_source_trigger_rules,
@@ -636,6 +637,15 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         raise web.HTTPNotFound()
     document_links = await _document_link_groups(db, document)
     document_display_title = _display_document_title(document.title, document.uri)
+    document_source = None
+    document_triggers_enabled = False
+    if document.source_id:
+        document_source = await db.scalar(
+            sa.select(Source).where(Source.id == document.source_id)
+        )
+        document_triggers_enabled = bool(
+            document_source and document_source.config.allow_custom_triggers
+        )
 
     chunk_rows = (
         (
@@ -662,7 +672,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         else {}
     )
     uniqueness_percent = await _load_document_uniqueness_percent(db, document)
-    trigger_rows = page_trigger_items(document)
+    trigger_rows = page_trigger_items(document) if document_triggers_enabled else []
     trigger_keys = [trigger["key"] for trigger in trigger_rows]
     cache_rows = []
     if trigger_keys:
@@ -715,6 +725,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
             document_display_title,
             document_links,
         ),
+        "document_triggers_enabled": document_triggers_enabled,
         "document_triggers": document_triggers,
     }
 
@@ -909,6 +920,20 @@ def _source_trigger_display(source: Source) -> dict[str, str]:
     return {"name": title, "hint": host, "full_uri": source.uri or ""}
 
 
+def _default_source_trigger_rules() -> list[CrawlerRule]:
+    return [CrawlerRule(type="regex", value=DEFAULT_SOURCE_TRIGGER_PATTERN)]
+
+
+def _source_trigger_rules_for_save(
+    cfg: SourceConfig, *, allow_custom_triggers: bool
+) -> list[CrawlerRule]:
+    if cfg.trigger_rules:
+        return list(cfg.trigger_rules)
+    if allow_custom_triggers:
+        return _default_source_trigger_rules()
+    return []
+
+
 async def _count_source_trigger_pattern(
     db_session: Any,
     *,
@@ -945,7 +970,17 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
         ).scalars()
     )
     source_trigger_rows = []
+    source_options = []
     for source in sources:
+        display = _source_trigger_display(source)
+        source_options.append(
+            {
+                "id": source.id,
+                "name": display["name"],
+                "hint": display["hint"],
+                "full_uri": display["full_uri"],
+            }
+        )
         rule_rows = []
         for rule in source.config.trigger_rules:
             rule_rows.append(
@@ -959,11 +994,11 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
                 }
             )
         if not rule_rows:
-            rule_rows.append({"rule": None, "affected_count": None})
+            continue
         source_trigger_rows.append(
             {
                 "source": source,
-                "source_display": _source_trigger_display(source),
+                "source_display": display,
                 "rule_rows": rule_rows,
             }
         )
@@ -997,6 +1032,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
         "active_section": str(request.app.router["project_triggers"].url_for()),
         "form": form,
         "source_trigger_rows": source_trigger_rows,
+        "source_options": source_options,
         "stats": {
             "total_triggers": int(total_triggers or 0),
             "pages_with_triggers": int(pages_with_triggers or 0),
@@ -1037,7 +1073,7 @@ async def _generate_missing_triggers(request: web.Request) -> int:
     return created
 
 
-@meta(title="Триггер")
+@meta(title="Триггеры")
 @login_required()
 @aiohttp_jinja2.template("projects/triggers.html")
 async def project_triggers(request):
@@ -1058,6 +1094,16 @@ async def project_triggers(request):
             created = await _generate_missing_triggers(request)
             await db_session.commit()
             await flash(request, f"Создано триггеров: {created}", "success")
+            raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+        if action == "clear":
+            await db_session.execute(
+                sa.update(Page)
+                .where(Page.triggers.is_not(None))
+                .values(triggers=None, updated_at=datetime.now(timezone.utc))
+            )
+            await db_session.execute(sa.delete(TriggerResponseCache))
+            await db_session.commit()
+            await flash(request, "Триггеры и кэши ответов очищены", "success")
             raise web.HTTPFound(request.app.router["project_triggers"].url_for())
 
         if form.validate():
@@ -1087,6 +1133,7 @@ async def project_triggers(request):
                     crawler_download_delay=cfg.crawler_download_delay,
                     crawler_download_timeout=cfg.crawler_download_timeout,
                     ignore_robots_txt=cfg.ignore_robots_txt,
+                    allow_custom_triggers=cfg.allow_custom_triggers,
                     rules=cfg.rules,
                     trigger_rules=[
                         CrawlerRule(type="regex", value=pattern)
@@ -1338,6 +1385,7 @@ async def project_source_settings(request):
             "download_delay": cfg.crawler_download_delay,
             "download_timeout": cfg.crawler_download_timeout,
             "ignore_robots_txt": cfg.ignore_robots_txt,
+            "allow_custom_triggers": cfg.allow_custom_triggers,
         }
 
     form = forms.SourceSettingsForm(**form_kwargs)
@@ -1370,8 +1418,12 @@ async def project_source_settings(request):
                 else DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
             ),
             ignore_robots_txt=bool(form.ignore_robots_txt.data),
+            allow_custom_triggers=bool(form.allow_custom_triggers.data),
             rules=rules,
-            trigger_rules=current_cfg.trigger_rules,
+            trigger_rules=_source_trigger_rules_for_save(
+                current_cfg,
+                allow_custom_triggers=bool(form.allow_custom_triggers.data),
+            ),
         )
         if source.config.ignore_robots_txt:
             if source.blocked_reason == "robots_txt":
@@ -1379,6 +1431,8 @@ async def project_source_settings(request):
                 source.blocked_message = None
                 source.blocked_checked_at = None
             source.robots_cache = None
+
+        await apply_source_trigger_rules(db_session, source)
 
         await db_session.commit()
         reapply_source_rules_task.delay(source.id)
@@ -1888,6 +1942,7 @@ async def project_action(request):
             crawler_download_delay=cfg.crawler_download_delay,
             crawler_download_timeout=cfg.crawler_download_timeout,
             ignore_robots_txt=cfg.ignore_robots_txt,
+            allow_custom_triggers=cfg.allow_custom_triggers,
             rules=rules,
             trigger_rules=cfg.trigger_rules,
         )

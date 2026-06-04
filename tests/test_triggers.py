@@ -8,9 +8,10 @@ from vchat.triggers import (
     trigger_prompt_hash,
     trigger_rule_url_part,
     trigger_rules_match_url,
+    source_trigger_rules_match_url,
     validate_trigger_pattern,
 )
-from vchat.models.source_config import CrawlerRule
+from vchat.models.source_config import CrawlerRule, SourceConfig
 
 
 def test_render_default_triggers_substitutes_title_and_dedupes():
@@ -90,6 +91,30 @@ def test_trigger_rules_match_url_rejects_other_source_domains():
             "https://other.example.com/docs/page",
             rules,
             source_url="https://example.com/",
+        )
+        is False
+    )
+
+
+def test_source_trigger_rules_match_url_requires_enabled_source():
+    class SourceStub:
+        uri = "https://example.com/"
+
+        def __init__(self, enabled):
+            self.config = SourceConfig(
+                allow_custom_triggers=enabled,
+                trigger_rules=[CrawlerRule(type="regex", value=r"^/docs/")],
+            )
+
+    assert (
+        source_trigger_rules_match_url(
+            SourceStub(True), "https://example.com/docs/page"
+        )
+        is True
+    )
+    assert (
+        source_trigger_rules_match_url(
+            SourceStub(False), "https://example.com/docs/page"
         )
         is False
     )

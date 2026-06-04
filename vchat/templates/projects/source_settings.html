@@ -294,6 +294,16 @@
                     </label>
                 </div>
 
+                <div class="form-control w-full">
+                    <label class="label cursor-pointer justify-start gap-3">
+                        {{ form.allow_custom_triggers }}
+                        <span class="label-text">{{ form.allow_custom_triggers.label.text }}</span>
+                    </label>
+                    <label class="label">
+                        <span class="label-text-alt">{{ _('Во время работы пользователя на странице сайта рядом с виджетом будет появляться приглашение начать диалог.') }}</span>
+                    </label>
+                </div>
+
                 <div class="pt-2 flex items-center gap-2">
                     <button type="submit" class="btn btn-primary">{{ _('Сохранить') }}</button>
                     <a class="btn btn-ghost" href="{{ url('project_edit_sources') }}">{{ _('Отмена') }}</a>

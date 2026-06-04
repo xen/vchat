@@ -30,6 +30,7 @@
 
     {% include "projects/document_content.html" %}
 
+    {% if document_triggers_enabled %}
     <div class="rounded-box border border-base-300 bg-base-100 p-5">
         <div class="flex items-center justify-between gap-3">
             <h2 class="font-medium">Триггеры</h2>
@@ -82,6 +83,7 @@
             <div class="mt-4 text-sm text-base-content/60">Для этой страницы пока нет сгенерированных триггеров.</div>
         {% endif %}
     </div>
+    {% endif %}
 </div>
 
 {% endblock %}

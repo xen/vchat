@@ -32,6 +32,7 @@ TRIGGER_DEFAULTS_SETTING = "triggers.default_templates"
 TRIGGER_GENERATION_LIMIT = 10
 TRIGGER_CONTENT_CHARS = 8000
 TRIGGER_RULE_MAX_LENGTH = 256
+DEFAULT_SOURCE_TRIGGER_PATTERN = "^/.*"
 UNSUPPORTED_TRIGGER_REGEX_TOKENS = (
     "(?=",
     "(?!",
@@ -207,6 +208,8 @@ def trigger_pattern_matches_url(raw_url: str, pattern: str) -> bool:
 
 
 def source_trigger_rules_match_url(source: Source, raw_url: str) -> bool:
+    if not source.config.allow_custom_triggers:
+        return False
     return trigger_rules_match_url(
         raw_url, source.config.trigger_rules, source_url=source.uri
     )
