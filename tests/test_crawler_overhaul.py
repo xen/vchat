@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -1197,10 +1198,13 @@ class TestSitemapDiscovery:
         source_rows_result.all.return_value = [(1, "https://example.com")]
         sitemaps_result = MagicMock()
         sitemaps_result.scalars.return_value.all.return_value = [sitemap]
+        source_page_count_result = MagicMock()
+        source_page_count_result.scalar_one.return_value = 1
         session.execute.side_effect = [
             source_result,
             source_rows_result,
             sitemaps_result,
+            source_page_count_result,
         ]
 
         with (
@@ -1211,6 +1215,68 @@ class TestSitemapDiscovery:
             _sync_sitemaps_for_source(session, 1)
 
         fetch_mock.assert_not_called()
+
+    def test_sync_sitemaps_rehydrates_pages_when_source_has_no_pages(self):
+        from jobs.crawler.tasks import _sync_sitemaps_for_source
+
+        now = datetime(2026, 6, 3, 12, 0, tzinfo=timezone.utc)
+        body = b"""<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://example.com/page</loc></url>
+        </urlset>
+        """
+        content_hash = hashlib.sha256(body).hexdigest()
+        session = MagicMock()
+        source = SimpleNamespace(
+            id=1,
+            uri="https://example.com",
+            config=SimpleNamespace(rules=[]),
+        )
+        sitemap = SimpleNamespace(
+            url="https://example.com/sitemap.xml",
+            source_id=1,
+            is_excluded=False,
+            last_fetched_at=now - timedelta(hours=23),
+            last_etag="etag-1",
+            last_content_hash=content_hash,
+            ignore_reason=None,
+            url_count=None,
+        )
+
+        source_result = MagicMock()
+        source_result.scalar_one_or_none.return_value = source
+        source_rows_result = MagicMock()
+        source_rows_result.all.return_value = [(1, "https://example.com")]
+        sitemaps_result = MagicMock()
+        sitemaps_result.scalars.return_value.all.return_value = [sitemap]
+        source_page_count_result = MagicMock()
+        source_page_count_result.scalar_one.return_value = 0
+        session.execute.side_effect = [
+            source_result,
+            source_rows_result,
+            sitemaps_result,
+            source_page_count_result,
+        ]
+
+        with (
+            patch("jobs.crawler.tasks.datetime") as datetime_mock,
+            patch(
+                "jobs.crawler.tasks._fetch_sitemap",
+                return_value=(200, body, "etag-2", None),
+            ) as fetch_mock,
+            patch(
+                "jobs.crawler.tasks._upsert_sitemap_pages",
+                return_value=set(),
+            ) as upsert_pages_mock,
+        ):
+            datetime_mock.now.return_value = now
+            _sync_sitemaps_for_source(session, 1)
+
+        fetch_mock.assert_called_once_with("https://example.com/sitemap.xml", "etag-1")
+        upsert_pages_mock.assert_called_once()
+        assert sitemap.last_fetched_at == now
+        assert sitemap.last_etag == "etag-2"
+        assert sitemap.url_count == 1
 
     def test_sync_sitemaps_fetches_again_after_24_hours(self):
         from jobs.crawler.tasks import _sync_sitemaps_for_source
@@ -1239,10 +1305,13 @@ class TestSitemapDiscovery:
         source_rows_result.all.return_value = [(1, "https://example.com")]
         sitemaps_result = MagicMock()
         sitemaps_result.scalars.return_value.all.return_value = [sitemap]
+        source_page_count_result = MagicMock()
+        source_page_count_result.scalar_one.return_value = 1
         session.execute.side_effect = [
             source_result,
             source_rows_result,
             sitemaps_result,
+            source_page_count_result,
         ]
 
         body = b"""<?xml version="1.0" encoding="UTF-8"?>

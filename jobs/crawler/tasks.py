@@ -1805,6 +1805,10 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
         print(f"No active sitemaps for source {source_id}")
         return
 
+    source_page_count = session.execute(
+        select(func.count(Page.id)).where(Page.source_id == source_id)
+    ).scalar_one()
+    force_page_rehydrate = source_page_count == 0
     prioritized_urls: set[str] = set()
     pending_sitemaps = list(sitemaps)
     seen_sitemaps: set[str] = set()
@@ -1824,7 +1828,7 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
         now = datetime.now(timezone.utc)
         if sm.last_fetched_at is not None and sm.last_fetched_at > now - timedelta(
             days=1
-        ):
+        ) and not force_page_rehydrate:
             print(f"Sitemap fetch skipped (<24h since last check): {sm.url}")
             continue
 
@@ -1863,8 +1867,7 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
             sm.last_fetched_at = now
             if etag:
                 sm.last_etag = etag
-            print(f"Sitemap hash unchanged: {sm.url}")
-            continue
+            print(f"Sitemap hash unchanged, rehydrating pages: {sm.url}")
 
         document_kind, parsed_entries = _parse_sitemap_document(body)
         if document_kind == "sitemapindex":
