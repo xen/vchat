@@ -973,14 +973,15 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
     source_options = []
     for source in sources:
         display = _source_trigger_display(source)
-        source_options.append(
-            {
-                "id": source.id,
-                "name": display["name"],
-                "hint": display["hint"],
-                "full_uri": display["full_uri"],
-            }
-        )
+        if source.config.allow_custom_triggers:
+            source_options.append(
+                {
+                    "id": source.id,
+                    "name": display["name"],
+                    "hint": display["hint"],
+                    "full_uri": display["full_uri"],
+                }
+            )
         rule_rows = []
         for rule in source.config.trigger_rules:
             rule_rows.append(
