@@ -57,18 +57,18 @@
                 <h2 class="font-medium">Regex-правила страниц</h2>
             </div>
             <label class="label">
-                <span class="label-text-alt">Правила хранятся в настройках источника. Одна include-regex строка на правило, без lookaround, backreference и вложенных повторов.</span>
+                <span class="label-text-alt">Правила хранятся в настройках источника и проверяются только по пути страницы внутри домена: path + query. Одна include-regex строка на правило, без lookaround, backreference и вложенных повторов.</span>
             </label>
             <div class="mb-4 text-sm text-base-content/70">
                 <div class="font-medium text-base-content">Примеры</div>
                 <ul class="mt-2 list-disc space-y-1 pl-5">
                     <li>
                         Любые страницы в блоге:
-                        <code class="break-all">^https://www\.example\.com/blog/.*</code>
+                        <code class="break-all">^/blog/.*</code>
                     </li>
                     <li>
                         Продукты с числовым id:
-                        <code class="break-all">^https://www\.example\.com/product\?id=[0-9]+$</code>
+                        <code class="break-all">^/product\?id=[0-9]+$</code>
                     </li>
                 </ul>
             </div>
@@ -105,7 +105,7 @@
                                                name="source_trigger_rules_{{ source.id }}[]"
                                                value="{{ rule.value if rule else '' }}"
                                                class="input input-bordered input-sm w-full font-mono"
-                                               placeholder="^https://example.com/docs/"
+                                               placeholder="^/docs/.*"
                                                data-trigger-rule-input
                                                data-source-id="{{ source.id }}">
                                     </td>
@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <input type="text"
                            name="source_trigger_rules_${sourceId}[]"
                            class="input input-bordered input-sm w-full font-mono"
-                           placeholder="^https://example.com/docs/"
+                           placeholder="^/docs/.*"
                            data-trigger-rule-input
                            data-source-id="${sourceId}">
                 </td>

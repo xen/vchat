@@ -89,6 +89,7 @@ from vchat.triggers import (
     load_default_trigger_templates,
     page_trigger_items,
     trigger_pattern_matches_url,
+    trigger_rule_url_part,
     validate_trigger_pattern,
 )
 from vchat.utils import admin_event, flash, login_required, meta
@@ -902,7 +903,7 @@ def _compile_trigger_patterns(patterns: list[str]) -> None:
 async def _count_source_trigger_pattern(
     db_session: Any,
     *,
-    source_id: int,
+    source: Source,
     pattern: str,
 ) -> int:
     validate_trigger_pattern(pattern)
@@ -912,11 +913,17 @@ async def _count_source_trigger_pattern(
     rows = (
         await db_session.execute(
             sa.select(Page.uri)
-            .where(Page.source_id == source_id)
+            .where(Page.source_id == source.id)
             .where(Page.uri.is_not(None))
         )
     ).scalars()
-    return sum(1 for uri in rows if trigger_pattern_matches_url(uri or "", value))
+    return sum(
+        1
+        for uri in rows
+        if trigger_pattern_matches_url(
+            trigger_rule_url_part(source.uri, uri or ""), value
+        )
+    )
 
 
 async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
@@ -937,7 +944,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
                     "rule": rule,
                     "affected_count": await _count_source_trigger_pattern(
                         db_session,
-                        source_id=source.id,
+                        source=source,
                         pattern=rule.value,
                     ),
                 }
@@ -1104,14 +1111,14 @@ async def project_trigger_rule_count(request):
     if not pattern:
         return web.json_response({"ok": True, "count": None})
 
-    source = await db_session.scalar(sa.select(Source.id).where(Source.id == source_id))
+    source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
     if source is None:
         raise web.HTTPNotFound(text="Source not found")
 
     try:
         count = await _count_source_trigger_pattern(
             db_session,
-            source_id=source_id,
+            source=source,
             pattern=pattern,
         )
     except (TriggerPatternError, re.error) as exc:

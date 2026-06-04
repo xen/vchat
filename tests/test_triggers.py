@@ -6,6 +6,7 @@ from vchat.triggers import (
     trigger_key,
     trigger_pattern_matches_url,
     trigger_prompt_hash,
+    trigger_rule_url_part,
     trigger_rules_match_url,
     validate_trigger_pattern,
 )
@@ -61,10 +62,54 @@ def test_trigger_prompt_hash_is_stable():
 
 
 def test_trigger_rules_match_url_uses_source_regex_rules():
-    rules = [CrawlerRule(type="regex", value=r"^https://example.com/docs/")]
+    rules = [CrawlerRule(type="regex", value=r"^/docs/")]
 
-    assert trigger_rules_match_url("https://example.com/docs/page#part", rules) is True
-    assert trigger_rules_match_url("https://example.com/blog/page", rules) is False
+    assert (
+        trigger_rules_match_url(
+            "https://example.com/docs/page#part",
+            rules,
+            source_url="https://example.com/",
+        )
+        is True
+    )
+    assert (
+        trigger_rules_match_url(
+            "https://example.com/blog/page",
+            rules,
+            source_url="https://example.com/",
+        )
+        is False
+    )
+
+
+def test_trigger_rules_match_url_rejects_other_source_domains():
+    rules = [CrawlerRule(type="regex", value=r"^/docs/")]
+
+    assert (
+        trigger_rules_match_url(
+            "https://other.example.com/docs/page",
+            rules,
+            source_url="https://example.com/",
+        )
+        is False
+    )
+
+
+def test_trigger_rule_url_part_uses_path_and_query_inside_source_domain():
+    assert (
+        trigger_rule_url_part(
+            "https://www.example.com/",
+            "https://www.example.com/product?id=42#buy",
+        )
+        == "/product?id=42"
+    )
+    assert (
+        trigger_rule_url_part(
+            "https://www.example.com/",
+            "https://other.example.com/product?id=42",
+        )
+        == ""
+    )
 
 
 def test_validate_trigger_pattern_rejects_expensive_or_negative_constructs():
@@ -79,15 +124,15 @@ def test_validate_trigger_pattern_rejects_expensive_or_negative_constructs():
 def test_trigger_pattern_matches_url_accepts_simple_numeric_product_rule():
     assert (
         trigger_pattern_matches_url(
-            "https://www.example.com/product?id=42",
-            r"^https://www\.example\.com/product\?id=[0-9]+$",
+            "/product?id=42",
+            r"^/product\?id=[0-9]+$",
         )
         is True
     )
     assert (
         trigger_pattern_matches_url(
-            "https://www.example.com/product?id=abc",
-            r"^https://www\.example\.com/product\?id=[0-9]+$",
+            "/product?id=abc",
+            r"^/product\?id=[0-9]+$",
         )
         is False
     )

@@ -4,7 +4,7 @@ import hashlib
 import re
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urldefrag
+from urllib.parse import urldefrag, urlsplit
 
 import aiohttp
 import sqlalchemy as sa
@@ -151,14 +151,32 @@ def build_page_trigger_items(texts: list[str], *, source: str) -> list[dict[str,
     return result
 
 
-def trigger_rules_match_url(raw_url: str, rules: list[CrawlerRule]) -> bool:
+def trigger_rule_url_part(source_url: str, raw_url: str) -> str:
+    source = urlsplit(canonical_page_url(source_url))
+    target = urlsplit((raw_url or "").strip())
+    if not target.netloc:
+        return ""
+    if source.netloc and target.netloc != source.netloc:
+        return ""
+    path = target.path or "/"
+    if target.query:
+        return f"{path}?{target.query}"
+    return path
+
+
+def trigger_rules_match_url(
+    raw_url: str, rules: list[CrawlerRule], *, source_url: str = ""
+) -> bool:
     url = canonical_page_url(raw_url)
     if not url:
+        return False
+    target_url = trigger_rule_url_part(source_url, raw_url) if source_url else url
+    if not target_url:
         return False
     patterns = [rule.value for rule in rules if rule.type == "regex" and rule.value]
     if not patterns:
         return False
-    return any(trigger_pattern_matches_url(url, pattern) for pattern in patterns)
+    return any(trigger_pattern_matches_url(target_url, pattern) for pattern in patterns)
 
 
 def validate_trigger_pattern(pattern: str) -> None:
@@ -182,14 +200,16 @@ def validate_trigger_pattern(pattern: str) -> None:
 
 def trigger_pattern_matches_url(raw_url: str, pattern: str) -> bool:
     validate_trigger_pattern(pattern)
-    url = canonical_page_url(raw_url)
+    url = raw_url.strip() if raw_url.startswith("/") else canonical_page_url(raw_url)
     if not url or not pattern.strip():
         return False
     return bool(re.search(pattern.strip(), url))
 
 
 def source_trigger_rules_match_url(source: Source, raw_url: str) -> bool:
-    return trigger_rules_match_url(raw_url, source.config.trigger_rules)
+    return trigger_rules_match_url(
+        raw_url, source.config.trigger_rules, source_url=source.uri
+    )
 
 
 async def apply_source_trigger_rules(db, source: Source) -> int:
