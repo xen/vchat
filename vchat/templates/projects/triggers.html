@@ -154,12 +154,13 @@
                     </tbody>
                 </table>
             </div>
-            {% if source_options %}
-                <button type="button" class="btn btn-sm btn-outline btn-primary mt-3" data-add-trigger-rule>
-                    <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-                    Добавить правило
-                </button>
-            {% endif %}
+            <button type="button"
+                    class="btn btn-sm btn-outline btn-primary mt-3"
+                    data-add-trigger-rule
+                    {% if not source_options %}disabled title="Сначала включите пользовательские триггеры в настройках источника"{% endif %}>
+                <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+                Добавить правило
+            </button>
         </div>
 
         <div class="mt-6 flex items-center gap-2">
