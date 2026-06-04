@@ -170,7 +170,8 @@ def test_is_boilerplate_block_threshold_50_percent() -> None:
 class _WordTokenizer:
     """Whitespace-word tokenizer for tests (no model required)."""
 
-    def __call__(self, text, add_special_tokens=False, truncation=False):
+    def __call__(self, text, add_special_tokens=False, truncation=False, verbose=True):
+        _ = add_special_tokens, truncation, verbose
         return {"input_ids": text.split()}
 
     def decode(self, ids, skip_special_tokens=True, clean_up_tokenization_spaces=False):
@@ -183,12 +184,14 @@ def make_fake_model():
 
 def test_chunk_document_text_skips_boilerplate_blocks(monkeypatch) -> None:
     """Blocks whose trigrams are fully in boilerplate_hashes must be excluded."""
-    from jobs.embedder import tasks
+    from jobs.embedder import chunking as embedding_chunking
 
-    monkeypatch.setattr(tasks, "get_embed_model", make_fake_model)
-    monkeypatch.setattr(tasks, "EMBEDDING_CHUNK_MAX_TOKENS", 200)
-    monkeypatch.setattr(tasks, "EMBEDDING_CHUNK_OVERLAP_TOKENS", 0)
-    monkeypatch.setattr(tasks, "EMBEDDING_CHUNK_MAX_CHARS", 10000)
+    monkeypatch.setattr(
+        embedding_chunking, "get_embed_tokenizer", lambda: _WordTokenizer()
+    )
+    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_TOKENS", 200)
+    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_OVERLAP_TOKENS", 0)
+    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_CHARS", 10000)
 
     boilerplate_block = "навигация главная страница контакты о нас услуги"
     content_block = "михаил кашкин консультирует стартапы и обучает программированию"
@@ -197,14 +200,14 @@ def test_chunk_document_text_skips_boilerplate_blocks(monkeypatch) -> None:
     boilerplate_hashes = compute_trigram_hashes(boilerplate_block)
 
     # Without filter: both blocks produce chunks
-    chunks_unfiltered = tasks.chunk_document_text(text)
+    chunks_unfiltered = embedding_chunking.chunk_document_text(text)
     texts_unfiltered = [c.text for c in chunks_unfiltered]
     assert any(boilerplate_block in t for t in texts_unfiltered), (
         "Without filter, boilerplate block should appear in chunks"
     )
 
     # With filter: boilerplate block must be absent
-    chunks_filtered = tasks.chunk_document_text(
+    chunks_filtered = embedding_chunking.chunk_document_text(
         text, boilerplate_hashes=boilerplate_hashes
     )
     texts_filtered = [c.text for c in chunks_filtered]
@@ -218,16 +221,20 @@ def test_chunk_document_text_skips_boilerplate_blocks(monkeypatch) -> None:
 
 def test_chunk_document_text_no_filter_when_hashes_empty(monkeypatch) -> None:
     """Empty boilerplate_hashes → no blocks dropped."""
-    from jobs.embedder import tasks
+    from jobs.embedder import chunking as embedding_chunking
 
-    monkeypatch.setattr(tasks, "get_embed_model", make_fake_model)
-    monkeypatch.setattr(tasks, "EMBEDDING_CHUNK_MAX_TOKENS", 200)
-    monkeypatch.setattr(tasks, "EMBEDDING_CHUNK_OVERLAP_TOKENS", 0)
-    monkeypatch.setattr(tasks, "EMBEDDING_CHUNK_MAX_CHARS", 10000)
+    monkeypatch.setattr(
+        embedding_chunking, "get_embed_tokenizer", lambda: _WordTokenizer()
+    )
+    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_TOKENS", 200)
+    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_OVERLAP_TOKENS", 0)
+    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_CHARS", 10000)
 
     text = "## A\nнавигация главная страница контакты о нас\n## B\nуникальный контент страницы"
-    chunks_no_filter = tasks.chunk_document_text(text, boilerplate_hashes=None)
-    chunks_empty_filter = tasks.chunk_document_text(
+    chunks_no_filter = embedding_chunking.chunk_document_text(
+        text, boilerplate_hashes=None
+    )
+    chunks_empty_filter = embedding_chunking.chunk_document_text(
         text, boilerplate_hashes=frozenset()
     )
     assert len(chunks_no_filter) == len(chunks_empty_filter)
@@ -244,7 +251,6 @@ def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
 
     inserted_batches: list[list[dict[str, int]]] = []
     deleted_source_id: list[int] = []
-    rollbacks = []
 
     class FakeResult:
         def scalars(self):
@@ -255,8 +261,8 @@ def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
             nav = "навигация главная страница контакты о нас услуги"
             return iter(
                 [
-                f"{nav}\nУникальное содержание первой страницы автора блога",
-                f"{nav}\nДругое уникальное содержание второй страницы сайта",
+                    (1, f"{nav}\nУникальное содержание первой страницы автора блога"),
+                    (2, f"{nav}\nДругое уникальное содержание второй страницы сайта"),
                 ]
             )
 
@@ -272,10 +278,6 @@ def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
                 inserted_batches.append(list(params or []))
                 return None
             return FakeResult()
-
-        def rollback(self):
-            rollbacks.append(True)
-            self._in_transaction = False
 
         def in_transaction(self):
             return self._in_transaction
@@ -320,15 +322,73 @@ def test_rebuild_boilerplate_for_source_counts_shingles() -> None:
 
     added = [item for batch in inserted_batches for item in batch]
 
-    # Some shingles from the navigation block appear in both pages → count = 2
+    # Some shingles from the navigation block appear in both pages.
     nav_hashes = compute_trigram_hashes(
         "навигация главная страница контакты о нас услуги"
     )
     nav_in_added = [row for row in added if row["shingle_hash"] in nav_hashes]
-    assert any(row["count"] == 2 for row in nav_in_added), (
-        "Navigation trigrams must have count=2 (appear in both pages)"
+    assert any(
+        len({row["page_id"] for row in nav_in_added if row["shingle_hash"] == h}) == 2
+        for h in nav_hashes
+    ), (
+        "Navigation trigrams must be stored for both pages"
     )
 
     # Total distinct shingles must match what was added
-    assert count == len(added)
-    assert rollbacks == [True]
+    assert count == len({row["shingle_hash"] for row in added})
+
+
+def test_update_page_shingles_replaces_single_page_rows() -> None:
+    """update_page_shingles clears one page and writes current page shingles."""
+    from jobs.crawler.tasks import update_page_shingles
+
+    executed: list[tuple[str, list[dict[str, int]] | None]] = []
+
+    class FakeSession:
+        def execute(self, stmt, params=None):
+            if hasattr(stmt, "is_delete") and stmt.is_delete:
+                executed.append(("delete", None))
+                return None
+            if hasattr(stmt, "is_insert") and stmt.is_insert:
+                executed.append(("insert", list(params or [])))
+                return None
+            raise AssertionError(f"Unexpected statement: {stmt}")
+
+    def fake_delete(table):
+        class Stmt:
+            is_delete = True
+
+            def where(self, *args):
+                return self
+
+        return Stmt()
+
+    def fake_insert(table):
+        class Stmt:
+            is_insert = True
+
+        return Stmt()
+
+    import jobs.crawler.tasks as tasks_module
+
+    original_sa_delete = tasks_module.sa.delete
+    original_sa_insert = tasks_module.sa.insert
+    tasks_module.sa.delete = fake_delete
+    tasks_module.sa.insert = fake_insert
+    try:
+        count = update_page_shingles(
+            FakeSession(),
+            page_id=7,
+            source_id=3,
+            content="общая навигация главная страница контакты услуги поддержка",
+        )
+    finally:
+        tasks_module.sa.delete = original_sa_delete
+        tasks_module.sa.insert = original_sa_insert
+
+    assert executed[0] == ("delete", None)
+    inserted = executed[1][1]
+    assert inserted
+    assert count == len(inserted)
+    assert {row["page_id"] for row in inserted} == {7}
+    assert {row["source_id"] for row in inserted} == {3}

@@ -19,7 +19,9 @@ from aiohttp import web
 from aiohttp_session import get_session
 from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
 from passlib.context import CryptContext
-from sqlalchemy.orm import aliased
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import aliased, defer
+from sqlalchemy.orm.attributes import set_committed_value
 
 from jobs.crawler import (
     crawl_page_task,
@@ -28,6 +30,7 @@ from jobs.crawler import (
     sitemap_sync_task,
 )
 from jobs.crawler.tasks import (
+    async_update_page_shingles,
     index_project,
     load_boilerplate_hashes,
     refresh_source_index,
@@ -46,6 +49,7 @@ from vchat.ai_providers import (
 from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
+from vchat.document_content import document_too_big_message, is_document_too_big
 from vchat.document_shingles import compute_trigram_hashes
 from vchat.i18n import _
 from vchat.models import (
@@ -101,6 +105,7 @@ from . import forms
 
 logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
+DOCUMENT_CONTENT_PREVIEW_CHARS = 2000
 
 __all__ = [
     "index",
@@ -175,16 +180,20 @@ def _format_bytes_compact(size_bytes: int) -> str:
     return f"{size_bytes / (1024 * 1024 * 1024):.1f} ГБ"
 
 
-def _document_content_size_bytes(document: Page) -> int:
+def _document_content_size_bytes(
+    document: Page, content_size_bytes: int | None = None
+) -> int:
+    if content_size_bytes is not None:
+        return int(content_size_bytes or 0)
     if document.content:
         return len(document.content.encode("utf-8"))
     return int(getattr(document, "_length", 0) or 0)
 
 
 def _document_uniqueness_percent(
-    document: Page, boilerplate_hashes: frozenset[int]
+    content: str, boilerplate_hashes: frozenset[int]
 ) -> int | None:
-    content = (document.content or "").strip()
+    content = (content or "").strip()
     if not content:
         return None
 
@@ -203,12 +212,12 @@ async def _load_document_uniqueness_percent(db: Any, document: Page) -> int | No
     if not document.content:
         return None
     if not document.source_id:
-        return _document_uniqueness_percent(document, frozenset())
+        return _document_uniqueness_percent(document.content, frozenset())
 
     boilerplate_hashes = await db.run_sync(
         lambda sync_db: load_boilerplate_hashes(sync_db, document.source_id)
     )
-    return _document_uniqueness_percent(document, boilerplate_hashes)
+    return _document_uniqueness_percent(document.content, boilerplate_hashes)
 
 
 def _document_stats_summary(
@@ -216,9 +225,12 @@ def _document_stats_summary(
     chunk_rows: list[Chunk],
     extraction: dict[str, Any],
     uniqueness_percent: int | None,
+    content_size_bytes: int | None = None,
 ) -> str:
     parts = [
-        _format_bytes_compact(_document_content_size_bytes(document)),
+        _format_bytes_compact(
+            _document_content_size_bytes(document, content_size_bytes)
+        ),
         f"{len(chunk_rows)} чанков",
         f"{int(extraction.get('word_count') or 0)} слов",
         f"{int(extraction.get('table_count') or 0)} таблиц",
@@ -320,6 +332,7 @@ def _is_ignored_link_status(
         PageStatusError.excluded_auth.value,
         PageStatusError.no_content.value,
         PageStatusError.low_content.value,
+        PageStatusError.too_big.value,
         PageStatusError.redirect.value,
     }
 
@@ -447,7 +460,7 @@ async def _document_link_groups(
             "id": linked_id,
             "uri": link.target_uri,
             "title": title,
-            "status": link.target_status or "unknown",
+            "status": _resolve_document_link_status(linked_page),
             "status_error": getattr(linked_page, "status_error", None),
         }
 
@@ -632,9 +645,97 @@ def _document_pipeline_steps(document: Page) -> tuple[str, str | None, str | Non
 
 async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     db = request["db"]
-    document = await db.scalar(sa.select(Page).where(Page.id == document_id))
-    if not document:
+    content_char_count_expr = sa.func.coalesce(
+        sa.func.length(Page.content),
+        sa.cast(Page._length, sa.Integer),
+        sa.literal(0, type_=sa.Integer),
+    )
+    empty_json_object = sa.cast(sa.literal("{}"), JSONB)
+    empty_json_array = sa.cast(sa.literal("[]"), JSONB)
+    document_row = (
+        await db.execute(
+            sa.select(
+                Page,
+                sa.func.coalesce(
+                    sa.func.substring(
+                        Page.content,
+                        1,
+                        DOCUMENT_CONTENT_PREVIEW_CHARS,
+                    ),
+                    "",
+                ).label("content_preview"),
+                sa.func.coalesce(
+                    sa.cast(sa.func.octet_length(Page.content), sa.BigInteger),
+                    sa.cast(Page._length, sa.BigInteger),
+                    sa.literal(0, type_=sa.BigInteger),
+                ).label("content_size_bytes"),
+                content_char_count_expr.label("content_char_count"),
+                sa.func.coalesce(
+                    Page.meta["extraction"],
+                    empty_json_object,
+                ).label("meta_extraction"),
+                sa.func.coalesce(
+                    Page.meta["outline"],
+                    empty_json_array,
+                ).label("meta_outline"),
+                sa.case(
+                    (
+                        content_char_count_expr <= DOCUMENT_CONTENT_PREVIEW_CHARS,
+                        sa.func.coalesce(Page.meta["structure"], empty_json_array),
+                    ),
+                    else_=empty_json_array,
+                ).label("meta_structure"),
+                Page.meta["removed_shingles"]
+                .as_string()
+                .label("meta_removed_shingles"),
+                Page.meta["reason"].as_string().label("meta_reason"),
+                Page.meta["message"].as_string().label("meta_message"),
+                Page.meta["error"].as_string().label("meta_error"),
+                Page.meta["exception_class"].as_string().label(
+                    "meta_exception_class"
+                ),
+            )
+            .options(defer(Page.content), defer(Page.meta))
+            .where(Page.id == document_id)
+        )
+    ).one_or_none()
+    if not document_row:
         raise web.HTTPNotFound()
+    (
+        document,
+        document_content_preview,
+        document_content_size_bytes,
+        document_content_char_count,
+        meta_extraction,
+        meta_outline,
+        meta_structure,
+        meta_removed_shingles,
+        meta_reason,
+        meta_message,
+        meta_error,
+        meta_exception_class,
+    ) = document_row
+    document_content_preview = document_content_preview or ""
+    document_content_size_bytes = int(document_content_size_bytes or 0)
+    document_content_char_count = int(document_content_char_count or 0)
+    document_content_is_truncated = (
+        document_content_char_count > DOCUMENT_CONTENT_PREVIEW_CHARS
+    )
+    document_meta = {
+        "extraction": meta_extraction if isinstance(meta_extraction, dict) else {},
+        "outline": meta_outline if isinstance(meta_outline, list) else [],
+        "structure": meta_structure if isinstance(meta_structure, list) else [],
+    }
+    for key, value in (
+        ("removed_shingles", meta_removed_shingles),
+        ("reason", meta_reason),
+        ("message", meta_message),
+        ("error", meta_error),
+        ("exception_class", meta_exception_class),
+    ):
+        if value:
+            document_meta[key] = value
+    set_committed_value(document, "meta", document_meta)
     document_links = await _document_link_groups(db, document)
     document_display_title = _display_document_title(document.title, document.uri)
     document_source = None
@@ -671,7 +772,17 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         if isinstance(raw_meta.get("extraction"), dict)
         else {}
     )
-    uniqueness_percent = await _load_document_uniqueness_percent(db, document)
+    uniqueness_percent = None
+    if not document_content_is_truncated:
+        boilerplate_hashes = frozenset()
+        if document.source_id:
+            boilerplate_hashes = await db.run_sync(
+                lambda sync_db: load_boilerplate_hashes(sync_db, document.source_id)
+            )
+        uniqueness_percent = _document_uniqueness_percent(
+            document_content_preview,
+            boilerplate_hashes,
+        )
     trigger_rows = page_trigger_items(document) if document_triggers_enabled else []
     trigger_keys = [trigger["key"] for trigger in trigger_rows]
     cache_rows = []
@@ -705,6 +816,10 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         "document": document,
         "page_title": document_display_title,
         "document_display_title": document_display_title,
+        "document_content_preview": document_content_preview,
+        "document_content_is_truncated": document_content_is_truncated,
+        "document_content_preview_chars": DOCUMENT_CONTENT_PREVIEW_CHARS,
+        "document_content_char_count": document_content_char_count,
         "document_crawl_fields": _document_crawl_fields(document),
         "document_pipeline": _document_pipeline_steps(document),
         "document_stats_summary": _document_stats_summary(
@@ -712,6 +827,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
             chunk_rows,
             extraction,
             uniqueness_percent,
+            document_content_size_bytes,
         ),
         "document_crawl_summary": _document_crawl_summary(document),
         "document_uniqueness_percent": uniqueness_percent,
@@ -1219,6 +1335,7 @@ def _build_progress_conditions():
         PageStatusError.excluded_rules.value,
         PageStatusError.no_content.value,
         PageStatusError.low_content.value,
+        PageStatusError.too_big.value,
         PageStatusError.redirect.value,
     ]
     is_excl = Page.status_error.in_(_EXCLUDED_ERRORS)
@@ -2689,6 +2806,9 @@ async def project_files(request):
             title=None,
             uri=None,
             content=content,
+            raw_content=b"",
+            raw_content_type="text/markdown",
+            raw_content_size=0,
             hash_value=content,
             meta={
                 "doc_type": "markdown",
@@ -2704,6 +2824,12 @@ async def project_files(request):
         await db_session.flush()
         # Default title is the document numeric ID.
         document.title = str(document.id)
+        await async_update_page_shingles(
+            db_session,
+            page_id=document.id,
+            source_id=document.source_id,
+            content=document.content,
+        )
         await db_session.commit()
         await admin_event("file_create", request)
         location = request.app.router["file_document"].url_for(
@@ -2748,15 +2874,30 @@ async def file_document(request):
             raise web.HTTPFound(location=request.app.router["project_files"].url_for())
 
         content = str(data.get("content") or "")
+        too_big = is_document_too_big(content)
         document.content = content
         document.hash_value = content
         document.length = len(content)
-        document.status = PageStatus.parsing
-        document.status_error = None
+        document.status = PageStatus.ready if too_big else PageStatus.parsing
+        document.status_error = PageStatusError.too_big if too_big else None
+        meta = dict(document.meta or {})
+        for key in ("error", "message", "reason", "exception_class"):
+            meta.pop(key, None)
+        if too_big:
+            meta["reason"] = PageStatusError.too_big.value
+            meta["message"] = document_too_big_message(content)
+        document.meta = meta
         document.updated_at = datetime.now(timezone.utc)
         await db_session.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
+        await async_update_page_shingles(
+            db_session,
+            page_id=document.id,
+            source_id=document.source_id,
+            content=document.content,
+        )
         await db_session.commit()
-        schedule_index_document(document.id)
+        if not too_big:
+            schedule_index_document(document.id)
         await admin_event("file_update", request)
         await flash(request, _("Файл сохранен"), "success")
         raise web.HTTPFound(location=request.path)

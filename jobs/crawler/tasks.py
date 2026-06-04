@@ -3,7 +3,6 @@ import hashlib
 import json
 import subprocess
 import sys
-from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -20,13 +19,13 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from jobs.embedder.tasks import (
-    EMBEDDING_BLOCK_MAX_CHARS,
-    EMBEDDING_MAX_SEQ_LENGTH,
+from jobs.embedder.chunking import (
+    EMBEDDING_DOCUMENT_MAX_CHARS,
     EmbedderDocumentError,
     chunk_document_text,
-    ensure_pending_chunk_workers,
+    validate_chunk_data,
 )
+from jobs.embedder.queue import ensure_pending_chunk_workers
 from jobs.crawler.url_rules import (
     normalize_url_for_queue,
     build_source_id_by_host,
@@ -34,7 +33,8 @@ from jobs.crawler.url_rules import (
 )
 from jobs.crawler.url_rules import url_allowed_by_rules
 from vchat.document_shingles import compute_trigram_hashes, extract_content_blocks
-from vchat.models.data import Chunk, CrawlRun, Page, Sitemap, Source, SourceShingleFreq
+from vchat.document_content import document_too_big_message
+from vchat.models.data import Chunk, CrawlRun, Page, PageShingle, Sitemap, Source
 from vchat.metrics import record_crawl_run
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
@@ -47,11 +47,20 @@ from vchat.source_settings import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_CRAWL_LOCK_NAMESPACE = 90421
+
+
+def _advisory_lock_namespace(name: str) -> int:
+    digest = hashlib.blake2s(name.encode("utf-8"), digest_size=4).digest()
+    return int.from_bytes(digest, byteorder="big", signed=True)
+
+
+_CRAWL_LOCK_NAMESPACE = _advisory_lock_namespace("vchat:crawl-source")
+_DOCUMENT_INDEX_LOCK_NAMESPACE = _advisory_lock_namespace("vchat:document-index")
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
 ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
 REFRESH_PROJECT_INDEX_SCHEDULE_KEY = "vchat:embed:refresh_project_index:scheduled"
 INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX = "vchat:embed:index_document:scheduled:"
+INDEX_CONTENT_HASH_META_KEY = "embedding_index_content_hash"
 ENSURE_PENDING_CHUNKS_SCHEDULE_TTL = max(
     30, int(config.get("embedding_ensure_pending_chunks_ttl_seconds", 120) or 120)
 )
@@ -68,14 +77,14 @@ INDEX_DOCUMENT_SCHEDULE_TTL = max(
         or config.get("celery_visibility_timeout", 21600)
     ),
 )
-SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE = max(
+PAGE_SHINGLE_INSERT_BATCH_SIZE = max(
     100,
-    int(config.get("source_shingle_freq_insert_batch_size", 2000) or 2000),
+    int(config.get("page_shingle_insert_batch_size", 2000) or 2000),
 )
 
 
 class PageChunkContext:
-    __slots__ = ("id", "source_id", "content", "status_error")
+    __slots__ = ("id", "source_id", "content", "content_hash", "meta", "status_error")
 
     def __init__(
         self,
@@ -83,19 +92,28 @@ class PageChunkContext:
         id: int,
         source_id: int | None,
         content: str,
+        content_hash: str,
+        meta: dict | None,
         status_error: str | None,
     ) -> None:
         self.id = id
         self.source_id = source_id
         self.content = content
+        self.content_hash = content_hash
+        self.meta = meta or {}
         self.status_error = status_error
 
 
 def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | None:
     row = session.execute(
-        select(Page.id, Page.source_id, Page.content, Page.status_error).where(
-            Page.id == page_id
-        )
+        select(
+            Page.id,
+            Page.source_id,
+            Page.content,
+            Page._hash,
+            Page.meta,
+            Page.status_error,
+        ).where(Page.id == page_id)
     ).first()
     if not row:
         logging.warning("Page %s not found", page_id)
@@ -105,16 +123,19 @@ def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | Non
         id=row.id,
         source_id=row.source_id,
         content=row.content or "",
+        content_hash=row._hash,
+        meta=row.meta,
         status_error=row.status_error,
     )
     if not doc.content:
         logging.warning("Page %s has no content", page_id)
         return None
+    if len(doc.content) > EMBEDDING_DOCUMENT_MAX_CHARS:
+        mark_page_too_big(session, doc.id, content=doc.content)
+        return None
     if doc.status_error is not None:
         logging.info("Page %s has status_error=%s, skipping", page_id, doc.status_error)
         return None
-    if session.in_transaction():
-        session.rollback()
     return doc
 
 
@@ -129,31 +150,90 @@ def load_boilerplate_hashes(session: Session, source_id: int) -> frozenset[int]:
     if total < 5:
         return frozenset()
     rows = session.execute(
-        sa.select(SourceShingleFreq.shingle_hash).where(
-            SourceShingleFreq.source_id == source_id,
-            SourceShingleFreq.count > total * 0.4,
-        )
+        sa.select(PageShingle.shingle_hash)
+        .where(PageShingle.source_id == source_id)
+        .group_by(PageShingle.shingle_hash)
+        .having(sa.func.count(sa.distinct(PageShingle.page_id)) > total * 0.4)
     ).scalars()
     return frozenset(rows)
 
 
-def validate_chunk_data(chunks, *, page_id: int) -> None:
-    for chunk in chunks:
-        if chunk.token_count > EMBEDDING_MAX_SEQ_LENGTH:
-            raise EmbedderDocumentError(
-                f"Chunk {chunk.index} for page {page_id} is too large for embedder "
-                f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
-                page_id=page_id,
-            )
-        if (
-            chunk.kind in {"text", "table_rows"}
-            and len(chunk.text) > EMBEDDING_BLOCK_MAX_CHARS
-        ):
-            raise EmbedderDocumentError(
-                f"Chunk {chunk.index} for page {page_id} exceeds the block char cap "
-                f"({len(chunk.text)} chars > {EMBEDDING_BLOCK_MAX_CHARS})",
-                page_id=page_id,
-            )
+def page_shingle_rows(
+    *,
+    page_id: int,
+    source_id: int,
+    content: str,
+) -> list[dict[str, int]]:
+    page_hashes: set[int] = set()
+    for block in extract_content_blocks(content):
+        page_hashes.update(compute_trigram_hashes(block))
+    return [
+        {
+            "source_id": source_id,
+            "page_id": page_id,
+            "shingle_hash": shingle_hash,
+        }
+        for shingle_hash in page_hashes
+    ]
+
+
+def update_page_shingles(
+    session: Session,
+    *,
+    page_id: int,
+    source_id: int | None,
+    content: str | None,
+) -> int:
+    session.execute(sa.delete(PageShingle).where(PageShingle.page_id == page_id))
+    if source_id is None or not content:
+        return 0
+
+    rows = page_shingle_rows(page_id=page_id, source_id=source_id, content=content)
+    if rows:
+        session.execute(sa.insert(PageShingle), rows)
+    return len(rows)
+
+
+async def async_update_page_shingles(
+    session,
+    *,
+    page_id: int,
+    source_id: int | None,
+    content: str | None,
+) -> int:
+    await session.execute(sa.delete(PageShingle).where(PageShingle.page_id == page_id))
+    if source_id is None or not content:
+        return 0
+
+    rows = page_shingle_rows(page_id=page_id, source_id=source_id, content=content)
+    if rows:
+        await session.execute(sa.insert(PageShingle), rows)
+    return len(rows)
+
+
+def _try_acquire_document_index_lock(session: Session, page_id: int) -> bool:
+    result = session.execute(
+        text("SELECT pg_try_advisory_xact_lock(:namespace, :page_id)"),
+        {"namespace": _DOCUMENT_INDEX_LOCK_NAMESPACE, "page_id": page_id},
+    )
+    return bool(result.scalar_one())
+
+
+def page_chunks_match_current_content(session: Session, doc: PageChunkContext) -> bool:
+    if doc.meta.get(INDEX_CONTENT_HASH_META_KEY) != doc.content_hash:
+        return False
+
+    chunk_count = session.execute(
+        sa.select(sa.func.count(Chunk.id)).where(Chunk.page_id == doc.id)
+    ).scalar_one()
+    return bool(chunk_count)
+
+
+def mark_page_chunks_current(session: Session, doc: Page | PageChunkContext) -> None:
+    meta = dict(doc.meta or {})
+    content_hash = getattr(doc, "content_hash", None) or getattr(doc, "hash_value")
+    meta[INDEX_CONTENT_HASH_META_KEY] = content_hash
+    doc.meta = meta
 
 
 def mark_page_embedder_failed(
@@ -183,6 +263,35 @@ def mark_page_embedder_failed(
         meta["exception_class"] = exception_class
     page.meta = meta
     session.execute(sa.delete(Chunk).where(Chunk.page_id == page_id))
+    update_page_shingles(
+        session,
+        page_id=page_id,
+        source_id=page.source_id,
+        content=None,
+    )
+    session.commit()
+
+
+def mark_page_too_big(session: Session, page_id: int, *, content: str) -> None:
+    page = session.get(Page, page_id)
+    if page is None:
+        return
+
+    page.status = PageStatus.ready
+    page.status_error = PageStatusError.too_big
+    meta = dict(page.meta or {})
+    for key in ("error", "message", "reason", "exception_class"):
+        meta.pop(key, None)
+    meta["reason"] = PageStatusError.too_big.value
+    meta["message"] = document_too_big_message(content)
+    page.meta = meta
+    session.execute(sa.delete(Chunk).where(Chunk.page_id == page_id))
+    update_page_shingles(
+        session,
+        page_id=page_id,
+        source_id=page.source_id,
+        content=None,
+    )
     session.commit()
 
 
@@ -191,14 +300,17 @@ def materialize_page_chunks(
     doc: Page | PageChunkContext,
     user_uid: str = "system",
 ) -> int:
+    content = doc.content or ""
+    if len(content) > EMBEDDING_DOCUMENT_MAX_CHARS:
+        mark_page_too_big(session, doc.id, content=content)
+        return 0
+
     boilerplate_hashes: frozenset[int] = frozenset()
     if doc.source_id is not None:
         boilerplate_hashes = load_boilerplate_hashes(session, doc.source_id)
-        if session.in_transaction():
-            session.rollback()
 
     chunks = chunk_document_text(
-        doc.content or "",
+        content,
         boilerplate_hashes=boilerplate_hashes or None,
     )
     validate_chunk_data(chunks, page_id=doc.id)
@@ -208,10 +320,11 @@ def materialize_page_chunks(
 
     if not chunks:
         logging.info("No content to index for Page %s", doc.id)
+        mark_page_chunks_current(session, doc)
         session.execute(
             sa.update(Page)
             .where(Page.id == doc.id)
-            .values(status=PageStatus.ready, status_error=None)
+            .values(status=PageStatus.ready, status_error=None, meta=doc.meta)
         )
         session.commit()
         return 0
@@ -236,6 +349,8 @@ def materialize_page_chunks(
             )
         )
 
+    mark_page_chunks_current(session, doc)
+    session.execute(sa.update(Page).where(Page.id == doc.id).values(meta=doc.meta))
     session.commit()
     session.expunge_all()
     return len(chunks)
@@ -253,12 +368,36 @@ def index_page_inner(session: Session, page_id: int) -> bool:
     context = fetch_page_context(session, page_id)
     if not context:
         return False
+    if not _try_acquire_document_index_lock(session, page_id):
+        logging.info("Page %s is already reserved for chunk materialization", page_id)
+        session.rollback()
+        return False
+    if page_chunks_match_current_content(session, context):
+        pending = session.execute(
+            sa.select(sa.func.count(Chunk.id)).where(
+                Chunk.page_id == page_id,
+                Chunk.embedding.is_(None),
+            )
+        ).scalar_one()
+        if pending:
+            schedule_ensure_pending_chunks()
+        else:
+            session.execute(
+                sa.update(Page)
+                .where(Page.id == page_id)
+                .values(status=PageStatus.ready, status_error=None)
+            )
+        session.commit()
+        logging.info("Page %s chunks already match current content, skipping", page_id)
+        return bool(pending)
     return index_page_chunks(session, context)
 
 
 def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
+    session.execute(sa.delete(PageShingle).where(PageShingle.source_id == source_id))
+
     content_result = session.execute(
-        sa.select(Page.content)
+        sa.select(Page.id, Page.content)
         .where(
             Page.source_id == source_id,
             Page.content.isnot(None),
@@ -267,52 +406,37 @@ def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
         .execution_options(yield_per=100)
     )
 
-    shingle_counts: Counter[int] = Counter()
+    distinct_shingles: set[int] = set()
     page_count = 0
-    for content in content_result.scalars():
+    batch: list[dict[str, int]] = []
+    for page_id, content in content_result:
         page_count += 1
-        page_hashes: set[int] = set()
-        for block in extract_content_blocks(content):
-            page_hashes.update(compute_trigram_hashes(block))
-        shingle_counts.update(page_hashes)
+        rows = page_shingle_rows(
+            page_id=page_id,
+            source_id=source_id,
+            content=content,
+        )
+        distinct_shingles.update(row["shingle_hash"] for row in rows)
+        for row in rows:
+            batch.append(row)
+            if len(batch) >= PAGE_SHINGLE_INSERT_BATCH_SIZE:
+                session.execute(sa.insert(PageShingle), batch)
+                batch.clear()
 
     if page_count == 0:
-        session.execute(
-            sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
-        )
         session.commit()
         return 0
 
-    if session.in_transaction():
-        session.rollback()
-
-    session.execute(
-        sa.delete(SourceShingleFreq).where(SourceShingleFreq.source_id == source_id)
-    )
-
-    batch: list[dict[str, int]] = []
-    for shingle_hash, count in shingle_counts.items():
-        batch.append(
-            {
-                "source_id": source_id,
-                "shingle_hash": shingle_hash,
-                "count": count,
-            }
-        )
-        if len(batch) >= SOURCE_SHINGLE_FREQ_INSERT_BATCH_SIZE:
-            session.execute(sa.insert(SourceShingleFreq), batch)
-            batch.clear()
-
     if batch:
-        session.execute(sa.insert(SourceShingleFreq), batch)
+        session.execute(sa.insert(PageShingle), batch)
     session.commit()
     logging.info(
         "Rebuilt boilerplate index for source %s: %s distinct shingles from %s pages",
         source_id,
-        len(shingle_counts),
+        len(distinct_shingles),
         page_count,
     )
-    return len(shingle_counts)
+    return len(distinct_shingles)
 
 
 def _try_acquire_source_crawl_lock(session: Session, source_id: int) -> bool:
@@ -1063,7 +1187,7 @@ def refresh_source_index(source_id: int):
         engine.dispose()
 
 
-@app.task(name="jobs.embedder.tasks.rebuild_boilerplate_index", queue="embeddings")
+@app.task(name="jobs.crawler.tasks.rebuild_boilerplate_index", queue="celery")
 def rebuild_boilerplate_index(source_id: int):
     engine = create_sync_engine()
     try:

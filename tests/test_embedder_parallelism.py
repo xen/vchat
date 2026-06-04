@@ -1,38 +1,41 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import numpy as np
 import pytest
 
 from jobs.crawler import tasks as crawler_tasks
 from jobs.embedder import launcher
 from jobs.embedder import tasks as embedder_tasks
+from jobs.embedder import queue as embedding_queue
 
 
 def test_pending_chunk_task_target_respects_batch_and_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_BATCH_SIZE", 8)
-    monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
+    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_BATCH_SIZE", 8)
+    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
 
-    assert embedder_tasks.pending_chunk_task_target(0) == 0
-    assert embedder_tasks.pending_chunk_task_target(1) == 1
-    assert embedder_tasks.pending_chunk_task_target(8) == 1
-    assert embedder_tasks.pending_chunk_task_target(9) == 2
-    assert embedder_tasks.pending_chunk_task_target(99) == 4
+    assert embedding_queue.pending_chunk_task_target(0) == 0
+    assert embedding_queue.pending_chunk_task_target(1) == 1
+    assert embedding_queue.pending_chunk_task_target(8) == 1
+    assert embedding_queue.pending_chunk_task_target(9) == 2
+    assert embedding_queue.pending_chunk_task_target(99) == 4
 
 
 def test_run_pending_chunk_batch_stops_at_batch_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_BATCH_SIZE", 2)
-    outcomes = iter([True, True, True])
-    calls: list[tuple[object, object]] = []
+    calls: list[tuple[object, int, object]] = []
 
-    def _process(session, redis_client=None):
-        calls.append((session, redis_client))
-        return next(outcomes)
+    def _process(session, *, batch_size, redis_client=None):
+        calls.append((session, batch_size, redis_client))
+        return 2
 
-    monkeypatch.setattr(embedder_tasks, "process_next_pending_chunk", _process)
-    monkeypatch.setattr(embedder_tasks, "count_pending_chunks", lambda session: 7)
+    monkeypatch.setattr(embedder_tasks, "process_pending_chunk_batch", _process)
+    monkeypatch.setattr(embedder_tasks, "pending_chunks_remain", lambda session: True)
 
     processed, remaining = embedder_tasks.run_pending_chunk_batch(
         session="db-session",
@@ -40,17 +43,14 @@ def test_run_pending_chunk_batch_stops_at_batch_limit(
     )
 
     assert processed == 2
-    assert remaining == 7
-    assert calls == [
-        ("db-session", "redis-client"),
-        ("db-session", "redis-client"),
-    ]
+    assert remaining == 1
+    assert calls == [("db-session", 2, "redis-client")]
 
 
 def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(embedder_tasks, "count_pending_chunks", lambda session: 19)
+    monkeypatch.setattr(embedding_queue, "count_pending_chunks", lambda session: 19)
     reserved_targets: list[int] = []
     scheduled_counts: list[int] = []
 
@@ -58,16 +58,16 @@ def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
         reserved_targets.append(target)
         return 2
 
-    monkeypatch.setattr(embedder_tasks, "reserve_pending_chunk_slots", _reserve)
+    monkeypatch.setattr(embedding_queue, "reserve_pending_chunk_slots", _reserve)
     monkeypatch.setattr(
-        embedder_tasks,
+        embedding_queue,
         "release_pending_chunk_slots",
         lambda _redis_client, slots=1: (_redis_client, slots),
     )
-    monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_BATCH_SIZE", 8)
-    monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
+    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_BATCH_SIZE", 8)
+    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
 
-    pending, scheduled = embedder_tasks.ensure_pending_chunk_workers(
+    pending, scheduled = embedding_queue.ensure_pending_chunk_workers(
         session="db-session",
         redis_client="redis-client",
         schedule_tasks=lambda count: scheduled_counts.append(count) or count,
@@ -79,7 +79,9 @@ def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
     assert scheduled_counts == [2]
 
 
-def test_schedule_ensure_pending_chunks_deduplicates(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_schedule_ensure_pending_chunks_deduplicates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[tuple[str, int | None, bool | None]] = []
     deleted: list[str] = []
     closed: list[bool] = []
@@ -140,7 +142,11 @@ def test_schedule_ensure_pending_chunks_skips_when_already_scheduled(
     monkeypatch.setattr(
         crawler_tasks,
         "ensure_pending_chunks",
-        type("_Task", (), {"delay": staticmethod(lambda: (_ for _ in ()).throw(RuntimeError))}),
+        type(
+            "_Task",
+            (),
+            {"delay": staticmethod(lambda: (_ for _ in ()).throw(RuntimeError))},
+        ),
     )
 
     assert crawler_tasks.schedule_ensure_pending_chunks() is False
@@ -176,7 +182,9 @@ def test_schedule_index_document_deduplicates(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         crawler_tasks,
         "index_document",
-        type("_Task", (), {"delay": staticmethod(lambda doc_id: delayed.append(doc_id))}),
+        type(
+            "_Task", (), {"delay": staticmethod(lambda doc_id: delayed.append(doc_id))}
+        ),
     )
 
     assert crawler_tasks.schedule_index_document(77) is True
@@ -192,7 +200,9 @@ def test_schedule_index_document_deduplicates(monkeypatch: pytest.MonkeyPatch) -
     assert closed == [True]
 
 
-def test_schedule_index_document_skips_duplicate(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_schedule_index_document_skips_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     closed: list[bool] = []
 
     class _Redis:
@@ -211,11 +221,176 @@ def test_schedule_index_document_skips_duplicate(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(
         crawler_tasks,
         "index_document",
-        type("_Task", (), {"delay": staticmethod(lambda doc_id: (_ for _ in ()).throw(RuntimeError(doc_id)))}),
+        type(
+            "_Task",
+            (),
+            {
+                "delay": staticmethod(
+                    lambda doc_id: (_ for _ in ()).throw(RuntimeError(doc_id))
+                )
+            },
+        ),
     )
 
     assert crawler_tasks.schedule_index_document(77) is False
     assert closed == [True]
+
+
+def test_index_page_inner_skips_when_document_lock_is_busy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = SimpleNamespace(id=77)
+    rollbacks: list[bool] = []
+
+    monkeypatch.setattr(
+        crawler_tasks, "fetch_page_context", lambda _session, _page_id: context
+    )
+    monkeypatch.setattr(
+        crawler_tasks, "_try_acquire_document_index_lock", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        crawler_tasks,
+        "index_page_chunks",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("must not materialize")),
+    )
+
+    session = SimpleNamespace(rollback=lambda: rollbacks.append(True))
+
+    assert crawler_tasks.index_page_inner(session, 77) is False
+    assert rollbacks == [True]
+
+
+def test_index_page_inner_skips_current_chunks_and_reschedules_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = SimpleNamespace(id=77)
+    scheduled: list[bool] = []
+    commits: list[bool] = []
+
+    class _Result:
+        def scalar_one(self):
+            return 3
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return _Result()
+
+        def commit(self):
+            commits.append(True)
+
+    monkeypatch.setattr(
+        crawler_tasks, "fetch_page_context", lambda _session, _page_id: context
+    )
+    monkeypatch.setattr(
+        crawler_tasks, "_try_acquire_document_index_lock", lambda *_args: True
+    )
+    monkeypatch.setattr(
+        crawler_tasks, "page_chunks_match_current_content", lambda *_args: True
+    )
+    monkeypatch.setattr(
+        crawler_tasks,
+        "schedule_ensure_pending_chunks",
+        lambda: scheduled.append(True) or True,
+    )
+    monkeypatch.setattr(
+        crawler_tasks,
+        "index_page_chunks",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("must not materialize")),
+    )
+
+    assert crawler_tasks.index_page_inner(_Session(), 77) is True
+    assert scheduled == [True]
+    assert commits == [True]
+
+
+def test_index_page_inner_materializes_when_chunks_are_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = SimpleNamespace(id=77)
+    materialized: list[tuple[object, object]] = []
+
+    monkeypatch.setattr(
+        crawler_tasks, "fetch_page_context", lambda _session, _page_id: context
+    )
+    monkeypatch.setattr(
+        crawler_tasks, "_try_acquire_document_index_lock", lambda *_args: True
+    )
+    monkeypatch.setattr(
+        crawler_tasks, "page_chunks_match_current_content", lambda *_args: False
+    )
+    monkeypatch.setattr(
+        crawler_tasks,
+        "index_page_chunks",
+        lambda session, doc: materialized.append((session, doc)) or True,
+    )
+
+    session = object()
+
+    assert crawler_tasks.index_page_inner(session, 77) is True
+    assert materialized == [(session, context)]
+
+
+def test_make_embed_vectors_splits_large_encode_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], int, bool]] = []
+
+    class _Model:
+        def encode(
+            self,
+            texts,
+            normalize_embeddings=True,
+            batch_size=1,
+            show_progress_bar=True,
+        ):
+            _ = normalize_embeddings
+            calls.append((list(texts), batch_size, show_progress_bar))
+            return np.array(
+                [[float(index)] for index, _text in enumerate(texts)],
+                dtype=np.float32,
+            )
+
+    monkeypatch.setattr(embedder_tasks, "EMBEDDING_ENCODE_BATCH_MAX_CHARS", 10)
+    monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
+
+    vectors = embedder_tasks.make_embed_vectors(["1234", "5678", "abcdef", "gh"])
+
+    assert vectors == [[0.0], [1.0], [0.0], [1.0]]
+    assert calls == [
+        (["1234", "5678"], 2, False),
+        (["abcdef", "gh"], 2, False),
+    ]
+
+
+def test_make_embed_vector_disables_progress_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], int, bool]] = []
+
+    class _Model:
+        def encode(
+            self,
+            texts,
+            normalize_embeddings=True,
+            batch_size=1,
+            show_progress_bar=True,
+        ):
+            _ = normalize_embeddings
+            calls.append((list(texts), batch_size, show_progress_bar))
+            return np.array([[0.25]], dtype=np.float32)
+
+    monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
+
+    assert embedder_tasks.make_embed_vector("payload") == [0.25]
+    assert calls == [(["payload"], 1, False)]
+
+
+def test_embedding_result_to_vectors_rejects_nan() -> None:
+    with pytest.raises(ValueError, match="NaN"):
+        embedder_tasks.embedding_result_to_vectors(
+            np.array([[0.1, np.nan]], dtype=np.float32)
+        )
 
 
 def test_resolve_embedder_instance_count_auto_for_cpu() -> None:
@@ -252,7 +427,9 @@ def test_maybe_reset_embed_model_after_document_respects_threshold(
     monkeypatch.setattr(embedder_tasks, "EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS", 2)
     monkeypatch.setattr(embedder_tasks, "_completed_documents_since_reset", 0)
     resets: list[bool] = []
-    monkeypatch.setattr(embedder_tasks, "reset_embed_model", lambda: resets.append(True))
+    monkeypatch.setattr(
+        embedder_tasks, "reset_embed_model", lambda: resets.append(True)
+    )
 
     assert embedder_tasks.maybe_reset_embed_model_after_document() is False
     assert resets == []

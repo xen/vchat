@@ -8,6 +8,7 @@ from aiohttp import web
 from yarl import URL
 
 from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from jobs.indexing import documents as indexing_documents
 from vchat import metrics
 from vchat import settings
 from vchat import utils
@@ -174,6 +175,27 @@ def test_settings_yaml_load_and_validation() -> None:
 def test_metrics_helpers() -> None:
     assert metrics._safe_label(" GPT-4o Mini/1 ", "fallback") == "GPT-4o Mini/1"
     assert metrics._normalize_guardrail_reason("output_blocked") == "output_blocked"
+
+
+def test_raw_content_limit_comes_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(indexing_documents.config, "raw_content_max_bytes", 3)
+
+    stored, meta = indexing_documents.raw_content_payload(b"abcd")
+
+    assert stored is None
+    assert meta["max_size"] == 3
+    assert meta["reason"] == "too_big"
+
+
+def test_raw_content_payload_stores_within_configured_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(indexing_documents.config, "raw_content_max_bytes", 4)
+
+    stored, meta = indexing_documents.raw_content_payload(b"abcd")
+
+    assert stored == b"abcd"
+    assert meta == {"stored": True, "size": 4}
 
 
 def test_crawler_queue_collector_uses_broker_db_and_default_and_embeddings_queues(

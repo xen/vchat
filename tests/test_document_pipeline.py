@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-from vchat.document_pipeline import extract_url_document
+from jobs.crawler.document_pipeline import extract_url_document
 
 
-def test_extract_url_document_prefers_html_title_and_strips_auth_forms(
-    monkeypatch,
-) -> None:
+def test_extract_url_document_prefers_html_title_and_strips_auth_forms() -> None:
     html = """
     <html>
       <head>
@@ -44,21 +40,11 @@ def test_extract_url_document_prefers_html_title_and_strips_auth_forms(
     </html>
     """
 
-    def fake_get(*args, **kwargs):
-        return SimpleNamespace(
-            text=html,
-            status_code=200,
-            headers={"Content-Type": "text/html; charset=utf-8"},
-            raise_for_status=lambda: None,
-        )
-
-    monkeypatch.setattr("vchat.document_pipeline.requests.get", fake_get)
-    monkeypatch.setattr(
-        "vchat.document_pipeline._docling_markdown_from_source",
-        lambda _source: (None, None),
+    content, title, meta = extract_url_document(
+        "https://example.com/doc",
+        html_body=html,
+        content_type="text/html; charset=utf-8",
     )
-
-    content, title, meta = extract_url_document("https://example.com/doc")
 
     assert title == "Антибуллинговые карточки"
     assert "Авторизация" not in content

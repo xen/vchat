@@ -10,7 +10,7 @@ from .data import (
     Sitemap,
     PageLink,
     CrawlRun,
-    SourceShingleFreq,
+    PageShingle,
     TriggerResponseCache,
 )
 from .admin_event import AdminEvent
@@ -29,7 +29,7 @@ __all__ = [
     "Sitemap",
     "PageLink",
     "CrawlRun",
-    "SourceShingleFreq",
+    "PageShingle",
     "TriggerResponseCache",
     "AdminEvent",
 ]

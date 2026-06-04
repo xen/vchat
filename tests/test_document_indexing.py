@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from vchat.document_indexing import (
+from jobs.indexing.documents import (
     content_shingle_set,
     document_content_effectively_unchanged,
     shingle_jaccard_similarity,

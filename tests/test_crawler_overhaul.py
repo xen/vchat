@@ -1,4 +1,5 @@
 """Tests for the crawler overhaul: pipelines, seed_urls, and models."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -11,62 +12,99 @@ from scrapy.http import HtmlResponse, Request, TextResponse
 # TestIsAuthRedirect
 # ---------------------------------------------------------------------------
 
+
 class TestIsAuthRedirect:
     def setup_method(self):
         from jobs.crawler.pipelines import is_auth_redirect
+
         self.is_auth_redirect = is_auth_redirect
 
     def test_same_url_not_redirect(self):
-        assert self.is_auth_redirect("https://example.com/page", "https://example.com/page") is False
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://example.com/page"
+            )
+            is False
+        )
 
     def test_login_path_is_auth(self):
-        assert self.is_auth_redirect("https://example.com/page", "https://example.com/login") is True
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://example.com/login"
+            )
+            is True
+        )
 
     def test_auth_path_is_auth(self):
-        assert self.is_auth_redirect("https://example.com/page", "https://example.com/auth/login") is True
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://example.com/auth/login"
+            )
+            is True
+        )
 
     def test_signin_path_is_auth(self):
-        assert self.is_auth_redirect("https://example.com/page", "https://example.com/signin") is True
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://example.com/signin"
+            )
+            is True
+        )
 
     def test_next_query_param_is_auth(self):
-        assert self.is_auth_redirect(
-            "https://example.com/page",
-            "https://example.com/auth?next=/page"
-        ) is True
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://example.com/auth?next=/page"
+            )
+            is True
+        )
 
     def test_redirect_query_param_is_auth(self):
-        assert self.is_auth_redirect(
-            "https://example.com/page",
-            "https://example.com/login?redirect=/page"
-        ) is True
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://example.com/login?redirect=/page"
+            )
+            is True
+        )
 
     def test_cross_domain_redirect_is_auth(self):
-        assert self.is_auth_redirect(
-            "https://example.com/page",
-            "https://auth.otherdomain.com/login"
-        ) is True
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://auth.otherdomain.com/login"
+            )
+            is True
+        )
 
     def test_normal_redirect_not_auth(self):
-        assert self.is_auth_redirect(
-            "https://example.com/page",
-            "https://example.com/other-page"
-        ) is False
+        assert (
+            self.is_auth_redirect(
+                "https://example.com/page", "https://example.com/other-page"
+            )
+            is False
+        )
 
     def test_empty_final_url_treated_as_no_redirect(self):
-        assert self.is_auth_redirect("https://example.com/a", "https://example.com/a") is False
+        assert (
+            self.is_auth_redirect("https://example.com/a", "https://example.com/a")
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------
 # TestCountInternalLinks
 # ---------------------------------------------------------------------------
 
+
 class TestCountInternalLinks:
     def setup_method(self):
         from jobs.crawler.pipelines import count_internal_links
+
         self.count_internal_links = count_internal_links
 
     def test_counts_domain_links(self):
-        content = "[Page 1](https://example.com/page1) [Page 2](https://example.com/page2)"
+        content = (
+            "[Page 1](https://example.com/page1) [Page 2](https://example.com/page2)"
+        )
         assert self.count_internal_links(content, "example.com") == 2
 
     def test_counts_relative_links(self):
@@ -97,9 +135,11 @@ class TestCountInternalLinks:
 # TestComputeAdaptiveInterval
 # ---------------------------------------------------------------------------
 
+
 class TestComputeAdaptiveInterval:
     def setup_method(self):
         from jobs.crawler.pipelines import compute_adaptive_interval
+
         self.compute_adaptive_interval = compute_adaptive_interval
 
     def make_page(self, check_interval_days=7):
@@ -138,6 +178,7 @@ class TestComputeAdaptiveInterval:
 # TestLowContentDetection
 # ---------------------------------------------------------------------------
 
+
 class TestLowContentDetection:
     def setup_method(self):
         from jobs.crawler.pipelines import is_low_content_page
@@ -159,21 +200,23 @@ class TestLowContentDetection:
 # TestHubPageDetection
 # ---------------------------------------------------------------------------
 
+
 class TestHubPageDetection:
     def test_hub_page_threshold_is_40(self):
         from jobs.crawler.pipelines import HUB_INTERNAL_LINK_THRESHOLD
+
         assert HUB_INTERNAL_LINK_THRESHOLD == 40
 
     def test_page_with_40_internal_links_is_hub(self):
         from jobs.crawler.pipelines import count_internal_links
-        links = " ".join(
-            f"[Link {i}](https://example.com/page{i})" for i in range(40)
-        )
+
+        links = " ".join(f"[Link {i}](https://example.com/page{i})" for i in range(40))
         count = count_internal_links(links, "example.com")
         assert count >= 40
 
     def test_page_with_few_links_is_not_hub(self):
         from jobs.crawler.pipelines import count_internal_links
+
         links = "[Link 1](https://example.com/a) [Link 2](https://example.com/b)"
         count = count_internal_links(links, "example.com")
         assert count < 40
@@ -201,7 +244,9 @@ class TestGeneralSpiderTrackedSources:
             )
 
             links = [
-                SimpleNamespace(url="https://grant.vbudushee.ru/identity/account/login"),
+                SimpleNamespace(
+                    url="https://grant.vbudushee.ru/identity/account/login"
+                ),
                 SimpleNamespace(url="https://untracked.example.org/page"),
             ]
 
@@ -253,7 +298,7 @@ class TestGeneralSpiderTrackedSources:
         request = Request("https://ai-academy.ru/upload/iblock/bb6/baseline.ipynb")
         response = TextResponse(
             url="https://ai-academy.ru/upload/iblock/bb6/baseline.ipynb",
-            body=b"{\"cells\": []}",
+            body=b'{"cells": []}',
             encoding="utf-8",
             request=request,
         )
@@ -313,7 +358,12 @@ class TestGeneralSpiderTrackedSources:
         spider = GeneralSpider(
             url="https://vbudushee.ru",
             source_id=1,
-            config={"rules": [], "tracked_sources": [{"id": 1, "uri": "https://vbudushee.ru", "rules": []}]},
+            config={
+                "rules": [],
+                "tracked_sources": [
+                    {"id": 1, "uri": "https://vbudushee.ru", "rules": []}
+                ],
+            },
         )
         session = MagicMock()
         page_row = (
@@ -353,7 +403,12 @@ class TestGeneralSpiderTrackedSources:
         spider = GeneralSpider(
             url="https://vbudushee.ru",
             source_id=1,
-            config={"rules": [], "tracked_sources": [{"id": 1, "uri": "https://vbudushee.ru", "rules": []}]},
+            config={
+                "rules": [],
+                "tracked_sources": [
+                    {"id": 1, "uri": "https://vbudushee.ru", "rules": []}
+                ],
+            },
         )
         session = MagicMock()
         rows = [
@@ -404,6 +459,7 @@ class TestGeneralSpiderTrackedSources:
 # TestPriorityQueue (basket algorithm)
 # ---------------------------------------------------------------------------
 
+
 class TestPriorityQueue:
     def test_budget_respected(self):
         """Total yielded URLs should not exceed budget."""
@@ -413,8 +469,10 @@ class TestPriorityQueue:
         def make_rows(urls):
             return [SimpleNamespace(uri=u) for u in urls]
 
-        with patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine, \
-             patch("jobs.crawler.seed_urls.Session") as mock_session_cls:
+        with (
+            patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine,
+            patch("jobs.crawler.seed_urls.Session") as mock_session_cls,
+        ):
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
@@ -450,8 +508,10 @@ class TestPriorityQueue:
         def make_rows(urls):
             return [SimpleNamespace(uri=u) for u in urls]
 
-        with patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine, \
-             patch("jobs.crawler.seed_urls.Session") as mock_session_cls:
+        with (
+            patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine,
+            patch("jobs.crawler.seed_urls.Session") as mock_session_cls,
+        ):
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
@@ -482,8 +542,10 @@ class TestPriorityQueue:
         """Excluded URLs should not appear in result."""
         from jobs.crawler.seed_urls import iter_priority_crawl_queue
 
-        with patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine, \
-             patch("jobs.crawler.seed_urls.Session") as mock_session_cls:
+        with (
+            patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine,
+            patch("jobs.crawler.seed_urls.Session") as mock_session_cls,
+        ):
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
@@ -503,12 +565,15 @@ class TestPriorityQueue:
 
             session.execute = mock_execute
 
-            result = list(iter_priority_crawl_queue(1, exclude=list(excluded), budget=10))
+            result = list(
+                iter_priority_crawl_queue(1, exclude=list(excluded), budget=10)
+            )
             for url in result:
                 assert url not in excluded
 
     def test_none_source_id_yields_nothing(self):
         from jobs.crawler.seed_urls import iter_priority_crawl_queue
+
         result = list(iter_priority_crawl_queue(None, budget=100))
         assert result == []
 
@@ -516,8 +581,10 @@ class TestPriorityQueue:
         """Same URL appearing in multiple baskets should only be yielded once."""
         from jobs.crawler.seed_urls import iter_priority_crawl_queue
 
-        with patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine, \
-             patch("jobs.crawler.seed_urls.Session") as mock_session_cls:
+        with (
+            patch("jobs.crawler.seed_urls.create_sync_engine") as mock_engine,
+            patch("jobs.crawler.seed_urls.Session") as mock_session_cls,
+        ):
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
@@ -616,6 +683,7 @@ class TestUrlNormalization:
 # TestCrawlRunCreation
 # ---------------------------------------------------------------------------
 
+
 class TestCrawlRunCreation:
     def test_pipeline_creates_crawl_run_on_open(self):
         """DatabasePipeline.open_spider should create a CrawlRun record."""
@@ -624,10 +692,11 @@ class TestCrawlRunCreation:
         run_mock = MagicMock()
         run_mock.id = 42
 
-        with patch("jobs.crawler.pipelines.create_engine"), \
-             patch("jobs.crawler.pipelines.sync_uri", return_value="sqlite://"), \
-             patch("jobs.crawler.pipelines.Session") as mock_session_cls:
-
+        with (
+            patch("jobs.crawler.pipelines.create_engine"),
+            patch("jobs.crawler.pipelines.sync_uri", return_value="sqlite://"),
+            patch("jobs.crawler.pipelines.Session") as mock_session_cls,
+        ):
             session = MagicMock()
             session.__enter__ = lambda s: session
             session.__exit__ = MagicMock(return_value=False)
@@ -803,7 +872,6 @@ class TestPageLinkSync:
         page_links = [obj for obj in added_objects if isinstance(obj, PageLink)]
         assert len(page_links) == 1
         assert page_links[0].target_uri == "https://example.com/target"
-        assert page_links[0].target_status == "not_indexed"
 
     def test_sync_page_links_attaches_cross_source_targets_to_tracked_source(self):
         from jobs.crawler.pipelines import sync_page_links
@@ -862,11 +930,16 @@ class TestPageLinkSync:
             source_rules=[],
         )
 
-        created_pages = [obj for obj in added_objects if obj.__class__.__name__ == "Page"]
+        created_pages = [
+            obj for obj in added_objects if obj.__class__.__name__ == "Page"
+        ]
         page_links = [obj for obj in added_objects if isinstance(obj, PageLink)]
         assert created_pages[0].source_id == 2
         assert page_links[0].target_page_id == 25
-        assert page_links[0].target_uri == "https://grant.vbudushee.ru/identity/account/login"
+        assert (
+            page_links[0].target_uri
+            == "https://grant.vbudushee.ru/identity/account/login"
+        )
 
     def test_sync_page_links_keeps_untracked_links_without_creating_pages(self):
         from jobs.crawler.pipelines import sync_page_links
@@ -915,11 +988,12 @@ class TestPageLinkSync:
             source_rules=[],
         )
 
-        created_pages = [obj for obj in added_objects if obj.__class__.__name__ == "Page"]
+        created_pages = [
+            obj for obj in added_objects if obj.__class__.__name__ == "Page"
+        ]
         page_links = [obj for obj in added_objects if isinstance(obj, PageLink)]
         assert created_pages == []
         assert page_links[0].target_page_id is None
-        assert page_links[0].target_status == "missing"
 
 
 class TestSitemapDiscovery:
@@ -961,7 +1035,10 @@ class TestSitemapDiscovery:
         )
 
         assert prioritized == set()
-        assert any(getattr(obj, "uri", None) == "https://example.com/page" for obj in added_objects)
+        assert any(
+            getattr(obj, "uri", None) == "https://example.com/page"
+            for obj in added_objects
+        )
 
     def test_upsert_sitemap_pages_skips_urls_filtered_by_regex(self):
         from jobs.crawler.tasks import _upsert_sitemap_pages
@@ -1009,7 +1086,9 @@ class TestSitemapDiscovery:
         _upsert_sitemap_pages(
             session,
             source_id=1,
-            parsed_entries=[("https://grant.vbudushee.ru/public/application/cards", None)],
+            parsed_entries=[
+                ("https://grant.vbudushee.ru/public/application/cards", None)
+            ],
             source_rules=[],
             source_id_by_host={
                 "vbudushee.ru": 1,
@@ -1017,7 +1096,9 @@ class TestSitemapDiscovery:
             },
         )
 
-        created_pages = [obj for obj in added_objects if obj.__class__.__name__ == "Page"]
+        created_pages = [
+            obj for obj in added_objects if obj.__class__.__name__ == "Page"
+        ]
         assert created_pages[0].source_id == 2
 
     def test_parse_sitemap_document_detects_sitemap_index(self):
@@ -1061,7 +1142,10 @@ class TestSitemapDiscovery:
             "https://example.com/sitemap-a.xml",
             "https://example.com/sitemap-b.xml",
         ]
-        assert all(getattr(obj, "url", "").startswith("https://example.com/sitemap-") for obj in added_objects)
+        assert all(
+            getattr(obj, "url", "").startswith("https://example.com/sitemap-")
+            for obj in added_objects
+        )
 
     def test_invalid_child_sitemap_is_added_as_excluded_with_reason(self):
         from jobs.crawler.tasks import _upsert_child_sitemaps
@@ -1113,7 +1197,11 @@ class TestSitemapDiscovery:
         source_rows_result.all.return_value = [(1, "https://example.com")]
         sitemaps_result = MagicMock()
         sitemaps_result.scalars.return_value.all.return_value = [sitemap]
-        session.execute.side_effect = [source_result, source_rows_result, sitemaps_result]
+        session.execute.side_effect = [
+            source_result,
+            source_rows_result,
+            sitemaps_result,
+        ]
 
         with (
             patch("jobs.crawler.tasks.datetime") as datetime_mock,
@@ -1151,7 +1239,11 @@ class TestSitemapDiscovery:
         source_rows_result.all.return_value = [(1, "https://example.com")]
         sitemaps_result = MagicMock()
         sitemaps_result.scalars.return_value.all.return_value = [sitemap]
-        session.execute.side_effect = [source_result, source_rows_result, sitemaps_result]
+        session.execute.side_effect = [
+            source_result,
+            source_rows_result,
+            sitemaps_result,
+        ]
 
         body = b"""<?xml version="1.0" encoding="UTF-8"?>
         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -1184,6 +1276,7 @@ class TestSitemapDiscovery:
 # TestPageStatusOnErrors
 # ---------------------------------------------------------------------------
 
+
 class TestPageStatusOnErrors:
     def test_4xx_sets_error_4xx_status(self):
         """Pipeline should record error_4xx for 4xx HTTP responses."""
@@ -1197,7 +1290,9 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 0
             page_mock.check_interval_days = 7
-            session.execute.return_value.scalars.return_value.first.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = (
+                page_mock
+            )
             mock_session_cls.return_value = session
 
             logger = MagicMock()
@@ -1226,7 +1321,9 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 2
             page_mock.check_interval_days = 7
-            session.execute.return_value.scalars.return_value.first.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = (
+                page_mock
+            )
             mock_session_cls.return_value = session
 
             logger = MagicMock()
@@ -1249,15 +1346,23 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 0
             page_mock.meta = {}
-            session.execute.return_value.scalars.return_value.first.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = (
+                page_mock
+            )
             mock_session_cls.return_value = session
 
             logger = MagicMock()
             engine = MagicMock()
 
             save_page_status(
-                engine, "https://example.com/error", 1,
-                PageStatus.crawler, PageStatusError.http_5xx, 500, None, logger,
+                engine,
+                "https://example.com/error",
+                1,
+                PageStatus.crawler,
+                PageStatusError.http_5xx,
+                500,
+                None,
+                logger,
             )
 
             assert page_mock.status == PageStatus.crawler
@@ -1274,7 +1379,9 @@ class TestPageStatusOnErrors:
             page_mock = MagicMock()
             page_mock.error_count = 0
             page_mock.meta = {"other": "value"}
-            session.execute.return_value.scalars.return_value.first.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = (
+                page_mock
+            )
             mock_session_cls.return_value = session
 
             logger = MagicMock()
@@ -1322,7 +1429,9 @@ class TestPageStatusOnErrors:
                 "error": "old error",
                 "exception_class": "RuntimeError",
             }
-            session.execute.return_value.scalars.return_value.first.return_value = page_mock
+            session.execute.return_value.scalars.return_value.first.return_value = (
+                page_mock
+            )
             mock_session_cls.return_value = session
 
             from vchat.page_status import PageStatus
@@ -1348,27 +1457,33 @@ class TestPageStatusOnErrors:
 # TestIndexStatus
 # ---------------------------------------------------------------------------
 
+
 class TestPageStatusModel:
     """Page.status uses three-value enum: crawler / parsing / ready."""
 
     def test_page_model_has_status_error(self):
         from vchat.models.data import Page
+
         assert hasattr(Page, "status_error")
 
     def test_page_model_no_index_status(self):
         from vchat.models.data import Page
+
         assert not hasattr(Page, "index_status")
 
     def test_page_model_no_is_ignored(self):
         from vchat.models.data import Page
+
         assert not hasattr(Page, "is_ignored")
 
     def test_pipeline_sets_parsing_on_new_content(self):
         from jobs.crawler.pipelines import compute_adaptive_interval
+
         assert compute_adaptive_interval.__module__ == "jobs.crawler.pipelines"
 
     def test_hub_page_gets_low_content_value(self):
         from vchat.models.data import Page
+
         p = Page()
         p.is_hub_page = True
         p.content_value = 0.05
@@ -1377,6 +1492,7 @@ class TestPageStatusModel:
     def test_page_status_column_default_is_crawler(self):
         from vchat.models.data import Page
         from vchat.page_status import PageStatus
+
         col = Page.__table__.c["status"]
         assert col.default.arg == PageStatus.crawler
 
@@ -1389,6 +1505,8 @@ class TestEmbedderSkipsErrorPages:
         page = SimpleNamespace(
             id=1,
             content="short content",
+            _hash="content-hash",
+            meta={},
             status_error=PageStatusError.low_content,
         )
         session = MagicMock()
@@ -1396,6 +1514,8 @@ class TestEmbedderSkipsErrorPages:
             id=page.id,
             source_id=1,
             content=page.content,
+            _hash=page._hash,
+            meta=page.meta,
             status_error=page.status_error,
         )
 
@@ -1403,6 +1523,84 @@ class TestEmbedderSkipsErrorPages:
 
 
 class TestSoft404Pages:
+    def test_pipeline_marks_oversize_content_too_big_without_scheduling(self):
+        from jobs.crawler.pipelines import DatabasePipeline
+        from vchat.page_status import PageStatus, PageStatusError
+
+        page = SimpleNamespace(
+            id=12121,
+            source_id=5,
+            uri="https://ai-academy.ru/upload/csv/dota2_skill_train.csv",
+            meta={},
+            status_error=None,
+            is_hub_page=False,
+            content_value=None,
+            stable_count=0,
+            error_count=0,
+            check_interval_days=7,
+            title="",
+        )
+
+        session = MagicMock()
+        session.__enter__ = lambda s: session
+        session.__exit__ = MagicMock(return_value=False)
+        session.commit = MagicMock()
+        session.flush = MagicMock()
+        session.execute.return_value.scalars.return_value.first.return_value = page
+
+        pipeline = DatabasePipeline.__new__(DatabasePipeline)
+        pipeline.logger = MagicMock()
+        pipeline.engine = MagicMock()
+        pipeline._crawl_run_id = None
+
+        spider = MagicMock()
+        spider.logger = MagicMock()
+
+        item = {
+            "url": page.uri,
+            "source_id": 5,
+            "http_status": 200,
+            "content_type": "text/csv",
+            "content": "raw,csv",
+            "meta": {},
+            "out_links": [],
+        }
+
+        with (
+            patch("jobs.crawler.pipelines.Session", return_value=session),
+            patch(
+                "jobs.crawler.pipelines.extract_url_document",
+                return_value=(
+                    "x" * 300,
+                    "dota2_skill_train.csv",
+                    {"extraction": {"word_count": 100}},
+                ),
+            ),
+            patch(
+                "jobs.crawler.pipelines.document_content_effectively_unchanged",
+                return_value=False,
+            ),
+            patch("jobs.crawler.pipelines.is_document_too_big", return_value=True),
+            patch(
+                "jobs.crawler.pipelines.document_too_big_message",
+                return_value="Document content is too large to index.",
+            ),
+            patch(
+                "jobs.crawler.pipelines.source_trigger_rules_match_url",
+                return_value=False,
+            ),
+            patch("jobs.crawler.pipelines.sync_page_links") as links_mock,
+            patch("jobs.crawler.pipelines.schedule_index_document") as schedule_mock,
+        ):
+            pipeline.process_item(item, spider)
+
+        schedule_mock.assert_not_called()
+        links_mock.assert_called_once()
+        assert page.status == PageStatus.ready
+        assert page.status_error == PageStatusError.too_big
+        assert page.meta["reason"] == PageStatusError.too_big.value
+        assert page.meta["message"] == "Document content is too large to index."
+
     def test_pipeline_treats_extractable_404_as_content_page(self):
         from jobs.crawler.pipelines import DatabasePipeline
         from vchat.page_status import PageStatus

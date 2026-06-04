@@ -22,6 +22,7 @@ class PageStatusError(str, Enum):
     extraction_failed = "extraction_failed"
     no_content = "no_content"
     low_content = "low_content"
+    too_big = "too_big"
 
     # Parser / Embedder
     index_failed = "index_failed"
@@ -42,6 +43,7 @@ STATUS_ERROR_DESCRIPTIONS: dict[PageStatusError, str] = {
     PageStatusError.extraction_failed: "Ошибка извлечения содержимого",
     PageStatusError.no_content: "Страница не содержит полезного текста",
     PageStatusError.low_content: "Слишком мало содержимого для индексации",
+    PageStatusError.too_big: "Содержимое слишком большое для индексации",
     PageStatusError.index_failed: "Ошибка при индексировании",
     PageStatusError.embedder_failed: "Ошибка эмбеддера",
 }

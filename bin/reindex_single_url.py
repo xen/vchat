@@ -1,7 +1,10 @@
 import asyncio
 import sys
+
+import requests
 import sqlalchemy as sa
-from vchat.document_pipeline import extract_url_document
+
+from jobs.crawler.document_pipeline import extract_url_document
 from vchat.db import async_session_factory
 from vchat.models import Document
 
@@ -27,7 +30,13 @@ def similarity(a, b):
 
 async def main():
     # Переиндексация
-    content, title, meta = extract_url_document(URL)
+    response = requests.get(URL, timeout=20)
+    response.raise_for_status()
+    content, title, meta = extract_url_document(
+        URL,
+        html_body=response.text,
+        content_type=response.headers.get("Content-Type"),
+    )
     # Проверка результата
     async with async_session_factory() as db:
         doc = await db.scalar(sa.select(Document).where(Document.uri == URL))

@@ -6,20 +6,22 @@ from urllib.parse import urlparse
 from sqlalchemy import create_engine, delete, select
 from sqlalchemy.orm import Session
 
-from vchat.document_pipeline import (
+from jobs.crawler.document_pipeline import (
     extract_url_document,
     normalize_title_candidate,
 )
-from vchat.document_indexing import (
+from jobs.indexing.documents import (
     document_content_effectively_unchanged,
+    raw_content_payload,
     sync_document_has_chunks,
 )
+from vchat.document_content import document_too_big_message, is_document_too_big
 from vchat.document_types import guess_document_type
 from vchat.models.data import Chunk, CrawlRun, Page, PageLink, Source
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 from vchat.triggers import source_trigger_rules_match_url
-from jobs.crawler.tasks import schedule_index_document
+from jobs.crawler.tasks import schedule_index_document, update_page_shingles
 from jobs.crawler.url_rules import (
     normalize_url_for_queue,
     build_source_id_by_host,
@@ -75,23 +77,12 @@ def compute_adaptive_interval(page: Page, content_changed: bool) -> int:
         return min(90, int(current * 1.5))
 
 
-def resolve_page_link_target_status(page: Page | None) -> str:
-    if page is None:
-        return "missing"
-    if page.status_error == PageStatusError.excluded_auth:
-        return "auth_required"
-    if page.status_error in (
-        PageStatusError.excluded_robots,
-        PageStatusError.excluded_rules,
-    ):
-        return "blocked"
-    if page.last_crawled_at is None:
-        return "not_indexed"
-    return "ok"
-
-
 def get_page_by_uri(session: Session, uri: str) -> Page | None:
     return session.execute(select(Page).where(Page.uri == uri)).scalars().first()
+
+
+def source_has_trigger_context(source: Source | None) -> bool:
+    return source is not None and isinstance(getattr(source, "uri", None), str)
 
 
 def get_or_create_page(
@@ -104,7 +95,7 @@ def get_or_create_page(
         page = Page(source_id=source_id, uri=uri)
         page._hash = ""
         session.add(page)
-    if source is not None:
+    if source_has_trigger_context(source):
         page.has_triggers = source_trigger_rules_match_url(source, uri)
     return page, created
 
@@ -149,7 +140,7 @@ def sync_page_links(
                 session.add(target_page)
                 session.flush()
             target_source = session.get(Source, target_source_id)
-            if target_source is not None:
+            if source_has_trigger_context(target_source):
                 target_page.has_triggers = source_trigger_rules_match_url(
                     target_source,
                     target_uri,
@@ -162,7 +153,6 @@ def sync_page_links(
                 source_page_id=source_page.id,
                 target_page_id=target_page.id if target_page is not None else None,
                 source_id=source_id,
-                target_status=resolve_page_link_target_status(target_page),
             )
         )
 
@@ -246,6 +236,7 @@ class DatabasePipeline:
         http_status = item.get("http_status", 200)
         etag = item.get("etag")
         source_rules = list(getattr(spider, "source_rules", []) or [])
+        raw_content, raw_content_meta = raw_content_payload(item.get("raw_content"))
 
         spider.logger.info(f"Pipeline received {url}")
 
@@ -260,6 +251,9 @@ class DatabasePipeline:
                 http_status,
                 etag,
                 self.logger,
+                raw_content=raw_content,
+                raw_content_type=item.get("content_type"),
+                raw_content_meta=raw_content_meta,
                 reason="excluded_auth_redirect",
                 message="Request redirected to an auth/login page.",
             )
@@ -292,7 +286,15 @@ class DatabasePipeline:
                     )
             if not markdown_content:
                 handle_error_page(
-                    self.engine, url, source_id, http_status, etag, self.logger
+                    self.engine,
+                    url,
+                    source_id,
+                    http_status,
+                    etag,
+                    self.logger,
+                    raw_content=raw_content,
+                    raw_content_type=content_type,
+                    raw_content_meta=raw_content_meta,
                 )
                 increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
                 return item
@@ -313,6 +315,9 @@ class DatabasePipeline:
                 http_status,
                 etag,
                 self.logger,
+                raw_content=raw_content,
+                raw_content_type=content_type,
+                raw_content_meta=raw_content_meta,
                 reason="http_5xx",
                 message=f"Source returned HTTP {http_status}.",
                 error=f"HTTP {http_status}",
@@ -342,6 +347,9 @@ class DatabasePipeline:
                     http_status,
                     etag,
                     self.logger,
+                    raw_content=raw_content,
+                    raw_content_type=content_type,
+                    raw_content_meta=raw_content_meta,
                     reason="extraction_failed",
                     message="Document extraction failed after the page was downloaded.",
                     error=str(exc),
@@ -360,6 +368,9 @@ class DatabasePipeline:
                 http_status,
                 etag,
                 self.logger,
+                raw_content=raw_content,
+                raw_content_type=content_type,
+                raw_content_meta=raw_content_meta,
                 reason="empty_extracted_content",
                 message="No useful text remained after extraction.",
             )
@@ -367,6 +378,7 @@ class DatabasePipeline:
             return item
 
         low_content = is_low_content_page(markdown_content, extracted_meta)
+        too_big = is_document_too_big(markdown_content)
 
         try:
             with Session(bind=self.engine) as session:
@@ -378,6 +390,13 @@ class DatabasePipeline:
                     page.title = ""
                     page.length = 0
                     page.last_crawled_at = datetime.now(timezone.utc)
+                    session.flush()
+                    update_page_shingles(
+                        session,
+                        page_id=page.id,
+                        source_id=page.source_id,
+                        content=page.content,
+                    )
                     session.commit()
                     increment_run_stat(
                         self.engine, self._crawl_run_id, "pages_excluded"
@@ -419,6 +438,7 @@ class DatabasePipeline:
                 if item_meta:
                     meta.update(item_meta)
                 content_type = item.get("content_type")
+                meta["raw_content"] = raw_content_meta
                 doc_type = guess_document_type(url, content_type)
                 if doc_type:
                     meta["doc_type"] = doc_type
@@ -426,6 +446,9 @@ class DatabasePipeline:
                     meta["content_type"] = content_type
 
                 page.content = markdown_content
+                page.raw_content = raw_content
+                page.raw_content_size = raw_content_meta["size"]
+                page.raw_content_type = content_type
                 page.status = PageStatus.parsing
                 page.status_error = None
                 page.hash_value = markdown_content
@@ -463,6 +486,16 @@ class DatabasePipeline:
                     page.status_error = PageStatusError.low_content
                     if page.id is not None:
                         session.execute(delete(Chunk).where(Chunk.page_id == page.id))
+                elif too_big:
+                    set_error_meta(
+                        meta,
+                        reason=PageStatusError.too_big.value,
+                        message=document_too_big_message(markdown_content),
+                    )
+                    page.status = PageStatus.ready
+                    page.status_error = PageStatusError.too_big
+                    if page.id is not None:
+                        session.execute(delete(Chunk).where(Chunk.page_id == page.id))
                 else:
                     clear_error_meta(meta)
                 page.meta = meta
@@ -475,6 +508,12 @@ class DatabasePipeline:
                         page.title = fallback_title
 
                 session.flush()
+                update_page_shingles(
+                    session,
+                    page_id=page.id,
+                    source_id=page.source_id,
+                    content=page.content,
+                )
                 sync_page_links(
                     session,
                     source_page=page,
@@ -485,15 +524,22 @@ class DatabasePipeline:
 
                 session.commit()
 
-                if low_content:
+                if low_content or too_big:
                     increment_run_stat(
                         self.engine, self._crawl_run_id, "pages_excluded"
                     )
-                    spider.logger.info(
-                        "Excluded %s from indexing due to low content (%s chars)",
-                        url,
-                        len(markdown_content.strip()),
-                    )
+                    if low_content:
+                        spider.logger.info(
+                            "Excluded %s from indexing due to low content (%s chars)",
+                            url,
+                            len(markdown_content.strip()),
+                        )
+                    else:
+                        spider.logger.info(
+                            "Excluded %s from indexing due to oversized content (%s chars)",
+                            url,
+                            len(markdown_content),
+                        )
                     return item
 
                 if is_new:
@@ -526,6 +572,9 @@ class DatabasePipeline:
                 http_status,
                 etag,
                 self.logger,
+                raw_content=raw_content,
+                raw_content_type=content_type,
+                raw_content_meta=raw_content_meta,
                 reason="pipeline_processing_failed",
                 message="Crawler pipeline failed while saving or scheduling the document.",
                 error=str(e),
@@ -565,6 +614,9 @@ def save_page_status(
     message: str | None = None,
     error: str | None = None,
     exception_class: str | None = None,
+    raw_content: bytes | None = None,
+    raw_content_type: str | None = None,
+    raw_content_meta: dict | None = None,
 ) -> None:
     with Session(bind=engine) as session:
         page, _ = get_or_create_page(session, source_id=source_id, uri=url)
@@ -587,6 +639,10 @@ def save_page_status(
 
         if etag:
             page.last_etag = etag
+        if raw_content_meta is not None:
+            page.raw_content = raw_content
+            page.raw_content_size = raw_content_meta["size"]
+            page.raw_content_type = raw_content_type
 
         if status == PageStatus.crawler and status_error in (
             PageStatusError.http_4xx,
@@ -598,10 +654,13 @@ def save_page_status(
             PageStatusError.extraction_failed,
             PageStatusError.no_content,
             PageStatusError.low_content,
+            PageStatusError.too_big,
         ):
             page.status = PageStatus.ready
 
         meta = dict(page.meta or {})
+        if raw_content_meta is not None:
+            meta["raw_content"] = raw_content_meta
         if reason:
             set_error_meta(
                 meta,
@@ -613,12 +672,28 @@ def save_page_status(
         else:
             clear_error_meta(meta)
         page.meta = meta
+        session.flush()
+        update_page_shingles(
+            session,
+            page_id=page.id,
+            source_id=page.source_id,
+            content=None,
+        )
 
         session.commit()
 
 
 def handle_error_page(
-    engine, url: str, source_id: int, http_status: int, etag: str | None, logger
+    engine,
+    url: str,
+    source_id: int,
+    http_status: int,
+    etag: str | None,
+    logger,
+    *,
+    raw_content: bytes | None = None,
+    raw_content_type: str | None = None,
+    raw_content_meta: dict | None = None,
 ) -> None:
     with Session(bind=engine) as session:
         page, _ = get_or_create_page(session, source_id=source_id, uri=url)
@@ -628,6 +703,10 @@ def handle_error_page(
         page.error_count = (page.error_count or 0) + 1
         if etag:
             page.last_etag = etag
+        if raw_content_meta is not None:
+            page.raw_content = raw_content
+            page.raw_content_size = raw_content_meta["size"]
+            page.raw_content_type = raw_content_type
 
         page.status = PageStatus.ready
         page.status_error = PageStatusError.http_4xx
@@ -635,6 +714,8 @@ def handle_error_page(
             page.check_interval_days = 90
 
         meta = dict(page.meta or {})
+        if raw_content_meta is not None:
+            meta["raw_content"] = raw_content_meta
         set_error_meta(
             meta,
             reason="http_4xx",
@@ -642,6 +723,13 @@ def handle_error_page(
             error=f"HTTP {http_status}",
         )
         page.meta = meta
+        session.flush()
+        update_page_shingles(
+            session,
+            page_id=page.id,
+            source_id=page.source_id,
+            content=None,
+        )
 
         session.commit()
 

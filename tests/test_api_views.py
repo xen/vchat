@@ -7,7 +7,7 @@ import pytest
 from aiohttp import web
 
 from vchat.views.api import views as api_views
-from vchat.document_indexing import content_sha256
+from vchat.document_content import content_sha256
 
 
 class _FakeScalarResult:
@@ -37,9 +37,10 @@ class _FakeDB:
         self.deleted = []
         self.commits = 0
         self.refresh_count = 0
+        self.flush_count = 0
 
-    async def execute(self, stmt):
-        _ = stmt
+    async def execute(self, stmt, params=None):
+        _ = stmt, params
         return _FakeExecuteResult(self.rows)
 
     async def scalar(self, stmt):
@@ -54,6 +55,12 @@ class _FakeDB:
 
     async def commit(self):
         self.commits += 1
+
+    async def flush(self):
+        self.flush_count += 1
+        for index, obj in enumerate(self.added, start=1):
+            if getattr(obj, "id", None) is None:
+                obj.id = index
 
     async def refresh(self, obj):
         _ = obj
@@ -117,7 +124,13 @@ async def test_upsert_document_creates_and_indexes(monkeypatch: pytest.MonkeyPat
 
     async def _extract_content(url: str):
         assert urlparse(url).scheme in {"http", "https"}
-        return "content", {"content_type": "text/html"}, "Doc title"
+        return (
+            "content",
+            {"content_type": "text/html"},
+            "Doc title",
+            b"<html>content</html>",
+            "text/html",
+        )
 
     delayed = []
 
@@ -134,6 +147,9 @@ async def test_upsert_document_creates_and_indexes(monkeypatch: pytest.MonkeyPat
     assert db.added
     created_doc = db.added[0]
     assert created_doc.title == "Doc title"
+    assert created_doc.raw_content == b"<html>content</html>"
+    assert created_doc.raw_content_size == len(b"<html>content</html>")
+    assert created_doc.raw_content_type == "text/html"
     assert created_doc.meta["doc_type"] == "html"
     assert db.commits == 1
     assert db.refresh_count == 1
@@ -158,7 +174,13 @@ async def test_upsert_document_skips_reindex_for_unchanged_content(
 
     async def _extract_content(url: str):
         assert urlparse(url).scheme in {"http", "https"}
-        return "same", {"content_type": "text/html"}, "Doc title"
+        return (
+            "same",
+            {"content_type": "text/html"},
+            "Doc title",
+            b"<html>same</html>",
+            "text/html",
+        )
 
     delayed = []
 
@@ -218,7 +240,13 @@ async def test_upsert_document_skips_reindex_for_near_duplicate_content(
 
     async def _extract_content(url: str):
         assert urlparse(url).scheme in {"http", "https"}
-        return new_content, {"content_type": "text/html"}, "Doc title"
+        return (
+            new_content,
+            {"content_type": "text/html"},
+            "Doc title",
+            b"<html>new</html>",
+            "text/html",
+        )
 
     delayed = []
 

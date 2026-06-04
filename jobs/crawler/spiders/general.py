@@ -217,6 +217,7 @@ class GeneralSpider(CrawlSpider):
         item["source_id"] = page_source_id
         item["content_type"] = response.headers.get("Content-Type", b"").decode("utf-8")
         item["content"] = response.text
+        item["raw_content"] = response.body
         extracted_links = []
         if self._link_extractor is not None and isinstance(response, HtmlResponse):
             extracted_links = [

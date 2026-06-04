@@ -336,12 +336,11 @@ def test_document_uniqueness_percent_uses_boilerplate_overlap() -> None:
         "общий текст меню подвала повторяется\n"
         "уникальный раздел страницы со смыслом\n"
     )
-    document = SimpleNamespace(content=content)
     boilerplate = project_views.compute_trigram_hashes(
         "общий текст меню подвала повторяется"
     )
 
-    uniqueness = project_views._document_uniqueness_percent(document, boilerplate)
+    uniqueness = project_views._document_uniqueness_percent(content, boilerplate)
 
     assert uniqueness is not None
     assert 0 < uniqueness < 100
@@ -369,20 +368,26 @@ async def test_document_link_groups_split_mutual_incoming_and_outgoing() -> None
             SimpleNamespace(
                 target_page_id=21,
                 target_uri="https://example.local/mutual",
-                target_status="ok",
             ),
             SimpleNamespace(
-                id=21, title="Mutual page", uri="https://example.local/mutual"
+                id=21,
+                title="Mutual page",
+                uri="https://example.local/mutual",
+                last_crawled_at=object(),
+                status_error=None,
             ),
         ),
         (
             SimpleNamespace(
                 target_page_id=22,
                 target_uri="https://example.local/outgoing",
-                target_status="not_indexed",
             ),
             SimpleNamespace(
-                id=22, title="Outgoing page", uri="https://example.local/outgoing"
+                id=22,
+                title="Outgoing page",
+                uri="https://example.local/outgoing",
+                last_crawled_at=None,
+                status_error=None,
             ),
         ),
     ]
@@ -390,7 +395,11 @@ async def test_document_link_groups_split_mutual_incoming_and_outgoing() -> None
         (
             SimpleNamespace(source_page_id=21),
             SimpleNamespace(
-                id=21, title="Mutual page", uri="https://example.local/mutual"
+                id=21,
+                title="Mutual page",
+                uri="https://example.local/mutual",
+                last_crawled_at=object(),
+                status_error=None,
             ),
         ),
         (

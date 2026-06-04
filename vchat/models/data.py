@@ -138,6 +138,9 @@ class Page(Base, Created, Updated):
         index=True,
     )
     content: Mapped[str] = mapped_column(sa.Text, nullable=True)
+    raw_content: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True)
+    raw_content_type: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    raw_content_size: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     _hash: Mapped[str] = mapped_column("hash", sa.String(64), nullable=False)
     _lang: Mapped[str] = mapped_column(
         "lang", sa.String(2), nullable=False, default="ru"
@@ -345,7 +348,6 @@ class PageLink(Base):
         ForeignKey("source.id", ondelete="CASCADE"),
         nullable=True,
     )
-    target_status: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
     found_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True),
         nullable=False,
@@ -392,17 +394,20 @@ class CrawlRun(Base):
     notes: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
 
-class SourceShingleFreq(Base):
-    __tablename__ = "source_shingle_freq"
+class PageShingle(Base):
+    __tablename__ = "page_shingle"
 
-    source_id: Mapped[int] = mapped_column(
+    page_id: Mapped[int] = mapped_column(
         sa.Integer,
-        ForeignKey("source.id", ondelete="CASCADE"),
+        ForeignKey("page.id", ondelete="CASCADE"),
         primary_key=True,
     )
     shingle_hash: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
-    count: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, default=0, server_default=sa.text("0")
+    source_id: Mapped[int] = mapped_column(
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
 

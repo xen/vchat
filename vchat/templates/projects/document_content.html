@@ -293,13 +293,23 @@
 
     <div class="card bg-base-100 shadow border border-base-300">
         <div class="card-body gap-4">
-            <h3 class="card-title text-base">Нормализованное содержимое</h3>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h3 class="card-title text-base">Нормализованное содержимое</h3>
+                {% if document_content_is_truncated %}
+                    <span class="badge badge-outline badge-sm">первые {{ document_content_preview_chars }} символов</span>
+                {% endif %}
+            </div>
             {% if document.meta.removed_shingles %}
                 <div class="mb-2">
                     {{ document.meta.removed_shingles|safe }}
                 </div>
             {% endif %}
-            <pre class="whitespace-pre-wrap break-words text-xs bg-base-200/40 rounded-box p-4 overflow-x-auto">{{ document.content }}</pre>
+            {% if document_content_is_truncated %}
+                <p class="text-xs text-base-content/60">
+                    Показан фрагмент: {{ document_content_preview_chars }} из {{ document_content_char_count }} символов.
+                </p>
+            {% endif %}
+            <pre class="whitespace-pre-wrap break-words text-xs bg-base-200/40 rounded-box p-4 overflow-x-auto">{{ document_content_preview }}</pre>
         </div>
     </div>
 </div>

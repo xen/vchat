@@ -4,14 +4,17 @@ from urllib.parse import urljoin, urlparse
 import sqlalchemy as sa
 from aiohttp import ClientSession, ClientTimeout, web
 
-from jobs.crawler.tasks import schedule_index_document
-from vchat.document_pipeline import extract_url_document
-from vchat.document_indexing import (
+from jobs.crawler.tasks import async_update_page_shingles, schedule_index_document
+from jobs.crawler.document_pipeline import extract_url_document
+from jobs.indexing.documents import (
     async_document_has_chunks,
     document_content_effectively_unchanged,
+    raw_content_payload,
 )
+from vchat.document_content import document_too_big_message, is_document_too_big
 from vchat.document_types import guess_document_type
 from vchat.models import Chunk, Page, Source
+from vchat.page_status import PageStatus, PageStatusError
 
 __all__ = [
     "update_document",
@@ -50,9 +53,31 @@ def _pick_source_for_host(host: str, source_rows: list[tuple[int, str]]) -> int 
     return None
 
 
-async def _extract_content(url: str) -> tuple[str, dict[str, str], str | None]:
-    content, title, meta = await asyncio.to_thread(extract_url_document, url)
-    return content, dict(meta or {}), title
+async def _fetch_url_content(
+    url: str,
+) -> tuple[str, str | None, bytes | None, dict]:
+    timeout = ClientTimeout(total=20)
+    async with ClientSession(timeout=timeout) as client:
+        async with client.get(url, allow_redirects=True) as resp:
+            resp.raise_for_status()
+            raw_body = await resp.read()
+            content_type = resp.headers.get("Content-Type")
+            charset = resp.charset or "utf-8"
+            body = raw_body.decode(charset, errors="replace")
+            return body, content_type, raw_body, dict(resp.headers)
+
+
+async def _extract_content(
+    url: str,
+) -> tuple[str, dict[str, str], str | None, bytes | None, str | None]:
+    body, content_type, raw_body, _headers = await _fetch_url_content(url)
+    content, title, meta = await asyncio.to_thread(
+        extract_url_document,
+        url,
+        html_body=body,
+        content_type=content_type,
+    )
+    return content, dict(meta or {}), title, raw_body, content_type
 
 
 async def _get_source_hosts(request: web.Request) -> list[tuple[int, str]]:
@@ -107,7 +132,9 @@ async def _upsert_document(
 ) -> tuple[str, int]:
     db = request["db"]
 
-    content, meta_from_fetch, title = await _extract_content(url)
+    content, meta_from_fetch, title, raw_body, raw_content_type = await _extract_content(
+        url
+    )
     if not content:
         raise web.HTTPInternalServerError(text="Failed to extract document content")
 
@@ -115,7 +142,7 @@ async def _upsert_document(
     created = document is None
 
     if document is None:
-        document = Page(source_id=source_id, uri=url, status="ok")
+        document = Page(source_id=source_id, uri=url, status=PageStatus.parsing)
         db.add(document)
 
     effectively_unchanged = document_content_effectively_unchanged(document, content)
@@ -124,31 +151,52 @@ async def _upsert_document(
         if (effectively_unchanged and document.id is not None)
         else False
     )
+    too_big = is_document_too_big(content)
     document.content = content
-    document.status = "ok"
+    stored_raw_content, raw_content_meta = raw_content_payload(raw_body)
+    document.raw_content = stored_raw_content
+    document.raw_content_size = raw_content_meta["size"]
+    document.raw_content_type = raw_content_type
+    document.status = PageStatus.ready if too_big else PageStatus.parsing
+    document.status_error = PageStatusError.too_big if too_big else None
     document.hash_value = content
     document.language = ""
     document.length = len(content)
 
     meta = dict(document.meta or {})
     meta.update(meta_from_fetch)
+    meta["raw_content"] = raw_content_meta
     if "doc_type" not in meta:
         guessed = guess_document_type(url, meta.get("content_type"))
         if guessed:
             meta["doc_type"] = guessed
+    for key in ("error", "message", "reason", "exception_class"):
+        meta.pop(key, None)
+    if too_big:
+        meta["reason"] = PageStatusError.too_big.value
+        meta["message"] = document_too_big_message(content)
     document.meta = meta
 
     if title:
         document.title = title[:512]
 
-    if not (effectively_unchanged and has_chunks):
+    if too_big:
+        await db.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
+    elif not (effectively_unchanged and has_chunks):
         document.index_status = "queued"
     else:
         document.index_status = "indexed"
 
+    await db.flush()
+    await async_update_page_shingles(
+        db,
+        page_id=document.id,
+        source_id=document.source_id,
+        content=document.content,
+    )
     await db.commit()
     await db.refresh(document)
-    if not (effectively_unchanged and has_chunks):
+    if not too_big and not (effectively_unchanged and has_chunks):
         schedule_index_document(document.id)
 
     return ("indexed" if created else "indexed", document.id)

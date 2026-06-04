@@ -7,6 +7,7 @@ class CrawledItem(scrapy.Item):
     http_status = scrapy.Field()
     etag = scrapy.Field()
     content = scrapy.Field()
+    raw_content = scrapy.Field()
     source_id = scrapy.Field()
     content_type = scrapy.Field()
     title = scrapy.Field()
