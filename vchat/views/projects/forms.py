@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 from wtforms import (
     BooleanField,
@@ -33,6 +34,11 @@ DEFAULT_SYSTEM_PROMPT = _(
     "Отвечай кратко, проактивно предлагай следующие шаги и задавай уточняющие "
     "вопросы, когда не хватает информации."
 )
+
+
+def normalize_source_origin(value: str) -> str:
+    split = urlsplit((value or "").strip())
+    return urlunsplit((split.scheme.lower(), split.netloc.lower(), "", "", ""))
 
 
 class WorkspaceForm(Form):
@@ -128,6 +134,23 @@ class WorkspaceForm(Form):
             self.model.data = get_default_model_id(self.provider.data)
 
 
+class TriggerSettingsForm(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = config["secret_key"]
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=20)
+
+    default_templates = TextAreaField(
+        _("Стандартные триггеры"),
+        validators=[
+            validators.Optional(),
+            validators.Length(max=4000, message=_("Length up to 4000 characters")),
+        ],
+        render_kw={"class": "textarea textarea-bordered w-full", "rows": "8"},
+    )
+
+
 class SourceForm(Form):
     class Meta:
         csrf = True
@@ -171,6 +194,9 @@ class SourceForm(Form):
                     "Invalid cron expression. Use 5 fields: minute hour day month weekday"
                 )
             )
+
+    def validate_url(self, field):
+        field.data = normalize_source_origin(field.data)
 
 
 class InviteUserForm(Form):
@@ -241,6 +267,11 @@ class SourceCrawlerSettingsForm(Form):
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
+    enable_triggers = BooleanField(
+        _("Разрешить пользовательские триггеры"),
+        default=False,
+        render_kw={"class": "checkbox checkbox-primary"},
+    )
 
 
 class SourceSettingsForm(SourceForm):
@@ -264,6 +295,11 @@ class SourceSettingsForm(SourceForm):
     )
     ignore_robots_txt = BooleanField(
         _("Игнорировать robots.txt"),
+        default=False,
+        render_kw={"class": "checkbox checkbox-primary"},
+    )
+    enable_triggers = BooleanField(
+        _("Разрешить пользовательские триггеры"),
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )

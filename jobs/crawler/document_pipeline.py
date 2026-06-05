@@ -6,26 +6,11 @@ import re
 from collections import Counter
 from typing import Any
 
-import requests
 from bs4 import BeautifulSoup
-from docling.document_converter import DocumentConverter
-
 
 from vchat.document_types import guess_document_type
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_HTTP_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36 vChat/1.0"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.7,en;q=0.6",
-}
-
-_converter: DocumentConverter | None = None
 
 BOILERPLATE_TAGS = ("header", "footer", "nav", "aside")
 BOILERPLATE_HINTS = (
@@ -72,13 +57,6 @@ AUTH_HEADING_HINTS = {
     "forgot password",
 }
 CODE_FENCE_RE = re.compile(r"^```(?P<lang>[a-zA-Z0-9_+-]*)\s*$")
-
-
-def get_docling_converter() -> DocumentConverter:
-    global _converter
-    if _converter is None:
-        _converter = DocumentConverter()
-    return _converter
 
 
 def normalize_markdown(text: str) -> str:
@@ -443,10 +421,8 @@ def _strip_boilerplate(soup: BeautifulSoup) -> int:
     return removed
 
 
-def _html_to_markdown_like(body: str) -> tuple[str, str | None, int, list[str]]:
-    soup = BeautifulSoup(body, "html.parser")
+def _html_to_markdown_like(soup: BeautifulSoup) -> tuple[str, int]:
     boilerplate_removed = _strip_boilerplate(soup)
-    title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
     container = soup.body or soup
     lines: list[str] = []
     for element in container.find_all(
@@ -510,20 +486,7 @@ def _html_to_markdown_like(body: str) -> tuple[str, str | None, int, list[str]]:
         lines.append(text)
         lines.append("")
     markdown = normalize_markdown("\n".join(lines))
-    return markdown, title, boilerplate_removed
-
-
-def _docling_markdown_from_source(source: str) -> tuple[str | None, str | None]:
-    try:
-        result = get_docling_converter().convert(source)
-        markdown = result.document.export_to_markdown()
-        # document.name is the URL slug or filename — not a human-readable title.
-        # For URLs we return None so _coerce_title picks the first heading instead.
-        # For local files the caller supplies path.name as fallback.
-        return markdown or None, None
-    except Exception:
-        logger.exception("Docling extraction failed for %s", source)
-        return None, None
+    return markdown, boilerplate_removed
 
 
 def _extract_nav_title(soup: BeautifulSoup, url: str) -> str | None:
@@ -554,19 +517,12 @@ def _extract_nav_title(soup: BeautifulSoup, url: str) -> str | None:
 
 def extract_url_document(
     source_url: str,
-    html_body: str | None = None,
+    html_body: str,
     content_type: str | None = None,
 ) -> tuple[str, str | None, dict[str, Any]]:
     doc_type = guess_document_type(source_url, "text/html")
 
-    if html_body is not None:
-        body = html_body
-    else:
-        response = requests.get(source_url, timeout=20, headers=DEFAULT_HTTP_HEADERS)
-        response.raise_for_status()
-        body = response.text
-        content_type = response.headers.get("Content-Type")
-
+    body = html_body
     soup = BeautifulSoup(body, "html.parser")
     html_title = soup.title.get_text(" ", strip=True)[:512] if soup.title else None
 
@@ -574,7 +530,7 @@ def extract_url_document(
     nav_title = _extract_nav_title(soup, source_url)
     best_title = nav_title or html_title
 
-    markdown, _, removed = _html_to_markdown_like(body)
+    markdown, removed = _html_to_markdown_like(soup)
     if markdown.strip():
         normalized, normalized_title, meta = build_document_payload(
             content=markdown,
@@ -587,18 +543,6 @@ def extract_url_document(
         )
         meta["extraction"]["boilerplate_removed_count"] = removed
         return normalized, normalized_title, meta
-
-    markdown, _ = _docling_markdown_from_source(source_url)
-    if markdown:
-        return build_document_payload(
-            content=markdown,
-            title=best_title,
-            extractor="docling",
-            fallback_used=True,
-            degraded_mode=False,
-            content_type="text/html",
-            doc_type=doc_type,
-        )
 
     return build_document_payload(
         content=body,

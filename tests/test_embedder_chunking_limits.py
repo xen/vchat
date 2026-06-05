@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from jobs.embedder import tasks
+from jobs.embedder import chunking as tasks
 
 
 class _WordTokenizer:
     """Each whitespace-word is one token. Used to test normal chunking logic."""
 
-    def __call__(self, text, add_special_tokens=False, truncation=False):
-        _ = add_special_tokens, truncation
+    def __call__(self, text, add_special_tokens=False, truncation=False, verbose=True):
+        _ = add_special_tokens, truncation, verbose
         return {"input_ids": text.split()}
 
     def decode(self, ids, skip_special_tokens=True, clean_up_tokenization_spaces=False):
@@ -22,8 +22,8 @@ class _WordTokenizer:
 class _CharTokenizer:
     """Each character is one token. Used to test long-word splitting."""
 
-    def __call__(self, text, add_special_tokens=False, truncation=False):
-        _ = add_special_tokens, truncation
+    def __call__(self, text, add_special_tokens=False, truncation=False, verbose=True):
+        _ = add_special_tokens, truncation, verbose
         return {"input_ids": list(text)}
 
     def decode(self, ids, skip_special_tokens=True, clean_up_tokenization_spaces=False):
@@ -107,6 +107,7 @@ def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
     executed = []
     page = SimpleNamespace(
         id=55,
+        source_id=3,
         status=None,
         status_error=None,
         meta={"existing": "value"},
@@ -144,7 +145,9 @@ def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
 def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "load_boilerplate_hashes", lambda *_args: frozenset({1}))
+    monkeypatch.setattr(
+        crawler_tasks, "load_boilerplate_hashes", lambda *_args: frozenset({1})
+    )
     monkeypatch.setattr(
         crawler_tasks,
         "chunk_document_text",
@@ -161,7 +164,15 @@ def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) 
     )
 
     calls = []
-    page = SimpleNamespace(id=77, source_id=9, content="hello world", status=None, status_error=None)
+    page = SimpleNamespace(
+        id=77,
+        source_id=9,
+        content="hello world",
+        hash_value="content-hash",
+        meta={},
+        status=None,
+        status_error=None,
+    )
 
     class _Session:
         def __init__(self) -> None:
@@ -190,13 +201,76 @@ def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) 
     count = crawler_tasks.materialize_page_chunks(_Session(), page)
 
     assert count == 1
-    assert calls[0] == "rollback"
+    assert "rollback" not in calls
+    assert page.meta[crawler_tasks.INDEX_CONTENT_HASH_META_KEY] == "content-hash"
 
 
-def test_fetch_page_context_rolls_back_after_loading_snapshot() -> None:
+def test_materialize_page_chunks_marks_oversize_document_too_big(monkeypatch) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+    from vchat.page_status import PageStatus, PageStatusError
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
+    monkeypatch.setattr(
+        crawler_tasks,
+        "document_too_big_message",
+        lambda content: (
+            f"Document content is too large to index ({len(content or '')} chars > 10)."
+        ),
+    )
+    monkeypatch.setattr(
+        crawler_tasks,
+        "chunk_document_text",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("must not chunk oversize document")
+        ),
+    )
+
+    page = SimpleNamespace(
+        id=77,
+        source_id=None,
+        content="x" * 11,
+        hash_value="content-hash",
+        meta={},
+        status=None,
+        status_error=None,
+    )
+    calls = []
+
+    class _Session:
+        def get(self, model, page_id):
+            _ = model
+            return page if page_id == 77 else None
+
+        def execute(self, stmt):
+            calls.append(("execute", stmt))
+            return None
+
+        def commit(self):
+            calls.append("commit")
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 0
+    assert page.status == PageStatus.ready
+    assert page.status_error == PageStatusError.too_big
+    assert page.meta["reason"] == PageStatusError.too_big.value
+    assert page.meta["message"] == (
+        "Document content is too large to index (11 chars > 10)."
+    )
+    assert calls
+
+
+def test_fetch_page_context_keeps_transaction_open_for_index_lock() -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    row = SimpleNamespace(id=12, source_id=3, content="payload", status_error=None)
+    row = SimpleNamespace(
+        id=12,
+        source_id=3,
+        content="payload",
+        _hash="content-hash",
+        meta={},
+        status_error=None,
+    )
 
     class _Result:
         def first(self):
@@ -224,4 +298,61 @@ def test_fetch_page_context_rolls_back_after_loading_snapshot() -> None:
     assert context is not None
     assert context.id == 12
     assert context.content == "payload"
-    assert session.rollbacks == 1
+    assert context.content_hash == "content-hash"
+    assert session.rollbacks == 0
+
+
+def test_fetch_page_context_marks_old_oversize_error_too_big(monkeypatch) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+    from vchat.page_status import PageStatus, PageStatusError
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
+    monkeypatch.setattr(
+        crawler_tasks,
+        "document_too_big_message",
+        lambda content: (
+            f"Document content is too large to index ({len(content or '')} chars > 10)."
+        ),
+    )
+
+    row = SimpleNamespace(
+        id=12,
+        source_id=3,
+        content="x" * 11,
+        _hash="content-hash",
+        meta={},
+        status_error=PageStatusError.embedder_failed,
+    )
+    page = SimpleNamespace(
+        id=12,
+        source_id=3,
+        status=PageStatus.parsing,
+        status_error=PageStatusError.embedder_failed,
+        meta={},
+    )
+    calls = []
+
+    class _Result:
+        def first(self):
+            return row
+
+    class _Session:
+        def execute(self, stmt):
+            calls.append(("execute", stmt))
+            return _Result()
+
+        def get(self, model, page_id):
+            _ = model
+            return page if page_id == 12 else None
+
+        def commit(self):
+            calls.append("commit")
+
+    assert crawler_tasks.fetch_page_context(_Session(), 12) is None
+    assert page.status == PageStatus.ready
+    assert page.status_error == PageStatusError.too_big
+    assert page.meta["reason"] == PageStatusError.too_big.value
+    assert page.meta["message"] == (
+        "Document content is too large to index (11 chars > 10)."
+    )
+    assert calls

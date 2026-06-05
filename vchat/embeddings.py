@@ -4,8 +4,10 @@ from typing import Any
 
 import torch
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer
 
+from vchat.embedding_tokenizer import (
+    load_embedding_tokenizer as load_embedding_tokenizer,
+)
 from vchat.settings import config
 
 
@@ -31,11 +33,15 @@ def resolve_embedding_device(preferred: str | None = None) -> str:
         return detect_best_device()
 
     if normalized == "cuda":
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        if not torch.cuda.is_available():
+            raise RuntimeError("Embedding device cuda was requested but is unavailable")
+        return "cuda"
 
     if normalized == "mps":
         mps_backend = getattr(torch.backends, "mps", None)
-        return "mps" if (mps_backend and mps_backend.is_available()) else "cpu"
+        if not (mps_backend and mps_backend.is_available()):
+            raise RuntimeError("Embedding device mps was requested but is unavailable")
+        return "mps"
 
     if normalized == "cpu":
         return "cpu"
@@ -68,21 +74,6 @@ def load_embedding_model(
     if max_seq_length > 0:
         model.max_seq_length = max_seq_length
     return model
-
-
-def load_embedding_tokenizer() -> Any:
-    max_seq_length = int(config.get("embedding_max_seq_length") or 0)
-    logging.info("Loading embedding tokenizer %s", config["embedding_model_dir"])
-    tokenizer = AutoTokenizer.from_pretrained(
-        config["embedding_model_dir"],
-        trust_remote_code=True,
-    )
-    if (
-        max_seq_length > 0
-        and getattr(tokenizer, "model_max_length", 0) > max_seq_length
-    ):
-        tokenizer.model_max_length = max_seq_length
-    return tokenizer
 
 
 def release_torch_cache() -> None:

@@ -13,6 +13,8 @@
       --muted: #6b625b;
       --border: rgba(31, 26, 23, 0.12);
       --accent: #1f1a17;
+      --button-bg: #1f1a17;
+      --button-text: #fffdf8;
     }
 
     * {
@@ -46,7 +48,6 @@
       margin: 0 0 12px;
       font: 600 13px/1.2 Arial, sans-serif;
       letter-spacing: 0.12em;
-      text-transform: uppercase;
       color: var(--muted);
     }
 
@@ -82,6 +83,62 @@
     .content h2 {
       margin: 0 0 12px;
       font-size: 1.1rem;
+    }
+
+    .widget-loader {
+      display: grid;
+      gap: 14px;
+      margin-top: 28px;
+      width: min(100%, 440px);
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.78);
+      font-family: Arial, sans-serif;
+    }
+
+    .widget-loader label {
+      display: grid;
+      gap: 8px;
+      font: 600 14px/1.3 Arial, sans-serif;
+      color: var(--text);
+    }
+
+    .widget-loader select,
+    .widget-loader input,
+    .widget-loader button {
+      min-height: 44px;
+      border-radius: 8px;
+      font: 600 15px/1.2 Arial, sans-serif;
+    }
+
+    .widget-loader select,
+    .widget-loader input {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      padding: 0 12px;
+    }
+
+    .widget-loader button {
+      width: fit-content;
+      border: 0;
+      background: var(--button-bg);
+      color: var(--button-text);
+      padding: 0 18px;
+      cursor: pointer;
+    }
+
+    .widget-loader button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    .widget-loader .hint {
+      margin: 0;
+      font: 400 14px/1.5 Arial, sans-serif;
+      color: var(--muted);
     }
 
     ul {
@@ -123,9 +180,64 @@
       <p class="lead">
         Это пример обычной публичной страницы, на которую встроен чат-виджет.
         Подключение выполнено по тем же принципам, что и на странице интеграции:
-        скрипт загружается с этого же домена через <code>/widget</code>, а интерфейс
+        скрипт загружается с этого же домена через <code>/widget/&lt;код&gt;</code>, а интерфейс
         монтируется в контейнер <code>#vchat-chat</code>.
       </p>
+
+      <form class="widget-loader" data-widget-loader>
+        <label for="widget-code">
+          Доступные виджеты
+          <select id="widget-code" name="code" {% if not widgets %}disabled{% endif %}>
+            {% if widgets %}
+            <option value="">Выберите виджет</option>
+            {% for widget in widgets %}
+            <option value="{{ widget.code }}" {% if selected_widget_code == widget.code %}selected{% endif %}>
+              {{ widget.name }} — {{ widget.code }}
+            </option>
+            {% endfor %}
+            {% else %}
+            <option value="">Виджеты не созданы</option>
+            {% endif %}
+          </select>
+        </label>
+
+        <label for="trigger-url">
+          Страница для проверки триггера
+          <select id="trigger-url" name="trigger_url" {% if not trigger_pages %}disabled{% endif %}>
+            {% if trigger_pages %}
+            <option value="">Не эмулировать</option>
+            {% for page in trigger_pages %}
+            <option value="{{ page.uri }}" {% if selected_trigger_url == page.uri %}selected{% endif %}>
+              {{ page.title }}
+            </option>
+            {% endfor %}
+            {% else %}
+            <option value="">Страницы с триггерами не найдены</option>
+            {% endif %}
+          </select>
+        </label>
+
+        <label for="trigger-url-manual">
+          Вставить URL вручную
+          <input
+            id="trigger-url-manual"
+            name="trigger_url_manual"
+            type="url"
+            value="{% if selected_trigger_url and not selected_trigger_url_is_listed %}{{ selected_trigger_url }}{% endif %}"
+            placeholder="https://example.com/page"
+          >
+        </label>
+
+        <button type="submit" {% if not widgets %}disabled{% endif %}>Загрузить</button>
+        {% if selected_widget_code %}
+        <p class="hint">Загружен виджет <code>{{ selected_widget_code }}</code>.</p>
+        {% else %}
+        <p class="hint">Выберите код виджета и нажмите “Загрузить”.</p>
+        {% endif %}
+        {% if selected_trigger_url %}
+        <p class="hint">Триггеры проверяются как на странице <code>{{ selected_trigger_url }}</code>.</p>
+        {% endif %}
+      </form>
 
       <div class="content">
         <section>
@@ -133,14 +245,15 @@
           <p>
             На странице размещён произвольный контент, а сам виджет открывается
             отдельной кнопкой в правом нижнем углу. Это удобно для проверки
-            внешнего встраивания без доступа к админке.
+            внешнего встраивания без доступа к админке, если открыть страницу
+            с параметром <code>?code=&lt;код&gt;</code>.
           </p>
         </section>
 
         <section>
           <h2>Принцип подключения</h2>
           <ul>
-            <li>Скрипт подключается с текущего домена: <code>/widget</code>.</li>
+            <li>Скрипт подключается с текущего домена: <code>/widget/&lt;код&gt;</code>.</li>
             <li>Контейнер <code>div#vchat-chat</code> обязателен.</li>
             <li>Атрибуты <code>data-user-*</code> можно передавать при необходимости.</li>
           </ul>
@@ -155,6 +268,39 @@
     data-user-name="Demo User"
     data-user-email="demo@local.vchat.com"
   ></div>
-  <script src="/widget" defer></script>
+  <script>
+    const loader = document.querySelector("[data-widget-loader]");
+    loader?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const data = new FormData(loader);
+      const code = String(data.get("code") || "").trim();
+      const triggerUrl = String(data.get("trigger_url_manual") || data.get("trigger_url") || "").trim();
+      const url = new URL(window.location.href);
+      if (code) {
+        url.searchParams.set("code", code);
+      } else {
+        url.searchParams.delete("code");
+      }
+      if (triggerUrl) {
+        url.searchParams.set("trigger_url", triggerUrl);
+      } else {
+        url.searchParams.delete("trigger_url");
+      }
+      window.location.href = url.toString();
+    });
+
+    const widgetCode = {{ selected_widget_code|tojson }};
+    const sourcePageUrl = {{ selected_trigger_url|tojson }};
+    const container = document.getElementById("vchat-chat");
+    if (sourcePageUrl && container) {
+      container.setAttribute("data-source-page-url", sourcePageUrl);
+    }
+    if (widgetCode) {
+      const script = document.createElement("script");
+      script.src = `/widget/${encodeURIComponent(widgetCode)}`;
+      script.defer = true;
+      document.body.append(script);
+    }
+  </script>
 </body>
 </html>

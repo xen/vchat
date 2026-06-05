@@ -1,24 +1,49 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from typing import Any
 
 import sqlalchemy as sa
 
+from vchat.document_content import content_sha256
 from vchat.document_shingles import extract_shingles
 from vchat.models import Chunk, Page
+from vchat.settings import config
 
 NEAR_DUPLICATE_SHINGLE_SIZE = 3
 NEAR_DUPLICATE_SIMILARITY_THRESHOLD = 0.9
-
-
-def content_sha256(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+DEFAULT_RAW_CONTENT_MAX_BYTES = 10 * 1024 * 1024
 
 
 def document_content_unchanged(document: Page | None, content: str) -> bool:
     return document is not None and document.hash_value == content_sha256(content)
+
+
+def raw_content_max_bytes() -> int:
+    return max(
+        1,
+        int(
+            config.get("raw_content_max_bytes", DEFAULT_RAW_CONTENT_MAX_BYTES)
+            or DEFAULT_RAW_CONTENT_MAX_BYTES
+        ),
+    )
+
+
+def raw_content_payload(raw_content: bytes | None) -> tuple[bytes | None, dict[str, Any]]:
+    if raw_content is None:
+        return None, {"stored": False, "size": 0}
+
+    size = len(raw_content)
+    max_size = raw_content_max_bytes()
+    if size > max_size:
+        return None, {
+            "stored": False,
+            "size": size,
+            "max_size": max_size,
+            "reason": "too_big",
+        }
+
+    return raw_content, {"stored": True, "size": size}
 
 
 def normalized_lines(text: str) -> list[str]:

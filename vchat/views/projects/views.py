@@ -17,9 +17,11 @@ import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp import web
 from aiohttp_session import get_session
-from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
+from itsdangerous import URLSafeSerializer
 from passlib.context import CryptContext
-from sqlalchemy.orm import aliased
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import aliased, defer
+from sqlalchemy.orm.attributes import set_committed_value
 
 from jobs.crawler import (
     crawl_page_task,
@@ -28,6 +30,8 @@ from jobs.crawler import (
     sitemap_sync_task,
 )
 from jobs.crawler.tasks import (
+    async_update_page_shingles,
+    generate_missing_triggers_task,
     index_project,
     load_boilerplate_hashes,
     refresh_source_index,
@@ -38,17 +42,29 @@ from jobs.crawler.tasks import (
 from vchat.ai_providers import (
     DEFAULT_OPENAI_MODEL,
     get_ai_provider_options,
-    get_default_model_id,
-    is_model_available,
-    is_provider_available,
     resolve_ai_settings,
 )
 from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.document_types import DEFAULT_DOCUMENT_TYPE
+from vchat.document_content import document_too_big_message, is_document_too_big
 from vchat.document_shingles import compute_trigram_hashes
 from vchat.i18n import _
-from vchat.models import Chat, ChatMsg, Chunk, Page, PageLink, Sitemap, Source, User
+from vchat.json_response import json_response
+from vchat.models import (
+    Chat,
+    ChatMsg,
+    Chunk,
+    Page,
+    PageLink,
+    Sitemap,
+    Source,
+    TriggerResponseCache,
+    ApiClient,
+    WidgetIntegration,
+    User,
+)
+from vchat.models.data import api_client_source
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
@@ -70,18 +86,38 @@ from vchat.source_blocking import (
 )
 from vchat.settings import config
 from vchat.page_status import PageStatus, PageStatusError, STATUS_ERROR_DESCRIPTIONS
-from vchat.utils import admin_event, flash, login_required, meta
+from vchat.triggers import (
+    DEFAULT_SOURCE_TRIGGER_PATTERN,
+    TRIGGER_DEFAULTS_SETTING,
+    TriggerPatternError,
+    apply_source_trigger_rules,
+    load_default_trigger_templates,
+    page_trigger_items,
+    trigger_pattern_matches_url,
+    trigger_rule_url_part,
+    validate_trigger_pattern,
+)
+from vchat.utils import (
+    admin_event,
+    flash,
+    htmx_required,
+    login_required,
+    meta,
+    validate_signed_user_csrf,
+)
 
-from vchat.views.admin.views import CreateUserForm, UserPasswordForm
+from vchat.views.admin.views import ApiClientForm, CreateUserForm, UserPasswordForm
+from vchat.views.api.views import decrypt_client_secret, encrypt_client_secret
 
 from . import forms
 
 logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
+DOCUMENT_CONTENT_PREVIEW_CHARS = 2000
+DEFAULT_WIDGET_WELCOME_MESSAGE = "Здравствуйте! Чем могу помочь?"
 
 __all__ = [
     "index",
-    "project_edit",
     "project_action",
     "project_edit_sources",
     "project_source_settings",
@@ -93,11 +129,76 @@ __all__ = [
     "project_chat",
     "project_stats",
     "project_integration",
+    "project_widget_edit",
+    "project_triggers",
+    "project_trigger_rule_count",
     "public_widget_chat",
     "project_files",
     "file_document",
     "source_sitemaps",
 ]
+
+
+async def _api_client_list_context(
+    request: web.Request,
+    db_session,
+    *,
+    add_form: ApiClientForm,
+    new_credentials=None,
+    selected_source_ids: set[int] | None = None,
+) -> dict[str, Any]:
+    clients = (
+        (await db_session.execute(sa.select(ApiClient).order_by(ApiClient.id.desc())))
+        .scalars()
+        .all()
+    )
+    if clients:
+        client_ids = [client.id for client in clients]
+        source_rows = (
+            await db_session.execute(
+                sa.select(
+                    api_client_source.c.api_client_id,
+                    Source.id,
+                    Source.title,
+                    Source.uri,
+                )
+                .join(Source, Source.id == api_client_source.c.source_id)
+                .where(api_client_source.c.api_client_id.in_(client_ids))
+                .order_by(Source.title.asc(), Source.id.asc())
+            )
+        ).all()
+        sources_by_client: dict[int, list[SimpleNamespace]] = {}
+        for client_id, source_id, title, uri in source_rows:
+            sources_by_client.setdefault(client_id, []).append(
+                SimpleNamespace(id=source_id, title=title, uri=uri)
+            )
+        for client in clients:
+            client.sources = sources_by_client.get(client.id, [])
+            secret = decrypt_client_secret(
+                client.encrypted_secret,
+                request.app[CONFIG_KEY]["secret_key"],
+            )
+            client.masked_secret = f"vchatsec-...{secret[-4:]}"
+
+    source_rows = (
+        await db_session.execute(
+            sa.select(Source.id, Source.title, Source.uri).order_by(
+                Source.title.asc(),
+                Source.id.asc(),
+            )
+        )
+    ).all()
+    sources = (
+        SimpleNamespace(id=source_id, title=title, uri=uri)
+        for source_id, title, uri in source_rows
+    )
+    return {
+        "clients": clients,
+        "sources": list(sources),
+        "add_form": add_form,
+        "new_credentials": new_credentials,
+        "selected_source_ids": selected_source_ids or set(),
+    }
 
 
 def _format_datetime_local(value: datetime | None) -> str:
@@ -106,11 +207,94 @@ def _format_datetime_local(value: datetime | None) -> str:
     return value.astimezone().strftime("%d.%m.%Y %H:%M")
 
 
+def _public_widget_url(code: str) -> str:
+    return f"https://chat.vbudushee.ru/widget/{code}"
+
+
+def _new_widget_code() -> str:
+    return secrets.token_urlsafe(8).rstrip("_-")
+
+
+def _pinned_messages_from_form(data) -> list[dict[str, str]]:
+    texts = data.getall("pinned_text[]", [])
+    colors = data.getall("pinned_color[]", [])
+    messages: list[dict[str, str]] = []
+    allowed_colors = {
+        "neutral",
+        "primary",
+        "secondary",
+        "accent",
+        "info",
+        "success",
+        "warning",
+    }
+    for index, raw_text in enumerate(texts[:3]):
+        text = (raw_text or "").strip()
+        if not text:
+            continue
+        color = (colors[index] if index < len(colors) else "neutral") or "neutral"
+        if color not in allowed_colors:
+            color = "neutral"
+        messages.append({"text": text[:1000], "color": color})
+    return messages
+
+
+async def _widget_integration_list_context(db_session) -> dict[str, Any]:
+    rows = (
+        (
+            await db_session.execute(
+                sa.select(WidgetIntegration).order_by(WidgetIntegration.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    widgets = [
+        SimpleNamespace(
+            id=widget.id,
+            name=widget.name,
+            code=widget.code,
+            public_url=_public_widget_url(widget.code),
+            contact_url=widget.contact_url,
+            agent_name=widget.agent_name,
+            welcome_message=widget.welcome_message,
+            system_prompt=widget.system_prompt,
+            pinned_messages=widget.pinned_messages or [],
+        )
+        for widget in rows
+    ]
+    await db_session.rollback()
+    return {
+        "widgets": widgets,
+        "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
+        "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
+    }
+
+
+def _widget_integration_snapshot(widget: WidgetIntegration) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=widget.id,
+        name=widget.name,
+        code=widget.code,
+        contact_url=widget.contact_url,
+        agent_name=widget.agent_name,
+        welcome_message=widget.welcome_message,
+        system_prompt=widget.system_prompt,
+        pinned_messages=widget.pinned_messages or [],
+    )
+
+
 def _queue_source_crawl_from_ui(source_id: int) -> None:
     chain(
         sitemap_sync_task.si(source_id),
         crawl_source_task.si(source_id, skip_sitemap_sync=True),
     ).apply_async()
+
+
+def _htmx_redirect_response(location) -> web.Response:
+    response = web.Response(status=204)
+    response.headers["HX-Redirect"] = str(location)
+    return response
 
 
 async def _check_source_blocking_and_commit(
@@ -150,16 +334,20 @@ def _format_bytes_compact(size_bytes: int) -> str:
     return f"{size_bytes / (1024 * 1024 * 1024):.1f} ГБ"
 
 
-def _document_content_size_bytes(document: Page) -> int:
+def _document_content_size_bytes(
+    document: Page, content_size_bytes: int | None = None
+) -> int:
+    if content_size_bytes is not None:
+        return int(content_size_bytes or 0)
     if document.content:
         return len(document.content.encode("utf-8"))
     return int(getattr(document, "_length", 0) or 0)
 
 
 def _document_uniqueness_percent(
-    document: Page, boilerplate_hashes: frozenset[int]
+    content: str, boilerplate_hashes: frozenset[int]
 ) -> int | None:
-    content = (document.content or "").strip()
+    content = (content or "").strip()
     if not content:
         return None
 
@@ -178,12 +366,12 @@ async def _load_document_uniqueness_percent(db: Any, document: Page) -> int | No
     if not document.content:
         return None
     if not document.source_id:
-        return _document_uniqueness_percent(document, frozenset())
+        return _document_uniqueness_percent(document.content, frozenset())
 
     boilerplate_hashes = await db.run_sync(
         lambda sync_db: load_boilerplate_hashes(sync_db, document.source_id)
     )
-    return _document_uniqueness_percent(document, boilerplate_hashes)
+    return _document_uniqueness_percent(document.content, boilerplate_hashes)
 
 
 def _document_stats_summary(
@@ -191,9 +379,12 @@ def _document_stats_summary(
     chunk_rows: list[Chunk],
     extraction: dict[str, Any],
     uniqueness_percent: int | None,
+    content_size_bytes: int | None = None,
 ) -> str:
     parts = [
-        _format_bytes_compact(_document_content_size_bytes(document)),
+        _format_bytes_compact(
+            _document_content_size_bytes(document, content_size_bytes)
+        ),
         f"{len(chunk_rows)} чанков",
         f"{int(extraction.get('word_count') or 0)} слов",
         f"{int(extraction.get('table_count') or 0)} таблиц",
@@ -295,6 +486,7 @@ def _is_ignored_link_status(
         PageStatusError.excluded_auth.value,
         PageStatusError.no_content.value,
         PageStatusError.low_content.value,
+        PageStatusError.too_big.value,
         PageStatusError.redirect.value,
     }
 
@@ -422,7 +614,7 @@ async def _document_link_groups(
             "id": linked_id,
             "uri": link.target_uri,
             "title": title,
-            "status": link.target_status or "unknown",
+            "status": _resolve_document_link_status(linked_page),
             "status_error": getattr(linked_page, "status_error", None),
         }
 
@@ -607,11 +799,106 @@ def _document_pipeline_steps(document: Page) -> tuple[str, str | None, str | Non
 
 async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     db = request["db"]
-    document = await db.scalar(sa.select(Page).where(Page.id == document_id))
-    if not document:
+    content_char_count_expr = sa.func.coalesce(
+        sa.func.length(Page.content),
+        sa.cast(Page._length, sa.Integer),
+        sa.literal(0, type_=sa.Integer),
+    )
+    empty_json_object = sa.cast(sa.literal("{}"), JSONB)
+    empty_json_array = sa.cast(sa.literal("[]"), JSONB)
+    document_row = (
+        await db.execute(
+            sa.select(
+                Page,
+                sa.func.coalesce(
+                    sa.func.substring(
+                        Page.content,
+                        1,
+                        DOCUMENT_CONTENT_PREVIEW_CHARS,
+                    ),
+                    "",
+                ).label("content_preview"),
+                sa.func.coalesce(
+                    sa.cast(sa.func.octet_length(Page.content), sa.BigInteger),
+                    sa.cast(Page._length, sa.BigInteger),
+                    sa.literal(0, type_=sa.BigInteger),
+                ).label("content_size_bytes"),
+                content_char_count_expr.label("content_char_count"),
+                sa.func.coalesce(
+                    Page.meta["extraction"],
+                    empty_json_object,
+                ).label("meta_extraction"),
+                sa.func.coalesce(
+                    Page.meta["outline"],
+                    empty_json_array,
+                ).label("meta_outline"),
+                sa.case(
+                    (
+                        content_char_count_expr <= DOCUMENT_CONTENT_PREVIEW_CHARS,
+                        sa.func.coalesce(Page.meta["structure"], empty_json_array),
+                    ),
+                    else_=empty_json_array,
+                ).label("meta_structure"),
+                Page.meta["removed_shingles"]
+                .as_string()
+                .label("meta_removed_shingles"),
+                Page.meta["reason"].as_string().label("meta_reason"),
+                Page.meta["message"].as_string().label("meta_message"),
+                Page.meta["error"].as_string().label("meta_error"),
+                Page.meta["exception_class"].as_string().label("meta_exception_class"),
+            )
+            .options(defer(Page.content), defer(Page.meta))
+            .where(Page.id == document_id)
+        )
+    ).one_or_none()
+    if not document_row:
         raise web.HTTPNotFound()
+    (
+        document,
+        document_content_preview,
+        document_content_size_bytes,
+        document_content_char_count,
+        meta_extraction,
+        meta_outline,
+        meta_structure,
+        meta_removed_shingles,
+        meta_reason,
+        meta_message,
+        meta_error,
+        meta_exception_class,
+    ) = document_row
+    document_content_preview = document_content_preview or ""
+    document_content_size_bytes = int(document_content_size_bytes or 0)
+    document_content_char_count = int(document_content_char_count or 0)
+    document_content_is_truncated = (
+        document_content_char_count > DOCUMENT_CONTENT_PREVIEW_CHARS
+    )
+    document_meta = {
+        "extraction": meta_extraction if isinstance(meta_extraction, dict) else {},
+        "outline": meta_outline if isinstance(meta_outline, list) else [],
+        "structure": meta_structure if isinstance(meta_structure, list) else [],
+    }
+    for key, value in (
+        ("removed_shingles", meta_removed_shingles),
+        ("reason", meta_reason),
+        ("message", meta_message),
+        ("error", meta_error),
+        ("exception_class", meta_exception_class),
+    ):
+        if value:
+            document_meta[key] = value
+    set_committed_value(document, "meta", document_meta)
     document_links = await _document_link_groups(db, document)
     document_display_title = _display_document_title(document.title, document.uri)
+    document_source = None
+    document_triggers_enabled = False
+    if document.source_id:
+        document_source = await db.scalar(
+            sa.select(Source).where(Source.id == document.source_id)
+        )
+        document_triggers_enabled = bool(
+            document_source and document_source.enable_triggers
+        )
 
     chunk_rows = (
         (
@@ -637,13 +924,54 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         if isinstance(raw_meta.get("extraction"), dict)
         else {}
     )
-    uniqueness_percent = await _load_document_uniqueness_percent(db, document)
+    uniqueness_percent = None
+    if not document_content_is_truncated:
+        boilerplate_hashes = frozenset()
+        if document.source_id:
+            boilerplate_hashes = await db.run_sync(
+                lambda sync_db: load_boilerplate_hashes(sync_db, document.source_id)
+            )
+        uniqueness_percent = _document_uniqueness_percent(
+            document_content_preview,
+            boilerplate_hashes,
+        )
+    trigger_rows = page_trigger_items(document) if document_triggers_enabled else []
+    trigger_keys = [trigger["key"] for trigger in trigger_rows]
+    cache_rows = []
+    if trigger_keys:
+        cache_rows = (
+            (
+                await db.execute(
+                    sa.select(TriggerResponseCache)
+                    .where(TriggerResponseCache.page_id == document.id)
+                    .where(TriggerResponseCache.trigger_key.in_(trigger_keys))
+                    .order_by(TriggerResponseCache.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+    caches_by_trigger: dict[str, list[TriggerResponseCache]] = {}
+    for cache in cache_rows:
+        caches_by_trigger.setdefault(cache.trigger_key, []).append(cache)
+
+    document_triggers = [
+        {
+            "trigger": trigger,
+            "caches": caches_by_trigger.get(trigger["key"], []),
+        }
+        for trigger in trigger_rows
+    ]
 
     return {
         "project": _project_context(request),
         "document": document,
         "page_title": document_display_title,
         "document_display_title": document_display_title,
+        "document_content_preview": document_content_preview,
+        "document_content_is_truncated": document_content_is_truncated,
+        "document_content_preview_chars": DOCUMENT_CONTENT_PREVIEW_CHARS,
+        "document_content_char_count": document_content_char_count,
         "document_crawl_fields": _document_crawl_fields(document),
         "document_pipeline": _document_pipeline_steps(document),
         "document_stats_summary": _document_stats_summary(
@@ -651,6 +979,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
             chunk_rows,
             extraction,
             uniqueness_percent,
+            document_content_size_bytes,
         ),
         "document_crawl_summary": _document_crawl_summary(document),
         "document_uniqueness_percent": uniqueness_percent,
@@ -664,6 +993,8 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
             document_display_title,
             document_links,
         ),
+        "document_triggers_enabled": document_triggers_enabled,
+        "document_triggers": document_triggers,
     }
 
 
@@ -672,14 +1003,15 @@ def _project_context(request) -> SimpleNamespace:
     return SimpleNamespace(
         id="global",
         title=settings.get("project.title") or "vchat",
-        provider=settings.get("project.provider") or "openai",
-        model=settings.get("project.model") or DEFAULT_OPENAI_MODEL,
-        system_prompt=settings.get("project.system_prompt")
-        or forms.DEFAULT_SYSTEM_PROMPT,
+        provider=config.get("chat_provider") or "gigachat",
+        model=(
+            config.get("chat_model")
+            or config.get("openai_model")
+            or DEFAULT_OPENAI_MODEL
+        ),
+        system_prompt=forms.DEFAULT_SYSTEM_PROMPT,
         agent_style=settings.get("project.agent_style") or "",
         config={
-            "agent_name": settings.get("project.agent_name") or "",
-            "welcome_message": settings.get("project.welcome_message") or "",
             "secret": settings.get("project.secret") or "",
         },
     )
@@ -780,55 +1112,295 @@ async def index(request):
     return await project_view(request)
 
 
-@meta(title="Настройки проекта")
-@login_required()
-@aiohttp_jinja2.template("projects/edit.html")
-async def project_edit(request):
+def _trigger_lines(raw: str | None) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for line in (raw or "").splitlines():
+        value = line.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _compile_trigger_patterns(patterns: list[str]) -> None:
+    for pattern in patterns:
+        validate_trigger_pattern(pattern)
+
+
+def _source_trigger_display(source: Source) -> dict[str, str]:
+    parsed = urlparse(source.uri or "")
+    host = parsed.netloc or source.uri or ""
+    title = (source.title or "").strip()
+    if not title or title == host or title == (source.uri or "").rstrip("/"):
+        return {"name": host, "hint": "", "full_uri": source.uri or ""}
+    return {"name": title, "hint": host, "full_uri": source.uri or ""}
+
+
+def _default_source_trigger_rules() -> list[CrawlerRule]:
+    return [CrawlerRule(type="regex", value=DEFAULT_SOURCE_TRIGGER_PATTERN)]
+
+
+def _source_trigger_rules_for_save(
+    cfg: SourceConfig, *, enable_triggers: bool
+) -> list[CrawlerRule]:
+    if cfg.trigger_rules:
+        return list(cfg.trigger_rules)
+    if enable_triggers:
+        return _default_source_trigger_rules()
+    return []
+
+
+async def _count_source_trigger_pattern(
+    db_session: Any,
+    *,
+    source: Source,
+    pattern: str,
+) -> int:
+    validate_trigger_pattern(pattern)
+    value = pattern.strip()
+    if not value:
+        return 0
+    rows = (
+        await db_session.execute(
+            sa.select(Page.uri)
+            .where(Page.source_id == source.id)
+            .where(Page.uri.is_not(None))
+        )
+    ).scalars()
+    return sum(
+        1
+        for uri in rows
+        if trigger_pattern_matches_url(
+            trigger_rule_url_part(source.uri, uri or ""), value
+        )
+    )
+
+
+async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
     db_session = request["db"]
-    session = await get_session(request)
-    data = await request.post()
-
-    project = _project_context(request)
-    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
-    if data:
-        form_kwargs["formdata"] = data
-    else:
-        form_kwargs["data"] = {
-            "title": project.title,
-            "system_prompt": project.system_prompt,
-            "agent_style": project.agent_style,
-            "provider": project.provider,
-            "model": project.model,
-            "agent_name": project.config.get("agent_name", ""),
-            "welcome_message": project.config.get("welcome_message", ""),
-        }
-
-    form = forms.WorkspaceForm(**form_kwargs)
-
-    if request.method == "POST" and form.validate():
-        await apply_settings_updates(
-            request.app,
-            db_session,
+    sources = list(
+        (
+            await db_session.execute(
+                sa.select(Source).order_by(Source.title.asc(), Source.uri.asc())
+            )
+        ).scalars()
+    )
+    source_trigger_rows = []
+    source_options = []
+    for source in sources:
+        display = _source_trigger_display(source)
+        if source.enable_triggers:
+            source_options.append(
+                {
+                    "id": source.id,
+                    "name": display["name"],
+                    "hint": display["hint"],
+                    "full_uri": display["full_uri"],
+                }
+            )
+        rule_rows = []
+        for rule in source.config.trigger_rules:
+            rule_rows.append(
+                {
+                    "value": rule.value,
+                    "affected_count": await _count_source_trigger_pattern(
+                        db_session,
+                        source=source,
+                        pattern=rule.value,
+                    ),
+                }
+            )
+        if not rule_rows:
+            continue
+        source_trigger_rows.append(
             {
-                "project.title": form.title.data,
-                "project.system_prompt": form.system_prompt.data,
-                "project.agent_style": form.agent_style.data,
-                "project.provider": form.provider.data,
-                "project.model": form.model.data,
-                "project.agent_name": (form.agent_name.data or "").strip(),
-                "project.welcome_message": (form.welcome_message.data or "").strip(),
+                "source_id": source.id,
+                "source_display": display,
+                "rule_rows": rule_rows,
+            }
+        )
+    if form is None:
+        form = forms.TriggerSettingsForm(
+            meta={"csrf_context": await get_session(request)},
+            data={
+                "default_templates": "\n".join(
+                    load_default_trigger_templates(request.app)
+                )
             },
         )
-        await db_session.commit()
-        await flash(request, _("Settings updated"), "success")
-        raise web.HTTPFound(request.app.router["project_edit"].url_for())
-
+    trigger_pages = list(
+        (
+            await db_session.execute(
+                sa.select(Page.triggers).where(Page.has_triggers.is_(True))
+            )
+        ).scalars()
+    )
+    total_triggers = sum(
+        len(items) for items in trigger_pages if isinstance(items, list)
+    )
+    pages_with_triggers = await db_session.scalar(
+        sa.select(sa.func.count(Page.id)).where(Page.has_triggers.is_(True))
+    )
+    cached_responses = await db_session.scalar(
+        sa.select(sa.func.count(TriggerResponseCache.id))
+    )
+    await db_session.rollback()
     return {
+        "project": _project_context(request),
+        "active_section": str(request.app.router["project_triggers"].url_for()),
         "form": form,
-        "project": project,
-        "is_owner": True,
-        "ai_provider_options": get_ai_provider_options(),
+        "source_trigger_rows": source_trigger_rows,
+        "source_options": source_options,
+        "stats": {
+            "total_triggers": int(total_triggers or 0),
+            "pages_with_triggers": int(pages_with_triggers or 0),
+            "cached_responses": int(cached_responses or 0),
+        },
     }
+
+
+@meta(title="Триггеры")
+@login_required()
+@htmx_required(actions={"generate", "clear"})
+@aiohttp_jinja2.template("projects/triggers.html")
+async def project_triggers(request):
+    db_session = request["db"]
+    session = await get_session(request)
+    data = await request.post() if request.method == "POST" else None
+    form = forms.TriggerSettingsForm(
+        meta={"csrf_context": session},
+        formdata=data,
+        data={
+            "default_templates": "\n".join(load_default_trigger_templates(request.app))
+        },
+    )
+
+    if request.method == "POST":
+        action = (data.get("action") or "save").strip()
+        if action == "generate":
+            generate_missing_triggers_task.delay()
+            await flash(request, "Генерация триггеров запущена", "success")
+            return _htmx_redirect_response(
+                request.app.router["project_triggers"].url_for()
+            )
+        if action == "clear":
+            sources_with_trigger_rules = list(
+                (await db_session.execute(sa.select(Source))).scalars()
+            )
+            source_ids = [
+                source.id
+                for source in sources_with_trigger_rules
+                if source.config.trigger_rules
+            ]
+            if not source_ids:
+                await flash(request, "Нет источников с правилами триггеров", "info")
+                return _htmx_redirect_response(
+                    request.app.router["project_triggers"].url_for()
+                )
+
+            page_ids = sa.select(Page.id).where(Page.source_id.in_(source_ids))
+            await db_session.execute(
+                sa.delete(TriggerResponseCache).where(
+                    TriggerResponseCache.page_id.in_(page_ids)
+                )
+            )
+            await db_session.execute(
+                sa.update(Page)
+                .where(Page.source_id.in_(source_ids))
+                .where(Page.triggers.is_not(None))
+                .values(triggers=None, updated_at=datetime.now(timezone.utc))
+            )
+            await db_session.commit()
+            await flash(
+                request,
+                f"Триггеры и кэши ответов очищены для источников: {len(source_ids)}",
+                "success",
+            )
+            return _htmx_redirect_response(
+                request.app.router["project_triggers"].url_for()
+            )
+
+        if form.validate():
+            default_templates = _trigger_lines(form.default_templates.data)
+            await apply_settings_updates(
+                request.app,
+                db_session,
+                {TRIGGER_DEFAULTS_SETTING: default_templates},
+            )
+            matched = 0
+            sources = list((await db_session.execute(sa.select(Source))).scalars())
+            for source in sources:
+                source_patterns = [
+                    value.strip()
+                    for value in data.getall(f"source_trigger_rules_{source.id}[]", [])
+                    if value.strip()
+                ]
+                try:
+                    _compile_trigger_patterns(source_patterns)
+                except (TriggerPatternError, re.error) as exc:
+                    await flash(request, f"Некорректный regex: {exc}", "error")
+                    return await _load_trigger_settings_context(request, form)
+
+                cfg = source.config
+                source.config = SourceConfig(
+                    crawler_concurrent_requests=cfg.crawler_concurrent_requests,
+                    crawler_download_delay=cfg.crawler_download_delay,
+                    crawler_download_timeout=cfg.crawler_download_timeout,
+                    ignore_robots_txt=cfg.ignore_robots_txt,
+                    rules=cfg.rules,
+                    trigger_rules=[
+                        CrawlerRule(type="regex", value=pattern)
+                        for pattern in source_patterns
+                    ],
+                )
+                source.updated_at = datetime.now(timezone.utc)
+                await apply_source_trigger_rules(db_session, source)
+                matched += (
+                    await db_session.scalar(
+                        sa.select(sa.func.count(Page.id)).where(
+                            Page.source_id == source.id,
+                            Page.has_triggers.is_(True),
+                        )
+                    )
+                    or 0
+                )
+            await db_session.commit()
+            await flash(
+                request,
+                f"Настройки сохранены. Страниц под правилами: {matched}",
+                "success",
+            )
+            raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+
+    return await _load_trigger_settings_context(request, form)
+
+
+@login_required()
+async def project_trigger_rule_count(request):
+    db_session = request["db"]
+    try:
+        source_id = int(request.query.get("source_id", "0"))
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Invalid source_id")
+    pattern = (request.query.get("pattern") or "").strip()
+    if not pattern:
+        return json_response({"ok": True, "count": None})
+
+    source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
+    if source is None:
+        raise web.HTTPNotFound(text="Source not found")
+
+    try:
+        count = await _count_source_trigger_pattern(
+            db_session,
+            source=source,
+            pattern=pattern,
+        )
+    except (TriggerPatternError, re.error) as exc:
+        return json_response({"ok": False, "error": str(exc)}, status=400)
+    return json_response({"ok": True, "count": count})
 
 
 def _build_progress_conditions():
@@ -839,6 +1411,7 @@ def _build_progress_conditions():
         PageStatusError.excluded_rules.value,
         PageStatusError.no_content.value,
         PageStatusError.low_content.value,
+        PageStatusError.too_big.value,
         PageStatusError.redirect.value,
     ]
     is_excl = Page.status_error.in_(_EXCLUDED_ERRORS)
@@ -1028,15 +1601,18 @@ async def project_source_settings(request):
             "download_delay": cfg.crawler_download_delay,
             "download_timeout": cfg.crawler_download_timeout,
             "ignore_robots_txt": cfg.ignore_robots_txt,
+            "enable_triggers": source.enable_triggers,
         }
 
     form = forms.SourceSettingsForm(**form_kwargs)
 
     if request.method == "POST" and form.validate():
+        current_cfg = source.config
         source.title = form.title.data
         source.reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
         source.updated_at = datetime.now(timezone.utc)
         source.uri = form.url.data
+        source.enable_triggers = bool(form.enable_triggers.data)
         rule_types = data.getall("rule_type[]", [])
         rule_values = data.getall("rule_value[]", [])
         rules = [
@@ -1060,6 +1636,10 @@ async def project_source_settings(request):
             ),
             ignore_robots_txt=bool(form.ignore_robots_txt.data),
             rules=rules,
+            trigger_rules=_source_trigger_rules_for_save(
+                current_cfg,
+                enable_triggers=source.enable_triggers,
+            ),
         )
         if source.config.ignore_robots_txt:
             if source.blocked_reason == "robots_txt":
@@ -1067,6 +1647,8 @@ async def project_source_settings(request):
                 source.blocked_message = None
                 source.blocked_checked_at = None
             source.robots_cache = None
+
+        await apply_source_trigger_rules(db_session, source)
 
         await db_session.commit()
         reapply_source_rules_task.delay(source.id)
@@ -1151,23 +1733,18 @@ async def source_sitemaps(request):
 
 
 @login_required()
+@htmx_required(
+    exempt_actions={
+        "user_create",
+        "user_password",
+        "api_client_create",
+        "api_client_update",
+    }
+)
 async def project_action(request):
     db_session = request["db"]
     item_id = request.match_info.get("item_id")
     action = request.match_info.get("action")
-    user_id = request["user"].id
-
-    if action not in {"user_create", "user_password"}:
-        token = request.headers.get("X-CSRFToken")
-        if not token:
-            raise web.HTTPForbidden(text="Missing CSRF Token")
-
-        try:
-            signed_user_id = request.app[SIGNER_KEY].loads(token, max_age=86400)
-            if signed_user_id != user_id:
-                raise web.HTTPForbidden(text="Invalid CSRF Token Owner")
-        except (BadSignature, SignatureExpired):
-            raise web.HTTPForbidden(text="Invalid CSRF Token")
 
     if action == "user_create":
         session = await get_session(request)
@@ -1293,43 +1870,271 @@ async def project_action(request):
         await flash(request, _("User deleted"), "success")
         raise web.HTTPFound(request.app.router["users"].url_for())
 
-    if action == "update_ai_settings":
+    if action == "api_client_create":
+        session = await get_session(request)
         data = await request.post()
-        provider = (data.get("provider") or "").strip()
-        model = (data.get("model") or "").strip()
+        form = ApiClientForm(data, meta={"csrf_context": session})
+        source_ids = [
+            int(source_id)
+            for source_id in data.getall("source_ids", [])
+            if str(source_id).isdigit()
+        ]
 
-        if not provider or not is_provider_available(provider):
-            raise web.HTTPBadRequest(text="Unknown provider")
-        if not model or not is_model_available(provider, model):
-            model = get_default_model_id(provider)
-
-        await apply_settings_updates(
-            request.app,
-            db_session,
-            {
-                "project.provider": provider,
-                "project.model": model,
-            },
-        )
-        await db_session.commit()
-
-        if request.headers.get("HX-Request"):
-            provider_obj, model_obj = resolve_ai_settings(provider, model)
+        if not form.validate():
             return aiohttp_jinja2.render_template(
-                "chat/includes/ai_settings.html",
+                "admin/api_client_list.html",
                 request,
-                {
-                    "project": _project_context(request),
-                    "ai_provider_options": get_ai_provider_options(),
-                    "current_ai_provider": provider_obj.id,
-                    "current_ai_model": model_obj.id,
-                    "ai_settings_url": request.app.router["actions"].url_for(
-                        action="update_ai_settings", item_id="global"
-                    ),
-                    "allow_ai_switch": True,
-                },
+                await _api_client_list_context(
+                    request,
+                    db_session,
+                    add_form=form,
+                    selected_source_ids=set(source_ids),
+                ),
+                status=400,
             )
-        return web.json_response({"ok": True, "provider": provider, "model": model})
+
+        valid_source_ids = (
+            [
+                source_id
+                for (source_id,) in (
+                    await db_session.execute(
+                        sa.select(Source.id).where(Source.id.in_(source_ids))
+                    )
+                ).all()
+            ]
+            if source_ids
+            else []
+        )
+        client_id = f"vchatid-{secrets.token_hex(8)}"
+        client_secret = f"vchatsec-{secrets.token_urlsafe(32)}"
+        client = ApiClient(
+            name=form.name.data.strip(),
+            client_id=client_id,
+            encrypted_secret=encrypt_client_secret(
+                client_secret,
+                request.app[CONFIG_KEY]["secret_key"],
+            ),
+            is_active=True,
+        )
+        db_session.add(client)
+        await db_session.flush()
+        if valid_source_ids:
+            await db_session.execute(
+                api_client_source.insert(),
+                [
+                    {"api_client_id": client.id, "source_id": source_id}
+                    for source_id in valid_source_ids
+                ],
+            )
+        await db_session.commit()
+        await admin_event("api_client_create", request)
+        return aiohttp_jinja2.render_template(
+            "admin/api_client_list.html",
+            request,
+            await _api_client_list_context(
+                request,
+                db_session,
+                add_form=ApiClientForm(meta={"csrf_context": session}),
+                new_credentials=SimpleNamespace(
+                    message=_("Клиент {name} создан").format(name=client.name),
+                    client_id=client_id,
+                    client_secret=client_secret,
+                ),
+            ),
+        )
+
+    if action == "api_client_update":
+        session = await get_session(request)
+        client_id = int(item_id)
+        client = await db_session.scalar(
+            sa.select(ApiClient).where(ApiClient.id == client_id)
+        )
+        if not client:
+            raise web.HTTPNotFound()
+
+        data = await request.post()
+        reset_secret = data.get("reset_secret") == "1"
+        if reset_secret:
+            validate_signed_user_csrf(request)
+            form = ApiClientForm(data, meta={"csrf": False})
+        else:
+            form = ApiClientForm(data, meta={"csrf_context": session})
+        source_ids = [
+            int(source_id)
+            for source_id in data.getall("source_ids", [])
+            if str(source_id).isdigit()
+        ]
+        if not form.validate():
+            return aiohttp_jinja2.render_template(
+                "admin/api_client_list.html",
+                request,
+                await _api_client_list_context(
+                    request,
+                    db_session,
+                    add_form=ApiClientForm(meta={"csrf_context": session}),
+                    selected_source_ids=set(source_ids),
+                ),
+                status=400,
+            )
+
+        valid_source_ids = (
+            [
+                source_id
+                for (source_id,) in (
+                    await db_session.execute(
+                        sa.select(Source.id).where(Source.id.in_(source_ids))
+                    )
+                ).all()
+            ]
+            if source_ids
+            else []
+        )
+
+        client.name = form.name.data.strip()
+        await db_session.execute(
+            api_client_source.delete().where(
+                api_client_source.c.api_client_id == client.id
+            )
+        )
+        if valid_source_ids:
+            await db_session.execute(
+                api_client_source.insert(),
+                [
+                    {"api_client_id": client.id, "source_id": source_id}
+                    for source_id in valid_source_ids
+                ],
+            )
+
+        client_secret = None
+        if reset_secret:
+            client_secret = f"vchatsec-{secrets.token_urlsafe(32)}"
+            client.encrypted_secret = encrypt_client_secret(
+                client_secret,
+                request.app[CONFIG_KEY]["secret_key"],
+            )
+
+        await db_session.commit()
+        await admin_event("api_client_update", request)
+        return aiohttp_jinja2.render_template(
+            "admin/api_client_list.html",
+            request,
+            await _api_client_list_context(
+                request,
+                db_session,
+                add_form=ApiClientForm(meta={"csrf_context": session}),
+                new_credentials=(
+                    SimpleNamespace(
+                        message=_("Секрет клиента {name} сброшен").format(
+                            name=client.name
+                        ),
+                        client_id=client.client_id,
+                        client_secret=client_secret,
+                    )
+                    if client_secret
+                    else None
+                ),
+            ),
+        )
+
+    if action == "api_client_delete":
+        client_id = int(item_id)
+        client = await db_session.scalar(
+            sa.select(ApiClient).where(ApiClient.id == client_id)
+        )
+        if not client:
+            raise web.HTTPNotFound()
+
+        await db_session.delete(client)
+        await db_session.commit()
+        await admin_event("api_client_delete", request)
+
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
+
+    if action == "widget_create":
+        data = await request.post()
+        name = (data.get("name") or "").strip()
+        if not name:
+            return web.Response(text=_("Название обязательно"), status=400)
+
+        code = _new_widget_code()
+        while await db_session.scalar(
+            sa.select(WidgetIntegration.id).where(WidgetIntegration.code == code)
+        ):
+            code = _new_widget_code()
+
+        widget = WidgetIntegration(
+            name=name[:128],
+            code=code,
+            contact_url=(data.get("contact_url") or "").strip(),
+            agent_name=(data.get("agent_name") or "").strip()[:100],
+            welcome_message=(
+                (data.get("welcome_message") or "").strip()
+                or DEFAULT_WIDGET_WELCOME_MESSAGE
+            ),
+            system_prompt=(
+                (data.get("system_prompt") or "").strip() or forms.DEFAULT_SYSTEM_PROMPT
+            ),
+            pinned_messages=[],
+        )
+        db_session.add(widget)
+        await db_session.flush()
+        widget_id = widget.id
+        await db_session.commit()
+        await admin_event("widget_create", request)
+        await flash(request, _("Код виджета создан"), "success")
+        return _htmx_redirect_response(
+            request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
+        )
+
+    if action == "widget_update":
+        widget_id = int(item_id)
+        widget = await db_session.scalar(
+            sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+        )
+        if not widget:
+            raise web.HTTPNotFound()
+
+        data = await request.post()
+        name = (data.get("name") or "").strip()
+        if not name:
+            return web.Response(text=_("Название обязательно"), status=400)
+
+        widget.name = name[:128]
+        widget.contact_url = (data.get("contact_url") or "").strip()
+        widget.agent_name = (data.get("agent_name") or "").strip()[:100]
+        widget.welcome_message = (
+            data.get("welcome_message") or ""
+        ).strip() or DEFAULT_WIDGET_WELCOME_MESSAGE
+        widget.system_prompt = (
+            data.get("system_prompt") or ""
+        ).strip() or forms.DEFAULT_SYSTEM_PROMPT
+        widget.pinned_messages = _pinned_messages_from_form(data)
+        widget.updated_at = datetime.now(timezone.utc)
+
+        await db_session.commit()
+        await admin_event("widget_update", request)
+        await flash(request, _("Код виджета обновлен"), "success")
+        return _htmx_redirect_response(
+            request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
+        )
+
+    if action == "widget_delete":
+        widget_id = int(item_id)
+        widget = await db_session.scalar(
+            sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+        )
+        if not widget:
+            raise web.HTTPNotFound()
+
+        await db_session.delete(widget)
+        await db_session.commit()
+        await admin_event("widget_delete", request)
+
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
 
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)
@@ -1376,7 +2181,7 @@ async def project_action(request):
         else:
             document.status_error = None
         await db_session.commit()
-        response = web.json_response({"is_ignored": want_ignored})
+        response = json_response({"is_ignored": want_ignored})
         response.headers["HX-Trigger"] = "project-documents:refresh"
         return response
 
@@ -1414,6 +2219,7 @@ async def project_action(request):
             title=title,
             config=SourceConfig(rules=with_default_ignored_param_rules(rules)),
             reindex_cron=reindex_cron,
+            enable_triggers=bool(form.enable_triggers.data),
         )
         db_session.add(source)
         is_blocked = await _check_source_blocking_and_commit(
@@ -1577,6 +2383,7 @@ async def project_action(request):
             crawler_download_timeout=cfg.crawler_download_timeout,
             ignore_robots_txt=cfg.ignore_robots_txt,
             rules=rules,
+            trigger_rules=cfg.trigger_rules,
         )
         source.updated_at = datetime.now(timezone.utc)
         await db_session.commit()
@@ -1773,13 +2580,13 @@ async def project_documents_json(request):
             }
         )
 
-    return web.json_response(data)
+    return json_response(data)
 
 
 @login_required()
 async def project_files_json(request):
     rows = await _files_rows(request["db"])
-    return web.json_response([_file_row_to_payload(row) for row in rows])
+    return json_response([_file_row_to_payload(row) for row in rows])
 
 
 @meta(title=_("Stats"))
@@ -2107,7 +2914,11 @@ async def project_chat(request):
         chat = await request["db"].scalar(sa.select(Chat).where(Chat.id == chat_id))
         if not chat:
             raise web.HTTPNotFound(text="Chat not found")
-        chat.meta = merge_chat_meta(chat.meta, request)
+        chat.meta = merge_chat_meta(
+            chat.meta,
+            request,
+            source_page_url=request.rel_url.query.get("source_page_url"),
+        )
         await request["db"].commit()
     else:
         user_uid_param = request.rel_url.query.get("user_uid", "").strip()
@@ -2117,7 +2928,11 @@ async def project_chat(request):
         chat = Chat(
             title=f"Chat for {project.title}",
             user_uid=user_uid,
-            meta=merge_chat_meta({}, request),
+            meta=merge_chat_meta(
+                {},
+                request,
+                source_page_url=request.rel_url.query.get("source_page_url"),
+            ),
         )
         request["db"].add(chat)
         await request["db"].commit()
@@ -2178,29 +2993,28 @@ async def project_chat(request):
 
     project = _project_context(request)
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
-    ai_settings_url = request.app.router["actions"].url_for(
-        action="update_ai_settings", item_id="global"
-    )
 
     return {
         "project": project,
         "chat": chat,
         "payload": payload,
-        "agent_name": project.config.get("agent_name", ""),
-        "welcome_message": project.config.get("welcome_message", ""),
+        "agent_name": "",
+        "welcome_message": "",
+        "contact_url": "",
+        "pinned_messages": [],
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,
         "current_ai_model": model_obj.id,
         "current_ai_model_label": model_obj.label,
         "current_ai_provider_label": provider_obj.title,
         "allow_ai_switch": False,
-        "ai_settings_url": str(ai_settings_url),
+        "ai_settings_url": None,
         "initial_messages": initial_messages,
         "signed_chat_id": signed_chat_id,
     }
 
 
-@meta(title=_("Integration"))
+@meta(title=_("Код виджета"))
 @login_required()
 @aiohttp_jinja2.template("projects/integration.html")
 async def project_integration(request):
@@ -2212,14 +3026,51 @@ async def project_integration(request):
         )
         await request["db"].commit()
 
-    return {"project": _project_context(request), "project_secret": secret}
+    context = await _widget_integration_list_context(request["db"])
+    context.update({"project": _project_context(request), "project_secret": secret})
+    return context
 
 
-async def _render_public_chat(request):
+@meta(title=_("Редактировать код виджета"))
+@login_required()
+@aiohttp_jinja2.template("projects/widget_edit.html")
+async def project_widget_edit(request):
+    widget_id = int(request.match_info["widget_id"])
+    widget = await request["db"].scalar(
+        sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+    )
+    if not widget:
+        await request["db"].rollback()
+        raise web.HTTPNotFound()
+    snapshot = _widget_integration_snapshot(widget)
+    snapshot.public_url = _public_widget_url(snapshot.code)
+    await request["db"].rollback()
+    return {
+        "project": _project_context(request),
+        "widget": snapshot,
+        "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
+        "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
+    }
+
+
+async def _widget_integration_by_code(request, code: str) -> SimpleNamespace:
+    widget = await request["db"].scalar(
+        sa.select(WidgetIntegration).where(WidgetIntegration.code == code)
+    )
+    if not widget:
+        await request["db"].rollback()
+        raise web.HTTPNotFound(text="Widget code not found")
+    snapshot = _widget_integration_snapshot(widget)
+    await request["db"].rollback()
+    return snapshot
+
+
+async def _render_public_chat(request, widget: WidgetIntegration):
     user_uid = request.query.get("user_uid", "").strip()
     user_name = request.query.get("user_name", "")
     user_email = request.query.get("user_email", "")
     sign = request.query.get("sign", "")
+    source_page_url = request.query.get("source_page_url", "")
 
     if not user_uid:
         user_uid = f"guest_{uuid.uuid4().hex[:8]}"
@@ -2238,14 +3089,14 @@ async def _render_public_chat(request):
         meta=merge_chat_meta(
             {"name": user_name, "email": user_email},
             request,
+            source_page_url=source_page_url,
         ),
     )
     request["db"].add(chat)
     await request["db"].commit()
-    await request["db"].refresh(chat)
 
     serializer = URLSafeSerializer(config.get("secret_key"))
-    payload = serializer.dumps([user_uid, chat.id], salt="vchat")
+    payload = serializer.dumps([user_uid, chat.id, widget.code], salt="vchat")
     signed_chat_id = serializer.dumps(chat.id, salt="chat")
     support_csrf_token = request.app[SIGNER_KEY].dumps({"chat_id": chat.id})
 
@@ -2256,8 +3107,10 @@ async def _render_public_chat(request):
         "project": project,
         "chat": chat,
         "payload": payload,
-        "agent_name": project.config.get("agent_name", ""),
-        "welcome_message": project.config.get("welcome_message", ""),
+        "agent_name": widget.agent_name,
+        "welcome_message": widget.welcome_message,
+        "contact_url": widget.contact_url,
+        "pinned_messages": widget.pinned_messages or [],
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,
         "current_ai_model": model_obj.id,
@@ -2274,9 +3127,9 @@ async def _render_public_chat(request):
 @meta(title=_("Chat Widget"))
 @aiohttp_jinja2.template("chat/chat.html")
 async def public_widget_chat(request):
-    if not (request.app[CONFIG_KEY].get("vchat_chat") or "").strip():
-        raise web.HTTPNotFound(text="Widget chat is not configured")
-    return await _render_public_chat(request)
+    code = request.match_info.get("code", "").strip()
+    widget = await _widget_integration_by_code(request, code)
+    return await _render_public_chat(request, widget)
 
 
 @meta(title=_("Files"))
@@ -2298,6 +3151,9 @@ async def project_files(request):
             title=None,
             uri=None,
             content=content,
+            raw_content=b"",
+            raw_content_type="text/markdown",
+            raw_content_size=0,
             hash_value=content,
             meta={
                 "doc_type": "markdown",
@@ -2313,6 +3169,12 @@ async def project_files(request):
         await db_session.flush()
         # Default title is the document numeric ID.
         document.title = str(document.id)
+        await async_update_page_shingles(
+            db_session,
+            page_id=document.id,
+            source_id=document.source_id,
+            content=document.content,
+        )
         await db_session.commit()
         await admin_event("file_create", request)
         location = request.app.router["file_document"].url_for(
@@ -2357,15 +3219,30 @@ async def file_document(request):
             raise web.HTTPFound(location=request.app.router["project_files"].url_for())
 
         content = str(data.get("content") or "")
+        too_big = is_document_too_big(content)
         document.content = content
         document.hash_value = content
         document.length = len(content)
-        document.status = PageStatus.parsing
-        document.status_error = None
+        document.status = PageStatus.ready if too_big else PageStatus.parsing
+        document.status_error = PageStatusError.too_big if too_big else None
+        meta = dict(document.meta or {})
+        for key in ("error", "message", "reason", "exception_class"):
+            meta.pop(key, None)
+        if too_big:
+            meta["reason"] = PageStatusError.too_big.value
+            meta["message"] = document_too_big_message(content)
+        document.meta = meta
         document.updated_at = datetime.now(timezone.utc)
         await db_session.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
+        await async_update_page_shingles(
+            db_session,
+            page_id=document.id,
+            source_id=document.source_id,
+            content=document.content,
+        )
         await db_session.commit()
-        schedule_index_document(document.id)
+        if not too_big:
+            schedule_index_document(document.id)
         await admin_event("file_update", request)
         await flash(request, _("Файл сохранен"), "success")
         raise web.HTTPFound(location=request.path)

@@ -10,7 +10,10 @@ import aiohttp
 import pytest
 from itsdangerous import BadSignature
 
+from vchat.app_keys import SIGNER_KEY
 from vchat.guardrails import GuardrailDecision
+from vchat.models.source_config import SourceConfig
+from vchat.triggers import trigger_key
 from vchat.views.chat import views as chat_views
 
 
@@ -111,6 +114,91 @@ class _FakeSessionFactory:
         return False
 
 
+class _RowsSessionFactory:
+    def __init__(self, row: Any) -> None:
+        self.row = row
+
+    def __call__(self) -> _RowsSessionFactory:
+        return self
+
+    async def __aenter__(self) -> _RowsSessionFactory:
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        _ = exc_type, exc, tb
+        return False
+
+    async def execute(self, stmt: Any) -> Any:
+        _ = stmt
+        return SimpleNamespace(one_or_none=lambda: self.row)
+
+
+class _ChatActionRequest(dict):
+    def __init__(
+        self,
+        *,
+        action: str,
+        item_id: str,
+        db: Any,
+        token: str = "csrf",
+        query: dict[str, str] | None = None,
+        post_data: dict[str, str] | None = None,
+        csrf_chat_id: str = "chat-1",
+    ) -> None:
+        super().__init__({"db": db})
+        self.match_info = {"action": action, "item_id": item_id}
+        self.headers = {"X-CSRFToken": token}
+        self.query = query or {}
+        self.app = {SIGNER_KEY: _ChatCsrfSigner(csrf_chat_id)}
+        self.transport = None
+        self._post_data = post_data or {}
+
+    async def post(self) -> dict[str, str]:
+        return self._post_data
+
+    async def json(self) -> dict[str, str]:
+        return self._post_data
+
+
+class _ChatCsrfSigner:
+    def __init__(self, chat_id: str) -> None:
+        self.chat_id = chat_id
+
+    def loads(self, token, max_age=86400):
+        assert max_age == 86400
+        if token == "bad":
+            raise BadSignature("bad")
+        return {"chat_id": self.chat_id}
+
+
+class _ChatActionSerializer:
+    def __init__(self, secret):
+        _ = secret
+
+    def loads(self, payload, salt=None, max_age=None):
+        _ = max_age
+        if payload == "bad":
+            raise BadSignature("bad")
+        if salt == "chat":
+            return "chat-1"
+        if salt == "chat_msg":
+            return 10
+        raise BadSignature("bad")
+
+
+class _ChatActionDB:
+    def __init__(self, row: Any) -> None:
+        self.row = row
+        self.commits = 0
+
+    async def scalar(self, stmt: Any) -> Any:
+        _ = stmt
+        return self.row
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
 class _FakeRedis:
     def __init__(self) -> None:
         self.events: list[tuple[str, Any]] = []
@@ -130,6 +218,136 @@ def test_is_trivial_query_variants() -> None:
     assert chat_views.is_trivial_query("  hi there ")
     assert chat_views.is_trivial_query("???")
     assert not chat_views.is_trivial_query("Как перенести отпуск?")
+
+
+def test_load_signed_trigger_page_id_validates_signature() -> None:
+    class _Signer:
+        def loads(self, payload, salt=None, max_age=None):
+            assert payload == "token"
+            assert salt == "trigger_page"
+            assert max_age == 86400
+            return "42"
+
+    app = {SIGNER_KEY: _Signer()}
+
+    assert chat_views.load_signed_trigger_page_id(app, "token") == 42
+
+
+def test_load_signed_trigger_page_id_rejects_bad_signature() -> None:
+    class _Signer:
+        def loads(self, payload, salt=None, max_age=None):
+            _ = payload, salt, max_age
+            raise BadSignature("bad")
+
+    app = {SIGNER_KEY: _Signer()}
+
+    assert chat_views.load_signed_trigger_page_id(app, "bad") is None
+
+
+@pytest.mark.asyncio
+async def test_stream_cached_response_text_drips_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws = _FakeWs([])
+    sleeps = []
+
+    async def _sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(chat_views.asyncio, "sleep", _sleep)
+
+    await chat_views.stream_cached_response_text(
+        ws=ws,
+        response_text="abcdefghijklmnopqrstuvwxyz0123456789",
+    )
+
+    assert sleeps == [
+        chat_views.CACHED_TRIGGER_STREAM_DELAY_SECONDS,
+        chat_views.CACHED_TRIGGER_STREAM_DELAY_SECONDS,
+    ]
+    assert ws.sent_json == [
+        {
+            "ok": True,
+            "content": "abcdefghijklmnopqrstuvwxyz012345",
+            "partial": True,
+        },
+        {
+            "ok": True,
+            "content": "6789",
+            "partial": True,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_validate_trigger_cache_request_requires_current_page_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = SimpleNamespace(
+        id=20,
+        source_id=10,
+        has_triggers=True,
+        triggers=[
+            {
+                "key": trigger_key("Valid trigger"),
+                "text": "Valid trigger",
+                "source": "generated",
+            }
+        ],
+    )
+    source = SimpleNamespace(
+        id=10,
+        enable_triggers=True,
+        config=SourceConfig(),
+    )
+    monkeypatch.setattr(
+        chat_views, "async_session_factory", _RowsSessionFactory((page, source))
+    )
+
+    assert (
+        await chat_views.validate_trigger_cache_request(
+            page_id=20,
+            trigger_key=trigger_key("Other trigger"),
+            user_text="Other trigger",
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_trigger_cache_request_accepts_current_page_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    text = "Valid trigger"
+    page = SimpleNamespace(
+        id=20,
+        source_id=10,
+        has_triggers=True,
+        triggers=[
+            {
+                "key": trigger_key(text),
+                "text": text,
+                "source": "generated",
+            }
+        ],
+    )
+    source = SimpleNamespace(
+        id=10,
+        enable_triggers=True,
+        config=SourceConfig(),
+    )
+    monkeypatch.setattr(
+        chat_views, "async_session_factory", _RowsSessionFactory((page, source))
+    )
+
+    assert (
+        await chat_views.validate_trigger_cache_request(
+            page_id=20,
+            trigger_key=trigger_key(text),
+            user_text=text,
+        )
+        is True
+    )
 
 
 def test_extract_total_tokens_variants() -> None:
@@ -355,6 +573,149 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
 
 
 @pytest.mark.asyncio
+async def test_ai_chat_stream_passes_gigachat_ssl_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def _token(*args, **kwargs):
+        _ = args, kwargs
+        return "access-token"
+
+    class _Resp:
+        status = 200
+        request_info = None
+        history = ()
+        headers = {}
+
+        def __init__(self):
+            self.content = self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+        def __aiter__(self):
+            async def _gen():
+                yield b'data: {"choices":[{"delta":{"content":"A"}}]}\n'
+                yield b"data: [DONE]\n"
+
+            return _gen()
+
+    class _Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+        def post(self, *args, **kwargs):
+            _ = args
+            captured.update(kwargs)
+            return _Resp()
+
+    monkeypatch.setitem(chat_views.config, "gigachat_verify_ssl_certs", False)
+    monkeypatch.setattr(chat_views, "get_gigachat_access_token", _token)
+    monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: _Session())
+
+    events = [
+        event
+        async for event in chat_views.ai_chat_stream(
+            [{"role": "user", "content": "x"}],
+            _FakeCtx(_FakeProvider(id="gigachat"), _FakeModel(id="GigaChat-Pro")),
+        )
+    ]
+
+    assert captured["ssl"] is False
+    assert events[-1]["message"]["content"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_chat_action_session_requires_matching_signed_chat_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chat = SimpleNamespace(id="chat-1", meta={})
+    db = _ChatActionDB(chat)
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _ChatActionSerializer)
+
+    response = await chat_views.chat_actions(
+        _ChatActionRequest(action="session", item_id="signed-chat", db=db)
+    )
+
+    assert response.status == 200
+    assert db.commits == 1
+
+    with pytest.raises(aiohttp.web.HTTPForbidden):
+        await chat_views.chat_actions(
+            _ChatActionRequest(
+                action="session",
+                item_id="signed-chat",
+                db=db,
+                csrf_chat_id="other-chat",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_chat_action_vote_requires_matching_signed_chat_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = SimpleNamespace(id=10, chat_id="chat-1", role="assistant", vote=None)
+    db = _ChatActionDB(msg)
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _ChatActionSerializer)
+    monkeypatch.setattr(
+        chat_views.aiohttp_jinja2,
+        "render_template",
+        lambda *args, **kwargs: aiohttp.web.Response(text="ok"),
+    )
+
+    response = await chat_views.chat_actions(
+        _ChatActionRequest(
+            action="vote",
+            item_id="signed-msg",
+            db=db,
+            query={"vote": "up"},
+        )
+    )
+
+    assert response.status == 200
+    assert msg.vote is True
+    assert db.commits == 1
+
+    with pytest.raises(aiohttp.web.HTTPForbidden):
+        await chat_views.chat_actions(
+            _ChatActionRequest(
+                action="vote",
+                item_id="signed-msg",
+                db=db,
+                query={"vote": "down"},
+                csrf_chat_id="other-chat",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_chat_action_rejects_bad_signed_chat_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _ChatActionSerializer)
+
+    with pytest.raises(aiohttp.web.HTTPForbidden):
+        await chat_views.chat_actions(
+            _ChatActionRequest(
+                action="session",
+                item_id="signed-chat",
+                db=_ChatActionDB(SimpleNamespace(id="chat-1", meta={})),
+                token="bad",
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_websocket_invalid_signature_closes_1008(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -410,7 +771,7 @@ async def test_websocket_sends_internal_error_json(
     monkeypatch.setattr(
         chat_views,
         "build_generation_context",
-        lambda app: _FakeCtx(_FakeProvider(), _FakeModel()),
+        lambda app, widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
     )
 
     async def _raise_input_guardrail(*, text: str, provider: Any) -> GuardrailDecision:

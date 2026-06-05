@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 from aiohttp import web
+from itsdangerous import BadSignature
+from multidict import MultiDict
 from yarl import URL
 
-from vchat.app_keys import SIGNER_KEY
+from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
 from vchat.views.projects import views as project_views
 
 
@@ -15,6 +18,12 @@ class _Signer:
     def loads(self, token, max_age=86400):
         _ = token, max_age
         return 1
+
+
+class _BadSigner:
+    def loads(self, token, max_age=86400):
+        _ = token, max_age
+        raise BadSignature("bad")
 
 
 class _Route:
@@ -27,10 +36,12 @@ class _Route:
 
 class _App(dict):
     def __init__(self):
-        super().__init__({SIGNER_KEY: _Signer()})
+        super().__init__({SIGNER_KEY: _Signer(), CONFIG_KEY: {"secret_key": b"k" * 32}})
         self.router = {
             "users": _Route("/users/"),
             "actions": _Route("/actions/{action}/{item_id}"),
+            "project_triggers": _Route("/triggers"),
+            "project_widget_edit": _Route("/integration/widgets/{widget_id}"),
         }
 
 
@@ -91,6 +102,10 @@ def _raw_project_action():
     return project_views.project_action.__wrapped__
 
 
+def _raw_project_triggers():
+    return project_views.project_triggers.__wrapped__.__wrapped__
+
+
 @pytest.mark.asyncio
 async def test_project_action_rejects_missing_csrf() -> None:
     req = _Request(action="delete_source", headers={})
@@ -114,7 +129,7 @@ async def test_project_action_ignore_document_toggle(
     resp = await _raw_project_action()(req)
     assert resp.status == 200
     assert doc.status_error == PageStatusError.excluded_ignored
-    assert '"is_ignored": true' in resp.text
+    assert json.loads(resp.text)["is_ignored"] is True
     assert resp.headers["HX-Trigger"] == "project-documents:refresh"
 
 
@@ -222,6 +237,152 @@ async def test_project_action_background_actions(
 
 
 @pytest.mark.asyncio
+async def test_project_triggers_generate_htmx_queues_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = _Request(
+        action="",
+        post_data=MultiDict({"action": "generate"}),
+        headers={"X-CSRFToken": "ok"},
+    )
+    db = _DB()
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    queued = []
+
+    async def _session(request):
+        _ = request
+        return {}
+
+    async def _flash(*args, **kwargs):
+        _ = args, kwargs
+
+    monkeypatch.setattr(project_views, "get_session", _session)
+    monkeypatch.setattr(project_views, "flash", _flash)
+    monkeypatch.setattr(
+        project_views.generate_missing_triggers_task,
+        "delay",
+        lambda: queued.append("generate"),
+    )
+
+    resp = await _raw_project_triggers()(req)
+
+    assert resp.status == 204
+    assert resp.headers["HX-Redirect"] == "/triggers"
+    assert queued == ["generate"]
+    assert db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_create_requires_signed_header() -> None:
+    req = _Request(
+        action="widget_create",
+        item_id="global",
+        post_data=MultiDict({"name": "Widget"}),
+        headers={},
+    )
+    req["db"] = _DB()
+    req["user"] = SimpleNamespace(id=1)
+
+    with pytest.raises(web.HTTPForbidden):
+        await _raw_project_action()(req)
+
+
+@pytest.mark.asyncio
+async def test_project_triggers_requires_signed_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = _Request(action="", post_data=MultiDict({"action": "generate"}), headers={})
+    req["db"] = _DB()
+    req["user"] = SimpleNamespace(id=1)
+
+    async def _session(request):
+        _ = request
+        return {}
+
+    monkeypatch.setattr(project_views, "get_session", _session)
+
+    with pytest.raises(web.HTTPForbidden):
+        await _raw_project_triggers()(req)
+
+
+@pytest.mark.asyncio
+async def test_project_triggers_rejects_bad_csrf_signature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = _Request(
+        action="",
+        post_data=MultiDict({"action": "generate"}),
+        headers={"X-CSRFToken": "bad"},
+    )
+    req.app[SIGNER_KEY] = _BadSigner()
+    req["db"] = _DB()
+    req["user"] = SimpleNamespace(id=1)
+
+    async def _session(request):
+        _ = request
+        return {}
+
+    monkeypatch.setattr(project_views, "get_session", _session)
+
+    with pytest.raises(web.HTTPForbidden):
+        await _raw_project_triggers()(req)
+
+
+@pytest.mark.asyncio
+async def test_project_action_api_client_reset_secret_uses_signed_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = SimpleNamespace(
+        id=3,
+        name="Client",
+        client_id="cid",
+        encrypted_secret="old",
+    )
+    req = _Request(
+        action="api_client_update",
+        item_id="3",
+        post_data=MultiDict(
+            {
+                "name": "Client",
+                "reset_secret": "1",
+            }
+        ),
+        headers={"X-CSRFToken": "ok"},
+    )
+    db = _DB(scalar_values=[client])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+
+    async def _session(request):
+        _ = request
+        return {}
+
+    async def _context(*args, **kwargs):
+        _ = args, kwargs
+        return {}
+
+    def _render_template(*args, **kwargs):
+        _ = args, kwargs
+        return web.Response(text="ok")
+
+    async def _admin_event(*args, **kwargs):
+        _ = args, kwargs
+
+    monkeypatch.setattr(project_views, "get_session", _session)
+    monkeypatch.setattr(project_views, "_api_client_list_context", _context)
+    monkeypatch.setattr(project_views, "admin_event", _admin_event)
+    monkeypatch.setattr(project_views, "encrypt_client_secret", lambda *args: "enc")
+    monkeypatch.setattr(project_views.aiohttp_jinja2, "render_template", _render_template)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 200
+    assert db.commits == 1
+    assert client.encrypted_secret == "enc"
+
+
+@pytest.mark.asyncio
 async def test_project_action_crawl_source_runs_sitemap_discovery_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -237,11 +398,14 @@ async def test_project_action_crawl_source_runs_sitemap_discovery_chain(
         called.append("flash")
 
     monkeypatch.setattr(project_views, "flash", _flash)
+
     async def _not_blocked(request, db_session, source):
         _ = request, db_session, source
         return False
 
-    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _not_blocked)
+    monkeypatch.setattr(
+        project_views, "_check_source_blocking_and_commit", _not_blocked
+    )
     monkeypatch.setattr(
         project_views,
         "_queue_source_crawl_from_ui",
@@ -269,6 +433,7 @@ async def test_project_action_crawl_source_does_not_enqueue_blocked_source(
         called.append("flash")
 
     monkeypatch.setattr(project_views, "flash", _flash)
+
     async def _blocked(request, db_session, source):
         _ = request, db_session, source
         return True
@@ -390,10 +555,11 @@ async def test_project_documents_json_serializes_rows() -> None:
     raw = project_views.project_documents_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    assert '"id": "5"' in resp.text
-    assert '"source": "Source A"' in resp.text
+    payload = json.loads(resp.text)
+    assert payload[0]["id"] == "5"
+    assert payload[0]["source"] == "Source A"
     assert '"meta"' not in resp.text
-    assert '"uri": "https://example.com/a"' in resp.text
+    assert payload[0]["uri"] == "https://example.com/a"
     assert '"created_at"' not in resp.text
     assert '"updated_at"' not in resp.text
     assert '"document_type"' not in resp.text
@@ -427,8 +593,9 @@ async def test_project_documents_json_marks_excluded_as_ignored() -> None:
     raw = project_views.project_documents_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    assert '"status_error": "low_content"' in resp.text
-    assert '"is_ignored": false' in resp.text
+    payload = json.loads(resp.text)
+    assert payload[0]["status_error"] == "low_content"
+    assert payload[0]["is_ignored"] is False
 
 
 @pytest.mark.asyncio
@@ -446,5 +613,6 @@ async def test_project_files_json_serializes_rows() -> None:
     raw = project_views.project_files_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    assert '"id": "8"' in resp.text
-    assert '"document_type": "pdf"' in resp.text
+    payload = json.loads(resp.text)
+    assert payload[0]["id"] == "8"
+    assert payload[0]["document_type"] == "pdf"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +83,10 @@ def test_document_content_template_renders_structure_items() -> None:
             content="body",
         ),
         document_display_title="Doc",
+        document_content_preview="body",
+        document_content_is_truncated=False,
+        document_content_preview_chars=2000,
+        document_content_char_count=4,
         document_pipeline=("ready", None, None),
         document_stats_summary="10 Б, 0 чанков, 0 слов, 0 таблиц",
         document_crawl_summary="код —",
@@ -124,6 +129,10 @@ def test_document_content_template_renders_compact_summary() -> None:
             content="body",
         ),
         document_display_title="Doc",
+        document_content_preview="body",
+        document_content_is_truncated=False,
+        document_content_preview_chars=2000,
+        document_content_char_count=4,
         document_pipeline=("ready", None, None),
         document_stats_summary="12.4 КБ, 3 чанков, 120 слов, 1 таблиц, 88% уникальности текста",
         document_crawl_summary="код 200, обход 01.06.2026 10:00, etag abc123",
@@ -164,6 +173,10 @@ def test_document_content_template_renders_document_links_widget() -> None:
             content="body",
         ),
         document_display_title="Doc",
+        document_content_preview="body",
+        document_content_is_truncated=False,
+        document_content_preview_chars=2000,
+        document_content_char_count=4,
         document_pipeline=("ready", None, None),
         document_stats_summary="1.0 КБ, 0 чанков, 0 слов, 0 таблиц, 100% уникальности текста",
         document_crawl_summary="код 200, обход —",
@@ -400,7 +413,7 @@ async def test_project_documents_and_files_json(
     docs_resp = await docs_fn(req_docs)
     assert docs_resp.status == 200
     assert b'"meta"' not in docs_resp.body
-    assert b'"uri": "https://example.local/a"' in docs_resp.body
+    assert json.loads(docs_resp.text)[0]["uri"] == "https://example.local/a"
     assert b'"created_at"' not in docs_resp.body
     assert b'"updated_at"' not in docs_resp.body
     assert b'"document_type"' not in docs_resp.body

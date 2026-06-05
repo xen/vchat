@@ -17,12 +17,14 @@ import sqlalchemy as sa
 from aiohttp.abc import AbstractCookieJar, AbstractView
 from aiohttp_session import get_session
 from itsdangerous import (
+    BadSignature,
+    SignatureExpired,
     URLSafeSerializer,
     URLSafeTimedSerializer,
 )
 from yarl import URL
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
 from vchat.i18n import _
 from vchat.settings import config
 
@@ -279,6 +281,71 @@ def login_required():
                     query_params = {"next": request.path}
                     url = f"{url}?{urlencode(query_params)}"
                 raise aiohttp.web.HTTPFound(url)
+
+            return await func(request)
+
+        return decorated_view
+
+    return decorator
+
+
+def validate_signed_user_csrf(request) -> None:
+    token = request.headers.get("X-CSRFToken")
+    if not token:
+        raise aiohttp.web.HTTPForbidden(text="Missing CSRF Token")
+
+    try:
+        signed_user_id = request.app[SIGNER_KEY].loads(token, max_age=86400)
+    except (BadSignature, SignatureExpired):
+        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token")
+
+    if signed_user_id != request["user"].id:
+        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token Owner")
+
+
+def validate_signed_chat_csrf(request) -> str:
+    token = request.headers.get("X-CSRFToken")
+    if not token:
+        raise aiohttp.web.HTTPForbidden(text="Missing CSRF Token")
+
+    try:
+        payload = request.app[SIGNER_KEY].loads(token, max_age=86400)
+    except (BadSignature, SignatureExpired):
+        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token")
+
+    if not isinstance(payload, dict) or not payload.get("chat_id"):
+        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token")
+
+    return str(payload["chat_id"])
+
+
+def htmx_required(
+    *,
+    actions: set[str] | None = None,
+    exempt_actions: set[str] | None = None,
+    payload: str = "user",
+):
+    exempt_actions = exempt_actions or set()
+
+    def decorator(func):
+        @wraps(func)
+        async def decorated_view(request):
+            action = request.match_info.get("action")
+            if actions is not None and not action:
+                data = await request.post()
+                action = (data.get("action") or "").strip()
+
+            if actions is not None and action not in actions:
+                return await func(request)
+            if action in exempt_actions:
+                return await func(request)
+
+            if payload == "chat":
+                request["csrf_chat_id"] = validate_signed_chat_csrf(request)
+            elif payload == "user":
+                validate_signed_user_csrf(request)
+            else:
+                raise RuntimeError(f"Unsupported HTMX CSRF payload: {payload}")
 
             return await func(request)
 

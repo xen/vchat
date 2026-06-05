@@ -6,11 +6,11 @@ Notion link: n/a
 
 ## Current state
 
-Текущий ingestion path для crawl-страниц проходит через `extract_url_document()` в [vchat/document_pipeline.py](/Users/xen/Dev/sber/vchat/vchat/document_pipeline.py:555), затем сохраняет результат в `Page.content` и `Page.meta`, после чего ставит `jobs.embedder.tasks.index_document` в очередь из [jobs/crawler/pipelines.py](/Users/xen/Dev/sber/vchat/jobs/crawler/pipelines.py:193) и [jobs/crawler/pipelines.py](/Users/xen/Dev/sber/vchat/jobs/crawler/pipelines.py:298).
+Текущий ingestion path для crawl-страниц проходит через `extract_url_document()` в [jobs/crawler/document_pipeline.py](/Users/xen/Dev/sber/vchat/jobs/crawler/document_pipeline.py:555), затем сохраняет результат в `Page.content` и `Page.meta`, после чего ставит `jobs.embedder.tasks.index_document` в очередь из [jobs/crawler/pipelines.py](/Users/xen/Dev/sber/vchat/jobs/crawler/pipelines.py:193) и [jobs/crawler/pipelines.py](/Users/xen/Dev/sber/vchat/jobs/crawler/pipelines.py:298).
 
 Каноническим источником для chunking сейчас является `Page.content` из [vchat/models/data.py](/Users/xen/Dev/sber/vchat/vchat/models/data.py:128). Производные артефакты:
 
-- `Page.meta["structure"]` и `Page.meta["outline"]`, собранные в [vchat/document_pipeline.py](/Users/xen/Dev/sber/vchat/vchat/document_pipeline.py:378)
+- `Page.meta["structure"]` и `Page.meta["outline"]`, собранные в [jobs/crawler/document_pipeline.py](/Users/xen/Dev/sber/vchat/jobs/crawler/document_pipeline.py:378)
 - `Chunk` rows, создаваемые из `Page.content` в [jobs/embedder/tasks.py](/Users/xen/Dev/sber/vchat/jobs/embedder/tasks.py:674)
 - `embedding` в `Chunk`, который считается позже в `pending_chunks()` из [jobs/embedder/tasks.py](/Users/xen/Dev/sber/vchat/jobs/embedder/tasks.py:1100)
 
@@ -23,9 +23,9 @@ Notion link: n/a
 
 Текущая структура extraction и chunking уже допускает oversized documents в нескольких местах:
 
-- `_html_to_markdown_like()` собирает markdown-like text из всех `h1..h6`, `p`, `li`, `pre`, `code`, `table` без лимита на общий размер и без page-level guard в [vchat/document_pipeline.py](/Users/xen/Dev/sber/vchat/vchat/document_pipeline.py:446).
-- `extract_url_document()` принимает этот результат как successful extraction, если `markdown.strip()` не пустой, и не делает quality/size gate перед сохранением в `Page.content` в [vchat/document_pipeline.py](/Users/xen/Dev/sber/vchat/vchat/document_pipeline.py:577).
-- `build_document_payload()` дублирует извлеченный текст в `meta["structure"]`, потому что структура хранит полное `content` каждого paragraph/table/code block в [vchat/document_pipeline.py](/Users/xen/Dev/sber/vchat/vchat/document_pipeline.py:389).
+- `_html_to_markdown_like()` собирает markdown-like text из всех `h1..h6`, `p`, `li`, `pre`, `code`, `table` без лимита на общий размер и без page-level guard в [jobs/crawler/document_pipeline.py](/Users/xen/Dev/sber/vchat/jobs/crawler/document_pipeline.py:446).
+- `extract_url_document()` принимает этот результат как successful extraction, если `markdown.strip()` не пустой, и не делает quality/size gate перед сохранением в `Page.content` в [jobs/crawler/document_pipeline.py](/Users/xen/Dev/sber/vchat/jobs/crawler/document_pipeline.py:577).
+- `build_document_payload()` дублирует извлеченный текст в `meta["structure"]`, потому что структура хранит полное `content` каждого paragraph/table/code block в [jobs/crawler/document_pipeline.py](/Users/xen/Dev/sber/vchat/jobs/crawler/document_pipeline.py:389).
 - crawler сохраняет и `page.content`, и полный `meta`, что удваивает объем данных на каждую проблемную страницу в [jobs/crawler/pipelines.py](/Users/xen/Dev/sber/vchat/jobs/crawler/pipelines.py:285) и [jobs/crawler/pipelines.py](/Users/xen/Dev/sber/vchat/jobs/crawler/pipelines.py:298).
 
 Текущий chunker строит blocks только по двум типам границ:
@@ -45,7 +45,7 @@ Notion link: n/a
 
 - `split_table_rows()` повторно токенизирует весь `"\n".join(bucket)` на каждой строке, что тоже квадратично при длинных table-like blocks в [jobs/embedder/tasks.py](/Users/xen/Dev/sber/vchat/jobs/embedder/tasks.py:284).
 
-Есть еще один отдельный ingestion path для ручных файлов. Редактор в [vchat/views/projects/views.py](/Users/xen/Dev/sber/vchat/vchat/views/projects/views.py:1865) сохраняет raw user content прямо в `Page.content`, удаляет старые `Chunk` и сразу вызывает `schedule_index_document(document.id)` из [vchat/views/projects/views.py](/Users/xen/Dev/sber/vchat/vchat/views/projects/views.py:1916). Этот путь обходит extraction и structured normalization из `vchat/document_pipeline.py`, поэтому большой pasted document или raw markdown file тоже может превратиться в giant block.
+Есть еще один отдельный ingestion path для ручных файлов. Редактор в [vchat/views/projects/views.py](/Users/xen/Dev/sber/vchat/vchat/views/projects/views.py:1865) сохраняет raw user content прямо в `Page.content`, удаляет старые `Chunk` и сразу вызывает `schedule_index_document(document.id)` из [vchat/views/projects/views.py](/Users/xen/Dev/sber/vchat/vchat/views/projects/views.py:1916). Этот путь обходит extraction и structured normalization из `jobs/crawler/document_pipeline.py`, поэтому большой pasted document или raw markdown file тоже может превратиться в giant block.
 
 Текущая защита от oversized content в рабочем дереве только временная:
 
@@ -55,7 +55,7 @@ Notion link: n/a
 
 Релевантные файлы:
 
-- `vchat/document_pipeline.py`
+- `jobs/crawler/document_pipeline.py`
 - `jobs/crawler/pipelines.py`
 - `jobs/embedder/tasks.py`
 - `vchat/models/data.py`
@@ -115,7 +115,7 @@ Notion link: n/a
 
 1. Schema and model changes
 
-- Пересмотреть контракт `Page.meta["structure"]` из [vchat/document_pipeline.py](/Users/xen/Dev/sber/vchat/vchat/document_pipeline.py:392), чтобы он больше не дублировал весь текст.
+- Пересмотреть контракт `Page.meta["structure"]` из [jobs/crawler/document_pipeline.py](/Users/xen/Dev/sber/vchat/jobs/crawler/document_pipeline.py:392), чтобы он больше не дублировал весь текст.
 - Явно разделить компактную `outline`-информацию для UI и heavy debug-данные extraction.
 - Если heavy debug-данные все еще нужны, вынести их из hot row `page` в отдельную таблицу или артефактный storage.
 
@@ -220,6 +220,6 @@ Notion link: n/a
 
 ## Follow-up work
 
-- Подготовить конкретный patch plan для `vchat/document_pipeline.py` и `jobs/embedder/tasks.py`.
+- Подготовить конкретный patch plan для `jobs/crawler/document_pipeline.py` и `jobs/embedder/tasks.py`.
 - Принять решение по новому контракту `Page.meta["structure"]`.
 - После этого делать controlled reindex для уже сохраненных больших страниц.

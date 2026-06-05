@@ -29,6 +29,61 @@
     </div>
 
     {% include "projects/document_content.html" %}
+
+    {% if document_triggers_enabled %}
+    <div class="rounded-box border border-base-300 bg-base-100 p-5">
+        <div class="flex items-center justify-between gap-3">
+            <h2 class="font-medium">Триггеры</h2>
+            <span class="text-sm text-base-content/60">{{ document_triggers|length }}</span>
+        </div>
+
+        {% if document_triggers %}
+            <div class="mt-4 overflow-x-auto">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Текст</th>
+                            <th>Источник</th>
+                            <th>Кэш ответов</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in document_triggers %}
+                            {% set trigger = row.trigger %}
+                            <tr>
+                                <td class="max-w-md">
+                                    <div class="font-medium whitespace-normal">{{ trigger.text }}</div>
+                                </td>
+                                <td>{{ trigger.source }}</td>
+                                <td>{{ row.caches|length }}</td>
+                            </tr>
+                            {% if row.caches %}
+                                <tr>
+                                    <td colspan="3" class="bg-base-200/60">
+                                        <div class="flex flex-col gap-3 py-2">
+                                            {% for cache in row.caches %}
+                                                <div class="rounded-box border border-base-300 bg-base-100 p-3">
+                                                    <div class="text-xs text-base-content/60">
+                                                        {{ cache.provider or '—' }} / {{ cache.model or '—' }},
+                                                        {{ cache.tokens }} токенов,
+                                                        {{ cache.created_at.strftime('%d.%m.%Y %H:%M') if cache.created_at else '—' }}
+                                                    </div>
+                                                    <div class="mt-2 line-clamp-4 whitespace-pre-wrap text-sm">{{ cache.response_text }}</div>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="mt-4 text-sm text-base-content/60">Для этой страницы пока нет сгенерированных триггеров.</div>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 
 {% endblock %}

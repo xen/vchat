@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from aiohttp import web
 
@@ -54,6 +55,19 @@ def infer_browser(user_agent: str | None) -> str:
     return "other"
 
 
+def validate_source_page_url(value: str | None) -> str | None:
+    raw = (value or "").strip()
+    if not raw or len(raw) > 2048:
+        return None
+
+    parsed = urlsplit(raw)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    if any(ord(char) < 32 for char in raw):
+        return None
+    return raw
+
+
 def merge_chat_meta(
     existing: dict[str, Any] | None,
     request: web.Request,
@@ -63,6 +77,7 @@ def merge_chat_meta(
     language: str | None = None,
     timezone_name: str | None = None,
     screen: str | None = None,
+    source_page_url: str | None = None,
 ) -> dict[str, Any]:
     meta = dict(existing or {})
     user_agent = request.headers.get("User-Agent", "").strip()
@@ -77,6 +92,7 @@ def merge_chat_meta(
         "language": (language or "").strip() or None,
         "timezone": (timezone_name or "").strip() or None,
         "screen": (screen or "").strip() or None,
+        "source_page_url": validate_source_page_url(source_page_url),
         "session_updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

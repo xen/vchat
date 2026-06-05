@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from aiohttp import web
+from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 from yarl import URL
 
 from .metrics import metrics_handler
@@ -20,13 +21,35 @@ def setup_routes(app: web.Application) -> None:
     # frontend
     add("GET", "/check", frontend.healthcheck)
     add("GET", "/demo", frontend.demo_page, name="demo_page")
-    add("GET", "/widget", frontend.widget_js, name="widget")
-    add("GET", "/js", frontend.widget_js, name="widget_js")
+    add("GET", r"/widget/{code:[a-zA-Z0-9_-]+}", frontend.widget_js, name="widget")
+    add(
+        "GET",
+        "/api/triggers/resolve",
+        frontend.widget_triggers_resolve,
+        name="widget_triggers_resolve",
+    )
     add("*", "/robots.txt", frontend.robots_txt)
     add("*", "/favicon.ico", frontend.favicon)
 
     # public api
-    add("GET", "/api/update", api.update_document, name="api_update")
+    swagger = SwaggerDocs(
+        app,
+        validate=False,
+        info=SwaggerInfo(
+            title="vchat Public API",
+            version="1.0.0",
+            description="Public endpoints for document update integrations.",
+        ),
+        swagger_ui_settings=SwaggerUiSettings(
+            path="/api-docs",
+            validatorUrl=None,
+        ),
+    )
+    swagger.add_routes(
+        [
+            web.post("/api/update", api.update_document, name="api_update"),
+        ]
+    )
 
     # auth
     add("*", "/login/", auth.login, name="login")
@@ -35,12 +58,12 @@ def setup_routes(app: web.Application) -> None:
 
     # admin
     add("*", "/users", admin.user_list, name="users")
+    add("*", "/api-clients", admin.api_client_list, name="api_clients")
     add("GET", "/events", admin.event_list, name="admin_events")
 
     # single-project admin pages
     add("GET", "/", projects.project_stats, name="index")
     add("GET", "/page", projects.project_view, name="project_view")
-    add("*", "/edit", projects.project_edit, name="project_edit")
     add(
         "GET",
         "/documents/json",
@@ -80,6 +103,13 @@ def setup_routes(app: web.Application) -> None:
     )
     add("GET", "/stats", projects.project_stats, name="project_stats")
     add("*", "/files", projects.project_files, name="project_files")
+    add("*", "/triggers", projects.project_triggers, name="project_triggers")
+    add(
+        "GET",
+        "/triggers/count",
+        projects.project_trigger_rule_count,
+        name="project_trigger_rule_count",
+    )
     add(
         "*",
         r"/file/{document_id:[0-9]+}",
@@ -102,8 +132,19 @@ def setup_routes(app: web.Application) -> None:
         projects.project_chat,
         name="project_chat_with_id",
     )
-    add("GET", "/chat/widget", projects.public_widget_chat, name="public_widget_chat")
+    add(
+        "GET",
+        r"/chat/widget/{code:[a-zA-Z0-9_-]+}",
+        projects.public_widget_chat,
+        name="public_widget_chat",
+    )
     add("GET", "/integration", projects.project_integration, name="project_integration")
+    add(
+        "GET",
+        r"/integration/{widget_id:[0-9]+}",
+        projects.project_widget_edit,
+        name="project_widget_edit",
+    )
     add("GET", "/chats", projects.chats_list, name="project_chats_list")
     add("GET", "/history", projects.history_list, name="project_history")
     add(

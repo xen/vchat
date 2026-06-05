@@ -145,6 +145,7 @@ aiohttp==3.13.5 \
     #   -r requirements/requirements.in
     #   aiohttp-jinja2
     #   aiohttp-session
+    #   aiohttp-swagger3
 aiohttp-jinja2==1.6 \
     --hash=sha256:0df405ee6ad1b58e5a068a105407dc7dcc1704544c559f1938babde954f945c7 \
     --hash=sha256:a3a7ff5264e5bca52e8ae547bbfd0761b72495230d438d05b6c0915be619b0e2
@@ -152,6 +153,10 @@ aiohttp-jinja2==1.6 \
 aiohttp-session==2.12.1 \
     --hash=sha256:15e6e0288e9bcccd4b1d0c28aae9c20e19a252b12d0cb682223ca9c83180e899 \
     --hash=sha256:654df46c3c9b73294312795f558c3bca4a85bfd3b01a8b744d984ae3958dce5f
+    # via -r requirements/requirements.in
+aiohttp-swagger3==0.10.0 \
+    --hash=sha256:0ae2d2ba7dbd8ea8fe1cffe8f0197db5d0aa979eb9679bd699ecd87923912509 \
+    --hash=sha256:a333c59328f64dd64587e5f276ee84dc256f587d09f2da6ddaae3812fa4d4f33
     # via -r requirements/requirements.in
 aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
@@ -253,6 +258,7 @@ attrs==25.4.0 \
     --hash=sha256:adcf7e2a1fb3b36ac48d97835bb6d8ade15b8dcce26aba8bf1d14847b57a3373
     # via
     #   aiohttp
+    #   aiohttp-swagger3
     #   jsonlines
     #   jsonschema
     #   referencing
@@ -837,6 +843,10 @@ faker==38.2.0 \
     --hash=sha256:20672803db9c7cb97f9b56c18c54b915b6f1d8991f63d1d673642dc43f5ce7ab \
     --hash=sha256:35fe4a0a79dee0dc4103a6083ee9224941e7d3594811a50e3969e547b0d2ee65
     # via polyfactory
+fastjsonschema==2.19.1 \
+    --hash=sha256:3672b47bc94178c9f23dbb654bf47440155d4db9df5f7bc47643315f9c405cd0 \
+    --hash=sha256:e3126a94bdc4623d3de4485f8d468a12f02a67921315ddc87836d6e456dc789d
+    # via aiohttp-swagger3
 faust-cchardet==2.1.19 \
     --hash=sha256:033d0cbbdb7d30775c895be0b8625854f0bc53c1b0bd43b382bc37d165a85072 \
     --hash=sha256:05573988162fcb4d92966946561094bc9d8e73cdb6cd697473b12b234bf1a828 \
@@ -3456,6 +3466,10 @@ requests-file==3.0.1 \
     --hash=sha256:d0f5eb94353986d998f80ac63c7f146a307728be051d4d1cd390dbdb59c10fa2 \
     --hash=sha256:f14243d7796c588f3521bd423c5dea2ee4cc730e54a3cac9574d78aca1272576
     # via tldextract
+rfc3339-validator==0.1.4 \
+    --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
+    --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
+    # via aiohttp-swagger3
 rich==14.2.0 \
     --hash=sha256:73ff50c7c0c1c77c8243079283f4edb376f0f6442433aecb8ce7e6d0b92d1fe4 \
     --hash=sha256:76bc51fe2e57d2b1be1f96c524b890b816e334ab4c1e45888799bfaab0021edd

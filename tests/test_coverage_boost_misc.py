@@ -125,6 +125,34 @@ def test_resolve_embedding_device_prefers_env_override(
     assert embeddings.resolve_embedding_device() == "cpu"
 
 
+def test_resolve_embedding_device_rejects_unavailable_mps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EMBEDDING_DEVICE", raising=False)
+    monkeypatch.setattr(
+        embeddings.torch,
+        "backends",
+        SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
+    )
+
+    with pytest.raises(RuntimeError, match="mps"):
+        embeddings.resolve_embedding_device("mps")
+
+
+def test_resolve_embedding_device_rejects_unavailable_cuda(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("EMBEDDING_DEVICE", raising=False)
+    monkeypatch.setattr(
+        embeddings.torch,
+        "cuda",
+        SimpleNamespace(is_available=lambda: False),
+    )
+
+    with pytest.raises(RuntimeError, match="cuda"):
+        embeddings.resolve_embedding_device("cuda")
+
+
 def test_openai_guardrails_cache_and_extract(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:

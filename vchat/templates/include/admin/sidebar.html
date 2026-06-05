@@ -38,8 +38,9 @@
         {{ item(_('Страницы'), url('project_view'), 'server') }}
         {{ item(_('Файлы'), url('project_files'), 'file') }}
         <p class="menu-label px-2.5 pt-3 pb-1.5 first:pt-0">{{ _('Настройки') }}</p>
-        {{ item(_('Интеграция'), url('project_integration'), 'code') }}
-        {{ item(_('Настройки'), url('project_edit'), 'settings') }}
+        {{ item(_('Код виджета'), url('project_integration'), 'code') }}
+        {{ item(_('Триггеры'), url('project_triggers'), 'message-square-plus') }}
+        {{ item(_('API клиенты'), url('api_clients'), 'key-round') }}
         {{ item(_('Пользователи'), url('users'), 'users') }}
         {{ item(_('Журнал действий'), url('admin_events'), 'clipboard-list') }}
 

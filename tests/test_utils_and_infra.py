@@ -5,11 +5,12 @@ import json as pyjson
 import asyncio
 from types import SimpleNamespace
 
-import aiohttp
 import pytest
 from aiohttp import web
 
 from vchat import ai_providers, document_types, metrics, settings, utils
+from vchat.json_response import json_response
+from vchat.page_status import PageStatus
 
 
 def test_document_types_guess_and_labels() -> None:
@@ -21,6 +22,15 @@ def test_document_types_guess_and_labels() -> None:
     assert document_types.get_document_type_label("office") == "Office document"
     assert document_types.get_document_type_label("") == "Other"
     assert document_types.get_document_type_label("custom_type") == "Custom Type"
+
+
+def test_json_response_uses_msgspec_compatible_body() -> None:
+    response = json_response({"status": PageStatus.ready}, status=202)
+
+    assert response.status == 202
+    assert response.content_type == "application/json"
+    assert response.body == b'{"status":"ready"}'
+    assert response.text == '{"status":"ready"}'
 
 
 @pytest.mark.asyncio

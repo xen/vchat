@@ -1,0 +1,230 @@
+{% extends "admin.html" %}
+{% set page_title = _("Редактировать код виджета") %}
+
+{% set colors = [
+  ('neutral', _('Серый')),
+  ('primary', _('Основной')),
+  ('secondary', _('Вторичный')),
+  ('accent', _('Акцент')),
+  ('info', _('Синий')),
+  ('success', _('Зеленый')),
+  ('warning', _('Желтый'))
+] %}
+
+{% block content %}
+<div id="widget-edit-page" class="w-full max-w-none space-y-6">
+  <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+    <div class="min-w-0">
+      <h1 class="flex flex-wrap items-center gap-2 break-words text-lg font-medium">
+        <a href="{{ url('project_integration') }}" class="text-base-content/50 transition-colors hover:text-base-content">{{ _('Код виджета') }}</a>
+        <span class="mx-2 text-base-content/40">&gt;</span>
+        <span class="text-base-content">{{ widget.name }}</span>
+      </h1>
+      <a
+        href="{{ url('demo_page') }}?code={{ widget.code }}"
+        class="link link-hover mt-1 inline-flex items-center gap-1.5 text-sm text-base-content/70"
+        target="_blank"
+        rel="noopener"
+      >
+        <iconify-icon icon="lucide:external-link" class="size-4"></iconify-icon>
+        {{ _('Открыть демо') }}
+      </a>
+    </div>
+    <div class="join w-full md:w-auto md:max-w-xl">
+      <input
+        id="widget-url"
+        type="text"
+        class="input input-bordered input-sm join-item min-w-0 flex-1 font-mono text-sm"
+        value="{{ widget.public_url }}"
+        readonly
+      >
+      <button
+        type="button"
+        class="btn btn-outline btn-sm join-item"
+        title="{{ _('Скопировать') }}"
+        aria-label="{{ _('Скопировать') }}"
+        data-copy-value="widget-url"
+      >
+        <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+      </button>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <form
+      method="POST"
+      action="{{ url('actions', action='widget_update', item_id=widget.id) }}"
+      hx-post="{{ url('actions', action='widget_update', item_id=widget.id) }}"
+      hx-swap="none"
+      hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
+      class="card-body grid gap-5"
+    >
+      <label class="form-control">
+        <span class="label-text mb-1">{{ _('Название') }}</span>
+        <input
+          type="text"
+          name="name"
+          value="{{ widget.name }}"
+          class="input input-bordered w-full"
+          maxlength="128"
+          required
+        >
+        <span class="mt-1 text-xs text-base-content/60">{{ _('Внутреннее название, нужно только для удобства в админке.') }}</span>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text mb-1">{{ _('Контакты') }}</span>
+        <input
+          type="url"
+          name="contact_url"
+          value="{{ widget.contact_url }}"
+          class="input input-bordered w-full"
+          placeholder="https://example.com/contacts"
+        >
+      </label>
+
+      <label class="form-control">
+        <span class="label-text mb-1">{{ _('Название чата') }}</span>
+        <input
+          type="text"
+          name="agent_name"
+          value="{{ widget.agent_name }}"
+          class="input input-bordered w-full"
+          maxlength="100"
+          placeholder="{{ _('Виртуальный ассистент') }}"
+        >
+        <span class="mt-1 text-xs text-base-content/60">{{ _('Показывается пользователю в окне чата.') }}</span>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text mb-1">{{ _('Приветственное сообщение') }}</span>
+        <textarea
+          name="welcome_message"
+          class="textarea textarea-bordered w-full"
+          rows="3"
+          maxlength="2000"
+        >{{ widget.welcome_message or default_welcome_message }}</textarea>
+      </label>
+
+      <label class="form-control">
+        <span class="label-text mb-1">{{ _('Системный промпт') }}</span>
+        <textarea
+          name="system_prompt"
+          class="textarea textarea-bordered w-full font-mono text-sm"
+          rows="10"
+          maxlength="4000"
+        >{{ widget.system_prompt or default_system_prompt }}</textarea>
+      </label>
+
+      <section class="grid gap-3">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-base font-medium">{{ _('Закрепленные сообщения') }}</h2>
+          <button
+            type="button"
+            class="btn btn-outline btn-sm"
+            data-add-pinned-message
+          >
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            {{ _('Добавить сообщение') }}
+          </button>
+        </div>
+        <div id="pinned-messages" class="grid gap-3">
+          {% for item in widget.pinned_messages %}
+          <div class="rounded border border-base-300 p-3" data-pinned-message>
+            <label class="form-control">
+              <span class="label-text mb-1">{{ _('Сообщение') }}</span>
+              <input
+                type="text"
+                name="pinned_text[]"
+                value="{{ item.text }}"
+                class="input input-bordered w-full"
+                maxlength="1000"
+              >
+            </label>
+            <label class="form-control mt-3">
+              <span class="label-text mb-1">{{ _('Цвет подложки') }}</span>
+              <select name="pinned_color[]" class="select select-bordered w-full">
+                {% for value, label in colors %}
+                <option value="{{ value }}" {% if item.color|default('neutral') == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <div class="mt-3 flex justify-end">
+              <button type="button" class="btn btn-outline btn-sm" data-remove-pinned-message>
+                <iconify-icon icon="lucide:x" class="size-4"></iconify-icon>
+                {{ _('Убрать') }}
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <div class="flex justify-end gap-2">
+        <a href="{{ url('project_integration') }}" class="btn btn-ghost btn-sm">{{ _('Отмена') }}</a>
+        <button type="submit" class="btn btn-primary btn-sm">{{ _('Сохранить') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<template id="pinned-message-template">
+  <div class="rounded border border-base-300 p-3" data-pinned-message>
+    <label class="form-control">
+      <span class="label-text mb-1">{{ _('Сообщение') }}</span>
+      <input
+        type="text"
+        name="pinned_text[]"
+        class="input input-bordered w-full"
+        maxlength="1000"
+      >
+    </label>
+    <label class="form-control mt-3">
+      <span class="label-text mb-1">{{ _('Цвет подложки') }}</span>
+      <select name="pinned_color[]" class="select select-bordered w-full">
+        {% for value, label in colors %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="mt-3 flex justify-end">
+      <button type="button" class="btn btn-outline btn-sm" data-remove-pinned-message>
+        <iconify-icon icon="lucide:x" class="size-4"></iconify-icon>
+        {{ _('Убрать') }}
+      </button>
+    </div>
+  </div>
+</template>
+
+<script>
+  const pinnedMessages = document.getElementById('pinned-messages');
+  const pinnedTemplate = document.getElementById('pinned-message-template');
+  const addPinnedButton = document.querySelector('[data-add-pinned-message]');
+
+  const syncPinnedButton = () => {
+    addPinnedButton.disabled = pinnedMessages.querySelectorAll('[data-pinned-message]').length >= 3;
+  };
+
+  document.addEventListener('click', async (event) => {
+    const copy = event.target.closest('[data-copy-value]');
+    if (copy) {
+      const value = document.getElementById(copy.dataset.copyValue);
+      if (value) await navigator.clipboard.writeText(value.value || value.textContent.trim());
+    }
+
+    if (event.target.closest('[data-add-pinned-message]')) {
+      if (pinnedMessages.querySelectorAll('[data-pinned-message]').length >= 3) return;
+      pinnedMessages.append(pinnedTemplate.content.cloneNode(true));
+      syncPinnedButton();
+    }
+
+    const remove = event.target.closest('[data-remove-pinned-message]');
+    if (remove) {
+      remove.closest('[data-pinned-message]').remove();
+      syncPinnedButton();
+    }
+  });
+
+  syncPinnedButton();
+</script>
+{% endblock %}

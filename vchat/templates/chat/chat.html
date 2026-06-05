@@ -15,7 +15,7 @@
 </head>
 
 <body class="flex flex-col h-[100dvh] bg-base-100 text-base-content antialiased overflow-hidden"
-  hx-headers='{"X-CSRFToken": "{{ support_csrf_token if support_csrf_token is defined else csrf_token() }}"}'>
+  hx-headers='{"X-CSRFToken": {{ (support_csrf_token if support_csrf_token is defined else csrf_token())|tojson }}}'>
 
   <!-- Навигация -->
   <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
@@ -24,7 +24,18 @@
         <span class="font-bold text-sm leading-tight">{{ agent_name if agent_name else _('Виртуальный ассистент') }}</span>
       </div>
     </div>
-    <div class="flex-none"></div>
+    <div class="flex-none">
+      {% if contact_url %}
+      <a
+        href="{{ contact_url }}"
+        target="_blank"
+        rel="noopener"
+        class="btn btn-outline btn-sm"
+      >
+        {{ _('Контакты') }}
+      </a>
+      {% endif %}
+    </div>
   </header>
 
   <!-- Chat area + sidebar side by side -->
@@ -33,6 +44,25 @@
     <!-- Left column: log + footer -->
     <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
       <main id="log" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+        {% if pinned_messages %}
+        <section class="space-y-2" aria-label="{{ _('Закрепленные сообщения') }}">
+          {% set pinned_classes = {
+            'neutral': 'bg-base-200 text-base-content border-base-300',
+            'primary': 'bg-primary/10 text-primary border-primary/20',
+            'secondary': 'bg-secondary/10 text-secondary border-secondary/20',
+            'accent': 'bg-accent/10 text-accent border-accent/20',
+            'info': 'bg-info/10 text-info border-info/20',
+            'success': 'bg-success/10 text-success border-success/20',
+            'warning': 'bg-warning/10 text-warning border-warning/20'
+          } %}
+          {% for pinned in pinned_messages[:3] %}
+          {% set pinned_color = pinned.color if pinned.color in pinned_classes else 'neutral' %}
+          <div class="rounded border px-3 py-2 text-sm leading-relaxed {{ pinned_classes[pinned_color] }}">
+            {{ pinned.text }}
+          </div>
+          {% endfor %}
+        </section>
+        {% endif %}
         <!-- Messages will appear here -->
       </main>
 
@@ -370,6 +400,10 @@
       }
       try {
         const payload = await window.vchatGetFingerprint();
+        const sourcePageUrl = new URLSearchParams(window.location.search).get('source_page_url');
+        if (sourcePageUrl) {
+          payload.source_page_url = sourcePageUrl;
+        }
         await fetch(`/actions/chat/session/${signedChatId}`, {
           method: 'POST',
           headers: {
@@ -470,20 +504,27 @@
     }
 
 
-    const submitMessage = () => {
-      const text = promptEl.value.trim();
+    const submitMessage = (options = {}) => {
+      const providedText = typeof options.text === 'string' ? options.text : null;
+      const text = (providedText !== null ? providedText : promptEl.value).trim();
       if (!text) return;
 
       appendMsg(text, 'user');
       setSending(true);
 
+      const payload = options.triggerId
+        ? JSON.stringify({ type: 'trigger_prompt', page_token: options.pageToken || null, trigger_key: options.triggerId, text })
+        : text;
+
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         connect();
-        setTimeout(() => ws && ws.send(text), 100);
+        setTimeout(() => ws && ws.send(payload), 100);
       } else {
-        ws.send(text);
+        ws.send(payload);
       }
-      promptEl.value = '';
+      if (providedText === null) {
+        promptEl.value = '';
+      }
     };
 
     formEl.addEventListener('submit', (e) => {
@@ -511,6 +552,22 @@
         e.preventDefault();
         submitMessage();
       }
+    });
+
+    window.addEventListener('message', (event) => {
+      const data = event.data || {};
+      if (!data || data.type !== 'vchat_trigger') {
+        return;
+      }
+      const text = String(data.text || '').trim();
+      if (!text) {
+        return;
+      }
+      submitMessage({
+        text,
+        pageToken: data.page_token || null,
+        triggerId: data.trigger_key || null,
+      });
     });
 
     for (const message of initialMessages) {

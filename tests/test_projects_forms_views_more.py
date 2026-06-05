@@ -8,6 +8,7 @@ from yarl import URL
 
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.source_settings import DEFAULT_IGNORED_PARAMS
+from vchat.views.projects import forms as project_forms
 from vchat.views.projects import views as project_views
 
 
@@ -75,93 +76,30 @@ def _raw(func):
     return func
 
 
-@pytest.mark.asyncio
-async def test_project_edit_get_builds_form_with_initial_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db = _DB()
-    req = _Req(method="GET")
-    req["db"] = db
-    req["user"] = SimpleNamespace(id=1)
-
-    captured = {}
-
-    async def _session(_request):
-        return {"user_id": 1}
-
-    def _workspace_form(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(validate=lambda: False)
-
-    monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "WorkspaceForm", _workspace_form)
-    monkeypatch.setattr(
-        project_views,
-        "_project_context",
-        lambda _r: SimpleNamespace(
-            title="T",
-            system_prompt="SP",
-            agent_style="AS",
-            provider="openai",
-            model="gpt-4o-mini",
-            config={"agent_name": "Bot", "welcome_message": "Hi"},
-        ),
+def test_normalize_source_origin_keeps_only_domain() -> None:
+    assert (
+        project_forms.normalize_source_origin(
+            "https://Example.Local:8443/docs/page?x=1#section"
+        )
+        == "https://example.local:8443"
     )
 
-    payload = await _raw(project_views.project_edit)(req)
-    assert "form" in payload
-    assert captured["data"]["title"] == "T"
 
-
-@pytest.mark.asyncio
-async def test_project_edit_post_validates_and_redirects(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db = _DB()
-    req = _Req(method="POST", post_data={"title": "X"})
-    req["db"] = db
-    req["user"] = SimpleNamespace(id=1)
-    req.app = _App({"project_edit": _Route("/edit")})
-
-    async def _session(_request):
-        return {"user_id": 1}
-
-    class _Form:
-        title = SimpleNamespace(data="T")
-        system_prompt = SimpleNamespace(data="SP")
-        agent_style = SimpleNamespace(data="AS")
-        provider = SimpleNamespace(data="openai")
-        model = SimpleNamespace(data="gpt-4o-mini")
-        agent_name = SimpleNamespace(data="Agent")
-        welcome_message = SimpleNamespace(data="Welcome")
-
-        def validate(self):
-            return True
-
-    calls = {"updates": None, "flash": []}
-
-    async def _apply(*args):
-        calls["updates"] = args[-1]
-
-    async def _flash(_request, message, category="success"):
-        calls["flash"].append((message, category))
-
-    monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "WorkspaceForm", lambda **kwargs: _Form())
-    monkeypatch.setattr(
-        project_views,
-        "_project_context",
-        lambda _r: SimpleNamespace(
-            title="", system_prompt="", agent_style="", provider="", model="", config={}
-        ),
+def test_pinned_messages_from_form_keeps_three_messages() -> None:
+    data = SimpleNamespace(
+        getall=lambda key, default=None: (
+            ["One", "", "Three", "Four"]
+            if key == "pinned_text[]"
+            else ["primary", "bad", "warning", "success"]
+        )
     )
-    monkeypatch.setattr(project_views, "apply_settings_updates", _apply)
-    monkeypatch.setattr(project_views, "flash", _flash)
 
-    with pytest.raises(web.HTTPFound):
-        await _raw(project_views.project_edit)(req)
-    assert db.commits == 1
-    assert calls["updates"]["project.title"] == "T"
+    messages = project_views._pinned_messages_from_form(data)
+
+    assert messages == [
+        {"text": "One", "color": "primary"},
+        {"text": "Three", "color": "warning"},
+    ]
 
 
 @pytest.mark.asyncio
@@ -185,7 +123,7 @@ async def test_project_source_settings_post_site_rules(
         blocked_reason=None,
         blocked_message=None,
         reindex_cron="0 3 * * 1",
-        config={"rules": [{"type": "contains", "value": "x"}]},
+        config=SourceConfig.from_dict({"rules": [{"type": "contains", "value": "x"}]}),
         updated_at=None,
     )
     db = _DB(scalar_values=[source])
@@ -219,6 +157,7 @@ async def test_project_source_settings_post_site_rules(
         download_delay = SimpleNamespace(data=1)
         download_timeout = SimpleNamespace(data=20)
         ignore_robots_txt = SimpleNamespace(data=True)
+        enable_triggers = SimpleNamespace(data=True)
         aws_access_key_id = SimpleNamespace(data="")
         aws_secret_access_key = SimpleNamespace(data="")
         bucket_name = SimpleNamespace(data="")
@@ -256,6 +195,13 @@ async def test_project_source_settings_post_site_rules(
         project_views, "_project_context", lambda _r: SimpleNamespace(id="global")
     )
 
+    async def _apply_source_trigger_rules(*_args):
+        return 0
+
+    monkeypatch.setattr(
+        project_views, "apply_source_trigger_rules", _apply_source_trigger_rules
+    )
+
     with pytest.raises(web.HTTPFound):
         await _raw(project_views.project_source_settings)(req)
     assert db.commits == 1
@@ -264,11 +210,12 @@ async def test_project_source_settings_post_site_rules(
     assert source.config.crawler_download_delay == 1
     assert source.config.crawler_download_timeout == 20
     assert source.config.ignore_robots_txt is True
+    assert source.enable_triggers is True
+    assert source.config.trigger_rules == [
+        CrawlerRule(type="regex", value=project_views.DEFAULT_SOURCE_TRIGGER_PATTERN)
+    ]
     assert source.config.rules == [
-        *(
-            CrawlerRule(type="param", value=param)
-            for param in DEFAULT_IGNORED_PARAMS
-        ),
+        *(CrawlerRule(type="param", value=param) for param in DEFAULT_IGNORED_PARAMS),
         CrawlerRule(type="contains", value="/private"),
     ]
     assert events == ["source_update"]
@@ -302,6 +249,7 @@ async def test_add_source_includes_default_ignored_params(
     class _Form:
         url = SimpleNamespace(data="https://example.local")
         reindex_cron = SimpleNamespace(data="")
+        enable_triggers = SimpleNamespace(data=False)
 
         def validate(self):
             return True
@@ -314,14 +262,19 @@ async def test_add_source_includes_default_ignored_params(
         events.append(name)
 
     monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "SourceForm", lambda *args, **kwargs: _Form())
+    monkeypatch.setattr(
+        project_views.forms, "SourceForm", lambda *args, **kwargs: _Form()
+    )
     monkeypatch.setattr(project_views, "admin_event", _event)
+
     async def _not_blocked(request, db_session, source):
         _ = request, source
         await db_session.commit()
         return False
 
-    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _not_blocked)
+    monkeypatch.setattr(
+        project_views, "_check_source_blocking_and_commit", _not_blocked
+    )
     monkeypatch.setattr(
         project_views.crawl_source_task,
         "delay",
@@ -373,6 +326,7 @@ async def test_add_source_persists_blocked_source_without_enqueue(
     class _Form:
         url = SimpleNamespace(data="https://blocked.example")
         reindex_cron = SimpleNamespace(data="")
+        enable_triggers = SimpleNamespace(data=False)
 
         def validate(self):
             return True
@@ -384,8 +338,11 @@ async def test_add_source_persists_blocked_source_without_enqueue(
         events.append(name)
 
     monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "SourceForm", lambda *args, **kwargs: _Form())
+    monkeypatch.setattr(
+        project_views.forms, "SourceForm", lambda *args, **kwargs: _Form()
+    )
     monkeypatch.setattr(project_views, "admin_event", _event)
+
     async def _blocked(request, db_session, source):
         _ = request, db_session, source
         return True

@@ -212,11 +212,15 @@ class GeneralSpider(CrawlSpider):
 
         item["url"] = normalize_url_for_queue(response.request.url, page_rules)
         item["final_url"] = normalize_url_for_queue(response.url, page_rules)
+        item["referer_url"] = response.request.headers.get("Referer", b"").decode(
+            "utf-8"
+        ) or None
         item["http_status"] = response.status
         item["etag"] = response.headers.get("ETag", b"").decode("utf-8") or None
         item["source_id"] = page_source_id
         item["content_type"] = response.headers.get("Content-Type", b"").decode("utf-8")
         item["content"] = response.text
+        item["raw_content"] = response.body
         extracted_links = []
         if self._link_extractor is not None and isinstance(response, HtmlResponse):
             extracted_links = [

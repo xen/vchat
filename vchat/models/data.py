@@ -1,5 +1,6 @@
 import hashlib
 from datetime import datetime
+from typing import Any
 
 import pycld2 as cld2
 import sqlalchemy as sa
@@ -108,12 +109,70 @@ class Source(Base, Created, Updated):
         default=False,
         server_default=sa.text("false"),
     )
+    enable_triggers: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+    )
     blocked_reason: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     blocked_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     blocked_checked_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=True,
     )
+
+
+class ApiClient(Base, Created, Updated):
+    __tablename__ = "api_client"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    client_id: Mapped[str] = mapped_column(
+        sa.String(64), nullable=False, unique=True, index=True
+    )
+    encrypted_secret: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=True,
+        server_default=sa.text("true"),
+    )
+
+
+class WidgetIntegration(Base, Created, Updated):
+    __tablename__ = "widget_integration"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    code: Mapped[str] = mapped_column(
+        sa.String(64), nullable=False, unique=True, index=True
+    )
+    contact_url: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    agent_name: Mapped[str] = mapped_column(sa.String(100), nullable=False, default="")
+    welcome_message: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    system_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    pinned_messages: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+
+
+api_client_source = sa.Table(
+    "api_client_source",
+    Base.metadata,
+    sa.Column(
+        "api_client_id",
+        sa.Integer,
+        ForeignKey("api_client.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column(
+        "source_id",
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 status_enum = ENUM(
@@ -137,6 +196,9 @@ class Page(Base, Created, Updated):
         index=True,
     )
     content: Mapped[str] = mapped_column(sa.Text, nullable=True)
+    raw_content: Mapped[bytes | None] = mapped_column(sa.LargeBinary, nullable=True)
+    raw_content_type: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    raw_content_size: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     _hash: Mapped[str] = mapped_column("hash", sa.String(64), nullable=False)
     _lang: Mapped[str] = mapped_column(
         "lang", sa.String(2), nullable=False, default="ru"
@@ -193,6 +255,18 @@ class Page(Base, Created, Updated):
         default=0,
         server_default=sa.text("0"),
     )
+    discover_by: Mapped[str | None] = mapped_column(
+        sa.String(32), nullable=True, index=True
+    )
+    discover_source: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    has_triggers: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+        index=True,
+    )
+    triggers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
     @hybrid_property
     def hash_value(self) -> str:
@@ -336,7 +410,6 @@ class PageLink(Base):
         ForeignKey("source.id", ondelete="CASCADE"),
         nullable=True,
     )
-    target_status: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
     found_at: Mapped[datetime] = mapped_column(
         sa.TIMESTAMP(timezone=True),
         nullable=False,
@@ -383,17 +456,53 @@ class CrawlRun(Base):
     notes: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
 
-class SourceShingleFreq(Base):
-    __tablename__ = "source_shingle_freq"
+class PageShingle(Base):
+    __tablename__ = "page_shingle"
 
-    source_id: Mapped[int] = mapped_column(
+    page_id: Mapped[int] = mapped_column(
         sa.Integer,
-        ForeignKey("source.id", ondelete="CASCADE"),
+        ForeignKey("page.id", ondelete="CASCADE"),
         primary_key=True,
     )
     shingle_hash: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
-    count: Mapped[int] = mapped_column(
-        sa.Integer, nullable=False, default=0, server_default=sa.text("0")
+    source_id: Mapped[int] = mapped_column(
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+
+class TriggerResponseCache(Base, Created, Updated):
+    __tablename__ = "trigger_response_cache"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "page_id",
+            "trigger_key",
+            "prompt_hash",
+            name="uq_trigger_response_cache_page_trigger_prompt",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    page_id: Mapped[int] = mapped_column(
+        sa.Integer,
+        ForeignKey("page.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trigger_key: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    prompt_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    response_text: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    full_context: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    used_chunks: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    provider: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
+    tokens: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
     )
 
 

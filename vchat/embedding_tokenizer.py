@@ -1,0 +1,49 @@
+from pathlib import Path
+from typing import Any
+
+from tokenizers import Tokenizer
+
+from vchat.settings import config
+
+
+class EmbeddingTokenizer:
+    def __init__(self, tokenizer: Tokenizer, *, model_max_length: int | None = None):
+        self._tokenizer = tokenizer
+        self.model_max_length = model_max_length
+
+    def __call__(
+        self,
+        text: str,
+        *,
+        add_special_tokens: bool = False,
+        truncation: bool = False,
+        verbose: bool = True,
+    ) -> dict[str, list[int]]:
+        _ = verbose
+        encoding = self._tokenizer.encode(
+            text or "",
+            add_special_tokens=add_special_tokens,
+        )
+        input_ids = encoding.ids
+        if truncation and self.model_max_length and self.model_max_length > 0:
+            input_ids = input_ids[: self.model_max_length]
+        return {"input_ids": input_ids}
+
+    def decode(
+        self,
+        ids: list[int],
+        *,
+        skip_special_tokens: bool = True,
+        clean_up_tokenization_spaces: bool = False,
+    ) -> str:
+        _ = clean_up_tokenization_spaces
+        return self._tokenizer.decode(ids, skip_special_tokens=skip_special_tokens)
+
+
+def load_embedding_tokenizer() -> Any:
+    max_seq_length = int(config.get("embedding_max_seq_length") or 0)
+    tokenizer_path = Path(config["embedding_model_dir"]) / "tokenizer.json"
+    return EmbeddingTokenizer(
+        Tokenizer.from_file(str(tokenizer_path)),
+        model_max_length=max_seq_length if max_seq_length > 0 else None,
+    )

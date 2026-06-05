@@ -32,6 +32,7 @@ class SourceConfig:
     crawler_download_timeout: int = DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
     ignore_robots_txt: bool = False
     rules: list[CrawlerRule] = field(default_factory=list)
+    trigger_rules: list[CrawlerRule] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> SourceConfig:
@@ -43,6 +44,11 @@ class SourceConfig:
         rules = [
             CrawlerRule.from_dict(r)
             for r in (d.get("rules") or [])
+            if r.get("type") and r.get("value")
+        ]
+        trigger_rules = [
+            CrawlerRule.from_dict(r)
+            for r in (d.get("trigger_rules") or [])
             if r.get("type") and r.get("value")
         ]
         return cls(
@@ -63,6 +69,7 @@ class SourceConfig:
             ),
             ignore_robots_txt=bool(d.get("ignore_robots_txt", False)),
             rules=rules,
+            trigger_rules=trigger_rules,
         )
 
     def to_dict(self) -> dict:
@@ -74,4 +81,6 @@ class SourceConfig:
         }
         if self.rules:
             d["rules"] = [r.to_dict() for r in self.rules]
+        if self.trigger_rules:
+            d["trigger_rules"] = [r.to_dict() for r in self.trigger_rules]
         return d

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from types import SimpleNamespace
 
 import aiohttp_jinja2
 import sqlalchemy as sa
@@ -6,10 +7,13 @@ from aiohttp_session import get_session
 from wtforms import Form, PasswordField, StringField, validators
 from wtforms.csrf.session import SessionCSRF
 
+from vchat.app_keys import CONFIG_KEY
 from vchat.i18n import _
 from vchat.settings import config
-from vchat.models import AdminEvent, User
+from vchat.models import AdminEvent, ApiClient, Source, User
+from vchat.models.data import api_client_source
 from vchat.utils import login_required, meta, paginator
+from vchat.views.api.views import decrypt_client_secret
 
 
 class BaseForm(Form):
@@ -62,12 +66,83 @@ class UserPasswordForm(BaseForm):
     )
 
 
+class ApiClientForm(BaseForm):
+    name = StringField(
+        _("Name"),
+        [
+            validators.Length(
+                min=1, max=128, message=_("Length from 1 to 128 characters")
+            ),
+            validators.DataRequired(message=_("Required field")),
+        ],
+        render_kw={"placeholder": _("Client name")},
+    )
+
+
 async def _get_users(db_session) -> list[User]:
     return (
         (await db_session.execute(sa.select(User).order_by(User.id.desc())))
         .scalars()
         .all()
     )
+
+
+def _masked_api_client_secret(encrypted_secret: str, secret_key: str) -> str:
+    secret = decrypt_client_secret(encrypted_secret, secret_key)
+    return f"vchatsec-...{secret[-4:]}"
+
+
+async def _get_api_clients(db_session, secret_key: str) -> list[ApiClient]:
+    clients = (
+        (await db_session.execute(sa.select(ApiClient).order_by(ApiClient.id.desc())))
+        .scalars()
+        .all()
+    )
+    if not clients:
+        return []
+
+    client_ids = [client.id for client in clients]
+    source_rows = (
+        await db_session.execute(
+            sa.select(
+                api_client_source.c.api_client_id,
+                Source.id,
+                Source.title,
+                Source.uri,
+            )
+            .join(Source, Source.id == api_client_source.c.source_id)
+            .where(api_client_source.c.api_client_id.in_(client_ids))
+            .order_by(Source.title.asc(), Source.id.asc())
+        )
+    ).all()
+    sources_by_client: dict[int, list[SimpleNamespace]] = {}
+    for client_id, source_id, title, uri in source_rows:
+        sources_by_client.setdefault(client_id, []).append(
+            SimpleNamespace(id=source_id, title=title, uri=uri)
+        )
+
+    for client in clients:
+        client.sources = sources_by_client.get(client.id, [])
+        client.masked_secret = _masked_api_client_secret(
+            client.encrypted_secret,
+            secret_key,
+        )
+    return clients
+
+
+async def _get_api_client_sources(db_session) -> list[Source]:
+    rows = (
+        await db_session.execute(
+            sa.select(Source.id, Source.title, Source.uri).order_by(
+                Source.title.asc(),
+                Source.id.asc(),
+            )
+        )
+    ).all()
+    return [
+        SimpleNamespace(id=source_id, title=title, uri=uri)
+        for source_id, title, uri in rows
+    ]
 
 
 @meta(title=_("Action Log"))
@@ -130,4 +205,22 @@ async def user_list(request):
         "add_form": add_form,
         "total_users": len(users),
         "current_user_id": request["user"].id,
+    }
+
+
+@meta(title=_("API Clients"))
+@login_required()
+@aiohttp_jinja2.template("admin/api_client_list.html")
+async def api_client_list(request):
+    session = await get_session(request)
+    add_form = ApiClientForm(meta={"csrf_context": session})
+    return {
+        "clients": await _get_api_clients(
+            request["db"],
+            request.app[CONFIG_KEY]["secret_key"],
+        ),
+        "sources": await _get_api_client_sources(request["db"]),
+        "add_form": add_form,
+        "new_credentials": None,
+        "selected_source_ids": set(),
     }

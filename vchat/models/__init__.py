@@ -3,6 +3,8 @@ from .user import User
 from .data import (
     Chat,
     ChatMsg,
+    ApiClient,
+    WidgetIntegration,
     Source,
     Page,
     Chunk,
@@ -10,7 +12,8 @@ from .data import (
     Sitemap,
     PageLink,
     CrawlRun,
-    SourceShingleFreq,
+    PageShingle,
+    TriggerResponseCache,
 )
 from .admin_event import AdminEvent
 
@@ -21,6 +24,8 @@ __all__ = [
     "User",
     "Chat",
     "ChatMsg",
+    "ApiClient",
+    "WidgetIntegration",
     "Source",
     "Page",
     "Chunk",
@@ -28,6 +33,7 @@ __all__ = [
     "Sitemap",
     "PageLink",
     "CrawlRun",
-    "SourceShingleFreq",
+    "PageShingle",
+    "TriggerResponseCache",
     "AdminEvent",
 ]

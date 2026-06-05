@@ -443,19 +443,6 @@ async def history_detail(request):
     result = await request["db"].execute(stmt)
     messages = result.scalars().all()
     chat_meta = chat.meta if isinstance(chat.meta, dict) else {}
-    related_chats = []
-    fingerprint = (chat_meta.get("device_fingerprint") or "").strip()
-    if fingerprint:
-        related_stmt = (
-            sa.select(Chat)
-            .where(
-                Chat.id != chat.id,
-                Chat.meta["device_fingerprint"].astext == fingerprint,
-            )
-            .order_by(Chat.created_at.desc())
-            .limit(20)
-        )
-        related_chats = (await request["db"].execute(related_stmt)).scalars().all()
 
     for msg in messages:
         masked_text = msg.text
@@ -514,6 +501,5 @@ async def history_detail(request):
         "project": _project_context(request),
         "chat": chat,
         "chat_meta": chat_meta,
-        "related_chats": related_chats,
         "messages": messages,
     }
