@@ -14,7 +14,7 @@ from vchat.gigachat_oauth import get_gigachat_access_token
 from vchat.models import Page, Source
 from vchat.models.source_config import CrawlerRule
 from vchat.page_status import PageStatus
-from vchat.project_settings import get_setting, get_setting_json
+from vchat.project_settings import get_setting_json
 from vchat.settings import config
 from vchat.utils import json
 
@@ -289,8 +289,8 @@ def build_trigger_generation_messages(page: Page) -> list[dict[str, str]]:
 
 
 async def generate_trigger_texts_for_page(app, page: Page) -> list[str]:
-    provider_id = get_setting(app, "project.provider")
-    model_id = get_setting(app, "project.model")
+    provider_id = config.get("chat_provider")
+    model_id = config.get("chat_model")
     provider, model = resolve_ai_settings(provider_id, model_id)
     raw = await request_trigger_generation(
         provider, model, build_trigger_generation_messages(page)
@@ -320,6 +320,7 @@ async def request_trigger_generation(
 
     async with aiohttp.ClientSession() as session:
         timeout_seconds = 30.0
+        ssl = True
         if provider.id == "gigachat":
             api_key = await get_gigachat_access_token(
                 session,
@@ -331,6 +332,7 @@ async def request_trigger_generation(
             timeout_seconds = float(
                 config.get("gigachat_request_timeout_seconds", 60.0)
             )
+            ssl = bool(config.get("gigachat_verify_ssl_certs", True))
 
         async with session.post(
             f"{base_url}/chat/completions",
@@ -345,6 +347,7 @@ async def request_trigger_generation(
                 "max_tokens": 600,
             },
             timeout=aiohttp.ClientTimeout(total=timeout_seconds),
+            ssl=ssl,
         ) as resp:
             if resp.status >= 400:
                 detail = await resp.text()

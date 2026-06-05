@@ -12,12 +12,7 @@ from vchat.utils import json
 
 SETTINGS_DEFAULTS: dict[str, str] = {
     "project.title": "vchat",
-    "project.system_prompt": "",
     "project.agent_style": "",
-    "project.provider": "gigachat",
-    "project.model": "gigachat-pro",
-    "project.agent_name": "",
-    "project.welcome_message": "",
     "project.secret": "",
     "triggers.default_templates": "",
 }

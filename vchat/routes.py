@@ -21,8 +21,7 @@ def setup_routes(app: web.Application) -> None:
     # frontend
     add("GET", "/check", frontend.healthcheck)
     add("GET", "/demo", frontend.demo_page, name="demo_page")
-    add("GET", "/widget", frontend.widget_js, name="widget")
-    add("GET", "/js", frontend.widget_js, name="widget_js")
+    add("GET", r"/widget/{code:[a-zA-Z0-9_-]+}", frontend.widget_js, name="widget")
     add(
         "GET",
         "/api/triggers/resolve",
@@ -65,7 +64,6 @@ def setup_routes(app: web.Application) -> None:
     # single-project admin pages
     add("GET", "/", projects.project_stats, name="index")
     add("GET", "/page", projects.project_view, name="project_view")
-    add("*", "/edit", projects.project_edit, name="project_edit")
     add(
         "GET",
         "/documents/json",
@@ -134,8 +132,19 @@ def setup_routes(app: web.Application) -> None:
         projects.project_chat,
         name="project_chat_with_id",
     )
-    add("GET", "/chat/widget", projects.public_widget_chat, name="public_widget_chat")
+    add(
+        "GET",
+        r"/chat/widget/{code:[a-zA-Z0-9_-]+}",
+        projects.public_widget_chat,
+        name="public_widget_chat",
+    )
     add("GET", "/integration", projects.project_integration, name="project_integration")
+    add(
+        "GET",
+        r"/integration/{widget_id:[0-9]+}",
+        projects.project_widget_edit,
+        name="project_widget_edit",
+    )
     add("GET", "/chats", projects.chats_list, name="project_chats_list")
     add("GET", "/history", projects.history_list, name="project_history")
     add(

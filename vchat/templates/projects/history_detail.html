@@ -1,9 +1,9 @@
 {% extends "admin.html" %}
 {% block content %}
 
-<div class="flex flex-col gap-6 h-[calc(100vh-6rem)]">
+<div class="flex flex-col gap-6">
     <!-- Header / Meta -->
-    <div class="card bg-base-100 shadow shrink-0">
+    <div class="card bg-base-100 shadow">
         <div class="card-body flex-col gap-4 py-4">
             <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
@@ -17,10 +17,18 @@
                     </div>
                 </div>
             </div>
-            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4 text-sm">
+            <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5 text-sm">
                 <div class="rounded-box bg-base-200/40 p-3">
                     <div class="text-xs opacity-60">Fingerprint</div>
-                    <div class="break-all font-medium">{{ chat_meta.device_fingerprint or '—' }}</div>
+                    {% if chat_meta.device_fingerprint %}
+                    <a
+                        href="{{ url('project_history', query_={'fingerprint': chat_meta.device_fingerprint}) }}"
+                        class="link link-primary break-all font-medium">
+                        {{ chat_meta.device_fingerprint }}
+                    </a>
+                    {% else %}
+                    <div class="break-all font-medium">—</div>
+                    {% endif %}
                 </div>
                 <div class="rounded-box bg-base-200/40 p-3">
                     <div class="text-xs opacity-60">IP</div>
@@ -34,25 +42,27 @@
                     <div class="text-xs opacity-60">Устройство</div>
                     <div class="font-medium">{{ chat_meta.device_type or 'unknown' }}</div>
                 </div>
-            </div>
-            {% if related_chats %}
-            <div class="flex flex-col gap-2">
-                <div class="text-sm font-medium">Другие чаты с тем же fingerprint</div>
-                <div class="flex flex-wrap gap-2">
-                    {% for related in related_chats %}
-                    <a href="{{ url('project_history_detail', chat_id=related.id) }}" class="btn btn-xs btn-outline">
-                        {{ related.created_at.strftime('%Y-%m-%d %H:%M') }}
+                <div class="rounded-box bg-base-200/40 p-3">
+                    <div class="text-xs opacity-60">Страница</div>
+                    {% if chat_meta.source_page_url %}
+                    <a
+                        href="{{ chat_meta.source_page_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="link link-primary break-all font-medium">
+                        {{ chat_meta.source_page_url }}
                     </a>
-                    {% endfor %}
+                    {% else %}
+                    <div class="break-all font-medium">—</div>
+                    {% endif %}
                 </div>
             </div>
-            {% endif %}
         </div>
     </div>
 
     <!-- Messages -->
-    <div class="card bg-base-100 shadow flex-1 overflow-hidden">
-        <div class="card-body overflow-y-auto p-4 space-y-4">
+    <div class="card bg-base-100 shadow">
+        <div class="card-body p-4 space-y-4">
             {% for msg in messages %}
                 {% set is_user = msg.role == 'user' %}
                 <div class="chat {{ 'chat-start' if is_user else 'chat-end' }}">
@@ -86,7 +96,7 @@
                         </div>
                         {% endif %}
                         {% if msg.context_sources %}
-                        <div class="rounded border border-base-300 bg-base-100/70 px-3 py-3 text-xs">
+                        <div class="rounded border border-base-300 bg-base-100 px-3 py-3 text-xs text-base-content">
                             <div class="flex items-center justify-between gap-3">
                                 <div class="font-semibold opacity-80">Структурированные источники</div>
                                 {% if msg.reason_code %}
@@ -99,7 +109,7 @@
                                     href="{{ source.page_url or source.uri }}"
                                     target="_blank"
                                     rel="noopener"
-                                    class="rounded-box border border-base-300 bg-base-100 px-3 py-2 hover:border-primary/40">
+                                    class="rounded-box border border-base-300 bg-base-100 px-3 py-2 text-base-content hover:border-primary/40">
                                     <div class="flex items-center gap-2 font-medium">
                                         <span>{{ source.display_path or source.title or 'Источник' }}</span>
                                         {% if source.page_deleted %}

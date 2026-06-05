@@ -109,6 +109,16 @@
 
 .label {
     @apply text-base-content/80 cursor-pointer;
+    @apply min-w-0 max-w-full;
+}
+
+.label-text-alt,
+[id$="-help"] {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
 }
 
 input:-webkit-autofill,

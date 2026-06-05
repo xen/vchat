@@ -55,6 +55,8 @@ media_root: "media"
 post_per_page: 10
 
 # OpenAI Configuration
+chat_provider: "openai"
+chat_model: "gpt-4o-mini"
 openai_api_key: ""
 openai_model: "gpt-4o-mini"
 openai_base_url: "https://api.openai.com/v1"

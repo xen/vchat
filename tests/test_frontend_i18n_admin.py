@@ -64,6 +64,9 @@ class _FakeScalarResult:
     def __iter__(self):
         return iter(self._rows)
 
+    def all(self):
+        return self._rows
+
 
 class _FakeExecuteResult:
     def __init__(self, rows):
@@ -72,10 +75,20 @@ class _FakeExecuteResult:
     def scalars(self):
         return _FakeScalarResult(self._rows)
 
+    def all(self):
+        return self._rows
+
 
 class _TriggerResolveRequest(dict):
     def __init__(self, *, db, url, widget_page_discovery_enabled: bool = False):
         super().__init__()
+        if not hasattr(db, "rollback"):
+            db.rollbacks = 0
+
+            async def _rollback():
+                db.rollbacks += 1
+
+            db.rollback = _rollback
         self["db"] = db
         self["app"] = {
             CONFIG_KEY: {
@@ -121,20 +134,85 @@ async def test_frontend_widget_js_renders_with_widget_path(
         return "ok"
 
     monkeypatch.setattr(frontend.aiohttp_jinja2, "render_template", _render)
-    request = SimpleNamespace(
-        app=SimpleNamespace(
-            router=_FakeRouter(
-                {
-                    "public_widget_chat": _FakeRouterItem("/chat/widget"),
-                    "widget_triggers_resolve": _FakeRouterItem("/widget/triggers"),
-                }
-            )
-        )
+
+    class _Db:
+        async def scalar(self, stmt):
+            _ = stmt
+            return 1
+
+        async def rollback(self):
+            return None
+
+    request = _FakeRequest(
+        {
+            "db": _Db(),
+            "match_info": {"code": "widget-code"},
+            "app": SimpleNamespace(
+                router=_FakeRouter(
+                    {
+                        "public_widget_chat": _FakeRouterItem("/chat/widget"),
+                        "widget_triggers_resolve": _FakeRouterItem("/widget/triggers"),
+                    }
+                )
+            ),
+        }
     )
     result = await frontend.widget_js(request)
     assert result == "ok"
     assert captured["template"] == "js/widget.js"
     assert captured["context"]["widget_chat_path"] == "/chat/widget"
+    assert captured["context"]["widget_code"] == "widget-code"
+
+
+@pytest.mark.asyncio
+async def test_demo_page_lists_widget_codes() -> None:
+    class _Db:
+        rolled_back = False
+        results = [
+            _FakeExecuteResult([(1, "Main widget", "main-widget")]),
+            _FakeExecuteResult(
+                [
+                    SimpleNamespace(
+                        id=20,
+                        uri="https://example.com/docs/page",
+                        title="Docs page",
+                        has_triggers=True,
+                        triggers=[
+                            {
+                                "key": "docs",
+                                "text": "Ask about docs",
+                                "source": "manual",
+                            }
+                        ],
+                    )
+                ]
+            ),
+        ]
+
+        async def execute(self, stmt):
+            _ = stmt
+            return self.results.pop(0)
+
+        async def rollback(self):
+            self.rolled_back = True
+
+    db = _Db()
+    request = _FakeRequest({"db": db, "query": {"code": "main-widget"}})
+    context = await frontend.demo_page.__wrapped__(request)
+    assert context["widgets"] == [
+        {"id": 1, "name": "Main widget", "code": "main-widget"}
+    ]
+    assert context["trigger_pages"] == [
+        {
+            "id": 20,
+            "title": "Docs page",
+            "uri": "https://example.com/docs/page",
+        }
+    ]
+    assert context["selected_widget_code"] == "main-widget"
+    assert context["selected_trigger_url"] == ""
+    assert context["selected_trigger_url_is_listed"] is False
+    assert db.rolled_back is True
 
 
 @pytest.mark.asyncio
@@ -167,7 +245,8 @@ async def test_widget_triggers_resolve_returns_empty_for_disabled_source(
     assert response.status == 200
     assert response.text is not None
     payload = json.loads(response.text)
-    assert payload["source"] == "disabled"
+    assert "source" not in payload
+    assert "page_token" not in payload
     assert payload["triggers"] == []
 
 
@@ -211,7 +290,8 @@ async def test_widget_triggers_resolve_returns_empty_when_rules_do_not_match(
     assert response.status == 200
     assert response.text is not None
     payload = json.loads(response.text)
-    assert payload["source"] == "unmatched"
+    assert "source" not in payload
+    assert "page_token" not in payload
     assert payload["triggers"] == []
 
 
@@ -252,16 +332,17 @@ async def test_widget_triggers_resolve_signs_page_id_for_page_triggers(
     assert response.text is not None
     payload = json.loads(response.text)
     assert "page_id" not in payload
-    assert payload["source"] == "page"
+    assert "source" not in payload
+    assert payload["page_token"] == "signed:trigger_page:20"
     assert payload["triggers"] == [
         {
-            "page_token": "signed:trigger_page:20",
             "key": "abc",
             "text": "Ask about docs",
-            "source": "manual",
         }
     ]
     assert "page_id" not in payload["triggers"][0]
+    assert "page_token" not in payload["triggers"][0]
+    assert "source" not in payload["triggers"][0]
 
 
 @pytest.mark.asyncio
@@ -318,6 +399,7 @@ async def test_widget_triggers_resolve_discovers_matching_unknown_page(
     assert response.text is not None
     payload = json.loads(response.text)
     assert "page_id" not in payload
+    assert "source" not in payload
     assert db.commits == 1
     assert delayed == [99]
     assert len(find_calls) == 2
@@ -364,8 +446,9 @@ async def test_widget_triggers_resolve_skips_discovery_when_config_disabled(
     assert response.status == 200
     assert response.text is not None
     payload = json.loads(response.text)
-    assert payload["source"] == "default"
     assert "page_id" not in payload
+    assert "source" not in payload
+    assert "page_token" not in payload
     assert delayed == []
 
 
@@ -432,7 +515,8 @@ async def test_widget_triggers_resolve_handles_concurrent_discovery_conflict(
     assert response.text is not None
     payload = json.loads(response.text)
     assert "page_id" not in payload
-    assert db.rollbacks == 1
+    assert "source" not in payload
+    assert db.rollbacks == 2
     assert db.commits == 0
     assert delayed == []
 

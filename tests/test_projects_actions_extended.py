@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from aiohttp import web
+from multidict import MultiDict
 from yarl import URL
 
 from vchat.app_keys import SIGNER_KEY
@@ -32,6 +33,7 @@ class _App(dict):
         self.router = {
             "users": _Route("/users/"),
             "actions": _Route("/actions/{action}/{item_id}"),
+            "project_triggers": _Route("/triggers"),
         }
 
 
@@ -92,6 +94,13 @@ def _raw_project_action():
     return project_views.project_action.__wrapped__
 
 
+def _raw_project_triggers():
+    view = project_views.project_triggers
+    while hasattr(view, "__wrapped__"):
+        view = view.__wrapped__
+    return view
+
+
 @pytest.mark.asyncio
 async def test_project_action_rejects_missing_csrf() -> None:
     req = _Request(action="delete_source", headers={})
@@ -115,7 +124,7 @@ async def test_project_action_ignore_document_toggle(
     resp = await _raw_project_action()(req)
     assert resp.status == 200
     assert doc.status_error == PageStatusError.excluded_ignored
-    assert '"is_ignored": true' in resp.text
+    assert json.loads(resp.text)["is_ignored"] is True
     assert resp.headers["HX-Trigger"] == "project-documents:refresh"
 
 
@@ -223,6 +232,38 @@ async def test_project_action_background_actions(
 
 
 @pytest.mark.asyncio
+async def test_project_triggers_generate_htmx_queues_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = _Request(
+        action="",
+        post_data=MultiDict({"action": "generate"}),
+        headers={"X-CSRFToken": "ok", "HX-Request": "true"},
+    )
+    db = _DB()
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    queued = []
+
+    async def _session(request):
+        _ = request
+        return {}
+
+    monkeypatch.setattr(project_views, "get_session", _session)
+    monkeypatch.setattr(
+        project_views.generate_missing_triggers_task,
+        "delay",
+        lambda: queued.append("generate"),
+    )
+
+    resp = await _raw_project_triggers()(req)
+
+    assert resp.status == 204
+    assert queued == ["generate"]
+    assert db.commits == 0
+
+
+@pytest.mark.asyncio
 async def test_project_action_crawl_source_runs_sitemap_discovery_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -238,11 +279,14 @@ async def test_project_action_crawl_source_runs_sitemap_discovery_chain(
         called.append("flash")
 
     monkeypatch.setattr(project_views, "flash", _flash)
+
     async def _not_blocked(request, db_session, source):
         _ = request, db_session, source
         return False
 
-    monkeypatch.setattr(project_views, "_check_source_blocking_and_commit", _not_blocked)
+    monkeypatch.setattr(
+        project_views, "_check_source_blocking_and_commit", _not_blocked
+    )
     monkeypatch.setattr(
         project_views,
         "_queue_source_crawl_from_ui",
@@ -270,6 +314,7 @@ async def test_project_action_crawl_source_does_not_enqueue_blocked_source(
         called.append("flash")
 
     monkeypatch.setattr(project_views, "flash", _flash)
+
     async def _blocked(request, db_session, source):
         _ = request, db_session, source
         return True
@@ -449,5 +494,6 @@ async def test_project_files_json_serializes_rows() -> None:
     raw = project_views.project_files_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    assert '"id": "8"' in resp.text
-    assert '"document_type": "pdf"' in resp.text
+    payload = json.loads(resp.text)
+    assert payload[0]["id"] == "8"
+    assert payload[0]["document_type"] == "pdf"

@@ -14,11 +14,13 @@
   var userName = container.getAttribute("data-user-name") || "";
   var userEmail = container.getAttribute("data-user-email") || "";
   var sign = container.getAttribute("data-xsign") || "";
+  var sourcePageUrl = container.getAttribute("data-source-page-url") || window.location.href;
   var triggerResolvePath = {{ trigger_resolve_path | tojson | safe }};
   var triggerItems = [];
   var activeTrigger = null;
   var triggerShown = false;
   var hasScrolled = false;
+  var showByTimeout = false;
 
   // Create Styles
   var style = document.createElement("style");
@@ -156,6 +158,7 @@
     if (userName) chatUrl.searchParams.append("user_name", userName);
     if (userEmail) chatUrl.searchParams.append("user_email", userEmail);
     if (sign) chatUrl.searchParams.append("sign", sign);
+    chatUrl.searchParams.append("source_page_url", sourcePageUrl);
 
     iframeEl.src = chatUrl.toString();
     iframeContainer.appendChild(iframeEl);
@@ -178,8 +181,12 @@
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
   }
 
+  function canShowTrigger() {
+    return hasScrolled || showByTimeout;
+  }
+
   function maybeShowTrigger() {
-    if (triggerShown || isOpen || !hasScrolled || !triggerItems.length) {
+    if (triggerShown || isOpen || !canShowTrigger() || !triggerItems.length) {
       return;
     }
     activeTrigger = triggerItems[Math.floor(Math.random() * triggerItems.length)];
@@ -190,7 +197,7 @@
 
   function loadTriggers() {
     var resolveUrl = new URL(widgetOrigin() + triggerResolvePath);
-    resolveUrl.searchParams.append("url", window.location.href);
+    resolveUrl.searchParams.append("url", sourcePageUrl);
     resolveUrl.searchParams.append("title", document.title || "");
     fetch(resolveUrl.toString(), { mode: "cors", credentials: "omit" })
       .then(function (response) {
@@ -199,6 +206,15 @@
       })
       .then(function (payload) {
         triggerItems = Array.isArray(payload.triggers) ? payload.triggers : [];
+        if (payload.page_token) {
+          triggerItems = triggerItems.map(function (trigger) {
+            return Object.assign({}, trigger, { page_token: payload.page_token });
+          });
+        }
+        window.setTimeout(function () {
+          showByTimeout = true;
+          maybeShowTrigger();
+        }, 20000);
         window.setTimeout(maybeShowTrigger, 2500);
       })
       .catch(function () {});

@@ -4,4 +4,6 @@ sql_echo: true
 cookie_secure: false
 enable_https_middleware: false
 cookie_domain: "local.vchat.com"
+chat_provider: "openai"
+chat_model: "gpt-4o-mini"
 celery_visibility_timeout: 7200

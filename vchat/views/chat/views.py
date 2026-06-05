@@ -21,7 +21,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from vchat.ai_providers import (
     BaseAIProvider,
     ModelInfo,
-    get_default_provider_id,
     resolve_ai_settings,
 )
 from vchat.app_keys import SIGNER_KEY
@@ -37,8 +36,14 @@ from vchat.gigachat_oauth import get_gigachat_access_token
 from vchat.json_response import json_response
 from vchat.logging_utils import log_json
 from vchat.metrics import record_chat_request
-from vchat.models import Chat, ChatMsg, Page, Source, TriggerResponseCache
-from vchat.project_settings import get_setting
+from vchat.models import (
+    Chat,
+    ChatMsg,
+    Page,
+    Source,
+    TriggerResponseCache,
+    WidgetIntegration,
+)
 from vchat.settings import config
 from vchat.triggers import page_trigger_items, trigger_prompt_hash
 from vchat.utils import json, run_task
@@ -52,6 +57,8 @@ TRIVIAL_PATTERNS = [
     r"^\?+$",
 ]
 TRIVIAL_REGEX = re.compile(r"|".join(TRIVIAL_PATTERNS), re.IGNORECASE)
+CACHED_TRIGGER_STREAM_CHARS = 32
+CACHED_TRIGGER_STREAM_DELAY_SECONDS = 0.06
 
 
 def is_trivial_query(text: str) -> bool:
@@ -113,15 +120,15 @@ class GenerationContext:
         return self.provider.request_meta()
 
 
-def build_generation_context(app) -> GenerationContext:
-    provider_id = get_setting(app, "project.provider", get_default_provider_id())
-    if not provider_id:
-        provider_id = get_default_provider_id()
-    model_id = get_setting(app, "project.model")
+def build_generation_context(
+    app, widget: WidgetIntegration | None = None
+) -> GenerationContext:
+    provider_id = config.get("chat_provider")
+    model_id = config.get("chat_model")
     provider, model = resolve_ai_settings(provider_id, model_id)
     system_prompt = (
-        get_setting(app, "project.system_prompt", SYSTEM_PROMPT) or SYSTEM_PROMPT
-    )
+        widget.system_prompt if widget is not None else ""
+    ) or SYSTEM_PROMPT
     return GenerationContext(provider, model, system_prompt)
 
 
@@ -166,6 +173,7 @@ async def generate_suggestions(
     try:
         async with aiohttp.ClientSession() as session:
             request_timeout_seconds = 10.0
+            ssl = True
             if ctx.provider_id == "gigachat":
                 api_key = await get_gigachat_access_token(
                     session,
@@ -173,6 +181,7 @@ async def generate_suggestions(
                     oauth_timeout_seconds=GIGACHAT_OAUTH_TIMEOUT_SECONDS,
                 )
                 request_timeout_seconds = GIGACHAT_SUGGEST_TIMEOUT_SECONDS
+                ssl = bool(config.get("gigachat_verify_ssl_certs", True))
 
             async with session.post(
                 f"{base_url}/chat/completions",
@@ -187,6 +196,7 @@ async def generate_suggestions(
                     "temperature": 0.5,
                 },
                 timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),
+                ssl=ssl,
             ) as resp:
                 if resp.status != 200:
                     error_text = await resp.text()
@@ -411,6 +421,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
     else:
         async with aiohttp.ClientSession() as session:
             request_timeout_seconds = 60.0
+            ssl = True
             if provider_id == "gigachat":
                 api_key = await get_gigachat_access_token(
                     session,
@@ -418,6 +429,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                     oauth_timeout_seconds=GIGACHAT_OAUTH_TIMEOUT_SECONDS,
                 )
                 request_timeout_seconds = GIGACHAT_REQUEST_TIMEOUT_SECONDS
+                ssl = bool(config.get("gigachat_verify_ssl_certs", True))
 
             try:
                 async with session.post(
@@ -438,6 +450,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                         "stream_options": {"include_usage": True},
                     },
                     timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),
+                    ssl=ssl,
                 ) as resp:
                     if resp.status >= 400:
                         error_text = await resp.text()
@@ -639,6 +652,19 @@ async def validate_trigger_cache_request(
         )
 
 
+def load_signed_trigger_page_id(app, raw_page_token: str) -> int | None:
+    try:
+        return int(
+            app[SIGNER_KEY].loads(
+                raw_page_token,
+                salt="trigger_page",
+                max_age=86400,
+            )
+        )
+    except (BadSignature, ValueError, TypeError):
+        return None
+
+
 async def save_trigger_response_cache(
     *,
     page_id: int,
@@ -731,14 +757,7 @@ async def stream_cached_trigger_response(
         assistant_msg_id = assistant_result.scalar_one()
         await db.commit()
 
-    for offset in range(0, len(response_text), 96):
-        await ws.send_json(
-            {
-                "ok": True,
-                "content": response_text[offset : offset + 96],
-                "partial": True,
-            }
-        )
+    await stream_cached_response_text(ws=ws, response_text=response_text)
 
     signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
     await ws.send_json(
@@ -762,6 +781,22 @@ async def stream_cached_trigger_response(
         queue="embeddings",
         msg_id=assistant_msg_id,
     )
+
+
+async def stream_cached_response_text(
+    *,
+    ws: web.WebSocketResponse,
+    response_text: str,
+) -> None:
+    for offset in range(0, len(response_text), CACHED_TRIGGER_STREAM_CHARS):
+        await asyncio.sleep(CACHED_TRIGGER_STREAM_DELAY_SECONDS)
+        await ws.send_json(
+            {
+                "ok": True,
+                "content": response_text[offset : offset + CACHED_TRIGGER_STREAM_CHARS],
+                "partial": True,
+            }
+        )
 
 
 async def websocket(request):
@@ -828,7 +863,15 @@ async def websocket(request):
 
     try:
         payload = request.match_info.get("payload")
-        user_id, chat_id = serializer.loads(payload, salt="vchat", max_age=3600)
+        signed_payload = serializer.loads(payload, salt="vchat", max_age=3600)
+        if not isinstance(signed_payload, (list, tuple)) or len(signed_payload) not in {
+            2,
+            3,
+        }:
+            await ws.close(code=1008)
+            return ws
+        user_id, chat_id = signed_payload[0], signed_payload[1]
+        widget_code = signed_payload[2] if len(signed_payload) == 3 else None
         if not isinstance(chat_id, str) or not chat_id:
             await ws.close(code=1008)
             return ws
@@ -838,6 +881,16 @@ async def websocket(request):
             if not exists:
                 await ws.close(code=1008)
                 return ws
+            widget = None
+            if widget_code:
+                widget = await db.scalar(
+                    sa.select(WidgetIntegration).where(
+                        WidgetIntegration.code == str(widget_code)
+                    )
+                )
+                if widget is None:
+                    await ws.close(code=1008)
+                    return ws
 
         user_id_ctx.set(user_id)
         chat_id_ctx.set(chat_id)
@@ -847,7 +900,11 @@ async def websocket(request):
         return ws
 
     try:
-        gen_context = build_generation_context(request.app)
+        gen_context = (
+            build_generation_context(request.app, widget)
+            if widget is not None
+            else build_generation_context(request.app)
+        )
         await redis.sadd("active_chats", chat_id_ctx.get())
 
         while True:
@@ -877,18 +934,11 @@ async def websocket(request):
                         raw_page_token = parsed_payload.get("page_token")
                         raw_trigger_key = parsed_payload.get("trigger_key")
                         if raw_page_token and raw_trigger_key:
-                            try:
-                                trigger_page_id = int(
-                                    request.app[SIGNER_KEY].loads(
-                                        str(raw_page_token),
-                                        salt="trigger_page",
-                                        max_age=86400,
-                                    )
-                                )
+                            trigger_page_id = load_signed_trigger_page_id(
+                                request.app, str(raw_page_token)
+                            )
+                            if trigger_page_id is not None:
                                 trigger_key = str(raw_trigger_key)
-                            except (BadSignature, ValueError, TypeError):
-                                trigger_page_id = None
-                                trigger_key = None
                     else:
                         user_text = raw_user_text
                 else:
@@ -912,7 +962,11 @@ async def websocket(request):
                 context_policy: dict[str, Any] = {}
                 coverage: dict[str, Any] = {}
 
-                gen_context = build_generation_context(request.app)
+                gen_context = (
+                    build_generation_context(request.app, widget)
+                    if widget is not None
+                    else build_generation_context(request.app)
+                )
                 assistant_provider = gen_context.provider_id
                 assistant_model = gen_context.model_id
 
@@ -1350,6 +1404,7 @@ async def chat_actions(request):
             language=payload.get("language"),
             timezone_name=payload.get("timezone"),
             screen=payload.get("screen"),
+            source_page_url=payload.get("source_page_url"),
         )
         await db.commit()
         return json_response({"ok": True})

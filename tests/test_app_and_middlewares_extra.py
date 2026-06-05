@@ -17,7 +17,9 @@ import vchat.middlewares.shield as shield
 from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 
 
-def test_project_settings_normalize_merge_and_getters(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_project_settings_normalize_merge_and_getters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert ps._normalize_value(None) is None
     assert ps._normalize_value("x") == "x"
     assert ps._normalize_value(["a"]) == '["a"]'
@@ -26,7 +28,7 @@ def test_project_settings_normalize_merge_and_getters(monkeypatch: pytest.Monkey
 
     merged = ps.merge_with_defaults({"project.title": "Demo"})
     assert merged["project.title"] == "Demo"
-    assert "project.model" in merged
+    assert "project.model" not in merged
 
     app = {SETTINGS_KEY: {"a": "1", "bad_int": "x", "json": "[1]", "bad_json": "{"}}
     assert ps.get_setting(app, "a") == "1"
@@ -231,7 +233,13 @@ async def test_init_jinja_and_create_app(monkeypatch: pytest.MonkeyPatch) -> Non
     import vchat.routes as routes_mod
     import vchat.settings as settings_mod
 
-    monkeypatch.setattr(routes_mod, "setup_routes", lambda app: app.router.add_get("/x", lambda r: web.Response(text="ok"), name="x"))
+    monkeypatch.setattr(
+        routes_mod,
+        "setup_routes",
+        lambda app: app.router.add_get(
+            "/x", lambda r: web.Response(text="ok"), name="x"
+        ),
+    )
     monkeypatch.setattr(
         settings_mod,
         "config",

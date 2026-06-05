@@ -1,57 +1,176 @@
 {% extends "admin.html" %}
+{% set page_title = _("Код виджета") %}
 
-{% block title %}Интеграция{% endblock %}
+{% macro widget_create_form(action) %}
+<form method="POST" action="{{ action }}" class="grid gap-4">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <label class="form-control">
+    <span class="label-text mb-1">{{ _('Название') }}</span>
+    <input
+      type="text"
+      name="name"
+      class="input input-bordered w-full"
+      maxlength="128"
+      required
+    >
+    <span class="mt-1 text-xs text-base-content/60">{{ _('Внутреннее название, нужно только для удобства в админке.') }}</span>
+  </label>
+
+  <label class="form-control">
+    <span class="label-text mb-1">{{ _('Название чата') }}</span>
+    <input
+      type="text"
+      name="agent_name"
+      class="input input-bordered w-full"
+      maxlength="100"
+      placeholder="{{ _('Виртуальный ассистент') }}"
+    >
+    <span class="mt-1 text-xs text-base-content/60">{{ _('Показывается пользователю в окне чата.') }}</span>
+  </label>
+
+  <label class="form-control">
+    <span class="label-text mb-1">{{ _('Приветственное сообщение') }}</span>
+    <textarea
+      name="welcome_message"
+      class="textarea textarea-bordered w-full"
+      rows="3"
+      maxlength="2000"
+    >{{ default_welcome_message }}</textarea>
+  </label>
+
+  <label class="form-control">
+    <span class="label-text mb-1">{{ _('Системный промпт') }}</span>
+    <textarea
+      name="system_prompt"
+      class="textarea textarea-bordered w-full font-mono text-sm"
+      rows="8"
+      maxlength="4000"
+    >{{ default_system_prompt }}</textarea>
+  </label>
+
+  <div class="flex justify-end gap-2">
+    <button type="submit" class="btn btn-primary btn-sm">{{ _('Создать') }}</button>
+  </div>
+</form>
+{% endmacro %}
 
 {% block content %}
-
-<div class="flex items-center justify-between">
-    <h1 class="text-lg font-medium">Интеграция</h1>
-</div>
-
-<div class="mt-6 space-y-6">
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <h2 class="card-title">Публичный API VChat</h2>
-      <p>
-        На этой странице собрана краткая инструкция по публичным методам API.
-        Полный документ: <code>docs/02_openapi_specification.md</code>.
-      </p>
-      <ul class="list-disc pl-6 space-y-1">
-        <li><code>GET /api/update</code> — обновление индекса по URL документа.</li>
-      </ul>
-    </div>
+<div id="widget-integrations-page" class="space-y-6">
+  <div class="flex items-center justify-between gap-3">
+    <h1 class="text-lg font-medium">{{ _('Код виджета') }}</h1>
+    <button type="button" class="btn btn-primary btn-sm" onclick="add_widget_modal.showModal()">
+      <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+      {{ _('Добавить') }}
+    </button>
   </div>
 
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <h3 class="font-semibold text-base">1) Обновление индекса документа</h3>
-      <p class="text-sm opacity-80">Метод принимает URL документа и запускает фоновую синхронизацию индекса.</p>
-
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-base-content text-sm font-mono"><code>GET /api/update?url=https%3A%2F%2Fdocs.example.org%2Freglament.pdf</code></pre>
-
-      <p class="text-sm opacity-80 mt-2">Пример ответа:</p>
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-base-content text-sm font-mono"><code>{
-  "status": "accepted",
-  "url": "https://docs.example.org/reglament.pdf"
-}</code></pre>
-    </div>
-  </div>
-
-  <div class="card bg-base-100 shadow-sm">
-    <div class="card-body">
-      <h3 class="font-semibold text-base">Встраивание виджета</h3>
-      <p class="text-sm opacity-80">
-        Разместите код перед закрывающим тегом <code>&lt;/body&gt;</code>.
-      </p>
-<pre class="mockup-code overflow-x-auto bg-base-200 border border-base-300 text-base-content text-sm font-mono"><code>&lt;script src="https://chat.vbudushee.ru/widget" defer&gt;&lt;/script&gt;
+  <div class="card bg-base-100 shadow">
+    <div class="card-body p-0">
+      <div class="overflow-x-auto">
+        <table class="table w-full">
+          <thead>
+            <tr>
+              <th class="text-left">{{ _('Виджет') }}</th>
+              <th class="text-left">{{ _('Адрес') }}</th>
+              <th class="text-left">{{ _('Контакты') }}</th>
+              <th class="text-right">{{ _('Действия') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for widget in widgets %}
+            <tr class="hover">
+              <td class="align-top">
+                <div class="grid gap-1">
+                  <div class="font-medium">{{ widget.name }}</div>
+                  <div class="text-sm text-base-content/60">{{ widget.agent_name or _('Виртуальный ассистент') }}</div>
+                </div>
+              </td>
+              <td class="align-top">
+                <div class="join max-w-xl">
+                  <input
+                    id="widget-url-{{ widget.id }}"
+                    type="text"
+                    class="input input-bordered input-sm join-item min-w-0 flex-1 font-mono text-sm"
+                    value="{{ widget.public_url }}"
+                    readonly
+                  >
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm join-item"
+                    title="{{ _('Скопировать') }}"
+                    aria-label="{{ _('Скопировать') }}"
+                    data-copy-value="widget-url-{{ widget.id }}"
+                  >
+                    <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+                  </button>
+                </div>
+                <pre class="mt-2 overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ widget.public_url }}" defer&gt;&lt;/script&gt;
 &lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
-      <ul class="list-disc pl-6 space-y-1 text-sm opacity-80">
-        <li><code>defer</code> обязателен, чтобы не блокировать загрузку страницы.</li>
-        <li>Контейнер <code>div#vchat-chat</code> обязателен, в него монтируется интерфейс виджета.</li>
-        <li>Используется единый скрипт: <code>https://chat.vbudushee.ru/widget</code>.</li>
-      </ul>
+              </td>
+              <td class="align-top text-sm">
+                {% if widget.contact_url %}
+                <a href="{{ widget.contact_url }}" target="_blank" rel="noopener" class="link break-all">{{ widget.contact_url }}</a>
+                {% else %}
+                <span class="text-base-content/50">{{ _('Не указаны') }}</span>
+                {% endif %}
+              </td>
+              <td class="align-top">
+                <div class="flex justify-end gap-2">
+                  <div class="tooltip" data-tip="{{ _('Редактировать') }}">
+                    <a
+                      href="{{ url('project_widget_edit', widget_id=widget.id) }}"
+                      class="btn btn-xs btn-square btn-outline"
+                      aria-label="{{ _('Редактировать') }}"
+                    >
+                      <iconify-icon icon="lucide:pencil" class="size-3.5"></iconify-icon>
+                    </a>
+                  </div>
+                  <div class="tooltip" data-tip="{{ _('Удалить') }}">
+                    <button
+                      class="btn btn-xs btn-square btn-error btn-outline"
+                      aria-label="{{ _('Удалить') }}"
+                      hx-post="{{ url('actions', action='widget_delete', item_id=widget.id) }}"
+                      hx-swap="none"
+                      hx-confirm="{{ _('Удалить код виджета?') }}"
+                    >
+                      <iconify-icon icon="lucide:trash-2" class="size-3.5"></iconify-icon>
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="py-8 text-center text-base-content/60">
+                {{ _('Коды виджета не созданы') }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
+
+  <dialog id="add_widget_modal" class="modal">
+    <div class="modal-box max-w-2xl">
+      <h2 class="card-title mb-3 text-base">{{ _('Добавить код виджета') }}</h2>
+      {{ widget_create_form(url('actions', action='widget_create', item_id='global')) }}
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>{{ _('Закрыть') }}</button>
+    </form>
+  </dialog>
 </div>
 
+<script>
+  document.addEventListener('click', async (event) => {
+    const copy = event.target.closest('[data-copy-value]');
+    if (!copy) return;
+    const value = document.getElementById(copy.dataset.copyValue);
+    if (!value) return;
+    await navigator.clipboard.writeText(value.value || value.textContent.trim());
+  });
+</script>
 {% endblock %}

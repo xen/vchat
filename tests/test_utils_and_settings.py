@@ -12,6 +12,7 @@ from jobs.indexing import documents as indexing_documents
 from vchat import metrics
 from vchat import settings
 from vchat import utils
+from vchat.chat_meta import merge_chat_meta, validate_source_page_url
 from vchat.ai_providers import (
     get_default_model_id,
     get_model_choices,
@@ -131,6 +132,42 @@ def test_make_full_url_and_meta_decorator() -> None:
     assert str(url) == "https://local.vchat.com/doc/12%3Fa=1"
 
 
+def test_validate_source_page_url_accepts_only_http_urls() -> None:
+    assert (
+        validate_source_page_url("https://example.com/page?x=1#top")
+        == "https://example.com/page?x=1#top"
+    )
+    assert validate_source_page_url("http://example.com") == "http://example.com"
+    assert validate_source_page_url("javascript:sendall_cookies_to_evil_host()") is None
+    assert validate_source_page_url("//example.com/path") is None
+    assert validate_source_page_url("/relative/path") is None
+
+
+def test_merge_chat_meta_stores_validated_source_page_url() -> None:
+    req = _Req(
+        app={},
+        headers={"User-Agent": "Mozilla/5.0 Chrome/124.0"},
+    )
+    req.transport = None
+
+    meta = merge_chat_meta(
+        {},
+        req,
+        source_page_url="https://navigator.vbudushee.ru/demo?age=8-10",
+    )
+    assert meta["source_page_url"] == "https://navigator.vbudushee.ru/demo?age=8-10"
+
+    next_meta = merge_chat_meta(
+        meta,
+        req,
+        source_page_url="javascript:sendall_cookies_to_evil_host()",
+    )
+    assert (
+        next_meta["source_page_url"]
+        == "https://navigator.vbudushee.ru/demo?age=8-10"
+    )
+
+
 @pytest.mark.asyncio
 async def test_run_task_enqueues_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _Redis()
@@ -154,6 +191,11 @@ def test_ai_provider_functions() -> None:
     provider, model = resolve_ai_settings("openai", "gpt-4o-mini")
     assert provider.id == "openai"
     assert model.id == "gpt-4o-mini"
+    default_provider, default_model = resolve_ai_settings(
+        settings.config["chat_provider"], settings.config["chat_model"]
+    )
+    assert default_provider.id == settings.config["chat_provider"]
+    assert default_model.id == settings.config["chat_model"]
     assert get_provider("openai").id == "openai"
     assert is_provider_available("openai") is True
     assert is_model_available("openai", "gpt-4o-mini") is True

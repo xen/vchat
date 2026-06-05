@@ -10,6 +10,7 @@ import aiohttp
 import pytest
 from itsdangerous import BadSignature
 
+from vchat.app_keys import SIGNER_KEY
 from vchat.guardrails import GuardrailDecision
 from vchat.models.source_config import SourceConfig
 from vchat.triggers import trigger_key
@@ -151,6 +152,65 @@ def test_is_trivial_query_variants() -> None:
     assert chat_views.is_trivial_query("  hi there ")
     assert chat_views.is_trivial_query("???")
     assert not chat_views.is_trivial_query("Как перенести отпуск?")
+
+
+def test_load_signed_trigger_page_id_validates_signature() -> None:
+    class _Signer:
+        def loads(self, payload, salt=None, max_age=None):
+            assert payload == "token"
+            assert salt == "trigger_page"
+            assert max_age == 86400
+            return "42"
+
+    app = {SIGNER_KEY: _Signer()}
+
+    assert chat_views.load_signed_trigger_page_id(app, "token") == 42
+
+
+def test_load_signed_trigger_page_id_rejects_bad_signature() -> None:
+    class _Signer:
+        def loads(self, payload, salt=None, max_age=None):
+            _ = payload, salt, max_age
+            raise BadSignature("bad")
+
+    app = {SIGNER_KEY: _Signer()}
+
+    assert chat_views.load_signed_trigger_page_id(app, "bad") is None
+
+
+@pytest.mark.asyncio
+async def test_stream_cached_response_text_drips_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws = _FakeWs([])
+    sleeps = []
+
+    async def _sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr(chat_views.asyncio, "sleep", _sleep)
+
+    await chat_views.stream_cached_response_text(
+        ws=ws,
+        response_text="abcdefghijklmnopqrstuvwxyz0123456789",
+    )
+
+    assert sleeps == [
+        chat_views.CACHED_TRIGGER_STREAM_DELAY_SECONDS,
+        chat_views.CACHED_TRIGGER_STREAM_DELAY_SECONDS,
+    ]
+    assert ws.sent_json == [
+        {
+            "ok": True,
+            "content": "abcdefghijklmnopqrstuvwxyz012345",
+            "partial": True,
+        },
+        {
+            "ok": True,
+            "content": "6789",
+            "partial": True,
+        },
+    ]
 
 
 @pytest.mark.asyncio
@@ -447,6 +507,68 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
 
 
 @pytest.mark.asyncio
+async def test_ai_chat_stream_passes_gigachat_ssl_setting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def _token(*args, **kwargs):
+        _ = args, kwargs
+        return "access-token"
+
+    class _Resp:
+        status = 200
+        request_info = None
+        history = ()
+        headers = {}
+
+        def __init__(self):
+            self.content = self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+        def __aiter__(self):
+            async def _gen():
+                yield b'data: {"choices":[{"delta":{"content":"A"}}]}\n'
+                yield b"data: [DONE]\n"
+
+            return _gen()
+
+    class _Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+        def post(self, *args, **kwargs):
+            _ = args
+            captured.update(kwargs)
+            return _Resp()
+
+    monkeypatch.setitem(chat_views.config, "gigachat_verify_ssl_certs", False)
+    monkeypatch.setattr(chat_views, "get_gigachat_access_token", _token)
+    monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: _Session())
+
+    events = [
+        event
+        async for event in chat_views.ai_chat_stream(
+            [{"role": "user", "content": "x"}],
+            _FakeCtx(_FakeProvider(id="gigachat"), _FakeModel(id="GigaChat-Pro")),
+        )
+    ]
+
+    assert captured["ssl"] is False
+    assert events[-1]["message"]["content"] == "A"
+
+
+@pytest.mark.asyncio
 async def test_websocket_invalid_signature_closes_1008(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -502,7 +624,7 @@ async def test_websocket_sends_internal_error_json(
     monkeypatch.setattr(
         chat_views,
         "build_generation_context",
-        lambda app: _FakeCtx(_FakeProvider(), _FakeModel()),
+        lambda app, widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
     )
 
     async def _raise_input_guardrail(*, text: str, provider: Any) -> GuardrailDecision:

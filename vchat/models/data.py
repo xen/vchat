@@ -140,6 +140,23 @@ class ApiClient(Base, Created, Updated):
     )
 
 
+class WidgetIntegration(Base, Created, Updated):
+    __tablename__ = "widget_integration"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    code: Mapped[str] = mapped_column(
+        sa.String(64), nullable=False, unique=True, index=True
+    )
+    contact_url: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    agent_name: Mapped[str] = mapped_column(sa.String(100), nullable=False, default="")
+    welcome_message: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    system_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    pinned_messages: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+
+
 api_client_source = sa.Table(
     "api_client_source",
     Base.metadata,

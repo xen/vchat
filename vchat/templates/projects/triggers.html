@@ -4,7 +4,10 @@
 <div class="flex flex-col gap-6">
     <div class="flex items-center justify-between gap-4">
         <h1 class="text-lg font-medium">Триггеры</h1>
-        <form method="POST" action="{{ url('project_triggers') }}">
+        <form method="POST"
+              action="{{ url('project_triggers') }}"
+              hx-post="{{ url('project_triggers') }}"
+              hx-swap="none">
             {{ form.csrf_token }}
             <input type="hidden" name="action" value="generate">
             <button class="btn btn-secondary btn-sm gap-2" type="submit">
@@ -45,7 +48,7 @@
         </div>
     </div>
 
-    <form method="POST" action="{{ url('project_triggers') }}" class="max-w-5xl">
+    <form method="POST" action="{{ url('project_triggers') }}" class="w-full">
         {{ form.csrf_token }}
         <input type="hidden" name="action" value="save">
 
@@ -56,7 +59,7 @@
                 </label>
                 {{ form.default_templates }}
                 <label class="label">
-                    <span class="label-text-alt">Один шаблон на строку. Используйте <code>{title}</code> для подстановки заголовка страницы.</span>
+                    <span class="label-text-alt whitespace-normal break-words">Один шаблон на строку. Используйте <code>{title}</code> для подстановки заголовка страницы.</span>
                 </label>
                 {% if form.default_templates.errors %}
                     <div class="label">
@@ -73,7 +76,7 @@
                 <h2 class="font-medium">Regex-правила страниц</h2>
             </div>
             <label class="label">
-                <span class="label-text-alt">Правила хранятся в настройках источника и проверяются только по пути страницы внутри домена: path + query. Одна include-regex строка на правило, без lookaround, backreference и вложенных повторов.</span>
+                <span class="label-text-alt whitespace-normal break-words">Правила хранятся в настройках источника и проверяются только по пути страницы внутри домена: path + query. Одна include-regex строка на правило, без lookaround, backreference и вложенных повторов.</span>
             </label>
             <div class="mb-4 text-sm text-base-content/70">
                 <div class="font-medium text-base-content">Примеры</div>
@@ -104,12 +107,12 @@
                     </thead>
                     <tbody>
                         {% for row in source_trigger_rows %}
-                            {% set source = row.source %}
+                            {% set source_id = row.source_id %}
                             {% set source_display = row.source_display %}
                             {% set rule_rows = row.rule_rows %}
                             {% for rule_row in rule_rows %}
-                                {% set rule = rule_row.rule %}
-                                <tr class="trigger-rule-row align-top" data-source-id="{{ source.id }}">
+                                {% set rule_value = rule_row.value %}
+                                <tr class="trigger-rule-row align-top" data-source-id="{{ source_id }}">
                                     {% if loop.first %}
                                         <td rowspan="{{ rule_rows|length }}" class="align-top">
                                             <div class="font-medium truncate" title="{{ source_display.full_uri }}">
@@ -124,16 +127,16 @@
                                     {% endif %}
                                     <td>
                                         <input type="text"
-                                               name="source_trigger_rules_{{ source.id }}[]"
-                                               value="{{ rule.value if rule else '' }}"
+                                               name="source_trigger_rules_{{ source_id }}[]"
+                                               value="{{ rule_value }}"
                                                class="input input-bordered input-sm w-full font-mono"
                                                placeholder="^/docs/.*"
                                                data-trigger-rule-input
-                                               data-source-id="{{ source.id }}">
+                                               data-source-id="{{ source_id }}">
                                     </td>
                                     <td class="text-right">
-                                        <span class="badge badge-outline {{ 'hidden' if not rule else '' }}" data-trigger-rule-count>
-                                            {{ rule_row.affected_count if rule else '' }}
+                                        <span class="badge badge-outline" data-trigger-rule-count>
+                                            {{ rule_row.affected_count }}
                                         </span>
                                     </td>
                                     <td class="text-right">
@@ -168,7 +171,7 @@
         </div>
     </form>
 
-    <div class="max-w-5xl p-5">
+    <div class="w-full p-5">
         <div class="font-medium text-error">Опасная зона</div>
         <div class="mt-1 text-sm text-base-content/70">
             Очистка удалит сгенерированные триггеры и кэши ответов только для источников с правилами триггеров.

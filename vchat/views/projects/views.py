@@ -31,6 +31,7 @@ from jobs.crawler import (
 )
 from jobs.crawler.tasks import (
     async_update_page_shingles,
+    generate_missing_triggers_task,
     index_project,
     load_boilerplate_hashes,
     refresh_source_index,
@@ -41,9 +42,6 @@ from jobs.crawler.tasks import (
 from vchat.ai_providers import (
     DEFAULT_OPENAI_MODEL,
     get_ai_provider_options,
-    get_default_model_id,
-    is_model_available,
-    is_provider_available,
     resolve_ai_settings,
 )
 from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
@@ -63,6 +61,7 @@ from vchat.models import (
     Source,
     TriggerResponseCache,
     ApiClient,
+    WidgetIntegration,
     User,
 )
 from vchat.models.data import api_client_source
@@ -92,8 +91,6 @@ from vchat.triggers import (
     TRIGGER_DEFAULTS_SETTING,
     TriggerPatternError,
     apply_source_trigger_rules,
-    build_page_trigger_items,
-    generate_trigger_texts_for_page,
     load_default_trigger_templates,
     page_trigger_items,
     trigger_pattern_matches_url,
@@ -110,10 +107,10 @@ from . import forms
 logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
 DOCUMENT_CONTENT_PREVIEW_CHARS = 2000
+DEFAULT_WIDGET_WELCOME_MESSAGE = "Здравствуйте! Чем могу помочь?"
 
 __all__ = [
     "index",
-    "project_edit",
     "project_action",
     "project_edit_sources",
     "project_source_settings",
@@ -125,6 +122,7 @@ __all__ = [
     "project_chat",
     "project_stats",
     "project_integration",
+    "project_widget_edit",
     "project_triggers",
     "project_trigger_rule_count",
     "public_widget_chat",
@@ -200,6 +198,83 @@ def _format_datetime_local(value: datetime | None) -> str:
     if value is None:
         return "—"
     return value.astimezone().strftime("%d.%m.%Y %H:%M")
+
+
+def _public_widget_url(code: str) -> str:
+    return f"https://chat.vbudushee.ru/widget/{code}"
+
+
+def _new_widget_code() -> str:
+    return secrets.token_urlsafe(8).rstrip("_-")
+
+
+def _pinned_messages_from_form(data) -> list[dict[str, str]]:
+    texts = data.getall("pinned_text[]", [])
+    colors = data.getall("pinned_color[]", [])
+    messages: list[dict[str, str]] = []
+    allowed_colors = {
+        "neutral",
+        "primary",
+        "secondary",
+        "accent",
+        "info",
+        "success",
+        "warning",
+    }
+    for index, raw_text in enumerate(texts[:3]):
+        text = (raw_text or "").strip()
+        if not text:
+            continue
+        color = (colors[index] if index < len(colors) else "neutral") or "neutral"
+        if color not in allowed_colors:
+            color = "neutral"
+        messages.append({"text": text[:1000], "color": color})
+    return messages
+
+
+async def _widget_integration_list_context(db_session) -> dict[str, Any]:
+    rows = (
+        (
+            await db_session.execute(
+                sa.select(WidgetIntegration).order_by(WidgetIntegration.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    widgets = [
+        SimpleNamespace(
+            id=widget.id,
+            name=widget.name,
+            code=widget.code,
+            public_url=_public_widget_url(widget.code),
+            contact_url=widget.contact_url,
+            agent_name=widget.agent_name,
+            welcome_message=widget.welcome_message,
+            system_prompt=widget.system_prompt,
+            pinned_messages=widget.pinned_messages or [],
+        )
+        for widget in rows
+    ]
+    await db_session.rollback()
+    return {
+        "widgets": widgets,
+        "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
+        "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
+    }
+
+
+def _widget_integration_snapshot(widget: WidgetIntegration) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=widget.id,
+        name=widget.name,
+        code=widget.code,
+        contact_url=widget.contact_url,
+        agent_name=widget.agent_name,
+        welcome_message=widget.welcome_message,
+        system_prompt=widget.system_prompt,
+        pinned_messages=widget.pinned_messages or [],
+    )
 
 
 def _queue_source_crawl_from_ui(source_id: int) -> None:
@@ -915,14 +990,15 @@ def _project_context(request) -> SimpleNamespace:
     return SimpleNamespace(
         id="global",
         title=settings.get("project.title") or "vchat",
-        provider=settings.get("project.provider") or "openai",
-        model=settings.get("project.model") or DEFAULT_OPENAI_MODEL,
-        system_prompt=settings.get("project.system_prompt")
-        or forms.DEFAULT_SYSTEM_PROMPT,
+        provider=config.get("chat_provider") or "gigachat",
+        model=(
+            config.get("chat_model")
+            or config.get("openai_model")
+            or DEFAULT_OPENAI_MODEL
+        ),
+        system_prompt=forms.DEFAULT_SYSTEM_PROMPT,
         agent_style=settings.get("project.agent_style") or "",
         config={
-            "agent_name": settings.get("project.agent_name") or "",
-            "welcome_message": settings.get("project.welcome_message") or "",
             "secret": settings.get("project.secret") or "",
         },
     )
@@ -1023,57 +1099,6 @@ async def index(request):
     return await project_view(request)
 
 
-@meta(title="Настройки проекта")
-@login_required()
-@aiohttp_jinja2.template("projects/edit.html")
-async def project_edit(request):
-    db_session = request["db"]
-    session = await get_session(request)
-    data = await request.post()
-
-    project = _project_context(request)
-    form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
-    if data:
-        form_kwargs["formdata"] = data
-    else:
-        form_kwargs["data"] = {
-            "title": project.title,
-            "system_prompt": project.system_prompt,
-            "agent_style": project.agent_style,
-            "provider": project.provider,
-            "model": project.model,
-            "agent_name": project.config.get("agent_name", ""),
-            "welcome_message": project.config.get("welcome_message", ""),
-        }
-
-    form = forms.WorkspaceForm(**form_kwargs)
-
-    if request.method == "POST" and form.validate():
-        await apply_settings_updates(
-            request.app,
-            db_session,
-            {
-                "project.title": form.title.data,
-                "project.system_prompt": form.system_prompt.data,
-                "project.agent_style": form.agent_style.data,
-                "project.provider": form.provider.data,
-                "project.model": form.model.data,
-                "project.agent_name": (form.agent_name.data or "").strip(),
-                "project.welcome_message": (form.welcome_message.data or "").strip(),
-            },
-        )
-        await db_session.commit()
-        await flash(request, _("Settings updated"), "success")
-        raise web.HTTPFound(request.app.router["project_edit"].url_for())
-
-    return {
-        "form": form,
-        "project": project,
-        "is_owner": True,
-        "ai_provider_options": get_ai_provider_options(),
-    }
-
-
 def _trigger_lines(raw: str | None) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
@@ -1166,7 +1191,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
         for rule in source.config.trigger_rules:
             rule_rows.append(
                 {
-                    "rule": rule,
+                    "value": rule.value,
                     "affected_count": await _count_source_trigger_pattern(
                         db_session,
                         source=source,
@@ -1178,7 +1203,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
             continue
         source_trigger_rows.append(
             {
-                "source": source,
+                "source_id": source.id,
                 "source_display": display,
                 "rule_rows": rule_rows,
             }
@@ -1208,6 +1233,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
     cached_responses = await db_session.scalar(
         sa.select(sa.func.count(TriggerResponseCache.id))
     )
+    await db_session.rollback()
     return {
         "project": _project_context(request),
         "active_section": str(request.app.router["project_triggers"].url_for()),
@@ -1220,38 +1246,6 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
             "cached_responses": int(cached_responses or 0),
         },
     }
-
-
-async def _pages_for_trigger_generation(db_session: Any, limit: int = 20) -> list[Page]:
-    return list(
-        (
-            await db_session.execute(
-                sa.select(Page)
-                .where(Page.has_triggers.is_(True))
-                .where(Page.uri.is_not(None))
-                .where(Page.content.is_not(None))
-                .where(Page.content != "")
-                .where(Page.status == PageStatus.ready)
-                .where(Page.status_error.is_(None))
-                .where(sa.or_(Page.triggers.is_(None), Page.triggers == []))
-                .order_by(Page.updated_at.desc().nullslast(), Page.id.desc())
-                .limit(limit)
-            )
-        ).scalars()
-    )
-
-
-async def _generate_missing_triggers(request: web.Request) -> int:
-    db_session = request["db"]
-    pages = await _pages_for_trigger_generation(db_session)
-    created = 0
-    for page in pages:
-        texts = await generate_trigger_texts_for_page(request.app, page)
-        items = build_page_trigger_items(texts, source="generated")
-        page.triggers = items
-        page.updated_at = datetime.now(timezone.utc)
-        created += len(items)
-    return created
 
 
 @meta(title="Триггеры")
@@ -1272,9 +1266,10 @@ async def project_triggers(request):
     if request.method == "POST":
         action = (data.get("action") or "save").strip()
         if action == "generate":
-            created = await _generate_missing_triggers(request)
-            await db_session.commit()
-            await flash(request, f"Создано триггеров: {created}", "success")
+            generate_missing_triggers_task.delay()
+            if request.headers.get("HX-Request") == "true":
+                return web.Response(status=204)
+            await flash(request, "Генерация триггеров запущена", "success")
             raise web.HTTPFound(request.app.router["project_triggers"].url_for())
         if action == "clear":
             sources_with_trigger_rules = list(
@@ -1733,6 +1728,8 @@ async def project_action(request):
         "api_client_update",
     }:
         token = request.headers.get("X-CSRFToken")
+        if not token and request.method == "POST":
+            token = (await request.post()).get("csrf_token")
         if not token:
             raise web.HTTPForbidden(text="Missing CSRF Token")
 
@@ -2045,43 +2042,89 @@ async def project_action(request):
         response.headers["HX-Refresh"] = "true"
         return response
 
-    if action == "update_ai_settings":
+    if action == "widget_create":
         data = await request.post()
-        provider = (data.get("provider") or "").strip()
-        model = (data.get("model") or "").strip()
+        name = (data.get("name") or "").strip()
+        if not name:
+            return web.Response(text=_("Название обязательно"), status=400)
 
-        if not provider or not is_provider_available(provider):
-            raise web.HTTPBadRequest(text="Unknown provider")
-        if not model or not is_model_available(provider, model):
-            model = get_default_model_id(provider)
+        code = _new_widget_code()
+        while await db_session.scalar(
+            sa.select(WidgetIntegration.id).where(WidgetIntegration.code == code)
+        ):
+            code = _new_widget_code()
 
-        await apply_settings_updates(
-            request.app,
-            db_session,
-            {
-                "project.provider": provider,
-                "project.model": model,
-            },
+        widget = WidgetIntegration(
+            name=name[:128],
+            code=code,
+            contact_url=(data.get("contact_url") or "").strip(),
+            agent_name=(data.get("agent_name") or "").strip()[:100],
+            welcome_message=(
+                (data.get("welcome_message") or "").strip()
+                or DEFAULT_WIDGET_WELCOME_MESSAGE
+            ),
+            system_prompt=(
+                (data.get("system_prompt") or "").strip() or forms.DEFAULT_SYSTEM_PROMPT
+            ),
+            pinned_messages=[],
         )
+        db_session.add(widget)
+        await db_session.flush()
+        widget_id = widget.id
         await db_session.commit()
+        await admin_event("widget_create", request)
+        await flash(request, _("Код виджета создан"), "success")
+        raise web.HTTPFound(
+            request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
+        )
 
-        if request.headers.get("HX-Request"):
-            provider_obj, model_obj = resolve_ai_settings(provider, model)
-            return aiohttp_jinja2.render_template(
-                "chat/includes/ai_settings.html",
-                request,
-                {
-                    "project": _project_context(request),
-                    "ai_provider_options": get_ai_provider_options(),
-                    "current_ai_provider": provider_obj.id,
-                    "current_ai_model": model_obj.id,
-                    "ai_settings_url": request.app.router["actions"].url_for(
-                        action="update_ai_settings", item_id="global"
-                    ),
-                    "allow_ai_switch": True,
-                },
-            )
-        return json_response({"ok": True, "provider": provider, "model": model})
+    if action == "widget_update":
+        widget_id = int(item_id)
+        widget = await db_session.scalar(
+            sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+        )
+        if not widget:
+            raise web.HTTPNotFound()
+
+        data = await request.post()
+        name = (data.get("name") or "").strip()
+        if not name:
+            return web.Response(text=_("Название обязательно"), status=400)
+
+        widget.name = name[:128]
+        widget.contact_url = (data.get("contact_url") or "").strip()
+        widget.agent_name = (data.get("agent_name") or "").strip()[:100]
+        widget.welcome_message = (
+            data.get("welcome_message") or ""
+        ).strip() or DEFAULT_WIDGET_WELCOME_MESSAGE
+        widget.system_prompt = (
+            data.get("system_prompt") or ""
+        ).strip() or forms.DEFAULT_SYSTEM_PROMPT
+        widget.pinned_messages = _pinned_messages_from_form(data)
+        widget.updated_at = datetime.now(timezone.utc)
+
+        await db_session.commit()
+        await admin_event("widget_update", request)
+        await flash(request, _("Код виджета обновлен"), "success")
+        raise web.HTTPFound(
+            request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
+        )
+
+    if action == "widget_delete":
+        widget_id = int(item_id)
+        widget = await db_session.scalar(
+            sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+        )
+        if not widget:
+            raise web.HTTPNotFound()
+
+        await db_session.delete(widget)
+        await db_session.commit()
+        await admin_event("widget_delete", request)
+
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
 
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)
@@ -2861,7 +2904,11 @@ async def project_chat(request):
         chat = await request["db"].scalar(sa.select(Chat).where(Chat.id == chat_id))
         if not chat:
             raise web.HTTPNotFound(text="Chat not found")
-        chat.meta = merge_chat_meta(chat.meta, request)
+        chat.meta = merge_chat_meta(
+            chat.meta,
+            request,
+            source_page_url=request.rel_url.query.get("source_page_url"),
+        )
         await request["db"].commit()
     else:
         user_uid_param = request.rel_url.query.get("user_uid", "").strip()
@@ -2871,7 +2918,11 @@ async def project_chat(request):
         chat = Chat(
             title=f"Chat for {project.title}",
             user_uid=user_uid,
-            meta=merge_chat_meta({}, request),
+            meta=merge_chat_meta(
+                {},
+                request,
+                source_page_url=request.rel_url.query.get("source_page_url"),
+            ),
         )
         request["db"].add(chat)
         await request["db"].commit()
@@ -2932,29 +2983,28 @@ async def project_chat(request):
 
     project = _project_context(request)
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
-    ai_settings_url = request.app.router["actions"].url_for(
-        action="update_ai_settings", item_id="global"
-    )
 
     return {
         "project": project,
         "chat": chat,
         "payload": payload,
-        "agent_name": project.config.get("agent_name", ""),
-        "welcome_message": project.config.get("welcome_message", ""),
+        "agent_name": "",
+        "welcome_message": "",
+        "contact_url": "",
+        "pinned_messages": [],
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,
         "current_ai_model": model_obj.id,
         "current_ai_model_label": model_obj.label,
         "current_ai_provider_label": provider_obj.title,
         "allow_ai_switch": False,
-        "ai_settings_url": str(ai_settings_url),
+        "ai_settings_url": None,
         "initial_messages": initial_messages,
         "signed_chat_id": signed_chat_id,
     }
 
 
-@meta(title=_("Integration"))
+@meta(title=_("Код виджета"))
 @login_required()
 @aiohttp_jinja2.template("projects/integration.html")
 async def project_integration(request):
@@ -2966,14 +3016,51 @@ async def project_integration(request):
         )
         await request["db"].commit()
 
-    return {"project": _project_context(request), "project_secret": secret}
+    context = await _widget_integration_list_context(request["db"])
+    context.update({"project": _project_context(request), "project_secret": secret})
+    return context
 
 
-async def _render_public_chat(request):
+@meta(title=_("Редактировать код виджета"))
+@login_required()
+@aiohttp_jinja2.template("projects/widget_edit.html")
+async def project_widget_edit(request):
+    widget_id = int(request.match_info["widget_id"])
+    widget = await request["db"].scalar(
+        sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+    )
+    if not widget:
+        await request["db"].rollback()
+        raise web.HTTPNotFound()
+    snapshot = _widget_integration_snapshot(widget)
+    snapshot.public_url = _public_widget_url(snapshot.code)
+    await request["db"].rollback()
+    return {
+        "project": _project_context(request),
+        "widget": snapshot,
+        "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
+        "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
+    }
+
+
+async def _widget_integration_by_code(request, code: str) -> SimpleNamespace:
+    widget = await request["db"].scalar(
+        sa.select(WidgetIntegration).where(WidgetIntegration.code == code)
+    )
+    if not widget:
+        await request["db"].rollback()
+        raise web.HTTPNotFound(text="Widget code not found")
+    snapshot = _widget_integration_snapshot(widget)
+    await request["db"].rollback()
+    return snapshot
+
+
+async def _render_public_chat(request, widget: WidgetIntegration):
     user_uid = request.query.get("user_uid", "").strip()
     user_name = request.query.get("user_name", "")
     user_email = request.query.get("user_email", "")
     sign = request.query.get("sign", "")
+    source_page_url = request.query.get("source_page_url", "")
 
     if not user_uid:
         user_uid = f"guest_{uuid.uuid4().hex[:8]}"
@@ -2992,14 +3079,14 @@ async def _render_public_chat(request):
         meta=merge_chat_meta(
             {"name": user_name, "email": user_email},
             request,
+            source_page_url=source_page_url,
         ),
     )
     request["db"].add(chat)
     await request["db"].commit()
-    await request["db"].refresh(chat)
 
     serializer = URLSafeSerializer(config.get("secret_key"))
-    payload = serializer.dumps([user_uid, chat.id], salt="vchat")
+    payload = serializer.dumps([user_uid, chat.id, widget.code], salt="vchat")
     signed_chat_id = serializer.dumps(chat.id, salt="chat")
     support_csrf_token = request.app[SIGNER_KEY].dumps({"chat_id": chat.id})
 
@@ -3010,8 +3097,10 @@ async def _render_public_chat(request):
         "project": project,
         "chat": chat,
         "payload": payload,
-        "agent_name": project.config.get("agent_name", ""),
-        "welcome_message": project.config.get("welcome_message", ""),
+        "agent_name": widget.agent_name,
+        "welcome_message": widget.welcome_message,
+        "contact_url": widget.contact_url,
+        "pinned_messages": widget.pinned_messages or [],
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,
         "current_ai_model": model_obj.id,
@@ -3028,9 +3117,9 @@ async def _render_public_chat(request):
 @meta(title=_("Chat Widget"))
 @aiohttp_jinja2.template("chat/chat.html")
 async def public_widget_chat(request):
-    if not (request.app[CONFIG_KEY].get("vchat_chat") or "").strip():
-        raise web.HTTPNotFound(text="Widget chat is not configured")
-    return await _render_public_chat(request)
+    code = request.match_info.get("code", "").strip()
+    widget = await _widget_integration_by_code(request, code)
+    return await _render_public_chat(request, widget)
 
 
 @meta(title=_("Files"))

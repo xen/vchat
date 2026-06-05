@@ -24,7 +24,18 @@
         <span class="font-bold text-sm leading-tight">{{ agent_name if agent_name else _('Виртуальный ассистент') }}</span>
       </div>
     </div>
-    <div class="flex-none"></div>
+    <div class="flex-none">
+      {% if contact_url %}
+      <a
+        href="{{ contact_url }}"
+        target="_blank"
+        rel="noopener"
+        class="btn btn-outline btn-sm"
+      >
+        {{ _('Контакты') }}
+      </a>
+      {% endif %}
+    </div>
   </header>
 
   <!-- Chat area + sidebar side by side -->
@@ -33,6 +44,25 @@
     <!-- Left column: log + footer -->
     <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
       <main id="log" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+        {% if pinned_messages %}
+        <section class="space-y-2" aria-label="{{ _('Закрепленные сообщения') }}">
+          {% set pinned_classes = {
+            'neutral': 'bg-base-200 text-base-content border-base-300',
+            'primary': 'bg-primary/10 text-primary border-primary/20',
+            'secondary': 'bg-secondary/10 text-secondary border-secondary/20',
+            'accent': 'bg-accent/10 text-accent border-accent/20',
+            'info': 'bg-info/10 text-info border-info/20',
+            'success': 'bg-success/10 text-success border-success/20',
+            'warning': 'bg-warning/10 text-warning border-warning/20'
+          } %}
+          {% for pinned in pinned_messages[:3] %}
+          {% set pinned_color = pinned.color if pinned.color in pinned_classes else 'neutral' %}
+          <div class="rounded border px-3 py-2 text-sm leading-relaxed {{ pinned_classes[pinned_color] }}">
+            {{ pinned.text }}
+          </div>
+          {% endfor %}
+        </section>
+        {% endif %}
         <!-- Messages will appear here -->
       </main>
 
@@ -370,6 +400,10 @@
       }
       try {
         const payload = await window.vchatGetFingerprint();
+        const sourcePageUrl = new URLSearchParams(window.location.search).get('source_page_url');
+        if (sourcePageUrl) {
+          payload.source_page_url = sourcePageUrl;
+        }
         await fetch(`/actions/chat/session/${signedChatId}`, {
           method: 'POST',
           headers: {

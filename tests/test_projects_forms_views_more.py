@@ -85,93 +85,21 @@ def test_normalize_source_origin_keeps_only_domain() -> None:
     )
 
 
-@pytest.mark.asyncio
-async def test_project_edit_get_builds_form_with_initial_data(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db = _DB()
-    req = _Req(method="GET")
-    req["db"] = db
-    req["user"] = SimpleNamespace(id=1)
-
-    captured = {}
-
-    async def _session(_request):
-        return {"user_id": 1}
-
-    def _workspace_form(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(validate=lambda: False)
-
-    monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "WorkspaceForm", _workspace_form)
-    monkeypatch.setattr(
-        project_views,
-        "_project_context",
-        lambda _r: SimpleNamespace(
-            title="T",
-            system_prompt="SP",
-            agent_style="AS",
-            provider="openai",
-            model="gpt-4o-mini",
-            config={"agent_name": "Bot", "welcome_message": "Hi"},
-        ),
+def test_pinned_messages_from_form_keeps_three_messages() -> None:
+    data = SimpleNamespace(
+        getall=lambda key, default=None: (
+            ["One", "", "Three", "Four"]
+            if key == "pinned_text[]"
+            else ["primary", "bad", "warning", "success"]
+        )
     )
 
-    payload = await _raw(project_views.project_edit)(req)
-    assert "form" in payload
-    assert captured["data"]["title"] == "T"
+    messages = project_views._pinned_messages_from_form(data)
 
-
-@pytest.mark.asyncio
-async def test_project_edit_post_validates_and_redirects(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db = _DB()
-    req = _Req(method="POST", post_data={"title": "X"})
-    req["db"] = db
-    req["user"] = SimpleNamespace(id=1)
-    req.app = _App({"project_edit": _Route("/edit")})
-
-    async def _session(_request):
-        return {"user_id": 1}
-
-    class _Form:
-        title = SimpleNamespace(data="T")
-        system_prompt = SimpleNamespace(data="SP")
-        agent_style = SimpleNamespace(data="AS")
-        provider = SimpleNamespace(data="openai")
-        model = SimpleNamespace(data="gpt-4o-mini")
-        agent_name = SimpleNamespace(data="Agent")
-        welcome_message = SimpleNamespace(data="Welcome")
-
-        def validate(self):
-            return True
-
-    calls = {"updates": None, "flash": []}
-
-    async def _apply(*args):
-        calls["updates"] = args[-1]
-
-    async def _flash(_request, message, category="success"):
-        calls["flash"].append((message, category))
-
-    monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.forms, "WorkspaceForm", lambda **kwargs: _Form())
-    monkeypatch.setattr(
-        project_views,
-        "_project_context",
-        lambda _r: SimpleNamespace(
-            title="", system_prompt="", agent_style="", provider="", model="", config={}
-        ),
-    )
-    monkeypatch.setattr(project_views, "apply_settings_updates", _apply)
-    monkeypatch.setattr(project_views, "flash", _flash)
-
-    with pytest.raises(web.HTTPFound):
-        await _raw(project_views.project_edit)(req)
-    assert db.commits == 1
-    assert calls["updates"]["project.title"] == "T"
+    assert messages == [
+        {"text": "One", "color": "primary"},
+        {"text": "Three", "color": "warning"},
+    ]
 
 
 @pytest.mark.asyncio
