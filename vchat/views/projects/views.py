@@ -52,6 +52,7 @@ from vchat.document_types import DEFAULT_DOCUMENT_TYPE
 from vchat.document_content import document_too_big_message, is_document_too_big
 from vchat.document_shingles import compute_trigram_hashes
 from vchat.i18n import _
+from vchat.json_response import json_response
 from vchat.models import (
     Chat,
     ChatMsg,
@@ -1310,7 +1311,7 @@ async def project_trigger_rule_count(request):
         raise web.HTTPBadRequest(text="Invalid source_id")
     pattern = (request.query.get("pattern") or "").strip()
     if not pattern:
-        return web.json_response({"ok": True, "count": None})
+        return json_response({"ok": True, "count": None})
 
     source = await db_session.scalar(sa.select(Source).where(Source.id == source_id))
     if source is None:
@@ -1323,8 +1324,8 @@ async def project_trigger_rule_count(request):
             pattern=pattern,
         )
     except (TriggerPatternError, re.error) as exc:
-        return web.json_response({"ok": False, "error": str(exc)}, status=400)
-    return web.json_response({"ok": True, "count": count})
+        return json_response({"ok": False, "error": str(exc)}, status=400)
+    return json_response({"ok": True, "count": count})
 
 
 def _build_progress_conditions():
@@ -1835,7 +1836,7 @@ async def project_action(request):
                     "allow_ai_switch": True,
                 },
             )
-        return web.json_response({"ok": True, "provider": provider, "model": model})
+        return json_response({"ok": True, "provider": provider, "model": model})
 
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)
@@ -1882,7 +1883,7 @@ async def project_action(request):
         else:
             document.status_error = None
         await db_session.commit()
-        response = web.json_response({"is_ignored": want_ignored})
+        response = json_response({"is_ignored": want_ignored})
         response.headers["HX-Trigger"] = "project-documents:refresh"
         return response
 
@@ -2281,13 +2282,13 @@ async def project_documents_json(request):
             }
         )
 
-    return web.json_response(data)
+    return json_response(data)
 
 
 @login_required()
 async def project_files_json(request):
     rows = await _files_rows(request["db"])
-    return web.json_response([_file_row_to_payload(row) for row in rows])
+    return json_response([_file_row_to_payload(row) for row in rows])
 
 
 @meta(title=_("Stats"))

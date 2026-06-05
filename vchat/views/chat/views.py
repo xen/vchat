@@ -33,6 +33,7 @@ from vchat.guardrails import (
     get_guardrails_client,
 )
 from vchat.gigachat_oauth import get_gigachat_access_token
+from vchat.json_response import json_response
 from vchat.logging_utils import log_json
 from vchat.metrics import record_chat_request
 from vchat.models import Chat, ChatMsg, TriggerResponseCache
@@ -1298,7 +1299,7 @@ async def chat_actions(request):
             screen=payload.get("screen"),
         )
         await db.commit()
-        return web.json_response({"ok": True})
+        return json_response({"ok": True})
 
     # Verify secure message ID for message actions
     try:

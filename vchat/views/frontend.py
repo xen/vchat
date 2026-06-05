@@ -3,6 +3,7 @@ import sqlalchemy as sa
 from aiohttp import web
 from urllib.parse import urlsplit
 
+from vchat.json_response import json_response
 from vchat.models import Source
 from vchat.triggers import (
     find_page_by_url,
@@ -71,7 +72,7 @@ async def widget_triggers_resolve(request):
     page = await find_page_by_url(request["db"], page_url)
     source = await _source_for_widget_url(request["db"], page_url)
     if source is not None and not source.config.allow_custom_triggers:
-        return web.json_response(
+        return json_response(
             {
                 "page_id": page.id if page is not None else None,
                 "source": "disabled",
@@ -84,7 +85,7 @@ async def widget_triggers_resolve(request):
                 sa.select(Source).where(Source.id == page.source_id)
             )
         if not source or not source.config.allow_custom_triggers:
-            return web.json_response(
+            return json_response(
                 {
                     "page_id": page.id,
                     "source": "disabled",
@@ -93,7 +94,7 @@ async def widget_triggers_resolve(request):
             )
         triggers = page_trigger_items(page)
         if triggers:
-            return web.json_response(
+            return json_response(
                 {
                     "page_id": page.id,
                     "source": "page",
@@ -110,7 +111,7 @@ async def widget_triggers_resolve(request):
             )
 
     default_title = title or (page.title if page is not None else "")
-    return web.json_response(
+    return json_response(
         {
             "page_id": page.id if page is not None else None,
             "source": "default",

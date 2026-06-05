@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -412,7 +413,7 @@ async def test_project_documents_and_files_json(
     docs_resp = await docs_fn(req_docs)
     assert docs_resp.status == 200
     assert b'"meta"' not in docs_resp.body
-    assert b'"uri": "https://example.local/a"' in docs_resp.body
+    assert json.loads(docs_resp.text)[0]["uri"] == "https://example.local/a"
     assert b'"created_at"' not in docs_resp.body
     assert b'"updated_at"' not in docs_resp.body
     assert b'"document_type"' not in docs_resp.body

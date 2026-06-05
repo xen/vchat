@@ -13,6 +13,7 @@ from jobs.indexing.documents import (
 )
 from vchat.document_content import document_too_big_message, is_document_too_big
 from vchat.document_types import guess_document_type
+from vchat.json_response import json_response
 from vchat.models import Chunk, Page, Source
 from vchat.page_status import PageStatus, PageStatusError
 
@@ -22,7 +23,7 @@ __all__ = [
 
 
 def _error(message: str, status: int = 400) -> web.Response:
-    return web.json_response({"status": "error", "message": message}, status=status)
+    return json_response({"status": "error", "message": message}, status=status)
 
 
 def _normalize_host(value: str) -> str:
@@ -220,7 +221,7 @@ async def update_document(request: web.Request) -> web.Response:
 
     if status == 404:
         await _delete_document_by_url(request, url)
-        return web.json_response(
+        return json_response(
             {
                 "status": "ok",
                 "action": "deleted",
@@ -237,7 +238,7 @@ async def update_document(request: web.Request) -> web.Response:
 
         await _delete_document_by_url(request, url)
         if final_status == 404:
-            return web.json_response(
+            return json_response(
                 {
                     "status": "ok",
                     "action": "deleted",
@@ -253,7 +254,7 @@ async def update_document(request: web.Request) -> web.Response:
 
         await _upsert_document(request, source_id, redirect_url)
 
-        return web.json_response(
+        return json_response(
             {
                 "status": "ok",
                 "action": "replaced",
@@ -272,7 +273,7 @@ async def update_document(request: web.Request) -> web.Response:
 
     await _upsert_document(request, source_id, url)
 
-    return web.json_response(
+    return json_response(
         {
             "status": "ok",
             "action": "indexed",

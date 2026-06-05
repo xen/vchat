@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -390,10 +391,11 @@ async def test_project_documents_json_serializes_rows() -> None:
     raw = project_views.project_documents_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    assert '"id": "5"' in resp.text
-    assert '"source": "Source A"' in resp.text
+    payload = json.loads(resp.text)
+    assert payload[0]["id"] == "5"
+    assert payload[0]["source"] == "Source A"
     assert '"meta"' not in resp.text
-    assert '"uri": "https://example.com/a"' in resp.text
+    assert payload[0]["uri"] == "https://example.com/a"
     assert '"created_at"' not in resp.text
     assert '"updated_at"' not in resp.text
     assert '"document_type"' not in resp.text
@@ -427,8 +429,9 @@ async def test_project_documents_json_marks_excluded_as_ignored() -> None:
     raw = project_views.project_documents_json.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    assert '"status_error": "low_content"' in resp.text
-    assert '"is_ignored": false' in resp.text
+    payload = json.loads(resp.text)
+    assert payload[0]["status_error"] == "low_content"
+    assert payload[0]["is_ignored"] is False
 
 
 @pytest.mark.asyncio
