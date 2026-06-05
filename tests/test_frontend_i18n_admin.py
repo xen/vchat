@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
 import pytest
 from aiohttp import web
+from sqlalchemy.exc import IntegrityError
 from types import SimpleNamespace
 from yarl import URL
 
 from vchat.i18n import _
-from vchat.models.source_config import SourceConfig
+from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat import utils as vchat_utils
 from vchat.views import frontend
 from vchat.views.admin import views as admin_views
@@ -74,7 +76,12 @@ class _TriggerResolveRequest(dict):
     def __init__(self, *, db, url):
         super().__init__()
         self["db"] = db
+        self["app"] = {}
         self.query = {"url": url, "title": "Title"}
+
+    @property
+    def app(self):
+        return self["app"]
 
 
 @pytest.mark.asyncio
@@ -134,7 +141,8 @@ async def test_widget_triggers_resolve_returns_empty_for_disabled_source(
                     SimpleNamespace(
                         id=10,
                         uri="https://example.com/",
-                        config=SourceConfig(allow_custom_triggers=False),
+                        enable_triggers=False,
+                        config=SourceConfig(),
                     )
                 ]
             )
@@ -150,8 +158,178 @@ async def test_widget_triggers_resolve_returns_empty_for_disabled_source(
 
     assert response.status == 200
     assert response.text is not None
-    assert '"source": "disabled"' in response.text
-    assert '"triggers": []' in response.text
+    payload = json.loads(response.text)
+    assert payload["source"] == "disabled"
+    assert payload["triggers"] == []
+
+
+@pytest.mark.asyncio
+async def test_widget_triggers_resolve_returns_empty_when_rules_do_not_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Db:
+        async def execute(self, stmt):
+            _ = stmt
+            return _FakeExecuteResult(
+                [
+                    SimpleNamespace(
+                        id=10,
+                        uri="https://example.com/",
+                        enable_triggers=True,
+                        config=SourceConfig(
+                            trigger_rules=[
+                                CrawlerRule(type="regex", value=r"^/docs/.*")
+                            ],
+                        ),
+                    )
+                ]
+            )
+
+    async def _find_page_by_url(*_args):
+        return SimpleNamespace(
+            id=20,
+            title="Blog",
+            source_id=10,
+            has_triggers=False,
+            triggers=None,
+        )
+
+    monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
+
+    response = await frontend.widget_triggers_resolve(
+        _TriggerResolveRequest(db=_Db(), url="https://example.com/blog/page")
+    )
+
+    assert response.status == 200
+    assert response.text is not None
+    payload = json.loads(response.text)
+    assert payload["source"] == "unmatched"
+    assert payload["triggers"] == []
+
+
+@pytest.mark.asyncio
+async def test_widget_triggers_resolve_discovers_matching_unknown_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(
+        id=10,
+        uri="https://example.com/",
+        enable_triggers=True,
+        config=SourceConfig(
+            trigger_rules=[CrawlerRule(type="regex", value=r"^/docs/.*")]
+        ),
+    )
+
+    class _Db:
+        def __init__(self):
+            self.added = []
+            self.commits = 0
+
+        async def execute(self, stmt):
+            _ = stmt
+            return _FakeExecuteResult([source])
+
+        def add(self, obj):
+            self.added.append(obj)
+
+        async def flush(self):
+            self.added[-1].id = 99
+
+        async def commit(self):
+            self.commits += 1
+
+    find_calls = []
+
+    async def _find_page_by_url(*_args):
+        find_calls.append(_args)
+        return None
+
+    delayed = []
+    monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
+    monkeypatch.setattr(frontend.crawl_page_task, "delay", delayed.append)
+
+    db = _Db()
+    response = await frontend.widget_triggers_resolve(
+        _TriggerResolveRequest(db=db, url="https://example.com/docs/page#part")
+    )
+
+    assert response.status == 200
+    assert response.text is not None
+    payload = json.loads(response.text)
+    assert payload["page_id"] == 99
+    assert db.commits == 1
+    assert delayed == [99]
+    assert len(find_calls) == 2
+    page = db.added[0]
+    assert page.uri == "https://example.com/docs/page"
+    assert page.source_id == 10
+    assert page.has_triggers is True
+    assert page.discover_by == "widget"
+    assert page.discover_source == "https://example.com/docs/page"
+
+
+@pytest.mark.asyncio
+async def test_widget_triggers_resolve_handles_concurrent_discovery_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(
+        id=10,
+        uri="https://example.com/",
+        enable_triggers=True,
+        config=SourceConfig(
+            trigger_rules=[CrawlerRule(type="regex", value=r"^/docs/.*")]
+        ),
+    )
+    existing_page = SimpleNamespace(
+        id=77,
+        title=None,
+        source_id=10,
+        has_triggers=True,
+        triggers=[],
+    )
+
+    class _Db:
+        def __init__(self):
+            self.rollbacks = 0
+            self.commits = 0
+
+        async def execute(self, stmt):
+            _ = stmt
+            return _FakeExecuteResult([source])
+
+        def add(self, obj):
+            _ = obj
+
+        async def flush(self):
+            raise IntegrityError("insert page", {}, Exception("duplicate uri"))
+
+        async def rollback(self):
+            self.rollbacks += 1
+
+        async def commit(self):
+            self.commits += 1
+
+    pages_by_call = [None, None, existing_page]
+
+    async def _find_page_by_url(*_args):
+        return pages_by_call.pop(0)
+
+    delayed = []
+    monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
+    monkeypatch.setattr(frontend.crawl_page_task, "delay", delayed.append)
+
+    db = _Db()
+    response = await frontend.widget_triggers_resolve(
+        _TriggerResolveRequest(db=db, url="https://example.com/docs/page")
+    )
+
+    assert response.status == 200
+    assert response.text is not None
+    payload = json.loads(response.text)
+    assert payload["page_id"] == 77
+    assert db.rollbacks == 1
+    assert db.commits == 0
+    assert delayed == []
 
 
 def test_i18n_translation_with_kwargs_and_fallbacks() -> None:

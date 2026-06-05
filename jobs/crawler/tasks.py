@@ -1741,6 +1741,7 @@ def _upsert_sitemap_pages(
     *,
     source_id: int,
     parsed_entries: list[tuple[str, str | None]],
+    sitemap_url: str | None = None,
     source_rules: list[dict] | None = None,
     source_id_by_host: dict[str, int] | None = None,
 ) -> set[str]:
@@ -1758,7 +1759,12 @@ def _upsert_sitemap_pages(
             select(Page).where(Page.uri == page_url)
         ).scalar_one_or_none()
         if page is None:
-            page = Page(source_id=page_source_id, uri=page_url)
+            page = Page(
+                source_id=page_source_id,
+                uri=page_url,
+                discover_by="sitemap",
+                discover_source=sitemap_url,
+            )
             page._hash = ""
             session.add(page)
             continue
@@ -1935,6 +1941,7 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
                     session,
                     source_id=source_id,
                     parsed_entries=parsed_entries,
+                    sitemap_url=sm.url,
                     source_rules=source_rules,
                     source_id_by_host=source_id_by_host,
                 )

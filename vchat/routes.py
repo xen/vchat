@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from aiohttp import web
+from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 from yarl import URL
 
 from .metrics import metrics_handler
@@ -32,7 +33,24 @@ def setup_routes(app: web.Application) -> None:
     add("*", "/favicon.ico", frontend.favicon)
 
     # public api
-    add("GET", "/api/update", api.update_document, name="api_update")
+    swagger = SwaggerDocs(
+        app,
+        validate=False,
+        info=SwaggerInfo(
+            title="vchat Public API",
+            version="1.0.0",
+            description="Public endpoints for document update integrations.",
+        ),
+        swagger_ui_settings=SwaggerUiSettings(
+            path="/api-docs",
+            validatorUrl=None,
+        ),
+    )
+    swagger.add_routes(
+        [
+            web.post("/api/update", api.update_document, name="api_update"),
+        ]
+    )
 
     # auth
     add("*", "/login/", auth.login, name="login")
@@ -41,6 +59,7 @@ def setup_routes(app: web.Application) -> None:
 
     # admin
     add("*", "/users", admin.user_list, name="users")
+    add("*", "/api-clients", admin.api_client_list, name="api_clients")
     add("GET", "/events", admin.event_list, name="admin_events")
 
     # single-project admin pages

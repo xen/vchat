@@ -62,8 +62,10 @@ from vchat.models import (
     Sitemap,
     Source,
     TriggerResponseCache,
+    ApiClient,
     User,
 )
+from vchat.models.data import api_client_source
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.project_settings import (
     apply_settings_updates,
@@ -100,7 +102,8 @@ from vchat.triggers import (
 )
 from vchat.utils import admin_event, flash, login_required, meta
 
-from vchat.views.admin.views import CreateUserForm, UserPasswordForm
+from vchat.views.admin.views import ApiClientForm, CreateUserForm, UserPasswordForm
+from vchat.views.api.views import decrypt_client_secret, encrypt_client_secret
 
 from . import forms
 
@@ -129,6 +132,68 @@ __all__ = [
     "file_document",
     "source_sitemaps",
 ]
+
+
+async def _api_client_list_context(
+    request: web.Request,
+    db_session,
+    *,
+    add_form: ApiClientForm,
+    new_credentials=None,
+    selected_source_ids: set[int] | None = None,
+) -> dict[str, Any]:
+    clients = (
+        (await db_session.execute(sa.select(ApiClient).order_by(ApiClient.id.desc())))
+        .scalars()
+        .all()
+    )
+    if clients:
+        client_ids = [client.id for client in clients]
+        source_rows = (
+            await db_session.execute(
+                sa.select(
+                    api_client_source.c.api_client_id,
+                    Source.id,
+                    Source.title,
+                    Source.uri,
+                )
+                .join(Source, Source.id == api_client_source.c.source_id)
+                .where(api_client_source.c.api_client_id.in_(client_ids))
+                .order_by(Source.title.asc(), Source.id.asc())
+            )
+        ).all()
+        sources_by_client: dict[int, list[SimpleNamespace]] = {}
+        for client_id, source_id, title, uri in source_rows:
+            sources_by_client.setdefault(client_id, []).append(
+                SimpleNamespace(id=source_id, title=title, uri=uri)
+            )
+        for client in clients:
+            client.sources = sources_by_client.get(client.id, [])
+            secret = decrypt_client_secret(
+                client.encrypted_secret,
+                request.app[CONFIG_KEY]["secret_key"],
+            )
+            client.masked_secret = f"vchatsec-...{secret[-4:]}"
+
+    source_rows = (
+        await db_session.execute(
+            sa.select(Source.id, Source.title, Source.uri).order_by(
+                Source.title.asc(),
+                Source.id.asc(),
+            )
+        )
+    ).all()
+    sources = (
+        SimpleNamespace(id=source_id, title=title, uri=uri)
+        for source_id, title, uri in source_rows
+    )
+    return {
+        "clients": clients,
+        "sources": list(sources),
+        "add_form": add_form,
+        "new_credentials": new_credentials,
+        "selected_source_ids": selected_source_ids or set(),
+    }
 
 
 def _format_datetime_local(value: datetime | None) -> str:
@@ -692,9 +757,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
                 Page.meta["reason"].as_string().label("meta_reason"),
                 Page.meta["message"].as_string().label("meta_message"),
                 Page.meta["error"].as_string().label("meta_error"),
-                Page.meta["exception_class"].as_string().label(
-                    "meta_exception_class"
-                ),
+                Page.meta["exception_class"].as_string().label("meta_exception_class"),
             )
             .options(defer(Page.content), defer(Page.meta))
             .where(Page.id == document_id)
@@ -746,7 +809,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
             sa.select(Source).where(Source.id == document.source_id)
         )
         document_triggers_enabled = bool(
-            document_source and document_source.config.allow_custom_triggers
+            document_source and document_source.enable_triggers
         )
 
     chunk_rows = (
@@ -1042,11 +1105,11 @@ def _default_source_trigger_rules() -> list[CrawlerRule]:
 
 
 def _source_trigger_rules_for_save(
-    cfg: SourceConfig, *, allow_custom_triggers: bool
+    cfg: SourceConfig, *, enable_triggers: bool
 ) -> list[CrawlerRule]:
     if cfg.trigger_rules:
         return list(cfg.trigger_rules)
-    if allow_custom_triggers:
+    if enable_triggers:
         return _default_source_trigger_rules()
     return []
 
@@ -1090,7 +1153,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
     source_options = []
     for source in sources:
         display = _source_trigger_display(source)
-        if source.config.allow_custom_triggers:
+        if source.enable_triggers:
             source_options.append(
                 {
                     "id": source.id,
@@ -1273,7 +1336,6 @@ async def project_triggers(request):
                     crawler_download_delay=cfg.crawler_download_delay,
                     crawler_download_timeout=cfg.crawler_download_timeout,
                     ignore_robots_txt=cfg.ignore_robots_txt,
-                    allow_custom_triggers=cfg.allow_custom_triggers,
                     rules=cfg.rules,
                     trigger_rules=[
                         CrawlerRule(type="regex", value=pattern)
@@ -1526,7 +1588,7 @@ async def project_source_settings(request):
             "download_delay": cfg.crawler_download_delay,
             "download_timeout": cfg.crawler_download_timeout,
             "ignore_robots_txt": cfg.ignore_robots_txt,
-            "allow_custom_triggers": cfg.allow_custom_triggers,
+            "enable_triggers": source.enable_triggers,
         }
 
     form = forms.SourceSettingsForm(**form_kwargs)
@@ -1537,6 +1599,7 @@ async def project_source_settings(request):
         source.reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
         source.updated_at = datetime.now(timezone.utc)
         source.uri = form.url.data
+        source.enable_triggers = bool(form.enable_triggers.data)
         rule_types = data.getall("rule_type[]", [])
         rule_values = data.getall("rule_value[]", [])
         rules = [
@@ -1559,11 +1622,10 @@ async def project_source_settings(request):
                 else DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
             ),
             ignore_robots_txt=bool(form.ignore_robots_txt.data),
-            allow_custom_triggers=bool(form.allow_custom_triggers.data),
             rules=rules,
             trigger_rules=_source_trigger_rules_for_save(
                 current_cfg,
-                allow_custom_triggers=bool(form.allow_custom_triggers.data),
+                enable_triggers=source.enable_triggers,
             ),
         )
         if source.config.ignore_robots_txt:
@@ -1664,7 +1726,12 @@ async def project_action(request):
     action = request.match_info.get("action")
     user_id = request["user"].id
 
-    if action not in {"user_create", "user_password"}:
+    if action not in {
+        "user_create",
+        "user_password",
+        "api_client_create",
+        "api_client_update",
+    }:
         token = request.headers.get("X-CSRFToken")
         if not token:
             raise web.HTTPForbidden(text="Missing CSRF Token")
@@ -1800,6 +1867,184 @@ async def project_action(request):
         await flash(request, _("User deleted"), "success")
         raise web.HTTPFound(request.app.router["users"].url_for())
 
+    if action == "api_client_create":
+        session = await get_session(request)
+        data = await request.post()
+        form = ApiClientForm(data, meta={"csrf_context": session})
+        source_ids = [
+            int(source_id)
+            for source_id in data.getall("source_ids", [])
+            if str(source_id).isdigit()
+        ]
+
+        if not form.validate():
+            return aiohttp_jinja2.render_template(
+                "admin/api_client_list.html",
+                request,
+                await _api_client_list_context(
+                    request,
+                    db_session,
+                    add_form=form,
+                    selected_source_ids=set(source_ids),
+                ),
+                status=400,
+            )
+
+        valid_source_ids = (
+            [
+                source_id
+                for (source_id,) in (
+                    await db_session.execute(
+                        sa.select(Source.id).where(Source.id.in_(source_ids))
+                    )
+                ).all()
+            ]
+            if source_ids
+            else []
+        )
+        client_id = f"vchatid-{secrets.token_hex(8)}"
+        client_secret = f"vchatsec-{secrets.token_urlsafe(32)}"
+        client = ApiClient(
+            name=form.name.data.strip(),
+            client_id=client_id,
+            encrypted_secret=encrypt_client_secret(
+                client_secret,
+                request.app[CONFIG_KEY]["secret_key"],
+            ),
+            is_active=True,
+        )
+        db_session.add(client)
+        await db_session.flush()
+        if valid_source_ids:
+            await db_session.execute(
+                api_client_source.insert(),
+                [
+                    {"api_client_id": client.id, "source_id": source_id}
+                    for source_id in valid_source_ids
+                ],
+            )
+        await db_session.commit()
+        await admin_event("api_client_create", request)
+        return aiohttp_jinja2.render_template(
+            "admin/api_client_list.html",
+            request,
+            await _api_client_list_context(
+                request,
+                db_session,
+                add_form=ApiClientForm(meta={"csrf_context": session}),
+                new_credentials=SimpleNamespace(
+                    message=_("Клиент {name} создан").format(name=client.name),
+                    client_id=client_id,
+                    client_secret=client_secret,
+                ),
+            ),
+        )
+
+    if action == "api_client_update":
+        session = await get_session(request)
+        client_id = int(item_id)
+        client = await db_session.scalar(
+            sa.select(ApiClient).where(ApiClient.id == client_id)
+        )
+        if not client:
+            raise web.HTTPNotFound()
+
+        data = await request.post()
+        form = ApiClientForm(data, meta={"csrf_context": session})
+        source_ids = [
+            int(source_id)
+            for source_id in data.getall("source_ids", [])
+            if str(source_id).isdigit()
+        ]
+        if not form.validate():
+            return aiohttp_jinja2.render_template(
+                "admin/api_client_list.html",
+                request,
+                await _api_client_list_context(
+                    request,
+                    db_session,
+                    add_form=ApiClientForm(meta={"csrf_context": session}),
+                    selected_source_ids=set(source_ids),
+                ),
+                status=400,
+            )
+
+        valid_source_ids = (
+            [
+                source_id
+                for (source_id,) in (
+                    await db_session.execute(
+                        sa.select(Source.id).where(Source.id.in_(source_ids))
+                    )
+                ).all()
+            ]
+            if source_ids
+            else []
+        )
+
+        client.name = form.name.data.strip()
+        await db_session.execute(
+            api_client_source.delete().where(
+                api_client_source.c.api_client_id == client.id
+            )
+        )
+        if valid_source_ids:
+            await db_session.execute(
+                api_client_source.insert(),
+                [
+                    {"api_client_id": client.id, "source_id": source_id}
+                    for source_id in valid_source_ids
+                ],
+            )
+
+        reset_secret = data.get("reset_secret") == "1"
+        client_secret = None
+        if reset_secret:
+            client_secret = f"vchatsec-{secrets.token_urlsafe(32)}"
+            client.encrypted_secret = encrypt_client_secret(
+                client_secret,
+                request.app[CONFIG_KEY]["secret_key"],
+            )
+
+        await db_session.commit()
+        await admin_event("api_client_update", request)
+        return aiohttp_jinja2.render_template(
+            "admin/api_client_list.html",
+            request,
+            await _api_client_list_context(
+                request,
+                db_session,
+                add_form=ApiClientForm(meta={"csrf_context": session}),
+                new_credentials=(
+                    SimpleNamespace(
+                        message=_("Секрет клиента {name} сброшен").format(
+                            name=client.name
+                        ),
+                        client_id=client.client_id,
+                        client_secret=client_secret,
+                    )
+                    if client_secret
+                    else None
+                ),
+            ),
+        )
+
+    if action == "api_client_delete":
+        client_id = int(item_id)
+        client = await db_session.scalar(
+            sa.select(ApiClient).where(ApiClient.id == client_id)
+        )
+        if not client:
+            raise web.HTTPNotFound()
+
+        await db_session.delete(client)
+        await db_session.commit()
+        await admin_event("api_client_delete", request)
+
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
+
     if action == "update_ai_settings":
         data = await request.post()
         provider = (data.get("provider") or "").strip()
@@ -1921,6 +2166,7 @@ async def project_action(request):
             title=title,
             config=SourceConfig(rules=with_default_ignored_param_rules(rules)),
             reindex_cron=reindex_cron,
+            enable_triggers=bool(form.enable_triggers.data),
         )
         db_session.add(source)
         is_blocked = await _check_source_blocking_and_commit(
@@ -2083,7 +2329,6 @@ async def project_action(request):
             crawler_download_delay=cfg.crawler_download_delay,
             crawler_download_timeout=cfg.crawler_download_timeout,
             ignore_robots_txt=cfg.ignore_robots_txt,
-            allow_custom_triggers=cfg.allow_custom_triggers,
             rules=rules,
             trigger_rules=cfg.trigger_rules,
         )

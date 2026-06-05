@@ -86,13 +86,23 @@ def source_has_trigger_context(source: Source | None) -> bool:
 
 
 def get_or_create_page(
-    session: Session, *, source_id: int, uri: str
+    session: Session,
+    *,
+    source_id: int,
+    uri: str,
+    discover_by: str | None = None,
+    discover_source: str | None = None,
 ) -> tuple[Page, bool]:
     page = get_page_by_uri(session, uri)
     created = page is None
     source = session.get(Source, source_id)
     if page is None:
-        page = Page(source_id=source_id, uri=uri)
+        page = Page(
+            source_id=source_id,
+            uri=uri,
+            discover_by=discover_by,
+            discover_source=discover_source,
+        )
         page._hash = ""
         session.add(page)
     if source_has_trigger_context(source):
@@ -135,7 +145,12 @@ def sync_page_links(
         if target_source_id is not None:
             target_page = get_page_by_uri(session, target_uri)
             if target_page is None:
-                target_page = Page(source_id=target_source_id, uri=target_uri)
+                target_page = Page(
+                    source_id=target_source_id,
+                    uri=target_uri,
+                    discover_by="page",
+                    discover_source=source_page.uri,
+                )
                 target_page._hash = ""
                 session.add(target_page)
                 session.flush()
@@ -382,7 +397,13 @@ class DatabasePipeline:
 
         try:
             with Session(bind=self.engine) as session:
-                page, is_new = get_or_create_page(session, source_id=source_id, uri=url)
+                page, is_new = get_or_create_page(
+                    session,
+                    source_id=source_id,
+                    uri=url,
+                    discover_by="page" if item.get("referer_url") else None,
+                    discover_source=item.get("referer_url") or None,
+                )
 
                 if page.status_error == PageStatusError.excluded_ignored:
                     page.status = PageStatus.ready

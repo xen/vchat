@@ -3,6 +3,7 @@ from .user import User
 from .data import (
     Chat,
     ChatMsg,
+    ApiClient,
     Source,
     Page,
     Chunk,
@@ -22,6 +23,7 @@ __all__ = [
     "User",
     "Chat",
     "ChatMsg",
+    "ApiClient",
     "Source",
     "Page",
     "Chunk",

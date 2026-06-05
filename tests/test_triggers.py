@@ -101,8 +101,8 @@ def test_source_trigger_rules_match_url_requires_enabled_source():
         uri = "https://example.com/"
 
         def __init__(self, enabled):
+            self.enable_triggers = enabled
             self.config = SourceConfig(
-                allow_custom_triggers=enabled,
                 trigger_rules=[CrawlerRule(type="regex", value=r"^/docs/")],
             )
 

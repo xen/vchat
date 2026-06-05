@@ -20,6 +20,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.add_column(
+        "source",
+        sa.Column(
+            "enable_triggers",
+            sa.Boolean(),
+            server_default=sa.text("false"),
+            nullable=False,
+        ),
+    )
+    op.execute(
+        """
+        UPDATE source
+        SET enable_triggers = COALESCE((config->>'allow_custom_triggers')::boolean, false)
+        WHERE config ? 'allow_custom_triggers'
+        """
+    )
+    op.execute("UPDATE source SET config = config - 'allow_custom_triggers'")
+
+    op.add_column(
         "page",
         sa.Column(
             "has_triggers",
@@ -72,6 +90,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        """
+        UPDATE source
+        SET config = jsonb_set(
+            config,
+            '{allow_custom_triggers}',
+            to_jsonb(enable_triggers),
+            true
+        )
+        """
+    )
     op.drop_index(
         "ix_trigger_response_cache_page_id",
         table_name="trigger_response_cache",
@@ -80,3 +109,4 @@ def downgrade() -> None:
     op.drop_index("ix_page_has_triggers", table_name="page")
     op.drop_column("page", "triggers")
     op.drop_column("page", "has_triggers")
+    op.drop_column("source", "enable_triggers")

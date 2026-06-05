@@ -4,6 +4,7 @@ import scrapy
 class CrawledItem(scrapy.Item):
     url = scrapy.Field()
     final_url = scrapy.Field()
+    referer_url = scrapy.Field()
     http_status = scrapy.Field()
     etag = scrapy.Field()
     content = scrapy.Field()

@@ -19,6 +19,9 @@ cookie_secure: true
 # Storages
 redis_uri: redis://localhost:6379/30
 database_uri: postgresql+asyncpg://deploy@localhost:5432/vchat
+api_update_timestamp_ttl_seconds: 60
+api_update_rate_limit_window_seconds: 60
+api_update_rate_limit_requests: 60
 
 celery_redis_uri: redis://localhost:6379/
 celery_broker_db: 31

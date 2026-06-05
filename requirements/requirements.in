@@ -6,6 +6,7 @@ celery
 
 aiohttp>=3.13.3
 aiohttp-jinja2==1.6
+aiohttp-swagger3==0.10.0
 prometheus-client
 gunicorn
 coloredlogs

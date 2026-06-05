@@ -157,6 +157,10 @@ aiohttp-session==2.12.1 \
     --hash=sha256:15e6e0288e9bcccd4b1d0c28aae9c20e19a252b12d0cb682223ca9c83180e899 \
     --hash=sha256:654df46c3c9b73294312795f558c3bca4a85bfd3b01a8b744d984ae3958dce5f
     # via -r requirements/requirements.txt
+aiohttp-swagger3==0.10.0 \
+    --hash=sha256:0ae2d2ba7dbd8ea8fe1cffe8f0197db5d0aa979eb9679bd699ecd87923912509 \
+    --hash=sha256:a333c59328f64dd64587e5f276ee84dc256f587d09f2da6ddaae3812fa4d4f33
+    # via -r requirements/requirements.txt
 aiosignal==1.4.0 \
     --hash=sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e \
     --hash=sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7
@@ -267,6 +271,7 @@ attrs==25.4.0 \
     # via
     #   -r requirements/requirements.txt
     #   aiohttp
+    #   aiohttp-swagger3
     #   jsonlines
     #   jsonschema
     #   outcome
@@ -1018,6 +1023,10 @@ faker==38.2.0 \
     # via
     #   -r requirements/requirements.txt
     #   polyfactory
+fastjsonschema==2.19.1 \
+    --hash=sha256:3672b47bc94178c9f23dbb654bf47440155d4db9df5f7bc47643315f9c405cd0 \
+    --hash=sha256:e3126a94bdc4623d3de4485f8d468a12f02a67921315ddc87836d6e456dc789d
+    # via aiohttp-swagger3
 faust-cchardet==2.1.19 \
     --hash=sha256:033d0cbbdb7d30775c895be0b8625854f0bc53c1b0bd43b382bc37d165a85072 \
     --hash=sha256:05573988162fcb4d92966946561094bc9d8e73cdb6cd697473b12b234bf1a828 \
@@ -4063,6 +4072,10 @@ requests-file==3.0.1 \
     # via
     #   -r requirements/requirements.txt
     #   tldextract
+rfc3339-validator==0.1.4 \
+    --hash=sha256:138a2abdf93304ad60530167e51d2dfb9549521a836871b88d7f4695d0022f6b \
+    --hash=sha256:24f6ec1eda14ef823da9e36ec7113124b39c04d50a4d3d3a3c2859577e7791fa
+    # via aiohttp-swagger3
 rich==14.2.0 \
     --hash=sha256:73ff50c7c0c1c77c8243079283f4edb376f0f6442433aecb8ce7e6d0b92d1fe4 \
     --hash=sha256:76bc51fe2e57d2b1be1f96c524b890b816e334ab4c1e45888799bfaab0021edd

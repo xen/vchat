@@ -258,7 +258,7 @@ class SourceCrawlerSettingsForm(Form):
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
-    allow_custom_triggers = BooleanField(
+    enable_triggers = BooleanField(
         _("Разрешить пользовательские триггеры"),
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
@@ -289,7 +289,7 @@ class SourceSettingsForm(SourceForm):
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
-    allow_custom_triggers = BooleanField(
+    enable_triggers = BooleanField(
         _("Разрешить пользовательские триггеры"),
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},

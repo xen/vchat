@@ -219,7 +219,7 @@ async def test_project_source_settings_post_site_rules(
         download_delay = SimpleNamespace(data=1)
         download_timeout = SimpleNamespace(data=20)
         ignore_robots_txt = SimpleNamespace(data=True)
-        allow_custom_triggers = SimpleNamespace(data=True)
+        enable_triggers = SimpleNamespace(data=True)
         aws_access_key_id = SimpleNamespace(data="")
         aws_secret_access_key = SimpleNamespace(data="")
         bucket_name = SimpleNamespace(data="")
@@ -272,7 +272,7 @@ async def test_project_source_settings_post_site_rules(
     assert source.config.crawler_download_delay == 1
     assert source.config.crawler_download_timeout == 20
     assert source.config.ignore_robots_txt is True
-    assert source.config.allow_custom_triggers is True
+    assert source.enable_triggers is True
     assert source.config.trigger_rules == [
         CrawlerRule(type="regex", value=project_views.DEFAULT_SOURCE_TRIGGER_PATTERN)
     ]
@@ -311,6 +311,7 @@ async def test_add_source_includes_default_ignored_params(
     class _Form:
         url = SimpleNamespace(data="https://example.local")
         reindex_cron = SimpleNamespace(data="")
+        enable_triggers = SimpleNamespace(data=False)
 
         def validate(self):
             return True
@@ -387,6 +388,7 @@ async def test_add_source_persists_blocked_source_without_enqueue(
     class _Form:
         url = SimpleNamespace(data="https://blocked.example")
         reindex_cron = SimpleNamespace(data="")
+        enable_triggers = SimpleNamespace(data=False)
 
         def validate(self):
             return True

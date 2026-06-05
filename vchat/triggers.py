@@ -208,7 +208,7 @@ def trigger_pattern_matches_url(raw_url: str, pattern: str) -> bool:
 
 
 def source_trigger_rules_match_url(source: Source, raw_url: str) -> bool:
-    if not source.config.allow_custom_triggers:
+    if not source.enable_triggers:
         return False
     return trigger_rules_match_url(
         raw_url, source.config.trigger_rules, source_url=source.uri

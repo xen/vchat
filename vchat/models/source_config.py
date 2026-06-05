@@ -31,7 +31,6 @@ class SourceConfig:
     crawler_download_delay: int = DEFAULT_CRAWLER_DOWNLOAD_DELAY
     crawler_download_timeout: int = DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
     ignore_robots_txt: bool = False
-    allow_custom_triggers: bool = False
     rules: list[CrawlerRule] = field(default_factory=list)
     trigger_rules: list[CrawlerRule] = field(default_factory=list)
 
@@ -69,7 +68,6 @@ class SourceConfig:
                 else download_timeout_raw
             ),
             ignore_robots_txt=bool(d.get("ignore_robots_txt", False)),
-            allow_custom_triggers=bool(d.get("allow_custom_triggers", False)),
             rules=rules,
             trigger_rules=trigger_rules,
         )
@@ -80,7 +78,6 @@ class SourceConfig:
             "crawler_download_delay": self.crawler_download_delay,
             "crawler_download_timeout": self.crawler_download_timeout,
             "ignore_robots_txt": self.ignore_robots_txt,
-            "allow_custom_triggers": self.allow_custom_triggers,
         }
         if self.rules:
             d["rules"] = [r.to_dict() for r in self.rules]

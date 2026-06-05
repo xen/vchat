@@ -11,6 +11,8 @@ import pytest
 from itsdangerous import BadSignature
 
 from vchat.guardrails import GuardrailDecision
+from vchat.models.source_config import SourceConfig
+from vchat.triggers import trigger_key
 from vchat.views.chat import views as chat_views
 
 
@@ -111,6 +113,25 @@ class _FakeSessionFactory:
         return False
 
 
+class _RowsSessionFactory:
+    def __init__(self, row: Any) -> None:
+        self.row = row
+
+    def __call__(self) -> _RowsSessionFactory:
+        return self
+
+    async def __aenter__(self) -> _RowsSessionFactory:
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        _ = exc_type, exc, tb
+        return False
+
+    async def execute(self, stmt: Any) -> Any:
+        _ = stmt
+        return SimpleNamespace(one_or_none=lambda: self.row)
+
+
 class _FakeRedis:
     def __init__(self) -> None:
         self.events: list[tuple[str, Any]] = []
@@ -130,6 +151,77 @@ def test_is_trivial_query_variants() -> None:
     assert chat_views.is_trivial_query("  hi there ")
     assert chat_views.is_trivial_query("???")
     assert not chat_views.is_trivial_query("Как перенести отпуск?")
+
+
+@pytest.mark.asyncio
+async def test_validate_trigger_cache_request_requires_current_page_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = SimpleNamespace(
+        id=20,
+        source_id=10,
+        has_triggers=True,
+        triggers=[
+            {
+                "key": trigger_key("Valid trigger"),
+                "text": "Valid trigger",
+                "source": "generated",
+            }
+        ],
+    )
+    source = SimpleNamespace(
+        id=10,
+        enable_triggers=True,
+        config=SourceConfig(),
+    )
+    monkeypatch.setattr(
+        chat_views, "async_session_factory", _RowsSessionFactory((page, source))
+    )
+
+    assert (
+        await chat_views.validate_trigger_cache_request(
+            page_id=20,
+            trigger_key=trigger_key("Other trigger"),
+            user_text="Other trigger",
+        )
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_validate_trigger_cache_request_accepts_current_page_trigger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    text = "Valid trigger"
+    page = SimpleNamespace(
+        id=20,
+        source_id=10,
+        has_triggers=True,
+        triggers=[
+            {
+                "key": trigger_key(text),
+                "text": text,
+                "source": "generated",
+            }
+        ],
+    )
+    source = SimpleNamespace(
+        id=10,
+        enable_triggers=True,
+        config=SourceConfig(),
+    )
+    monkeypatch.setattr(
+        chat_views, "async_session_factory", _RowsSessionFactory((page, source))
+    )
+
+    assert (
+        await chat_views.validate_trigger_cache_request(
+            page_id=20,
+            trigger_key=trigger_key(text),
+            user_text=text,
+        )
+        is True
+    )
 
 
 def test_extract_total_tokens_variants() -> None:

@@ -879,6 +879,13 @@ class TestPageLinkSync:
         page_links = [obj for obj in added_objects if isinstance(obj, PageLink)]
         assert len(page_links) == 1
         assert page_links[0].target_uri == "https://example.com/target"
+        created_page = next(
+            obj
+            for obj in added_objects
+            if getattr(obj, "uri", None) == "https://example.com/target"
+        )
+        assert created_page.discover_by == "page"
+        assert created_page.discover_source == "https://example.com/source"
 
     def test_sync_page_links_attaches_cross_source_targets_to_tracked_source(self):
         from jobs.crawler.pipelines import sync_page_links
@@ -1038,6 +1045,7 @@ class TestSitemapDiscovery:
             session,
             source_id=1,
             parsed_entries=[("https://example.com/page", None)],
+            sitemap_url="https://example.com/sitemap.xml",
             source_rules=[],
         )
 
@@ -1046,6 +1054,13 @@ class TestSitemapDiscovery:
             getattr(obj, "uri", None) == "https://example.com/page"
             for obj in added_objects
         )
+        created_page = next(
+            obj
+            for obj in added_objects
+            if getattr(obj, "uri", None) == "https://example.com/page"
+        )
+        assert created_page.discover_by == "sitemap"
+        assert created_page.discover_source == "https://example.com/sitemap.xml"
 
     def test_upsert_sitemap_pages_skips_urls_filtered_by_regex(self):
         from jobs.crawler.tasks import _upsert_sitemap_pages

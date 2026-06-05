@@ -109,12 +109,53 @@ class Source(Base, Created, Updated):
         default=False,
         server_default=sa.text("false"),
     )
+    enable_triggers: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+    )
     blocked_reason: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     blocked_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     blocked_checked_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=True,
     )
+
+
+class ApiClient(Base, Created, Updated):
+    __tablename__ = "api_client"
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(sa.String(128), nullable=False)
+    client_id: Mapped[str] = mapped_column(
+        sa.String(64), nullable=False, unique=True, index=True
+    )
+    encrypted_secret: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=True,
+        server_default=sa.text("true"),
+    )
+
+
+api_client_source = sa.Table(
+    "api_client_source",
+    Base.metadata,
+    sa.Column(
+        "api_client_id",
+        sa.Integer,
+        ForeignKey("api_client.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column(
+        "source_id",
+        sa.Integer,
+        ForeignKey("source.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 status_enum = ENUM(
@@ -197,6 +238,10 @@ class Page(Base, Created, Updated):
         default=0,
         server_default=sa.text("0"),
     )
+    discover_by: Mapped[str | None] = mapped_column(
+        sa.String(32), nullable=True, index=True
+    )
+    discover_source: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     has_triggers: Mapped[bool] = mapped_column(
         sa.Boolean,
         nullable=False,

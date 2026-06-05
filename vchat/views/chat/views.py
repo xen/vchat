@@ -36,10 +36,10 @@ from vchat.gigachat_oauth import get_gigachat_access_token
 from vchat.json_response import json_response
 from vchat.logging_utils import log_json
 from vchat.metrics import record_chat_request
-from vchat.models import Chat, ChatMsg, TriggerResponseCache
+from vchat.models import Chat, ChatMsg, Page, Source, TriggerResponseCache
 from vchat.project_settings import get_setting
 from vchat.settings import config
-from vchat.triggers import trigger_prompt_hash
+from vchat.triggers import page_trigger_items, trigger_prompt_hash
 from vchat.utils import json, run_task
 
 from .ctx import chat_id_ctx, get_context, user_id_ctx
@@ -611,6 +611,33 @@ async def load_trigger_response_cache(
         )
 
 
+async def validate_trigger_cache_request(
+    *,
+    page_id: int,
+    trigger_key: str,
+    user_text: str,
+) -> bool:
+    async with async_session_factory() as db:
+        row = (
+            await db.execute(
+                sa.select(Page, Source)
+                .outerjoin(Source, Page.source_id == Source.id)
+                .where(Page.id == page_id)
+            )
+        ).one_or_none()
+        if row is None:
+            return False
+        page, source = row
+        if page is None or not page.has_triggers:
+            return False
+        if page.source_id and (source is None or not source.enable_triggers):
+            return False
+        return any(
+            trigger["key"] == trigger_key and trigger["text"] == user_text
+            for trigger in page_trigger_items(page)
+        )
+
+
 async def save_trigger_response_cache(
     *,
     page_id: int,
@@ -907,18 +934,24 @@ async def websocket(request):
                     continue
 
                 if trigger_page_id is not None and trigger_key:
-                    cached_response = await load_trigger_response_cache(
+                    trigger_cache_allowed = await validate_trigger_cache_request(
                         page_id=trigger_page_id,
                         trigger_key=trigger_key,
                         user_text=user_text,
                     )
-                    if cached_response is not None:
-                        await stream_cached_trigger_response(
-                            ws=ws,
-                            cached_response=cached_response,
+                    if trigger_cache_allowed:
+                        cached_response = await load_trigger_response_cache(
+                            page_id=trigger_page_id,
+                            trigger_key=trigger_key,
                             user_text=user_text,
                         )
-                        continue
+                        if cached_response is not None:
+                            await stream_cached_trigger_response(
+                                ws=ws,
+                                cached_response=cached_response,
+                                user_text=user_text,
+                            )
+                            continue
 
                 await redis.publish(
                     f"chat_monitor:{chat_id_ctx.get()}",
@@ -1124,7 +1157,16 @@ async def websocket(request):
                     }
                 )
 
-                if trigger_page_id is not None and trigger_key and total_content:
+                if (
+                    trigger_page_id is not None
+                    and trigger_key
+                    and total_content
+                    and await validate_trigger_cache_request(
+                        page_id=trigger_page_id,
+                        trigger_key=trigger_key,
+                        user_text=user_text,
+                    )
+                ):
                     await save_trigger_response_cache(
                         page_id=trigger_page_id,
                         trigger_key=trigger_key,
