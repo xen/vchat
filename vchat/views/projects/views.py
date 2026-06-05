@@ -17,7 +17,7 @@ import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp import web
 from aiohttp_session import get_session
-from itsdangerous import BadSignature, SignatureExpired, URLSafeSerializer
+from itsdangerous import URLSafeSerializer
 from passlib.context import CryptContext
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased, defer
@@ -97,7 +97,14 @@ from vchat.triggers import (
     trigger_rule_url_part,
     validate_trigger_pattern,
 )
-from vchat.utils import admin_event, flash, login_required, meta
+from vchat.utils import (
+    admin_event,
+    flash,
+    htmx_required,
+    login_required,
+    meta,
+    validate_signed_user_csrf,
+)
 
 from vchat.views.admin.views import ApiClientForm, CreateUserForm, UserPasswordForm
 from vchat.views.api.views import decrypt_client_secret, encrypt_client_secret
@@ -282,6 +289,12 @@ def _queue_source_crawl_from_ui(source_id: int) -> None:
         sitemap_sync_task.si(source_id),
         crawl_source_task.si(source_id, skip_sitemap_sync=True),
     ).apply_async()
+
+
+def _htmx_redirect_response(location) -> web.Response:
+    response = web.Response(status=204)
+    response.headers["HX-Redirect"] = str(location)
+    return response
 
 
 async def _check_source_blocking_and_commit(
@@ -1250,6 +1263,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
 
 @meta(title="Триггеры")
 @login_required()
+@htmx_required(actions={"generate", "clear"})
 @aiohttp_jinja2.template("projects/triggers.html")
 async def project_triggers(request):
     db_session = request["db"]
@@ -1267,10 +1281,10 @@ async def project_triggers(request):
         action = (data.get("action") or "save").strip()
         if action == "generate":
             generate_missing_triggers_task.delay()
-            if request.headers.get("HX-Request") == "true":
-                return web.Response(status=204)
             await flash(request, "Генерация триггеров запущена", "success")
-            raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+            return _htmx_redirect_response(
+                request.app.router["project_triggers"].url_for()
+            )
         if action == "clear":
             sources_with_trigger_rules = list(
                 (await db_session.execute(sa.select(Source))).scalars()
@@ -1282,7 +1296,9 @@ async def project_triggers(request):
             ]
             if not source_ids:
                 await flash(request, "Нет источников с правилами триггеров", "info")
-                raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+                return _htmx_redirect_response(
+                    request.app.router["project_triggers"].url_for()
+                )
 
             page_ids = sa.select(Page.id).where(Page.source_id.in_(source_ids))
             await db_session.execute(
@@ -1302,7 +1318,9 @@ async def project_triggers(request):
                 f"Триггеры и кэши ответов очищены для источников: {len(source_ids)}",
                 "success",
             )
-            raise web.HTTPFound(request.app.router["project_triggers"].url_for())
+            return _htmx_redirect_response(
+                request.app.router["project_triggers"].url_for()
+            )
 
         if form.validate():
             default_templates = _trigger_lines(form.default_templates.data)
@@ -1715,30 +1733,18 @@ async def source_sitemaps(request):
 
 
 @login_required()
-async def project_action(request):
-    db_session = request["db"]
-    item_id = request.match_info.get("item_id")
-    action = request.match_info.get("action")
-    user_id = request["user"].id
-
-    if action not in {
+@htmx_required(
+    exempt_actions={
         "user_create",
         "user_password",
         "api_client_create",
         "api_client_update",
-    }:
-        token = request.headers.get("X-CSRFToken")
-        if not token and request.method == "POST":
-            token = (await request.post()).get("csrf_token")
-        if not token:
-            raise web.HTTPForbidden(text="Missing CSRF Token")
-
-        try:
-            signed_user_id = request.app[SIGNER_KEY].loads(token, max_age=86400)
-            if signed_user_id != user_id:
-                raise web.HTTPForbidden(text="Invalid CSRF Token Owner")
-        except (BadSignature, SignatureExpired):
-            raise web.HTTPForbidden(text="Invalid CSRF Token")
+    }
+)
+async def project_action(request):
+    db_session = request["db"]
+    item_id = request.match_info.get("item_id")
+    action = request.match_info.get("action")
 
     if action == "user_create":
         session = await get_session(request)
@@ -1947,7 +1953,12 @@ async def project_action(request):
             raise web.HTTPNotFound()
 
         data = await request.post()
-        form = ApiClientForm(data, meta={"csrf_context": session})
+        reset_secret = data.get("reset_secret") == "1"
+        if reset_secret:
+            validate_signed_user_csrf(request)
+            form = ApiClientForm(data, meta={"csrf": False})
+        else:
+            form = ApiClientForm(data, meta={"csrf_context": session})
         source_ids = [
             int(source_id)
             for source_id in data.getall("source_ids", [])
@@ -1994,7 +2005,6 @@ async def project_action(request):
                 ],
             )
 
-        reset_secret = data.get("reset_secret") == "1"
         client_secret = None
         if reset_secret:
             client_secret = f"vchatsec-{secrets.token_urlsafe(32)}"
@@ -2074,7 +2084,7 @@ async def project_action(request):
         await db_session.commit()
         await admin_event("widget_create", request)
         await flash(request, _("Код виджета создан"), "success")
-        raise web.HTTPFound(
+        return _htmx_redirect_response(
             request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
 
@@ -2106,7 +2116,7 @@ async def project_action(request):
         await db_session.commit()
         await admin_event("widget_update", request)
         await flash(request, _("Код виджета обновлен"), "success")
-        raise web.HTTPFound(
+        return _htmx_redirect_response(
             request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
 

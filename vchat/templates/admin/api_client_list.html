@@ -137,29 +137,27 @@
                   <div class="flex items-center gap-1.5 text-sm">
                     <span class="text-base-content/60">client_secret:</span>
                     <code class="font-mono text-base-content/70">{{ client.masked_secret }}</code>
-                    <form
-                      method="POST"
-                      action="{{ url('actions', action='api_client_update', item_id=client.id) }}"
-                      hx-post="{{ url('actions', action='api_client_update', item_id=client.id) }}"
-                      hx-select="#api-clients-page"
-                      hx-target="#api-clients-page"
-                      hx-swap="outerHTML"
-                    >
-                      {{ add_form.csrf_token }}
+                    <span id="api-client-reset-secret-{{ client.id }}-values" hidden>
                       <input type="hidden" name="name" value="{{ client.name }}">
                       <input type="hidden" name="reset_secret" value="1">
                       {% for source in client.sources %}
                       <input type="hidden" name="source_ids" value="{{ source.id }}">
                       {% endfor %}
-                      <button
-                        type="submit"
-                        class="btn btn-ghost btn-xs h-6 min-h-6 px-1.5 text-warning"
-                        onclick="return confirm('{{ _('Создать новый секрет API клиента? Старый секрет перестанет работать.') }}')"
-                      >
-                        <iconify-icon icon="lucide:key-round" class="size-3.5"></iconify-icon>
-                        {{ _('Новый секрет') }}
-                      </button>
-                    </form>
+                    </span>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-xs h-6 min-h-6 px-1.5 text-warning"
+                      hx-post="{{ url('actions', action='api_client_update', item_id=client.id) }}"
+                      hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
+                      hx-include="#api-client-reset-secret-{{ client.id }}-values input"
+                      hx-select="#api-clients-page"
+                      hx-target="#api-clients-page"
+                      hx-swap="outerHTML"
+                      hx-confirm="{{ _('Создать новый секрет API клиента? Старый секрет перестанет работать.') }}"
+                    >
+                      <iconify-icon icon="lucide:key-round" class="size-3.5"></iconify-icon>
+                      {{ _('Новый секрет') }}
+                    </button>
                   </div>
                 </div>
               </td>
@@ -211,18 +209,17 @@
     </div>
   </div>
 
-  <section class="space-y-4">
-    <div>
+  <section class="card bg-base-100 shadow">
+    <div class="card-body gap-4">
       <h2 class="text-base font-medium">{{ _('Примеры отправки URL') }}</h2>
       <p class="mt-1 text-sm text-base-content/60">
         {{ _('Запрос отправляется POST-формой application/x-www-form-urlencoded.') }}
       </p>
-    </div>
 
-    <div class="grid gap-4 xl:grid-cols-2">
-      <div>
-        <div class="mb-2 text-sm font-medium">Python</div>
-        <pre class="overflow-x-auto rounded bg-base-200 p-4 text-sm"><code>import hashlib
+      <div class="grid gap-5">
+        <div>
+          <div class="mb-2 text-sm font-medium">Python</div>
+          <pre class="overflow-x-auto rounded bg-base-200 p-4 text-sm"><code>import hashlib
 import hmac
 import os
 import secrets
@@ -258,11 +255,11 @@ response = requests.post(
 )
 response.raise_for_status()
 print(response.json())</code></pre>
-      </div>
+        </div>
 
-      <div>
-        <div class="mb-2 text-sm font-medium">PHP</div>
-        <pre class="overflow-x-auto rounded bg-base-200 p-4 text-sm"><code>&lt;?php
+        <div>
+          <div class="mb-2 text-sm font-medium">PHP</div>
+          <pre class="overflow-x-auto rounded bg-base-200 p-4 text-sm"><code>&lt;?php
 $apiUrl = 'https://local.vchat.com/api/update';
 $clientId = getenv('VCHAT_CLIENT_ID');
 $clientSecret = getenv('VCHAT_CLIENT_SECRET');
@@ -312,6 +309,7 @@ if ($status &lt; 200 || $status &gt;= 300) {
 }
 
 echo $response;</code></pre>
+        </div>
       </div>
     </div>
   </section>

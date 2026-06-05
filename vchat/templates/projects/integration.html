@@ -2,9 +2,14 @@
 {% set page_title = _("Код виджета") %}
 
 {% macro widget_create_form(action) %}
-<form method="POST" action="{{ action }}" class="grid gap-4">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
+<form
+  method="POST"
+  action="{{ action }}"
+  hx-post="{{ action }}"
+  hx-swap="none"
+  hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
+  class="grid gap-4"
+>
   <label class="form-control">
     <span class="label-text mb-1">{{ _('Название') }}</span>
     <input

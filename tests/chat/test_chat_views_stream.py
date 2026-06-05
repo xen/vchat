@@ -133,6 +133,72 @@ class _RowsSessionFactory:
         return SimpleNamespace(one_or_none=lambda: self.row)
 
 
+class _ChatActionRequest(dict):
+    def __init__(
+        self,
+        *,
+        action: str,
+        item_id: str,
+        db: Any,
+        token: str = "csrf",
+        query: dict[str, str] | None = None,
+        post_data: dict[str, str] | None = None,
+        csrf_chat_id: str = "chat-1",
+    ) -> None:
+        super().__init__({"db": db})
+        self.match_info = {"action": action, "item_id": item_id}
+        self.headers = {"X-CSRFToken": token}
+        self.query = query or {}
+        self.app = {SIGNER_KEY: _ChatCsrfSigner(csrf_chat_id)}
+        self.transport = None
+        self._post_data = post_data or {}
+
+    async def post(self) -> dict[str, str]:
+        return self._post_data
+
+    async def json(self) -> dict[str, str]:
+        return self._post_data
+
+
+class _ChatCsrfSigner:
+    def __init__(self, chat_id: str) -> None:
+        self.chat_id = chat_id
+
+    def loads(self, token, max_age=86400):
+        assert max_age == 86400
+        if token == "bad":
+            raise BadSignature("bad")
+        return {"chat_id": self.chat_id}
+
+
+class _ChatActionSerializer:
+    def __init__(self, secret):
+        _ = secret
+
+    def loads(self, payload, salt=None, max_age=None):
+        _ = max_age
+        if payload == "bad":
+            raise BadSignature("bad")
+        if salt == "chat":
+            return "chat-1"
+        if salt == "chat_msg":
+            return 10
+        raise BadSignature("bad")
+
+
+class _ChatActionDB:
+    def __init__(self, row: Any) -> None:
+        self.row = row
+        self.commits = 0
+
+    async def scalar(self, stmt: Any) -> Any:
+        _ = stmt
+        return self.row
+
+    async def commit(self) -> None:
+        self.commits += 1
+
+
 class _FakeRedis:
     def __init__(self) -> None:
         self.events: list[tuple[str, Any]] = []
@@ -566,6 +632,87 @@ async def test_ai_chat_stream_passes_gigachat_ssl_setting(
 
     assert captured["ssl"] is False
     assert events[-1]["message"]["content"] == "A"
+
+
+@pytest.mark.asyncio
+async def test_chat_action_session_requires_matching_signed_chat_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chat = SimpleNamespace(id="chat-1", meta={})
+    db = _ChatActionDB(chat)
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _ChatActionSerializer)
+
+    response = await chat_views.chat_actions(
+        _ChatActionRequest(action="session", item_id="signed-chat", db=db)
+    )
+
+    assert response.status == 200
+    assert db.commits == 1
+
+    with pytest.raises(aiohttp.web.HTTPForbidden):
+        await chat_views.chat_actions(
+            _ChatActionRequest(
+                action="session",
+                item_id="signed-chat",
+                db=db,
+                csrf_chat_id="other-chat",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_chat_action_vote_requires_matching_signed_chat_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = SimpleNamespace(id=10, chat_id="chat-1", role="assistant", vote=None)
+    db = _ChatActionDB(msg)
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _ChatActionSerializer)
+    monkeypatch.setattr(
+        chat_views.aiohttp_jinja2,
+        "render_template",
+        lambda *args, **kwargs: aiohttp.web.Response(text="ok"),
+    )
+
+    response = await chat_views.chat_actions(
+        _ChatActionRequest(
+            action="vote",
+            item_id="signed-msg",
+            db=db,
+            query={"vote": "up"},
+        )
+    )
+
+    assert response.status == 200
+    assert msg.vote is True
+    assert db.commits == 1
+
+    with pytest.raises(aiohttp.web.HTTPForbidden):
+        await chat_views.chat_actions(
+            _ChatActionRequest(
+                action="vote",
+                item_id="signed-msg",
+                db=db,
+                query={"vote": "down"},
+                csrf_chat_id="other-chat",
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_chat_action_rejects_bad_signed_chat_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _ChatActionSerializer)
+
+    with pytest.raises(aiohttp.web.HTTPForbidden):
+        await chat_views.chat_actions(
+            _ChatActionRequest(
+                action="session",
+                item_id="signed-chat",
+                db=_ChatActionDB(SimpleNamespace(id="chat-1", meta={})),
+                token="bad",
+            )
+        )
 
 
 @pytest.mark.asyncio

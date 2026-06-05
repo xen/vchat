@@ -46,7 +46,7 @@ from vchat.models import (
 )
 from vchat.settings import config
 from vchat.triggers import page_trigger_items, trigger_prompt_hash
-from vchat.utils import json, run_task
+from vchat.utils import htmx_required, json, run_task
 
 from .ctx import chat_id_ctx, get_context, user_id_ctx
 
@@ -1368,14 +1368,11 @@ async def websocket(request):
     return ws
 
 
+@htmx_required(payload="chat")
 async def chat_actions(request):
     action = request.match_info.get("action")
     item_id = request.match_info.get("item_id")
-
-    # CSRF Check for HTMX
-    token = request.headers.get("X-CSRFToken")
-    if not token:
-        raise web.HTTPForbidden(text="Missing CSRF Token")
+    csrf_chat_id = request["csrf_chat_id"]
 
     serializer = URLSafeSerializer(SECRET_KEY)
 
@@ -1384,6 +1381,8 @@ async def chat_actions(request):
             real_id = serializer.loads(item_id, salt="chat", max_age=86400)
         except BadSignature:
             raise web.HTTPForbidden(text="Invalid Chat ID")
+        if str(real_id) != csrf_chat_id:
+            raise web.HTTPForbidden(text="Invalid CSRF Token Owner")
 
         try:
             payload = await request.json()
@@ -1442,6 +1441,8 @@ async def chat_actions(request):
         msg = await db.scalar(sa.select(ChatMsg).where(ChatMsg.id == int(real_id)))
         if not msg:
             raise web.HTTPNotFound(text="Message not found")
+        if str(msg.chat_id) != csrf_chat_id:
+            raise web.HTTPForbidden(text="Invalid CSRF Token Owner")
 
         if msg.role != "assistant":
             raise web.HTTPBadRequest(text="Can only vote on assistant messages")

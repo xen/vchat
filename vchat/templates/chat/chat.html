@@ -15,7 +15,7 @@
 </head>
 
 <body class="flex flex-col h-[100dvh] bg-base-100 text-base-content antialiased overflow-hidden"
-  hx-headers='{"X-CSRFToken": "{{ support_csrf_token if support_csrf_token is defined else csrf_token() }}"}'>
+  hx-headers='{"X-CSRFToken": {{ (support_csrf_token if support_csrf_token is defined else csrf_token())|tojson }}}'>
 
   <!-- Навигация -->
   <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
