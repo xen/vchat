@@ -178,7 +178,7 @@ async def _claim_update_nonce(
     client_id: str,
     nonce: str,
 ) -> bool:
-    ttl = int(request.app[CONFIG_KEY].get("api_update_timestamp_ttl_seconds", 60))
+    ttl = int(request.app[CONFIG_KEY].get("api_update_nonce_ttl_seconds", 180))
     nonce_hash = hashlib.sha256(nonce.encode("utf-8")).hexdigest()
     key = f"api_update:nonce:{client_id}:{nonce_hash}"
     redis = request.app[REDIS_KEY]

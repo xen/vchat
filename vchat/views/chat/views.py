@@ -24,6 +24,7 @@ from vchat.ai_providers import (
     get_default_provider_id,
     resolve_ai_settings,
 )
+from vchat.app_keys import SIGNER_KEY
 from vchat.chat_meta import merge_chat_meta
 from vchat.db import async_session_factory
 from vchat.guardrails import (
@@ -873,11 +874,21 @@ async def websocket(request):
                         and parsed_payload.get("type") == "trigger_prompt"
                     ):
                         user_text = str(parsed_payload.get("text") or "")
-                        raw_page_id = parsed_payload.get("page_id")
+                        raw_page_token = parsed_payload.get("page_token")
                         raw_trigger_key = parsed_payload.get("trigger_key")
-                        if raw_page_id is not None and raw_trigger_key:
-                            trigger_page_id = int(raw_page_id)
-                            trigger_key = str(raw_trigger_key)
+                        if raw_page_token and raw_trigger_key:
+                            try:
+                                trigger_page_id = int(
+                                    request.app[SIGNER_KEY].loads(
+                                        str(raw_page_token),
+                                        salt="trigger_page",
+                                        max_age=86400,
+                                    )
+                                )
+                                trigger_key = str(raw_trigger_key)
+                            except (BadSignature, ValueError, TypeError):
+                                trigger_page_id = None
+                                trigger_key = None
                     else:
                         user_text = raw_user_text
                 else:

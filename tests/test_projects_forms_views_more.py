@@ -8,6 +8,7 @@ from yarl import URL
 
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat.source_settings import DEFAULT_IGNORED_PARAMS
+from vchat.views.projects import forms as project_forms
 from vchat.views.projects import views as project_views
 
 
@@ -73,6 +74,15 @@ def _raw(func):
     while hasattr(func, "__wrapped__"):
         func = func.__wrapped__
     return func
+
+
+def test_normalize_source_origin_keeps_only_domain() -> None:
+    assert (
+        project_forms.normalize_source_origin(
+            "https://Example.Local:8443/docs/page?x=1#section"
+        )
+        == "https://example.local:8443"
+    )
 
 
 @pytest.mark.asyncio

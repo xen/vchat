@@ -479,7 +479,7 @@
       setSending(true);
 
       const payload = options.triggerId
-        ? JSON.stringify({ type: 'trigger_prompt', page_id: options.pageId || null, trigger_key: options.triggerId, text })
+        ? JSON.stringify({ type: 'trigger_prompt', page_token: options.pageToken || null, trigger_key: options.triggerId, text })
         : text;
 
       if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -531,7 +531,7 @@
       }
       submitMessage({
         text,
-        pageId: data.page_id || null,
+        pageToken: data.page_token || null,
         triggerId: data.trigger_key || null,
       });
     });

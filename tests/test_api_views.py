@@ -104,11 +104,13 @@ class _FakeRedis:
     def __init__(self, *, nonce_claimed=True, rate_allowed=True):
         self.nonce_claimed = nonce_claimed
         self.rate_allowed = rate_allowed
+        self.set_calls = []
 
     async def eval(self, *_args):
         return 1 if self.rate_allowed else 0
 
-    async def set(self, *_args, **_kwargs):
+    async def set(self, *args, **kwargs):
+        self.set_calls.append((args, kwargs))
         return self.nonce_claimed
 
 
@@ -190,6 +192,8 @@ async def test_authenticate_update_request_accepts_valid_signature() -> None:
     result = await api_views._authenticate_update_request(req, _signed_payload(secret))
     assert result is client
     assert db.commits == 0
+    redis = req.app[REDIS_KEY]
+    assert redis.set_calls[0][1]["ex"] == 180
 
 
 @pytest.mark.asyncio

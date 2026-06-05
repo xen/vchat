@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlsplit
 
 from jobs.crawler.tasks import crawl_page_task
+from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
 from vchat.json_response import json_response
 from vchat.models import Page, Source
 from vchat.page_status import PageStatus
@@ -79,6 +80,10 @@ async def _discover_widget_page(
     return page
 
 
+def _signed_trigger_page_token(request, page: Page) -> str:
+    return request.app[SIGNER_KEY].dumps(page.id, salt="trigger_page")
+
+
 async def healthcheck(request):
     await request["db"].execute(sa.text("select 1;"))
     raise web.HTTPFound(request.app.router["project_view"].url_for())
@@ -121,7 +126,6 @@ async def widget_triggers_resolve(request):
     if source is not None and not source.enable_triggers:
         return json_response(
             {
-                "page_id": page.id if page is not None else None,
                 "source": "disabled",
                 "triggers": [],
             }
@@ -134,7 +138,6 @@ async def widget_triggers_resolve(request):
         if not source or not source.enable_triggers:
             return json_response(
                 {
-                    "page_id": page.id,
                     "source": "disabled",
                     "triggers": [],
                 }
@@ -142,7 +145,6 @@ async def widget_triggers_resolve(request):
         if not source_trigger_rules_match_url(source, page_url):
             return json_response(
                 {
-                    "page_id": page.id,
                     "source": "unmatched",
                     "triggers": [],
                 }
@@ -151,11 +153,10 @@ async def widget_triggers_resolve(request):
         if triggers:
             return json_response(
                 {
-                    "page_id": page.id,
                     "source": "page",
                     "triggers": [
                         {
-                            "page_id": page.id,
+                            "page_token": _signed_trigger_page_token(request, page),
                             "key": trigger["key"],
                             "text": trigger["text"],
                             "source": trigger["source"],
@@ -168,18 +169,20 @@ async def widget_triggers_resolve(request):
     if source is not None and not source_trigger_rules_match_url(source, page_url):
         return json_response(
             {
-                "page_id": page.id if page is not None else None,
                 "source": "unmatched",
                 "triggers": [],
             }
         )
-    if page is None and source is not None:
+    if (
+        page is None
+        and source is not None
+        and request.app[CONFIG_KEY]["widget_page_discovery_enabled"]
+    ):
         page = await _discover_widget_page(request, source=source, page_url=page_url)
 
     default_title = title or (page.title if page is not None else "")
     return json_response(
         {
-            "page_id": page.id if page is not None else None,
             "source": "default",
             "triggers": render_default_triggers(
                 load_default_trigger_templates(request.app),

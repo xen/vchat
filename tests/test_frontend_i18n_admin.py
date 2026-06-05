@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from types import SimpleNamespace
 from yarl import URL
 
+from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
 from vchat.i18n import _
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat import utils as vchat_utils
@@ -73,10 +74,17 @@ class _FakeExecuteResult:
 
 
 class _TriggerResolveRequest(dict):
-    def __init__(self, *, db, url):
+    def __init__(self, *, db, url, widget_page_discovery_enabled: bool = False):
         super().__init__()
         self["db"] = db
-        self["app"] = {}
+        self["app"] = {
+            CONFIG_KEY: {
+                "widget_page_discovery_enabled": widget_page_discovery_enabled,
+            },
+            SIGNER_KEY: SimpleNamespace(
+                dumps=lambda value, salt=None: f"signed:{salt}:{value}"
+            ),
+        }
         self.query = {"url": url, "title": "Title"}
 
     @property
@@ -208,6 +216,55 @@ async def test_widget_triggers_resolve_returns_empty_when_rules_do_not_match(
 
 
 @pytest.mark.asyncio
+async def test_widget_triggers_resolve_signs_page_id_for_page_triggers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(
+        id=10,
+        uri="https://example.com/",
+        enable_triggers=True,
+        config=SourceConfig(
+            trigger_rules=[CrawlerRule(type="regex", value=r"^/docs/.*")]
+        ),
+    )
+
+    class _Db:
+        async def execute(self, stmt):
+            _ = stmt
+            return _FakeExecuteResult([source])
+
+    async def _find_page_by_url(*_args):
+        return SimpleNamespace(
+            id=20,
+            title="Docs",
+            source_id=10,
+            has_triggers=True,
+            triggers=[{"key": "abc", "text": "Ask about docs", "source": "manual"}],
+        )
+
+    monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
+
+    response = await frontend.widget_triggers_resolve(
+        _TriggerResolveRequest(db=_Db(), url="https://example.com/docs/page")
+    )
+
+    assert response.status == 200
+    assert response.text is not None
+    payload = json.loads(response.text)
+    assert "page_id" not in payload
+    assert payload["source"] == "page"
+    assert payload["triggers"] == [
+        {
+            "page_token": "signed:trigger_page:20",
+            "key": "abc",
+            "text": "Ask about docs",
+            "source": "manual",
+        }
+    ]
+    assert "page_id" not in payload["triggers"][0]
+
+
+@pytest.mark.asyncio
 async def test_widget_triggers_resolve_discovers_matching_unknown_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -250,13 +307,17 @@ async def test_widget_triggers_resolve_discovers_matching_unknown_page(
 
     db = _Db()
     response = await frontend.widget_triggers_resolve(
-        _TriggerResolveRequest(db=db, url="https://example.com/docs/page#part")
+        _TriggerResolveRequest(
+            db=db,
+            url="https://example.com/docs/page#part",
+            widget_page_discovery_enabled=True,
+        )
     )
 
     assert response.status == 200
     assert response.text is not None
     payload = json.loads(response.text)
-    assert payload["page_id"] == 99
+    assert "page_id" not in payload
     assert db.commits == 1
     assert delayed == [99]
     assert len(find_calls) == 2
@@ -266,6 +327,46 @@ async def test_widget_triggers_resolve_discovers_matching_unknown_page(
     assert page.has_triggers is True
     assert page.discover_by == "widget"
     assert page.discover_source == "https://example.com/docs/page"
+
+
+@pytest.mark.asyncio
+async def test_widget_triggers_resolve_skips_discovery_when_config_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(
+        id=10,
+        uri="https://example.com/",
+        enable_triggers=True,
+        config=SourceConfig(
+            trigger_rules=[CrawlerRule(type="regex", value=r"^/docs/.*")]
+        ),
+    )
+
+    class _Db:
+        async def execute(self, stmt):
+            _ = stmt
+            return _FakeExecuteResult([source])
+
+        def add(self, obj):
+            raise AssertionError(f"unexpected page creation: {obj!r}")
+
+    async def _find_page_by_url(*_args):
+        return None
+
+    delayed = []
+    monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
+    monkeypatch.setattr(frontend.crawl_page_task, "delay", delayed.append)
+
+    response = await frontend.widget_triggers_resolve(
+        _TriggerResolveRequest(db=_Db(), url="https://example.com/docs/page")
+    )
+
+    assert response.status == 200
+    assert response.text is not None
+    payload = json.loads(response.text)
+    assert payload["source"] == "default"
+    assert "page_id" not in payload
+    assert delayed == []
 
 
 @pytest.mark.asyncio
@@ -320,13 +421,17 @@ async def test_widget_triggers_resolve_handles_concurrent_discovery_conflict(
 
     db = _Db()
     response = await frontend.widget_triggers_resolve(
-        _TriggerResolveRequest(db=db, url="https://example.com/docs/page")
+        _TriggerResolveRequest(
+            db=db,
+            url="https://example.com/docs/page",
+            widget_page_discovery_enabled=True,
+        )
     )
 
     assert response.status == 200
     assert response.text is not None
     payload = json.loads(response.text)
-    assert payload["page_id"] == 77
+    assert "page_id" not in payload
     assert db.rollbacks == 1
     assert db.commits == 0
     assert delayed == []

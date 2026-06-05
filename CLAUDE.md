@@ -19,7 +19,7 @@ Do not add any attribution lines (`Co-Authored-By`, `Signed-off-by` for AI, etc.
 - All commands run from project root: `/Users/xen/Dev/sber/vchat/`
 - Entry point: `entry.py` (not manage.py)
 - ORM: SQLAlchemy async (`asyncpg` driver), sessions via `vchat.db.async_session_factory`
-- Database: PostgreSQL at `postgresql://deploy@localhost:5432/vchat`
+- Database: PostgreSQL at `postgresql://xen@localhost:5432/vchat`
 - Migrations: `alembic upgrade head` (not migrate/makemigrations)
 - Redis DB 30: app cache (`redis://localhost:6379/30`)
 - Redis DB 31: Celery broker (`redis://localhost:6379/31`)
@@ -40,7 +40,7 @@ Or without activating:
 ### Quick DB queries (use psql directly, not Python shell)
 
 ```bash
-psql postgresql://deploy@localhost:5432/vchat -c "SELECT ..."
+psql postgresql://xen@localhost:5432/vchat -c "SELECT ..."
 ```
 
 ### Redis inspection

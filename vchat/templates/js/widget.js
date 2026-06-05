@@ -219,7 +219,7 @@
     openWidget();
     var payload = {
       type: "vchat_trigger",
-      page_id: activeTrigger.page_id || null,
+      page_token: activeTrigger.page_token || null,
       trigger_key: activeTrigger.key || null,
       text: activeTrigger.text
     };

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import urlsplit, urlunsplit
 
 from wtforms import (
     BooleanField,
@@ -33,6 +34,11 @@ DEFAULT_SYSTEM_PROMPT = _(
     "Отвечай кратко, проактивно предлагай следующие шаги и задавай уточняющие "
     "вопросы, когда не хватает информации."
 )
+
+
+def normalize_source_origin(value: str) -> str:
+    split = urlsplit((value or "").strip())
+    return urlunsplit((split.scheme.lower(), split.netloc.lower(), "", "", ""))
 
 
 class WorkspaceForm(Form):
@@ -188,6 +194,9 @@ class SourceForm(Form):
                     "Invalid cron expression. Use 5 fields: minute hour day month weekday"
                 )
             )
+
+    def validate_url(self, field):
+        field.data = normalize_source_origin(field.data)
 
 
 class InviteUserForm(Form):
