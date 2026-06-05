@@ -38,6 +38,7 @@ def normalize_url_for_queue(url: str, rules: list[dict] | None = None) -> str:
         return ""
 
     split = urlsplit(raw_url)
+    scheme = "https" if split.netloc else split.scheme
     ignored = ignored_query_params(rules)
     query_items = [
         (key, value)
@@ -45,7 +46,7 @@ def normalize_url_for_queue(url: str, rules: list[dict] | None = None) -> str:
         if key not in ignored
     ]
     query = urlencode(query_items, doseq=True)
-    return urlunsplit((split.scheme, split.netloc, split.path, query, ""))
+    return urlunsplit((scheme, split.netloc, split.path, query, ""))
 
 
 def url_allowed_by_rules(url: str, rules: list[dict] | None = None) -> bool:

@@ -672,6 +672,12 @@ class TestUrlNormalization:
         )
         assert normalized == "https://example.com/path/?id=5"
 
+    def test_normalize_url_for_queue_forces_https(self):
+        from jobs.crawler.url_rules import normalize_url_for_queue
+
+        normalized = normalize_url_for_queue("http://www.pylot.me/articles/#top")
+        assert normalized == "https://www.pylot.me/articles/"
+
     def test_url_allowed_by_rules_uses_regex_filters(self):
         from jobs.crawler.url_rules import url_allowed_by_rules
 
