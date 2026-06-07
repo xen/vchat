@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import json
+import csv
+import io
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,10 @@ import pytest
 
 from vchat.app_keys import REDIS_KEY
 from vchat.views.projects import views as project_views
+
+
+def _csv_rows(text: str) -> list[dict[str, str]]:
+    return list(csv.DictReader(io.StringIO(text)))
 
 
 class _Resp:
@@ -381,7 +386,7 @@ async def test_project_edit_sources_keeps_active_sources_first(
 
 
 @pytest.mark.asyncio
-async def test_project_documents_and_files_json(
+async def test_project_documents_csv_and_files_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from vchat.page_status import PageStatus
@@ -409,14 +414,18 @@ async def test_project_documents_and_files_json(
         ]
     )
     req_docs = _Req(db=db_docs)
-    docs_fn = project_views.project_documents_json.__wrapped__
+    docs_fn = project_views.project_documents_csv.__wrapped__
     docs_resp = await docs_fn(req_docs)
     assert docs_resp.status == 200
-    assert b'"meta"' not in docs_resp.body
-    assert json.loads(docs_resp.text)[0]["uri"] == "https://example.local/a"
-    assert b'"created_at"' not in docs_resp.body
-    assert b'"updated_at"' not in docs_resp.body
-    assert b'"document_type"' not in docs_resp.body
+    assert docs_resp.content_type == "text/csv"
+    rows = _csv_rows(docs_resp.text)
+    assert rows[0]["uri"] == "https://example.local/a"
+    assert rows[0]["status"] == "ready"
+    assert rows[0]["is_ignored"] == "0"
+    assert "meta" not in rows[0]
+    assert "created_at" not in rows[0]
+    assert "updated_at" not in rows[0]
+    assert "document_type" not in rows[0]
 
     file_doc = SimpleNamespace(
         id=5,

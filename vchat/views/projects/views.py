@@ -1,9 +1,11 @@
+import csv
+import hashlib
+import hmac
+import io
+import json
 import logging
 import re
 import secrets
-import json
-import hashlib
-import hmac
 import uuid
 from celery import chain
 from celery.schedules import crontab
@@ -124,7 +126,7 @@ __all__ = [
     "project_view",
     "project_document_content",
     "project_document_detail",
-    "project_documents_json",
+    "project_documents_csv",
     "project_files_json",
     "project_chat",
     "project_stats",
@@ -2521,9 +2523,36 @@ async def project_view(request):
         "source_filters": source_filters,
     }
 
+DOCUMENTS_CSV_FIELDS = (
+    "id",
+    "title",
+    "uri",
+    "source",
+    "status",
+    "status_error",
+    "is_ignored",
+    "size_bytes",
+    "chunk_count",
+)
+
+
+def _documents_csv_response(rows: list[dict[str, Any]]) -> web.Response:
+    buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(buffer, fieldnames=DOCUMENTS_CSV_FIELDS, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return web.Response(text=buffer.getvalue(), content_type="text/csv")
+
+
+def _enum_value(value: Any) -> str:
+    if value is None:
+        return ""
+    enum_value = getattr(value, "value", None)
+    return str(enum_value if enum_value is not None else value)
+
 
 @login_required()
-async def project_documents_json(request):
+async def project_documents_csv(request):
     chunk_counts = (
         sa.select(
             Chunk.page_id.label("document_id"),
@@ -2550,7 +2579,7 @@ async def project_documents_json(request):
             )
             .join(Source, Page.source_id == Source.id)
             .outerjoin(chunk_counts, chunk_counts.c.document_id == Page.id)
-            .order_by(Page.created_at.desc())
+            .order_by(Page.id.desc())
         )
     ).all()
 
@@ -2572,15 +2601,17 @@ async def project_documents_json(request):
                 "title": _display_document_title(title, uri),
                 "uri": uri or "",
                 "source": source_title or source_uri or _("Файлы"),
-                "status": status,
-                "status_error": status_error,
-                "is_ignored": status_error == PageStatusError.excluded_ignored,
+                "status": _enum_value(status),
+                "status_error": _enum_value(status_error),
+                "is_ignored": "1"
+                if status_error == PageStatusError.excluded_ignored
+                else "0",
                 "size_bytes": int(size_bytes or 0),
                 "chunk_count": int(chunk_count or 0),
             }
         )
 
-    return json_response(data)
+    return _documents_csv_response(data)
 
 
 @login_required()

@@ -66,9 +66,9 @@ def setup_routes(app: web.Application) -> None:
     add("GET", "/page", projects.project_view, name="project_view")
     add(
         "GET",
-        "/documents/json",
-        projects.project_documents_json,
-        name="project_documents_json",
+        "/documents/csv",
+        projects.project_documents_csv,
+        name="project_documents_csv",
     )
     add(
         "GET",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -12,6 +14,10 @@ from yarl import URL
 
 from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
 from vchat.views.projects import views as project_views
+
+
+def _csv_rows(text: str) -> list[dict[str, str]]:
+    return list(csv.DictReader(io.StringIO(text)))
 
 
 class _Signer:
@@ -529,7 +535,7 @@ async def test_project_action_delete_file_success(
 
 
 @pytest.mark.asyncio
-async def test_project_documents_json_serializes_rows() -> None:
+async def test_project_documents_csv_serializes_rows() -> None:
     from vchat.page_status import PageStatus
 
     source = SimpleNamespace(id=2, title="Source A", uri="https://example.com")
@@ -552,21 +558,24 @@ async def test_project_documents_json_serializes_rows() -> None:
         ]
     )
     req["user"] = SimpleNamespace(id=1)
-    raw = project_views.project_documents_json.__wrapped__
+    raw = project_views.project_documents_csv.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    payload = json.loads(resp.text)
+    assert resp.content_type == "text/csv"
+    payload = _csv_rows(resp.text)
     assert payload[0]["id"] == "5"
     assert payload[0]["source"] == "Source A"
-    assert '"meta"' not in resp.text
+    assert payload[0]["status"] == "ready"
+    assert payload[0]["is_ignored"] == "0"
+    assert "meta" not in payload[0]
     assert payload[0]["uri"] == "https://example.com/a"
-    assert '"created_at"' not in resp.text
-    assert '"updated_at"' not in resp.text
-    assert '"document_type"' not in resp.text
+    assert "created_at" not in payload[0]
+    assert "updated_at" not in payload[0]
+    assert "document_type" not in payload[0]
 
 
 @pytest.mark.asyncio
-async def test_project_documents_json_marks_excluded_as_ignored() -> None:
+async def test_project_documents_csv_marks_excluded_as_ignored() -> None:
     from vchat.page_status import PageStatus, PageStatusError
 
     source = SimpleNamespace(id=2, title="Source A", uri="https://example.com")
@@ -590,12 +599,12 @@ async def test_project_documents_json_marks_excluded_as_ignored() -> None:
     )
     req["user"] = SimpleNamespace(id=1)
 
-    raw = project_views.project_documents_json.__wrapped__
+    raw = project_views.project_documents_csv.__wrapped__
     resp = await raw(req)
     assert resp.status == 200
-    payload = json.loads(resp.text)
+    payload = _csv_rows(resp.text)
     assert payload[0]["status_error"] == "low_content"
-    assert payload[0]["is_ignored"] is False
+    assert payload[0]["is_ignored"] == "0"
 
 
 @pytest.mark.asyncio

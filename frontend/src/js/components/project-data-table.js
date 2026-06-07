@@ -122,6 +122,57 @@ const normalizeSearchValue = (value) => {
   return String(value).trim().toLowerCase()
 }
 
+const parseCsvRows = (text) => {
+  const rows = []
+  let row = []
+  let field = ''
+  let inQuotes = false
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    const nextChar = text[index + 1]
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        field += '"'
+        index += 1
+      } else {
+        inQuotes = !inQuotes
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(field)
+      field = ''
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') {
+        index += 1
+      }
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += char
+    }
+  }
+
+  if (field !== '' || row.length > 0) {
+    row.push(field)
+    rows.push(row)
+  }
+
+  if (rows.length === 0) {
+    return []
+  }
+
+  const headers = rows[0]
+  return rows.slice(1)
+    .filter(values => values.length > 1 || values[0] !== '')
+    .map(values => headers.reduce((record, header, index) => {
+      record[header] = values[index] ?? ''
+      return record
+    }, {}))
+}
+
 const DOCUMENT_REFRESH_EVENT = "project-documents:refresh"
 
 window.useProjectDataTable = () => {
@@ -437,16 +488,19 @@ window.useProjectDataTable = () => {
     },
     fetchDocuments() {
       this.loading = true
-      fetch('/documents/json')
-        .then(res => res.json())
-        .then(jsonData => {
-          this.data = Array.isArray(jsonData)
-            ? jsonData.map(item => {
-              const group = computeGroup(item?.status, item?.status_error, item?.is_ignored)
+      fetch('/documents/csv')
+        .then(res => res.text())
+        .then(csvText => {
+          const csvData = parseCsvRows(csvText)
+          this.data = Array.isArray(csvData)
+            ? csvData.map(item => {
+              const isIgnored = item?.is_ignored === '1'
+              const group = computeGroup(item?.status, item?.status_error, isIgnored)
               return {
                 ...(item || {}),
                 size_bytes: Number(item?.size_bytes ?? 0),
                 chunk_count: Number(item?.chunk_count ?? 0),
+                is_ignored: isIgnored,
                 group,
                 group_order: GROUP_ORDER[group] ?? 5,
               }
