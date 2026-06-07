@@ -156,6 +156,7 @@ window.useProjectDataTable = () => {
     {
       accessorKey: "title",
       header: sortableHeader("Название"),
+      meta: { thStyle: 'width:calc(100% - 172px)' },
       cell: (info) => {
         const rawTitle = info.getValue()
         const title = escapeHtml((rawTitle || '').trim() || '[Без названия]')

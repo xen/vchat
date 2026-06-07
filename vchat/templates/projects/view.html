@@ -64,19 +64,20 @@
             </div>
 
             <!-- Pagination -->
-            <div class="border-base-200 border-b border-dashed px-5 py-3" x-show="!loading && pageCount > 1">
+            <div class="border-base-200 border-b border-dashed px-5 py-3" x-show="!loading">
                 <div class="flex items-center gap-3">
                     <span class="text-xs text-base-content/50 shrink-0 tabular-nums">
-                        <span x-text="pageIndex + 1"></span> / <span x-text="pageCount"></span>
+                        <span x-text="pageIndex + 1"></span> / <span x-text="Math.max(pageCount, 1)"></span>
                     </span>
                     <input
                         type="range"
                         class="range range-xs range-primary w-full"
                         style="--range-fill: 0; width: 100%"
                         :min="0"
-                        :max="pageCount - 1"
+                        :max="Math.max(pageCount - 1, 0)"
                         step="1"
                         :value="pageIndex"
+                        :disabled="pageCount <= 1"
                         @input="setPageIndex(Number($event.target.value))"
                     />
                     <p class="text-base-content/70 text-sm shrink-0">
@@ -109,7 +110,7 @@
                     <tbody x-ref="documentsBody">
                         <template x-if="visibleRows.length === 0">
                             <tr>
-                                <td colspan="9" class="text-center text-base-content/60 py-8">
+                                <td colspan="3" class="text-center text-base-content/60 py-8">
                                     Документы не найдены.
                                 </td>
                             </tr>
