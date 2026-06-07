@@ -2,6 +2,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, List
 
+from bs4 import BeautifulSoup
+
 from vchat.document_shingles import is_boilerplate_block
 from vchat.embedding_tokenizer import load_embedding_tokenizer
 from vchat.settings import config
@@ -43,6 +45,24 @@ class ChunkData:
     token_count: int = 0
 
 
+HTML_DOCUMENT_RE = re.compile(r"(?is)^\s*(?:<!doctype\s+html[^>]*>\s*)?<html[\s>]")
+HTML_NOISE_TAGS = (
+    "script",
+    "style",
+    "noscript",
+    "template",
+    "svg",
+    "header",
+    "footer",
+    "nav",
+    "aside",
+    "dialog",
+)
+HTML_UI_CONFIG_JSON_LINE_RE = re.compile(
+    r'^\s*\{(?=[\s\S]{0,2000}$)(?=[\s\S]*"(?:cookieKey|isActive)"\s*:)[\s\S]*\}\s*$'
+)
+
+
 def get_embed_tokenizer() -> Any:
     if not hasattr(get_embed_tokenizer, "_tokenizer"):
         get_embed_tokenizer._tokenizer = load_embedding_tokenizer()
@@ -72,23 +92,28 @@ def chunk_text_word_window(
         overlap = EMBEDDING_CHUNK_OVERLAP_TOKENS
 
     tokenizer = get_embed_tokenizer()
-    tokens = text.split()
-    n = len(tokens)
+    words = text.split()
+    n = len(words)
     chunks: List[ChunkData] = []
     if n == 0:
         return chunks
 
+    word_token_ids = [
+        tokenizer(
+            word,
+            add_special_tokens=False,
+            truncation=False,
+            verbose=False,
+        )["input_ids"]
+        for word in words
+    ]
+
     i = 0
     ix = 0
     while i < n:
-        token = tokens[i]
-        if len(token) > EMBEDDING_CHUNK_MAX_CHARS:
-            token_ids = tokenizer(
-                token,
-                add_special_tokens=False,
-                truncation=False,
-                verbose=False,
-            )["input_ids"]
+        word = words[i]
+        token_ids = word_token_ids[i]
+        if len(word) > EMBEDDING_CHUNK_MAX_CHARS or len(token_ids) > max_tokens:
             for id_start in range(0, len(token_ids), max_tokens):
                 piece_ids = token_ids[id_start : id_start + max_tokens]
                 piece = tokenizer.decode(
@@ -111,78 +136,57 @@ def chunk_text_word_window(
             i += 1
             continue
 
-        high = i
+        end = i
+        token_len = 0
         char_len = 0
-        while high < n:
-            token_chars = len(tokens[high]) if high == i else len(tokens[high]) + 1
-            if high > i and char_len + token_chars > EMBEDDING_CHUNK_MAX_CHARS:
+        while end < n:
+            current_token_len = len(word_token_ids[end])
+            current_char_len = len(words[end]) if end == i else len(words[end]) + 1
+            if end > i and (
+                token_len + current_token_len > max_tokens
+                or char_len + current_char_len > EMBEDDING_CHUNK_MAX_CHARS
+            ):
                 break
-            char_len += token_chars
-            high += 1
+            token_len += current_token_len
+            char_len += current_char_len
+            end += 1
 
-        if high == i:
-            i += 1
-            continue
+        if end == i:
+            end = i + 1
+            token_len = len(word_token_ids[i])
 
-        best_end: int | None = None
-        best_token_len = 0
-        low = i + 1
-        right = high
-        while low <= right:
-            mid = (low + right) // 2
-            candidate_text = " ".join(tokens[i:mid])
-            candidate_token_len = count_token_ids(tokenizer, candidate_text)
-            if candidate_token_len <= max_tokens:
-                best_end = mid
-                best_token_len = candidate_token_len
-                low = mid + 1
-            else:
-                right = mid - 1
-
-        if best_end is None:
-            token_ids = tokenizer(
-                token,
-                add_special_tokens=False,
-                truncation=False,
-                verbose=False,
-            )["input_ids"]
-            for id_start in range(0, len(token_ids), max_tokens):
-                piece_ids = token_ids[id_start : id_start + max_tokens]
-                piece = tokenizer.decode(
-                    piece_ids,
-                    skip_special_tokens=True,
-                    clean_up_tokenization_spaces=False,
-                ).strip()
-                if piece:
-                    chunks.append(
-                        ChunkData(
-                            index=ix,
-                            start=i,
-                            end=i + 1,
-                            text=piece,
-                            kind="text",
-                            token_count=len(piece_ids),
-                        )
-                    )
-                    ix += 1
-            i += 1
-            continue
-
-        piece = " ".join(tokens[i:best_end])
+        piece = " ".join(words[i:end])
         chunks.append(
             ChunkData(
                 index=ix,
                 start=i,
-                end=best_end,
+                end=end,
                 text=piece,
                 kind="text",
-                token_count=best_token_len,
+                token_count=token_len,
             )
         )
         ix += 1
-        if best_end >= n:
+        if end >= n:
             break
-        i = max(i + 1, best_end - overlap)
+
+        effective_overlap = min(overlap, max(0, token_len // 4))
+        if effective_overlap <= 0:
+            i = end
+            continue
+
+        overlap_tokens = 0
+        overlap_start = end
+        while overlap_start > i:
+            previous_len = len(word_token_ids[overlap_start - 1])
+            if overlap_tokens and overlap_tokens + previous_len > effective_overlap:
+                break
+            if not overlap_tokens and previous_len > effective_overlap:
+                break
+            overlap_tokens += previous_len
+            overlap_start -= 1
+
+        i = overlap_start if overlap_start > i else end
     return chunks
 
 
@@ -260,6 +264,27 @@ def collect_entity_terms(
     return entity_terms
 
 
+def normalize_html_document_for_chunking(text: str) -> str:
+    source = (text or "").strip()
+    if not source:
+        return ""
+    if not HTML_DOCUMENT_RE.match(source):
+        return text
+
+    soup = BeautifulSoup(source, "html.parser")
+    for node in soup.find_all(HTML_NOISE_TAGS):
+        node.decompose()
+    for form in list(soup.find_all("form")):
+        if form.find("input", attrs={"type": re.compile(r"password", re.I)}):
+            form.decompose()
+
+    container = soup.body or soup
+    lines = [line.strip() for line in container.get_text("\n", strip=True).splitlines()]
+    return "\n".join(
+        line for line in lines if line and not HTML_UI_CONFIG_JSON_LINE_RE.match(line)
+    )
+
+
 def split_text_block_for_chunking(
     text: str,
     *,
@@ -335,6 +360,7 @@ def chunk_document_text(
     if overlap is None:
         overlap = EMBEDDING_CHUNK_OVERLAP_TOKENS
 
+    text = normalize_html_document_for_chunking(text)
     chunks: list[ChunkData] = []
     lines = text.splitlines()
     blocks: list[tuple[str, str, str | None, str | None]] = []

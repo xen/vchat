@@ -115,7 +115,7 @@ from . import forms
 
 logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
-DOCUMENT_CONTENT_PREVIEW_CHARS = 2000
+DOCUMENT_CONTENT_PREVIEW_CHARS = 500
 DEFAULT_WIDGET_WELCOME_MESSAGE = "Здравствуйте! Чем могу помочь?"
 
 __all__ = [
@@ -125,6 +125,7 @@ __all__ = [
     "project_source_settings",
     "project_view",
     "project_document_content",
+    "project_document_content_rest",
     "project_document_detail",
     "project_documents_csv",
     "project_files_json",
@@ -486,11 +487,39 @@ def _is_ignored_link_status(
         PageStatusError.excluded_robots.value,
         PageStatusError.excluded_rules.value,
         PageStatusError.excluded_auth.value,
+        PageStatusError.duplicate_content.value,
         PageStatusError.no_content.value,
         PageStatusError.low_content.value,
         PageStatusError.too_big.value,
         PageStatusError.redirect.value,
     }
+
+
+def _is_ignored_document(document: Page | Any) -> bool:
+    return _is_ignored_link_status(
+        getattr(document, "status", None),
+        getattr(document, "status_error", None),
+    )
+
+
+def _document_content_preview_at_word_boundary(
+    content_preview: str,
+    *,
+    is_truncated: bool,
+) -> tuple[str, int]:
+    if not is_truncated:
+        return content_preview, len(content_preview)
+
+    preview = content_preview[:DOCUMENT_CONTENT_PREVIEW_CHARS].rstrip()
+    if not preview:
+        return "", 0
+
+    last_whitespace = max(preview.rfind(" "), preview.rfind("\n"), preview.rfind("\t"))
+    if last_whitespace <= 0:
+        return preview, len(preview)
+
+    preview = preview[:last_whitespace].rstrip()
+    return preview, len(preview)
 
 
 def _resolve_document_link_status(page: Page | Any | None) -> str:
@@ -875,6 +904,16 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     document_content_is_truncated = (
         document_content_char_count > DOCUMENT_CONTENT_PREVIEW_CHARS
     )
+    (
+        document_content_preview,
+        document_content_preview_source_chars,
+    ) = _document_content_preview_at_word_boundary(
+        document_content_preview,
+        is_truncated=document_content_is_truncated,
+    )
+    document_content_can_expand = (
+        document_content_is_truncated and not _is_ignored_document(document)
+    )
     document_meta = {
         "extraction": meta_extraction if isinstance(meta_extraction, dict) else {},
         "outline": meta_outline if isinstance(meta_outline, list) else [],
@@ -972,8 +1011,14 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         "document_display_title": document_display_title,
         "document_content_preview": document_content_preview,
         "document_content_is_truncated": document_content_is_truncated,
+        "document_content_can_expand": document_content_can_expand,
         "document_content_preview_chars": DOCUMENT_CONTENT_PREVIEW_CHARS,
+        "document_content_preview_source_chars": document_content_preview_source_chars,
         "document_content_char_count": document_content_char_count,
+        "document_content_remaining_chars": max(
+            document_content_char_count - document_content_preview_source_chars,
+            0,
+        ),
         "document_crawl_fields": _document_crawl_fields(document),
         "document_pipeline": _document_pipeline_steps(document),
         "document_stats_summary": _document_stats_summary(
@@ -1411,6 +1456,7 @@ def _build_progress_conditions():
         PageStatusError.excluded_ignored.value,
         PageStatusError.excluded_robots.value,
         PageStatusError.excluded_rules.value,
+        PageStatusError.duplicate_content.value,
         PageStatusError.no_content.value,
         PageStatusError.low_content.value,
         PageStatusError.too_big.value,
@@ -2523,6 +2569,7 @@ async def project_view(request):
         "source_filters": source_filters,
     }
 
+
 DOCUMENTS_CSV_FIELDS = (
     "id",
     "title",
@@ -2538,7 +2585,9 @@ DOCUMENTS_CSV_FIELDS = (
 
 def _documents_csv_response(rows: list[dict[str, Any]]) -> web.Response:
     buffer = io.StringIO(newline="")
-    writer = csv.DictWriter(buffer, fieldnames=DOCUMENTS_CSV_FIELDS, lineterminator="\n")
+    writer = csv.DictWriter(
+        buffer, fieldnames=DOCUMENTS_CSV_FIELDS, lineterminator="\n"
+    )
     writer.writeheader()
     writer.writerows(rows)
     return web.Response(text=buffer.getvalue(), content_type="text/csv")
@@ -2795,7 +2844,9 @@ async def project_stats(request):
     )
     pending_embeddings = (
         await db.scalar(
-            sa.select(sa.func.count(Chunk.id)).where(Chunk.embedding.is_(None))
+            sa.select(sa.func.count(Chunk.id))
+            .where(Chunk.embedding.is_(None))
+            .where(Chunk.is_duplicate.is_(False))
         )
         or 0
     )
@@ -2813,6 +2864,18 @@ async def project_stats(request):
         .order_by(Source.title)
     )
     source_docs_res = (await db.execute(source_docs_query)).all()
+
+    metadata_policy_reason_expr = Page.meta["index_policy_reason"].as_string()
+    source_metadata_policy_query = (
+        sa.select(
+            Page.source_id,
+            metadata_policy_reason_expr.label("reason"),
+            sa.func.count(Page.id).label("doc_count"),
+        )
+        .where(Page.meta["index_policy"].as_string() == "metadata_only")
+        .group_by(Page.source_id, metadata_policy_reason_expr)
+    )
+    source_metadata_policy_res = (await db.execute(source_metadata_policy_query)).all()
 
     source_chunks_query = (
         sa.select(
@@ -2851,16 +2914,32 @@ async def project_stats(request):
     ).one()
 
     chunks_by_source = {row.id: row for row in source_chunks_res}
+    metadata_policy_by_source: dict[int | None, list[dict[str, int | str]]] = {}
+    for row in source_metadata_policy_res:
+        metadata_policy_by_source.setdefault(row.source_id, []).append(
+            {
+                "reason": row.reason or "unknown",
+                "doc_count": int(row.doc_count or 0),
+            }
+        )
+    for reasons in metadata_policy_by_source.values():
+        reasons.sort(key=lambda item: (-int(item["doc_count"]), str(item["reason"])))
+
     source_stats = []
     total_docs = 0
     total_data_volume = 0
     total_chunks = 0
     total_chunk_storage = 0
+    total_metadata_only_docs = 0
 
     for row in source_docs_res:
         chunk_data = chunks_by_source.get(row.id)
         chunk_count = chunk_data.chunk_count if chunk_data else 0
         chunk_storage = chunk_data.chunk_storage if chunk_data else 0
+        metadata_policy_reasons = metadata_policy_by_source.get(row.id, [])
+        metadata_only_count = sum(
+            int(item["doc_count"]) for item in metadata_policy_reasons
+        )
         source_stats.append(
             {
                 "id": row.id,
@@ -2869,17 +2948,24 @@ async def project_stats(request):
                 "data_volume": row.data_volume,
                 "chunk_count": chunk_count,
                 "chunk_storage": chunk_storage,
+                "metadata_only_count": metadata_only_count,
+                "metadata_policy_reasons": metadata_policy_reasons,
             }
         )
         total_docs += row.doc_count
         total_data_volume += row.data_volume
         total_chunks += chunk_count
         total_chunk_storage += chunk_storage
+        total_metadata_only_docs += metadata_only_count
 
     files_doc_count = int(files_docs_row.doc_count or 0)
     files_data_volume = int(files_docs_row.data_volume or 0)
     files_chunk_count = int(files_chunks_row.chunk_count or 0)
     files_chunk_storage = int(files_chunks_row.chunk_storage or 0)
+    files_metadata_policy_reasons = metadata_policy_by_source.get(None, [])
+    files_metadata_only_count = sum(
+        int(item["doc_count"]) for item in files_metadata_policy_reasons
+    )
     if files_doc_count > 0:
         source_stats.append(
             {
@@ -2889,12 +2975,15 @@ async def project_stats(request):
                 "data_volume": files_data_volume,
                 "chunk_count": files_chunk_count,
                 "chunk_storage": files_chunk_storage,
+                "metadata_only_count": files_metadata_only_count,
+                "metadata_policy_reasons": files_metadata_policy_reasons,
             }
         )
         total_docs += files_doc_count
         total_data_volume += files_data_volume
         total_chunks += files_chunk_count
         total_chunk_storage += files_chunk_storage
+        total_metadata_only_docs += files_metadata_only_count
 
     return {
         "project": _project_context(request),
@@ -2918,6 +3007,7 @@ async def project_stats(request):
         "total_data_volume": total_data_volume,
         "total_chunks": total_chunks,
         "total_chunk_storage": total_chunk_storage,
+        "total_metadata_only_docs": total_metadata_only_docs,
     }
 
 
@@ -2926,6 +3016,48 @@ async def project_stats(request):
 async def project_document_content(request):
     document_id = int(request.match_info.get("document_id"))
     return await _document_detail_context(request, document_id)
+
+
+@login_required()
+@aiohttp_jinja2.template("projects/document_content_rest.html")
+async def project_document_content_rest(request):
+    document_id = int(request.match_info.get("document_id"))
+    try:
+        offset = int(
+            request.rel_url.query.get("offset", str(DOCUMENT_CONTENT_PREVIEW_CHARS))
+        )
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="offset must be an integer")
+    if offset < 0:
+        raise web.HTTPBadRequest(text="offset must be non-negative")
+
+    db = request["db"]
+    row = (
+        await db.execute(
+            sa.select(
+                Page,
+                sa.func.coalesce(
+                    sa.func.substring(
+                        Page.content,
+                        offset + 1,
+                    ),
+                    "",
+                ).label("content_rest"),
+            )
+            .options(defer(Page.content), defer(Page.meta))
+            .where(Page.id == document_id)
+        )
+    ).one_or_none()
+    if not row:
+        raise web.HTTPNotFound()
+
+    document, document_content_rest = row
+    if _is_ignored_document(document):
+        raise web.HTTPNotFound()
+
+    return {
+        "document_content_rest": document_content_rest or "",
+    }
 
 
 @meta(title=_("Структура документа"))

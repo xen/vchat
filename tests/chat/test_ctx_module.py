@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -222,6 +223,160 @@ def test_context_builders() -> None:
     )
     assert combined[-1].role == "system"
     assert combined[-1].content == "[context]"
+
+
+def test_file_summary_counts_as_quote_ready_source() -> None:
+    snippet = ctx_mod.Snippet(
+        id=1,
+        text=(
+            "Document indexed as metadata only. "
+            "URL: https://example.com/dota2_skill_train.csv"
+        ),
+        kind="file_summary",
+        src="kb",
+        document_id=10,
+        chunk_ix=0,
+        uri="https://example.com/dota2_skill_train.csv",
+        title="dota2_skill_train.csv",
+    )
+
+    policy, coverage = ctx_mod._build_policy_and_coverage(
+        "дай источник файла dota2_skill_train.csv",
+        [snippet],
+    )
+
+    assert policy.quote_mode is True
+    assert policy.has_quote_candidate is True
+    assert policy.reason_code == "ok"
+    assert coverage["quote_ready"] is True
+    assert coverage["section_count"] == 1
+
+
+def test_build_context_from_snippets_includes_citation_ids() -> None:
+    class _Provider:
+        def token_count(self, text, model=None):
+            _ = model
+            return len((text or "").split())
+
+    model = SimpleNamespace(id="test-model", context_window=8000, max_tokens=512)
+    msg = ctx_mod.build_context_from_snippets(
+        [
+            ctx_mod.Snippet(
+                id=1,
+                text="First grounded fact.",
+                uri="https://example.com/one",
+                title="One",
+                kind="text",
+            ),
+            ctx_mod.Snippet(
+                id=2,
+                text="Second grounded fact.",
+                uri="https://example.com/two",
+                title="Two",
+                kind="text",
+            ),
+        ],
+        provider=_Provider(),
+        model=model,
+    )
+
+    payload = json.loads(msg.content.split("\n", 1)[1])
+
+    assert payload["snippets"][0]["citation_id"] == 0
+    assert payload["snippets"][1]["citation_id"] == 1
+    assert payload["snippets"][0]["uri"] == "https://example.com/one"
+
+
+@pytest.mark.asyncio
+async def test_get_context_sources_match_visible_context_snippets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _tail(db, chat_id, limit):
+        _ = db, chat_id, limit
+        return []
+
+    def _embed(prompt):
+        _ = prompt
+        return [0.1, 0.2]
+
+    async def _vec(db, chat_id, query_vec, top_k):
+        _ = db, chat_id, query_vec, top_k
+        return [
+            ctx_mod.Snippet(
+                id=1,
+                text="alpha beta",
+                document_id=1,
+                chunk_ix=0,
+                uri="https://example.com/one",
+                title="One",
+                kind="text",
+            ),
+            ctx_mod.Snippet(
+                id=2,
+                text="gamma delta",
+                document_id=2,
+                chunk_ix=0,
+                uri="https://example.com/two",
+                title="Two",
+                kind="text",
+            ),
+            ctx_mod.Snippet(
+                id=3,
+                text="epsilon zeta",
+                document_id=3,
+                chunk_ix=0,
+                uri="https://example.com/three",
+                title="Three",
+                kind="text",
+            ),
+        ]
+
+    async def _ft(db, prompt_text, top_m):
+        _ = db, prompt_text, top_m
+        return []
+
+    def _rerank(query, snippets):
+        _ = query
+        return snippets
+
+    class _Provider:
+        def token_count(self, text, model=None):
+            _ = model
+            return len((text or "").split())
+
+    model = SimpleNamespace(id="test-model", context_window=8000, max_tokens=512)
+
+    monkeypatch.setattr(ctx_mod, "tail_messages", _tail)
+    monkeypatch.setattr(ctx_mod, "embed_query", _embed)
+    monkeypatch.setattr(ctx_mod, "vector_supply", _vec)
+    monkeypatch.setattr(ctx_mod, "fulltext_supply", _ft)
+    monkeypatch.setattr(ctx_mod, "crossrerank", _rerank)
+    monkeypatch.setattr(ctx_mod, "MAX_CONTEXT_SNIPPET_TOKENS", 4)
+
+    result = await ctx_mod.get_context(
+        db=SimpleNamespace(),
+        chat_id="chat-1",
+        prompt="source",
+        provider=_Provider(),
+        model=model,
+        tail_limit=5,
+        vector_top_k=5,
+        ft_top_m=0,
+    )
+    context_msg = next(
+        msg
+        for msg in result.messages
+        if msg.role == "developer" and msg.content.startswith("[context]\n")
+    )
+    payload = json.loads(context_msg.content.split("\n", 1)[1])
+
+    assert [item["citation_id"] for item in payload["snippets"]] == [0, 1]
+    assert [source["citation_id"] for source in result.sources] == [0, 1]
+    assert [chunk["citation_id"] for chunk in result.used_chunks] == [0, 1]
+    assert {source["uri"] for source in result.sources} == {
+        "https://example.com/one",
+        "https://example.com/two",
+    }
 
 
 @pytest.mark.asyncio

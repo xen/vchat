@@ -12,7 +12,6 @@ Coverage:
 from __future__ import annotations
 
 import math
-from dataclasses import asdict
 from typing import Any
 
 import pytest
@@ -119,6 +118,10 @@ class TestRetrievalConfig:
     def test_kind_bonus_text_positive(self) -> None:
         assert rcnf.RERANK_KIND_BONUS["text"] > 0
 
+    def test_kind_bonus_file_summary_positive_and_below_text(self) -> None:
+        assert rcnf.RERANK_KIND_BONUS["file_summary"] > 0
+        assert rcnf.RERANK_KIND_BONUS["file_summary"] < rcnf.RERANK_KIND_BONUS["text"]
+
     def test_kind_bonus_summary_positive(self) -> None:
         assert rcnf.RERANK_KIND_BONUS["section_summary"] > 0
         assert rcnf.RERANK_KIND_BONUS["summary"] > 0
@@ -130,6 +133,9 @@ class TestRetrievalConfig:
     def test_zero_overlap_penalty_positive(self) -> None:
         # It's a penalty so the constant itself is stored as a positive value
         assert rcnf.RERANK_SUMMARY_ZERO_OVERLAP_PENALTY > 0
+
+    def test_query_echo_penalty_positive(self) -> None:
+        assert rcnf.RERANK_QUERY_ECHO_PENALTY > 0
 
     def test_header_text_weight_gte_entity_terms(self) -> None:
         # header_text is more discriminative than entity_terms
@@ -144,6 +150,9 @@ class TestRetrievalConfig:
             >= rcnf.RERANK_FIELD_WEIGHTS["section_path"]
             >= rcnf.RERANK_FIELD_WEIGHTS["entity_terms"]
         )
+
+    def test_title_weight_positive(self) -> None:
+        assert rcnf.RERANK_FIELD_WEIGHTS["title"] > 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,6 +174,20 @@ class TestSystemConstants:
 
     def test_rrf_k_unchanged(self) -> None:
         assert RRF_K == 60
+
+
+def test_queryprofile_filters_generic_stop_terms(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ctx_mod,
+        "lexical_query",
+        lambda _text: "what OR the OR list OR onboarding OR identity",
+    )
+
+    profile = ctx_mod.queryprofile("what is the onboarding identity list")
+
+    assert profile["lexical_terms"] == ["onboarding", "identity"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -409,6 +432,54 @@ class TestCrossrerank:
         scores = {r.document_id: r.rerank_score for r in result}
         assert scores[80] > scores[81]
 
+    def test_title_match_lifts_expected_document_above_query_echo(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_reranker(monkeypatch, 0.2)
+        _patch_profile(monkeypatch, ["onboarding", "identity"])
+        query_echo = make_snippet(
+            text="Unrelated search page mentioning only: list onboarding requirements",
+            kind="section_summary",
+            title="Search noise",
+            uri="https://noise.example.com/search",
+            document_id=5001,
+        )
+        title_match = make_snippet(
+            text="Identity: new users must complete identity verification.",
+            kind="text",
+            title="Onboarding",
+            uri="https://example.com/docs/onboarding#identity",
+            document_id=5002,
+        )
+
+        result = crossrerank("list onboarding requirements", [query_echo, title_match])
+
+        assert result[0].uri == "https://example.com/docs/onboarding#identity"
+
+    def test_query_echo_section_summary_is_penalized(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_reranker(monkeypatch, 0.2)
+        _patch_profile(monkeypatch, ["ios", "app", "mention"])
+        query_echo = make_snippet(
+            text="Unrelated search page mentioning only: Does the site mention iOS app?",
+            kind="section_summary",
+            title="Search noise",
+            uri="https://noise.example.com/search",
+            document_id=5003,
+        )
+        evidence = make_snippet(
+            text="Supported platforms are web and Android. This page does not mention an iOS app.",
+            kind="text",
+            title="Supported platforms",
+            uri="https://example.com/docs/platforms",
+            document_id=5004,
+        )
+
+        result = crossrerank("Does the site mention iOS app?", [query_echo, evidence])
+
+        assert result[0].uri == "https://example.com/docs/platforms"
+
     def test_section_path_match_boosts_score(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -477,6 +548,31 @@ class TestCrossrerank:
         # table gets TABLE_MODE_BONUS +0.20 and text gets KIND_BONUS +0.12
         # so table should win when in table_mode
         assert scores["table"] > scores["text"]
+
+    def test_file_summary_kind_bonus_for_metadata_document(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _patch_reranker(monkeypatch, 0.5)
+        _patch_profile(monkeypatch, ["dota2", "csv"])
+        file_summary = make_snippet(
+            text=(
+                "Document indexed as metadata only. Title: dota2_skill_train.csv "
+                "URL: https://example.com/dota2_skill_train.csv"
+            ),
+            kind="file_summary",
+            document_id=92,
+            chunk_ix=0,
+        )
+        weak_text = make_snippet(
+            text="CSV files are tabular data files.",
+            kind="text",
+            document_id=93,
+            chunk_ix=0,
+        )
+
+        result = crossrerank("query", [weak_text, file_summary])
+
+        assert result[0].kind == "file_summary"
 
     def test_content_dedup_removes_same_section(
         self, monkeypatch: pytest.MonkeyPatch

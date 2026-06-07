@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import jinja2
 import pytest
+from aiohttp import web
 
 from vchat.app_keys import REDIS_KEY
 from vchat.views.projects import views as project_views
@@ -27,6 +28,9 @@ class _Resp:
         return self._all_rows
 
     def one(self):
+        return self._one_row
+
+    def one_or_none(self):
         return self._one_row
 
     def scalar(self):
@@ -90,7 +94,7 @@ def test_document_content_template_renders_structure_items() -> None:
         document_display_title="Doc",
         document_content_preview="body",
         document_content_is_truncated=False,
-        document_content_preview_chars=2000,
+        document_content_preview_chars=500,
         document_content_char_count=4,
         document_pipeline=("ready", None, None),
         document_stats_summary="10 Б, 0 чанков, 0 слов, 0 таблиц",
@@ -115,6 +119,180 @@ def test_document_content_template_renders_structure_items() -> None:
     assert "one\ntwo" in rendered
 
 
+def test_document_content_preview_truncates_at_word_boundary() -> None:
+    content = "alpha beta gamm"
+    preview, source_chars = project_views._document_content_preview_at_word_boundary(
+        content,
+        is_truncated=True,
+    )
+
+    assert preview == "alpha beta"
+    assert source_chars == len("alpha beta")
+    assert preview + content[source_chars:] == content
+
+
+def test_document_content_template_renders_chunk_overlap_without_indent_gaps() -> None:
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(
+            str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
+        )
+    )
+    env.globals["url"] = lambda name, document_id: f"/page/{document_id}"
+    template = env.get_template("projects/document_content.html")
+    rendered = template.render(
+        document=SimpleNamespace(
+            id=1,
+            title="Doc",
+            uri=None,
+            status="ready",
+            status_error=None,
+            meta={},
+            content="body",
+        ),
+        document_display_title="Doc",
+        document_content_preview="body",
+        document_content_is_truncated=False,
+        document_content_can_expand=False,
+        document_content_preview_chars=500,
+        document_content_char_count=4,
+        document_content_remaining_chars=0,
+        document_pipeline=("ready", None, None),
+        document_stats_summary="10 Б, 2 чанков, 0 слов, 0 таблиц",
+        document_crawl_summary="код —",
+        document_structure=[],
+        document_outline=[],
+        document_extraction={},
+        document_chunks=[
+            SimpleNamespace(
+                chunk_ix=0,
+                kind="text",
+                section_path="",
+                header_text="",
+                token_count=1,
+                text="first chunk",
+                start_offset=0,
+                end_offset=10,
+                entity_terms=[],
+            ),
+            SimpleNamespace(
+                chunk_ix=1,
+                kind="text",
+                section_path="",
+                header_text="",
+                token_count=1,
+                text="second chunk",
+                start_offset=5,
+                end_offset=20,
+                entity_terms=[],
+            ),
+        ],
+        document_crawl_fields=[],
+        document_links={"mutual": [], "incoming": [], "outgoing": []},
+        document_links_graph={"currentNodeId": "page-1", "nodes": [], "links": []},
+    )
+
+    assert rendered.index("overlap с предыдущим: 5 символов") < rendered.index(
+        "second chunk"
+    )
+    assert ">overlap с предыдущим: 5 символов</div>second chunk" in rendered
+    assert "first chunk<div class=\"mt-1 text-amber-700 text-xs\">" in rendered
+
+
+def test_document_content_template_renders_expand_button_for_truncated_content() -> None:
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(
+            str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
+        )
+    )
+    env.globals["url"] = (
+        lambda name, document_id: f"/page/{document_id}/content/rest"
+    )
+    template = env.get_template("projects/document_content.html")
+    rendered = template.render(
+        document=SimpleNamespace(
+            id=7,
+            title="Doc",
+            uri=None,
+            status="ready",
+            status_error=None,
+            meta={},
+            content="body",
+        ),
+        document_display_title="Doc",
+        document_content_preview="preview",
+        document_content_is_truncated=True,
+        document_content_can_expand=True,
+        document_content_preview_chars=500,
+        document_content_preview_source_chars=491,
+        document_content_char_count=2105,
+        document_content_remaining_chars=1614,
+        document_pipeline=("ready", None, None),
+        document_stats_summary="10 Б, 0 чанков, 0 слов, 0 таблиц",
+        document_crawl_summary="код —",
+        document_structure=[],
+        document_outline=[],
+        document_extraction={},
+        document_chunks=[],
+        document_crawl_fields=[],
+        document_links={"mutual": [], "incoming": [], "outgoing": []},
+        document_links_graph={"currentNodeId": "page-7", "nodes": [], "links": []},
+    )
+
+    assert '<span id="document-content-ellipsis">...</span>' in rendered
+    assert '<span id="document-content-rest"></span>' in rendered
+    assert 'hx-get="/page/7/content/rest?offset=491"' in rendered
+    assert "Показаны: 500 из 2105 символов." in rendered
+    assert "первые 500 символов" not in rendered
+    assert "[показать остальные 1614 символов]" in rendered
+
+
+def test_document_content_template_hides_expand_button_for_ignored_content() -> None:
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(
+            str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
+        )
+    )
+    env.globals["url"] = (
+        lambda name, document_id: f"/page/{document_id}/content/rest"
+    )
+    template = env.get_template("projects/document_content.html")
+    rendered = template.render(
+        document=SimpleNamespace(
+            id=7,
+            title="Doc",
+            uri=None,
+            status="ready",
+            status_error="excluded_ignored",
+            meta={},
+            content="body",
+        ),
+        document_display_title="Doc",
+        document_content_preview="preview",
+        document_content_is_truncated=True,
+        document_content_can_expand=False,
+        document_content_preview_chars=500,
+        document_content_preview_source_chars=493,
+        document_content_char_count=2105,
+        document_content_remaining_chars=1612,
+        document_pipeline=("ready", "excluded_ignored", "Исключено вручную"),
+        document_stats_summary="10 Б, 0 чанков, 0 слов, 0 таблиц",
+        document_crawl_summary="код —",
+        document_structure=[],
+        document_outline=[],
+        document_extraction={},
+        document_chunks=[],
+        document_crawl_fields=[],
+        document_links={"mutual": [], "incoming": [], "outgoing": []},
+        document_links_graph={"currentNodeId": "page-7", "nodes": [], "links": []},
+    )
+
+    assert "Показаны: 500 из 2105 символов." in rendered
+    assert "первые 500 символов" not in rendered
+    assert "показать остальные" not in rendered
+    assert '<span id="document-content-ellipsis">...</span>' in rendered
+    assert "document-content-rest" not in rendered
+
+
 def test_document_content_template_renders_compact_summary() -> None:
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(
@@ -136,7 +314,7 @@ def test_document_content_template_renders_compact_summary() -> None:
         document_display_title="Doc",
         document_content_preview="body",
         document_content_is_truncated=False,
-        document_content_preview_chars=2000,
+        document_content_preview_chars=500,
         document_content_char_count=4,
         document_pipeline=("ready", None, None),
         document_stats_summary="12.4 КБ, 3 чанков, 120 слов, 1 таблиц, 88% уникальности текста",
@@ -180,7 +358,7 @@ def test_document_content_template_renders_document_links_widget() -> None:
         document_display_title="Doc",
         document_content_preview="body",
         document_content_is_truncated=False,
-        document_content_preview_chars=2000,
+        document_content_preview_chars=500,
         document_content_char_count=4,
         document_pipeline=("ready", None, None),
         document_stats_summary="1.0 КБ, 0 чанков, 0 слов, 0 таблиц, 100% уникальности текста",
@@ -282,6 +460,20 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
                     )
                 ]
             ),
+            _Resp(
+                all_rows=[
+                    SimpleNamespace(
+                        source_id=1,
+                        reason="csv_statistical_dump",
+                        doc_count=2,
+                    ),
+                    SimpleNamespace(
+                        source_id=None,
+                        reason="large_downloadable_document",
+                        doc_count=1,
+                    ),
+                ]
+            ),
             _Resp(all_rows=[SimpleNamespace(id=1, chunk_count=9, chunk_storage=90)]),
             _Resp(one_row=SimpleNamespace(doc_count=1, data_volume=10)),
             _Resp(one_row=SimpleNamespace(chunk_count=2, chunk_storage=20)),
@@ -302,7 +494,31 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
     assert payload["total_docs"] == 8
     assert payload["total_chunks"] == 11
     assert payload["total_tokens"] >= 100
+    assert payload["total_metadata_only_docs"] == 3
     assert payload["source_stats"]
+    assert payload["source_stats"][0]["metadata_only_count"] == 2
+    assert payload["source_stats"][0]["metadata_policy_reasons"] == [
+        {"reason": "csv_statistical_dump", "doc_count": 2}
+    ]
+    assert payload["source_stats"][1]["metadata_only_count"] == 1
+    assert payload["source_stats"][1]["metadata_policy_reasons"] == [
+        {"reason": "large_downloadable_document", "doc_count": 1}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_project_document_content_rest_rejects_non_integer_offset() -> None:
+    req = _Req(
+        match_info={"document_id": "1"},
+        rel_url=SimpleNamespace(query={"offset": "abc"}),
+        db=_DB(),
+    )
+    raw = project_views.project_document_content_rest.__wrapped__.__wrapped__
+
+    with pytest.raises(web.HTTPBadRequest) as exc:
+        await raw(req)
+
+    assert exc.value.text == "offset must be an integer"
 
 
 @pytest.mark.asyncio

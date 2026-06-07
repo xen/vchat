@@ -26,6 +26,11 @@ from jobs.embedder.queue import (
     pending_chunks_remain,
     release_pending_chunk_slots,
 )
+from vchat.document_content import (
+    CHUNK_TEXT_HASH_IGNORED_CHARS,
+    chunk_text_sha256,
+    normalize_chunk_text_for_hash,
+)
 from vchat.models import ChatMsg, Chunk, Page
 from vchat.page_status import PageStatus
 from vchat.settings import config
@@ -139,10 +144,78 @@ def make_embed_vectors(texts: list[str]) -> list[List[float]]:
     return vectors
 
 
+def normalized_chunk_text_expr(column):
+    return sa.func.btrim(
+        sa.func.translate(
+            column,
+            CHUNK_TEXT_HASH_IGNORED_CHARS,
+            "",
+        )
+    )
+
+
+def apply_embedding_to_matching_kb_chunks(
+    session: Session,
+    *,
+    text_hash: str | None,
+    text: str,
+    embedding: list[float],
+) -> set[int]:
+    normalized_text = normalize_chunk_text_for_hash(text or "")
+    if not normalized_text:
+        return set()
+    effective_hash = text_hash or chunk_text_sha256(text or "")
+    matching_chunk_ids = (
+        sa.select(Chunk.id)
+        .where(
+            Chunk.chat_id.is_(None),
+            Chunk.page_id.isnot(None),
+            Chunk.embedding.is_(None),
+            Chunk.is_duplicate.is_(False),
+            Chunk.text_hash == effective_hash,
+            normalized_chunk_text_expr(Chunk.text) == normalized_text,
+        )
+        .with_for_update(skip_locked=True)
+        .cte("matching_chunk_ids")
+    )
+    rows = session.execute(
+        sa.update(Chunk)
+        .where(Chunk.id.in_(sa.select(matching_chunk_ids.c.id)))
+        .values(embedding=embedding)
+        .returning(Chunk.page_id)
+    ).all()
+    return {int(page_id) for (page_id,) in rows if page_id is not None}
+
+
+def mark_completed_pages(session: Session, page_ids: set[int]) -> list[int]:
+    if not page_ids:
+        return []
+    remaining_rows = session.execute(
+        sa.select(Chunk.page_id, sa.func.count(Chunk.id))
+        .where(Chunk.page_id.in_(page_ids))
+        .where(Chunk.embedding.is_(None))
+        .where(Chunk.is_duplicate.is_(False))
+        .group_by(Chunk.page_id)
+    ).all()
+    remaining_by_page = {
+        int(page_id): int(count or 0) for page_id, count in remaining_rows
+    }
+    completed_page_ids = [
+        page_id for page_id in page_ids if remaining_by_page.get(page_id, 0) == 0
+    ]
+    if completed_page_ids:
+        session.execute(
+            sa.update(Page)
+            .where(Page.id.in_(completed_page_ids))
+            .values(status=PageStatus.ready, status_error=None)
+        )
+    return completed_page_ids
+
+
 def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bool:
     stmt = (
         select(Chunk)
-        .where(Chunk.embedding.is_(None))
+        .where(Chunk.embedding.is_(None), Chunk.is_duplicate.is_(False))
         .order_by(Chunk.page_id.asc(), Chunk.chunk_ix.asc())
         .limit(1)
         .with_for_update(skip_locked=True)
@@ -176,6 +249,7 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
     chunk_page_id = chunk.page_id
     chunk_ix = chunk.chunk_ix
     chunk_text = chunk.text
+    chunk_text_hash = chunk.text_hash
     chunk_size = len(chunk_text or "")
     start_time = time.monotonic()
     logging.info(
@@ -193,7 +267,15 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
         )
 
     vec = make_embed_vector(chunk_text)
-    chunk.embedding = vec
+    updated_page_ids = apply_embedding_to_matching_kb_chunks(
+        session,
+        text_hash=chunk_text_hash,
+        text=chunk_text,
+        embedding=vec,
+    )
+    if not updated_page_ids:
+        chunk.embedding = vec
+        updated_page_ids = {chunk_page_id}
     session.flush()
     # Идемпотентность: коммитим каждый чанк сразу
     session.commit()
@@ -202,19 +284,15 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
     # накапливает Metal-буферы до исчерпания памяти при длинных циклах.
     release_torch_cache()
 
+    completed_page_ids = mark_completed_pages(session, updated_page_ids)
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(
             Chunk.page_id == chunk_page_id,
             Chunk.embedding.is_(None),
+            Chunk.is_duplicate.is_(False),
         )
     ).scalar_one()
-
-    if remaining == 0:
-        session.execute(
-            sa.update(Page)
-            .where(Page.id == chunk_page_id)
-            .values(status=PageStatus.ready, status_error=None)
-        )
+    if completed_page_ids:
         session.commit()
 
     # Очищаем identity map: без этого Session накапливает все Chunk/Page
@@ -231,7 +309,7 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
         remaining,
     )
 
-    if remaining == 0:
+    for _page_id in completed_page_ids:
         maybe_reset_embed_model_after_document()
 
     return True
@@ -252,9 +330,11 @@ def process_pending_chunk_batch(
             chunk_table.c.page_id,
             chunk_table.c.chunk_ix,
             chunk_table.c.text,
+            chunk_table.c.text_hash,
             chunk_table.c.token_count,
         )
         .where(chunk_table.c.embedding.is_(None))
+        .where(chunk_table.c.is_duplicate.is_(False))
         .order_by(chunk_table.c.page_id.asc(), chunk_table.c.chunk_ix.asc())
         .limit(limit)
         .with_for_update(skip_locked=True)
@@ -263,8 +343,7 @@ def process_pending_chunk_batch(
     if not chunks:
         return 0
 
-    valid_chunk_ids: list[int] = []
-    chunk_rows: list[tuple[int, int, int, str, int]] = []
+    chunk_rows: list[tuple[int, int, int, str, str | None, int]] = []
     page_ids: set[int] = set()
     dangling_chunk_ids: list[int] = []
     total_chars = 0
@@ -282,13 +361,13 @@ def process_pending_chunk_batch(
                 page_id=chunk_page_id,
             )
         chunk_text = chunk.text or ""
-        valid_chunk_ids.append(chunk.id)
         chunk_rows.append(
             (
                 chunk.id,
                 chunk_page_id,
                 chunk.chunk_ix,
                 chunk_text,
+                chunk.text_hash,
                 len(chunk_text),
             )
         )
@@ -313,39 +392,57 @@ def process_pending_chunk_batch(
         total_chars,
     )
 
-    vectors = make_embed_vectors([row[3] for row in chunk_rows])
-    session.execute(
-        chunk_table.update()
-        .where(chunk_table.c.id == sa.bindparam("chunk_id"))
-        .values(embedding=sa.bindparam("embedding_vector")),
-        [
-            {"chunk_id": chunk_id, "embedding_vector": vec}
-            for chunk_id, vec in zip(valid_chunk_ids, vectors, strict=True)
-        ],
-    )
+    embedding_inputs: dict[tuple[str, str], str] = {}
+    fallback_rows: list[tuple[int, int, int, str, str | None, int]] = []
+    for row in chunk_rows:
+        _chunk_id, _chunk_page_id, _chunk_ix, chunk_text, text_hash, _text_len = row
+        normalized_text = normalize_chunk_text_for_hash(chunk_text)
+        if normalized_text and text_hash:
+            embedding_inputs.setdefault((text_hash, normalized_text), chunk_text)
+        else:
+            fallback_rows.append(row)
+
+    embedding_keys = list(embedding_inputs.keys())
+    vectors = make_embed_vectors([embedding_inputs[key] for key in embedding_keys])
+    updated_page_ids: set[int] = set()
+    fallback_updates: list[dict[str, Any]] = []
+    for key, vec in zip(embedding_keys, vectors, strict=True):
+        text_hash, _normalized_text = key
+        chunk_text = embedding_inputs[key]
+        matched_page_ids = apply_embedding_to_matching_kb_chunks(
+            session,
+            text_hash=text_hash,
+            text=chunk_text,
+            embedding=vec,
+        )
+        updated_page_ids.update(matched_page_ids)
+    if fallback_rows:
+        fallback_vectors = make_embed_vectors([row[3] for row in fallback_rows])
+        for row, vec in zip(fallback_rows, fallback_vectors, strict=True):
+            (
+                chunk_id,
+                chunk_page_id,
+                _chunk_ix,
+                _chunk_text,
+                _text_hash,
+                _text_len,
+            ) = row
+            fallback_updates.append({"chunk_id": chunk_id, "embedding_vector": vec})
+            updated_page_ids.add(chunk_page_id)
+    if fallback_updates:
+        session.execute(
+            chunk_table.update()
+            .where(chunk_table.c.id == sa.bindparam("chunk_id"))
+            .values(embedding=sa.bindparam("embedding_vector")),
+            fallback_updates,
+        )
     session.commit()
     release_torch_cache()
 
     completed_page_ids: list[int] = []
-    if page_ids:
-        remaining_rows = session.execute(
-            sa.select(chunk_table.c.page_id, sa.func.count(chunk_table.c.id))
-            .where(chunk_table.c.page_id.in_(page_ids))
-            .where(chunk_table.c.embedding.is_(None))
-            .group_by(chunk_table.c.page_id)
-        ).all()
-        remaining_by_page = {
-            int(page_id): int(count or 0) for page_id, count in remaining_rows
-        }
-        completed_page_ids = [
-            page_id for page_id in page_ids if remaining_by_page.get(page_id, 0) == 0
-        ]
+    if updated_page_ids or page_ids:
+        completed_page_ids = mark_completed_pages(session, updated_page_ids | page_ids)
     if completed_page_ids:
-        session.execute(
-            Page.__table__.update()
-            .where(Page.__table__.c.id.in_(completed_page_ids))
-            .values(status=PageStatus.ready, status_error=None)
-        )
         session.commit()
         for _page_id in completed_page_ids:
             maybe_reset_embed_model_after_document()

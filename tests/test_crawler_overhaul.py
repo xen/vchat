@@ -91,6 +91,25 @@ class TestIsAuthRedirect:
         )
 
 
+class TestCrawlerPipelineIndexPolicyMeta:
+    def test_clear_auto_index_policy_meta_removes_generated_policy_only(self):
+        from jobs.crawler.pipelines import clear_auto_index_policy_meta
+
+        meta = {
+            "index_policy": "metadata_only",
+            "index_policy_reason": "empty_visible_text",
+            "reason": "previous_error",
+            "custom": "keep",
+        }
+
+        clear_auto_index_policy_meta(meta)
+
+        assert "index_policy" not in meta
+        assert "index_policy_reason" not in meta
+        assert meta["reason"] == "previous_error"
+        assert meta["custom"] == "keep"
+
+
 # ---------------------------------------------------------------------------
 # TestCountInternalLinks
 # ---------------------------------------------------------------------------
@@ -1612,6 +1631,147 @@ class TestEmbedderSkipsErrorPages:
         assert fetch_page_context(session, 1) is None
 
 
+class TestDuplicateContentSelection:
+    def test_find_duplicate_content_page_uses_shorter_existing_url_as_primary(self):
+        from jobs.crawler.pipelines import find_duplicate_content_page
+
+        session = MagicMock()
+        session.execute.return_value.first.return_value = SimpleNamespace(
+            id=10,
+            uri="https://example.com/page/",
+        )
+
+        duplicate = find_duplicate_content_page(
+            session,
+            page_id=11,
+            source_id=1,
+            uri="https://example.com/page/?age=14-16",
+            content_hash="abc",
+        )
+
+        assert duplicate is not None
+        assert duplicate.id == 10
+        assert duplicate.uri == "https://example.com/page/"
+
+    def test_find_duplicate_content_page_keeps_shorter_current_url_as_primary(self):
+        from jobs.crawler.pipelines import find_duplicate_content_page
+
+        session = MagicMock()
+        session.execute.return_value.first.return_value = SimpleNamespace(
+            id=10,
+            uri="https://example.com/page/?age=14-16",
+        )
+
+        duplicate = find_duplicate_content_page(
+            session,
+            page_id=11,
+            source_id=1,
+            uri="https://example.com/page/",
+            content_hash="abc",
+        )
+
+        assert duplicate is None
+
+
+class TestChunkTextDeduplication:
+    def test_chunk_text_hash_ignores_edge_spaces_and_invisible_chars(self):
+        from jobs.crawler.tasks import chunk_text_hash
+
+        assert chunk_text_hash("\u200b  same text \ufeff") == chunk_text_hash(
+            "same text"
+        )
+
+    def test_mark_duplicate_page_chunks_selects_canonical_within_same_page(self):
+        from jobs.crawler.tasks import mark_duplicate_page_chunks
+
+        first = SimpleNamespace(
+            id=1,
+            page_id=10,
+            chat_id=None,
+            text_hash="same",
+            is_duplicate=False,
+            duplicate_of_chunk_id=None,
+            embedding=[0.1],
+        )
+        second = SimpleNamespace(
+            id=2,
+            page_id=10,
+            chat_id=None,
+            text_hash="same",
+            is_duplicate=False,
+            duplicate_of_chunk_id=None,
+            embedding=[0.2],
+        )
+        calls = []
+
+        class _PageChunksResult:
+            def scalars(self):
+                return self
+
+            def all(self):
+                return [first, second]
+
+        class _CanonicalRowsResult:
+            def all(self):
+                return [("same", first.id)]
+
+        class _Session:
+            def execute(self, stmt):
+                calls.append(str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                if len(calls) == 1:
+                    return _PageChunksResult()
+                return _CanonicalRowsResult()
+
+        duplicate_count = mark_duplicate_page_chunks(_Session(), page_id=10)
+
+        assert duplicate_count == 1
+        assert first.is_duplicate is False
+        assert first.duplicate_of_chunk_id is None
+        assert second.is_duplicate is True
+        assert second.duplicate_of_chunk_id == first.id
+        assert second.embedding is None
+        assert "chunk.page_id = 10" in calls[1]
+
+    def test_reuse_existing_chunk_embeddings_copies_ready_vector(self):
+        from jobs.crawler.tasks import chunk_text_hash, reuse_existing_chunk_embeddings
+
+        chunk = SimpleNamespace(
+            id=2,
+            page_id=20,
+            chat_id=None,
+            text="\u200b  shared text \ufeff",
+            text_hash=chunk_text_hash("shared text"),
+            embedding=None,
+            is_duplicate=False,
+        )
+        calls = []
+
+        class _PageChunksResult:
+            def scalars(self):
+                return self
+
+            def all(self):
+                return [chunk]
+
+        class _EmbeddingResult:
+            def scalar_one_or_none(self):
+                return [0.1, 0.2]
+
+        class _Session:
+            def execute(self, stmt):
+                calls.append(str(stmt.compile(compile_kwargs={"literal_binds": True})))
+                if len(calls) == 1:
+                    return _PageChunksResult()
+                return _EmbeddingResult()
+
+        reused_count = reuse_existing_chunk_embeddings(_Session(), page_id=20)
+
+        assert reused_count == 1
+        assert chunk.embedding == [0.1, 0.2]
+        assert "chunk.text_hash = " in calls[1]
+        assert "btrim(translate(chunk.text" in calls[1]
+
+
 class TestSoft404Pages:
     def test_pipeline_marks_oversize_content_too_big_without_scheduling(self):
         from jobs.crawler.pipelines import DatabasePipeline
@@ -1690,6 +1850,88 @@ class TestSoft404Pages:
         assert page.status_error == PageStatusError.too_big
         assert page.meta["reason"] == PageStatusError.too_big.value
         assert page.meta["message"] == "Document content is too large to index."
+
+    def test_pipeline_excludes_full_duplicate_content_without_scheduling(self):
+        from jobs.crawler.pipelines import DatabasePipeline, DuplicatePage
+        from vchat.page_status import PageStatus, PageStatusError
+
+        page = SimpleNamespace(
+            id=1416,
+            source_id=7,
+            uri="https://navigator.vbudushee.ru/direction/sotsialno-emotsionalnoe-razvitie/belyy-klyk/?age=14-16",
+            meta={},
+            status_error=None,
+            is_hub_page=False,
+            content_value=None,
+            stable_count=0,
+            error_count=0,
+            check_interval_days=7,
+            title="",
+        )
+
+        session = MagicMock()
+        session.__enter__ = lambda s: session
+        session.__exit__ = MagicMock(return_value=False)
+        session.commit = MagicMock()
+        session.flush = MagicMock()
+        session.execute.return_value.scalars.return_value.first.return_value = page
+
+        pipeline = DatabasePipeline.__new__(DatabasePipeline)
+        pipeline.logger = MagicMock()
+        pipeline.engine = MagicMock()
+        pipeline._crawl_run_id = None
+
+        spider = MagicMock()
+        spider.logger = MagicMock()
+
+        item = {
+            "url": page.uri,
+            "source_id": 7,
+            "http_status": 200,
+            "content_type": "text/html",
+            "content": "<html></html>",
+            "meta": {},
+            "out_links": [],
+        }
+
+        duplicate = DuplicatePage(
+            id=1415,
+            uri="https://navigator.vbudushee.ru/direction/sotsialno-emotsionalnoe-razvitie/belyy-klyk/",
+        )
+
+        with (
+            patch("jobs.crawler.pipelines.Session", return_value=session),
+            patch(
+                "jobs.crawler.pipelines.extract_url_document",
+                return_value=(
+                    "# Белый клык\n\nПолное описание программы и содержания.",
+                    "Белый клык",
+                    {"extraction": {"word_count": 120}},
+                ),
+            ),
+            patch(
+                "jobs.crawler.pipelines.document_content_effectively_unchanged",
+                return_value=False,
+            ),
+            patch("jobs.crawler.pipelines.is_document_too_big", return_value=False),
+            patch(
+                "jobs.crawler.pipelines.find_duplicate_content_page",
+                return_value=duplicate,
+            ),
+            patch("jobs.crawler.pipelines.sync_page_links") as links_mock,
+            patch("jobs.crawler.pipelines.update_page_shingles") as shingles_mock,
+            patch("jobs.crawler.pipelines.schedule_index_document") as schedule_mock,
+        ):
+            pipeline.process_item(item, spider)
+
+        schedule_mock.assert_not_called()
+        links_mock.assert_called_once()
+        assert shingles_mock.call_args.kwargs["content"] is None
+        assert page.status == PageStatus.ready
+        assert page.status_error == PageStatusError.duplicate_content
+        assert page.meta["reason"] == PageStatusError.duplicate_content.value
+        assert page.meta["duplicate_of_page_id"] == duplicate.id
+        assert page.meta["duplicate_of_uri"] == duplicate.uri
 
     def test_pipeline_treats_extractable_404_as_content_page(self):
         from jobs.crawler.pipelines import DatabasePipeline

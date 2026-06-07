@@ -19,6 +19,7 @@ class PageStatusError(str, Enum):
     excluded_rules = "excluded_rules"
     excluded_auth = "excluded_auth"
     excluded_ignored = "excluded_ignored"
+    duplicate_content = "duplicate_content"
     extraction_failed = "extraction_failed"
     no_content = "no_content"
     low_content = "low_content"
@@ -40,6 +41,7 @@ STATUS_ERROR_DESCRIPTIONS: dict[PageStatusError, str] = {
     PageStatusError.excluded_rules: "Заблокировано правилами источника",
     PageStatusError.excluded_auth: "Страница ведёт на авторизацию",
     PageStatusError.excluded_ignored: "Исключено вручную",
+    PageStatusError.duplicate_content: "Полный дубликат содержимого другой страницы",
     PageStatusError.extraction_failed: "Ошибка извлечения содержимого",
     PageStatusError.no_content: "Страница не содержит полезного текста",
     PageStatusError.low_content: "Слишком мало содержимого для индексации",

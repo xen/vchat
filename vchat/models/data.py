@@ -348,6 +348,23 @@ class Chunk(Base, Created, Updated):
         server_default=sa.text("0"),
     )
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    text_hash: Mapped[str | None] = mapped_column(
+        sa.String(64),
+        nullable=True,
+        index=True,
+    )
+    is_duplicate: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=False,
+        server_default=sa.text("false"),
+        index=True,
+    )
+    duplicate_of_chunk_id: Mapped[int | None] = mapped_column(
+        sa.Integer,
+        nullable=True,
+        index=True,
+    )
     fts: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
 

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from jobs.crawler import tasks as crawler_tasks
 from jobs.embedder import launcher
@@ -45,6 +46,33 @@ def test_run_pending_chunk_batch_stops_at_batch_limit(
     assert processed == 2
     assert remaining == 1
     assert calls == [("db-session", 2, "redis-client")]
+
+
+def test_apply_embedding_to_matching_kb_chunks_updates_by_hash_and_normalized_text():
+    calls = []
+
+    class _Result:
+        def all(self):
+            return [(10,), (11,)]
+
+    class _Session:
+        def execute(self, stmt):
+            calls.append(str(stmt.compile(dialect=postgresql.dialect())))
+            return _Result()
+
+    updated_page_ids = embedder_tasks.apply_embedding_to_matching_kb_chunks(
+        _Session(),
+        text_hash="abc123",
+        text="\u200b  shared text \ufeff",
+        embedding=[0.1, 0.2],
+    )
+
+    assert updated_page_ids == {10, 11}
+    assert calls
+    assert "FOR UPDATE SKIP LOCKED" in calls[0]
+    assert "chunk.embedding IS NULL" in calls[0]
+    assert "chunk.text_hash =" in calls[0]
+    assert "btrim(translate(chunk.text" in calls[0]
 
 
 def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
@@ -361,6 +389,85 @@ def test_make_embed_vectors_splits_large_encode_batches(
         (["1234", "5678"], 2, False),
         (["abcdef", "gh"], 2, False),
     ]
+
+
+def test_process_pending_chunk_batch_embeds_duplicate_text_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = [
+        SimpleNamespace(
+            id=1,
+            page_id=10,
+            chunk_ix=0,
+            text="shared text",
+            text_hash="hash-1",
+            token_count=2,
+        ),
+        SimpleNamespace(
+            id=2,
+            page_id=11,
+            chunk_ix=0,
+            text="\u200bshared text\ufeff",
+            text_hash="hash-1",
+            token_count=2,
+        ),
+    ]
+    execute_calls = []
+    encoded_texts = []
+    applied = []
+    completed_inputs = []
+    commits = []
+
+    class _Result:
+        def all(self):
+            return rows
+
+    class _Session:
+        def execute(self, stmt, params=None):
+            execute_calls.append((stmt, params))
+            return _Result()
+
+        def commit(self):
+            commits.append(True)
+
+        def expunge_all(self):
+            pass
+
+    monkeypatch.setattr(
+        embedder_tasks,
+        "make_embed_vectors",
+        lambda texts: encoded_texts.append(list(texts)) or [[0.25]],
+    )
+    monkeypatch.setattr(
+        embedder_tasks,
+        "apply_embedding_to_matching_kb_chunks",
+        lambda session, *, text_hash, text, embedding: applied.append(
+            (session, text_hash, text, embedding)
+        )
+        or {10, 11},
+    )
+    monkeypatch.setattr(
+        embedder_tasks,
+        "mark_completed_pages",
+        lambda session, page_ids: completed_inputs.append((session, page_ids))
+        or [10, 11],
+    )
+    monkeypatch.setattr(embedder_tasks, "release_torch_cache", lambda: None)
+    monkeypatch.setattr(
+        embedder_tasks, "maybe_reset_embed_model_after_document", lambda: False
+    )
+
+    processed = embedder_tasks.process_pending_chunk_batch(
+        _Session(),
+        batch_size=10,
+    )
+
+    assert processed == 2
+    assert encoded_texts == [["shared text"]]
+    assert len(applied) == 1
+    assert applied[0][1:] == ("hash-1", "shared text", [0.25])
+    assert completed_inputs[0][1] == {10, 11}
+    assert commits == [True, True]
 
 
 def test_make_embed_vector_disables_progress_bar(

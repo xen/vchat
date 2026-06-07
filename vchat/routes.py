@@ -101,6 +101,12 @@ def setup_routes(app: web.Application) -> None:
         projects.project_document_content,
         name="project_document_content",
     )
+    add(
+        "GET",
+        r"/page/{document_id:[0-9]+}/content/rest",
+        projects.project_document_content_rest,
+        name="project_document_content_rest",
+    )
     add("GET", "/stats", projects.project_stats, name="project_stats")
     add("*", "/files", projects.project_files, name="project_files")
     add("*", "/triggers", projects.project_triggers, name="project_triggers")

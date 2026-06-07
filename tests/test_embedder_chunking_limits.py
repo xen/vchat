@@ -31,6 +31,22 @@ class _CharTokenizer:
         return "".join(ids)
 
 
+@pytest.fixture(autouse=True)
+def _disable_chunk_dedup_for_fake_sessions(monkeypatch) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(
+        crawler_tasks,
+        "mark_duplicate_page_chunks",
+        lambda *_args, **_kwargs: 0,
+    )
+    monkeypatch.setattr(
+        crawler_tasks,
+        "reuse_existing_chunk_embeddings",
+        lambda *_args, **_kwargs: 0,
+    )
+
+
 def test_chunk_text_respects_token_limit_and_overlap() -> None:
     tasks.EMBEDDING_CHUNK_MAX_TOKENS = 6
     tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 2
@@ -58,7 +74,7 @@ def test_chunk_text_splits_long_token() -> None:
     assert [chunk.text for chunk in chunks] == ["abcd", "efgh", "ij"]
 
 
-def test_chunk_text_progresses_when_overlap_exceeds_chunk_size() -> None:
+def test_chunk_text_caps_overlap_when_overlap_exceeds_chunk_size() -> None:
     tasks.EMBEDDING_CHUNK_MAX_TOKENS = 6
     tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 400
     tasks.EMBEDDING_CHUNK_MAX_CHARS = 15
@@ -68,10 +84,24 @@ def test_chunk_text_progresses_when_overlap_exceeds_chunk_size() -> None:
 
     assert [chunk.text for chunk in chunks] == [
         "aaaaa bbbbb",
-        "bbbbb ccccc",
         "ccccc ddddd",
     ]
-    assert [chunk.start for chunk in chunks] == [0, 1, 2]
+    assert [chunk.start for chunk in chunks] == [0, 2]
+
+
+def test_chunk_text_uses_token_overlap_not_word_overlap() -> None:
+    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 40
+    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 30
+    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+    tasks.get_embed_tokenizer = lambda: _CharTokenizer()
+
+    text = " ".join("abcdefghij" for _ in range(80))
+    chunks = tasks.chunk_text_word_window(text)
+
+    assert chunks
+    assert all(chunk.token_count <= 40 for chunk in chunks)
+    assert len(chunks) <= 30
+    assert sum(len(chunk.text) for chunk in chunks) < len(text) * 2
 
 
 def test_split_text_block_for_chunking_breaks_large_block() -> None:
@@ -81,6 +111,92 @@ def test_split_text_block_for_chunking_breaks_large_block() -> None:
     )
     assert chunks
     assert all(len(chunk) <= 12 for chunk in chunks)
+
+
+def test_chunk_document_normalizes_full_html_document() -> None:
+    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
+    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
+    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
+
+    html = """
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Internal title</title>
+        <style>.secret { color: red; }</style>
+        <script>window.secretToken = "must not index";</script>
+      </head>
+      <body>
+        <nav>Main menu that should not be indexed</nav>
+        <main>
+          <h1>Useful page</h1>
+          <p>Grounded answer text remains visible.</p>
+        </main>
+      </body>
+    </html>
+    """
+
+    chunks = tasks.chunk_document_text(html)
+    joined = "\n".join(chunk.text for chunk in chunks)
+
+    assert "Useful page" in joined
+    assert "Grounded answer text remains visible." in joined
+    assert "must not index" not in joined
+    assert "Main menu that should not be indexed" not in joined
+    assert "<html" not in joined.lower()
+
+
+def test_chunk_document_drops_html_ui_config_json_lines() -> None:
+    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
+    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
+    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
+
+    html = """
+    <!DOCTYPE html>
+    <html>
+      <body>
+        {"isActive":false,"cookieKey":null}
+        <main>
+          <h1>Documents</h1>
+          <p>Application materials remain searchable.</p>
+        </main>
+      </body>
+    </html>
+    """
+
+    chunks = tasks.chunk_document_text(html)
+    joined = "\n".join(chunk.text for chunk in chunks)
+
+    assert "Documents" in joined
+    assert "Application materials remain searchable." in joined
+    assert "cookieKey" not in joined
+    assert "isActive" not in joined
+
+
+def test_chunk_document_keeps_plain_text_json_examples() -> None:
+    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
+    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
+    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
+
+    chunks = tasks.chunk_document_text(
+        '{"isActive": false, "cookieKey": "documented option"}'
+    )
+
+    assert any("documented option" in chunk.text for chunk in chunks)
+
+
+def test_chunk_document_does_not_treat_inline_html_mention_as_document() -> None:
+    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
+    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
+    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
+
+    chunks = tasks.chunk_document_text("Use the <html> tag in examples.")
+
+    assert any("<html>" in chunk.text for chunk in chunks)
 
 
 def test_validate_chunk_data_rejects_embedder_oversize() -> None:
@@ -121,6 +237,9 @@ def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
         def execute(self, stmt):
             executed.append(stmt)
             return None
+
+        def flush(self):
+            pass
 
         def commit(self):
             executed.append("commit")
@@ -192,6 +311,9 @@ def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) 
         def add(self, obj):
             calls.append(("add", obj))
 
+        def flush(self):
+            pass
+
         def commit(self):
             calls.append("commit")
 
@@ -245,6 +367,9 @@ def test_materialize_page_chunks_marks_oversize_document_too_big(monkeypatch) ->
             calls.append(("execute", stmt))
             return None
 
+        def flush(self):
+            pass
+
         def commit(self):
             calls.append("commit")
 
@@ -260,16 +385,490 @@ def test_materialize_page_chunks_marks_oversize_document_too_big(monkeypatch) ->
     assert calls
 
 
+def test_materialize_page_chunks_sizes_full_html_by_visible_text(monkeypatch) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 30)
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
+
+    page = SimpleNamespace(
+        id=78,
+        source_id=None,
+        uri="https://example.com/documents",
+        title="Documents",
+        content="""
+        <!DOCTYPE html>
+        <html>
+          <body>
+            <script>window.largeState = "%s";</script>
+            <nav>%s</nav>
+            <main>Useful visible text.</main>
+          </body>
+        </html>
+        """
+        % ("x" * 500, "menu " * 200),
+        hash_value="content-hash",
+        meta={"doc_type": "html", "content_type": "text/html"},
+        status=None,
+        status_error=None,
+        raw_content_type="text/html",
+        raw_content_size=1500,
+    )
+    added = []
+    calls = []
+
+    class _Session:
+        def execute(self, stmt):
+            calls.append(("execute", stmt))
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            calls.append("commit")
+
+        def expunge_all(self):
+            calls.append("expunge_all")
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 2
+    assert page.status_error is None
+    text_chunks = [chunk for chunk in added if chunk.kind == "text"]
+    assert len(text_chunks) == 1
+    assert text_chunks[0].text == "Useful visible text."
+    assert page.meta[crawler_tasks.INDEX_CONTENT_HASH_META_KEY] == "content-hash"
+
+
+def test_materialize_page_chunks_uses_metadata_only_for_vendor_asset(monkeypatch) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+
+    page = SimpleNamespace(
+        id=88,
+        source_id=None,
+        uri="https://example.com/assets/vendor/codemirror/CHANGELOG/",
+        title="CodeMirror changelog",
+        content="Fix focus tracking in shadow DOM.\n" * 200,
+        hash_value="content-hash",
+        meta={"doc_type": "html", "content_type": "text/html"},
+        status=None,
+        status_error=None,
+        raw_content_type="text/html",
+        raw_content_size=6400,
+    )
+    added = []
+    calls = []
+
+    class _Session:
+        def execute(self, stmt):
+            calls.append(("execute", stmt))
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            calls.append("commit")
+
+        def expunge_all(self):
+            calls.append("expunge_all")
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 1
+    assert page.meta["index_policy"] == "metadata_only"
+    assert page.meta["index_policy_reason"] == "vendor_asset"
+    assert len(added) == 1
+    assert added[0].kind == "file_summary"
+    assert "CodeMirror changelog" in added[0].text
+    assert "https://example.com/assets/vendor/codemirror/CHANGELOG/" in added[0].text
+
+
+def test_materialize_page_chunks_uses_metadata_only_for_giant_csv(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+
+    page = SimpleNamespace(
+        id=89,
+        source_id=None,
+        uri="https://example.com/upload/csv/dota2_skill_train.csv",
+        title="dota2_skill_train.csv",
+        content="hero_id,match_id,win\n1,2,1\n",
+        hash_value="content-hash",
+        meta={"doc_type": "code", "content_type": "text/csv"},
+        status=None,
+        status_error=None,
+        raw_content_type="text/csv",
+        raw_content_size=22_000_000,
+    )
+    added = []
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def expunge_all(self):
+            pass
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 1
+    assert page.meta["index_policy"] == "metadata_only"
+    assert page.meta["index_policy_reason"] == "csv_statistical_dump"
+    assert added[0].kind == "file_summary"
+    assert "hero_id,match_id,win" in added[0].text
+
+
+def test_materialize_page_chunks_detects_large_statistical_dump_without_csv_hint(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10_000)
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+
+    rows = ["user_id|match_id|score|duration|rank|won"]
+    rows.extend(f"{idx}|{idx + 1000}|{idx % 50}|{idx * 3}|{idx % 10}|{idx % 2}" for idx in range(120))
+    content = "\n".join(rows)
+    page = SimpleNamespace(
+        id=94,
+        source_id=None,
+        uri="https://example.com/data/export",
+        title="match export",
+        content=content,
+        hash_value="content-hash",
+        meta={"doc_type": "text", "content_type": "text/plain"},
+        status=None,
+        status_error=None,
+        raw_content_type="text/plain",
+        raw_content_size=2_000_000,
+    )
+    added = []
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def expunge_all(self):
+            pass
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 1
+    assert page.meta["index_policy"] == "metadata_only"
+    assert page.meta["index_policy_reason"] == "csv_statistical_dump"
+    assert added[0].kind == "file_summary"
+    assert "user_id|match_id|score" in added[0].text
+
+
+def test_materialize_page_chunks_keeps_article_with_few_delimited_lines_full_text(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10_000)
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
+
+    delimited_examples = "\n".join(
+        f"field_a,field_b,field_c,{idx}" for idx in range(12)
+    )
+    content = (
+        "This article explains how to import small CSV examples safely.\n"
+        f"{delimited_examples}\n"
+        "The grounded answer is in the prose, not in a statistical dump."
+    )
+    page = SimpleNamespace(
+        id=95,
+        source_id=None,
+        uri="https://example.com/articles/csv-import",
+        title="CSV import article",
+        content=content,
+        hash_value="content-hash",
+        meta={"doc_type": "html", "content_type": "text/html"},
+        status=None,
+        status_error=None,
+        raw_content_type="text/html",
+        raw_content_size=len(content),
+    )
+    added = []
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def expunge_all(self):
+            pass
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count > 0
+    assert page.meta.get("index_policy") is None
+    assert any(chunk.kind == "text" for chunk in added)
+    assert any("grounded answer" in chunk.text for chunk in added)
+
+
+def test_materialize_page_chunks_uses_metadata_only_for_large_downloadable_document(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 80)
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+
+    page = SimpleNamespace(
+        id=92,
+        source_id=None,
+        uri="https://example.com/library/program-guide.pdf",
+        title="Program guide",
+        content="Extracted PDF body about deadlines and requirements. " * 20,
+        hash_value="content-hash",
+        meta={"doc_type": "pdf", "content_type": "application/pdf"},
+        status=None,
+        status_error=None,
+        raw_content_type="application/pdf",
+        raw_content_size=3_000_000,
+    )
+    added = []
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def expunge_all(self):
+            pass
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 1
+    assert page.meta["index_policy"] == "metadata_only"
+    assert page.meta["index_policy_reason"] == "large_downloadable_document"
+    assert added[0].kind == "file_summary"
+    assert "Program guide" in added[0].text
+    assert "application/pdf" in added[0].text
+    assert "deadlines and requirements" in added[0].text
+
+
+def test_materialize_page_chunks_keeps_small_downloadable_document_full_text(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 1000)
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+    tasks.get_embed_tokenizer = lambda: _WordTokenizer()
+
+    page = SimpleNamespace(
+        id=93,
+        source_id=None,
+        uri="https://example.com/library/short-guide.pdf",
+        title="Short guide",
+        content="Short extracted PDF text with a grounded answer.",
+        hash_value="content-hash",
+        meta={"doc_type": "pdf", "content_type": "application/pdf"},
+        status=None,
+        status_error=None,
+        raw_content_type="application/pdf",
+        raw_content_size=20_000,
+    )
+    added = []
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def expunge_all(self):
+            pass
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count > 0
+    assert page.meta.get("index_policy") is None
+    assert any(chunk.kind == "text" for chunk in added)
+    assert any("grounded answer" in chunk.text for chunk in added)
+
+
+def test_materialize_page_chunks_uses_metadata_only_for_empty_visible_html(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+
+    page = SimpleNamespace(
+        id=90,
+        source_id=None,
+        uri="https://teacher.vbudushee.ru/",
+        title="Школа возможностей",
+        content="""
+        <!DOCTYPE html>
+        <html>
+          <body>
+            <script>window.app = {"title": "Школа возможностей"};</script>
+            <nav>Menu</nav>
+          </body>
+        </html>
+        """,
+        hash_value="content-hash",
+        meta={"doc_type": "html", "content_type": "text/html"},
+        status=None,
+        status_error=None,
+        raw_content_type="text/html",
+        raw_content_size=400,
+    )
+    added = []
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def expunge_all(self):
+            pass
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 1
+    assert page.meta["index_policy"] == "metadata_only"
+    assert page.meta["index_policy_reason"] == "empty_visible_text"
+    assert added[0].kind == "file_summary"
+    assert "Школа возможностей" in added[0].text
+    assert "window.app" not in added[0].text
+
+
+def test_materialize_page_chunks_skips_empty_visible_redirect_page(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+
+    monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+
+    page = SimpleNamespace(
+        id=91,
+        source_id=None,
+        uri="https://lpconference.vbudushee.ru/",
+        title="301 Moved Permanently",
+        content="# 301 Moved Permanently",
+        hash_value="content-hash",
+        meta={"doc_type": "html", "content_type": "text/html"},
+        status=None,
+        status_error=None,
+        raw_content_type="text/html",
+        raw_content_size=23,
+    )
+    added = []
+
+    class _Session:
+        def execute(self, stmt):
+            _ = stmt
+            return None
+
+        def add(self, obj):
+            added.append(obj)
+
+        def flush(self):
+            pass
+
+        def commit(self):
+            pass
+
+        def expunge_all(self):
+            pass
+
+    count = crawler_tasks.materialize_page_chunks(_Session(), page)
+
+    assert count == 0
+    assert added == []
+    assert "index_policy" not in page.meta
+
+
 def test_fetch_page_context_keeps_transaction_open_for_index_lock() -> None:
     from jobs.crawler import tasks as crawler_tasks
 
     row = SimpleNamespace(
         id=12,
         source_id=3,
+        uri="https://example.com/doc",
+        title="Doc",
         content="payload",
         _hash="content-hash",
         meta={},
         status_error=None,
+        raw_content_type="text/html",
+        raw_content_size=7,
     )
 
     class _Result:
@@ -318,10 +917,14 @@ def test_fetch_page_context_marks_old_oversize_error_too_big(monkeypatch) -> Non
     row = SimpleNamespace(
         id=12,
         source_id=3,
+        uri="https://example.com/doc",
+        title="Doc",
         content="x" * 11,
         _hash="content-hash",
         meta={},
         status_error=PageStatusError.embedder_failed,
+        raw_content_type="text/html",
+        raw_content_size=11,
     )
     page = SimpleNamespace(
         id=12,
@@ -345,6 +948,9 @@ def test_fetch_page_context_marks_old_oversize_error_too_big(monkeypatch) -> Non
             _ = model
             return page if page_id == 12 else None
 
+        def flush(self):
+            pass
+
         def commit(self):
             calls.append("commit")
 
@@ -355,4 +961,52 @@ def test_fetch_page_context_marks_old_oversize_error_too_big(monkeypatch) -> Non
     assert page.meta["message"] == (
         "Document content is too large to index (11 chars > 10)."
     )
+    assert calls
+
+
+def test_fetch_page_context_allows_old_too_big_when_visible_html_fits(
+    monkeypatch,
+) -> None:
+    from jobs.crawler import tasks as crawler_tasks
+    from vchat.page_status import PageStatusError
+
+    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 30)
+
+    row = SimpleNamespace(
+        id=13,
+        source_id=3,
+        uri="https://example.com/documents",
+        title="Documents",
+        content="""
+        <!DOCTYPE html>
+        <html>
+          <body>
+            <script>window.largeState = "%s";</script>
+            <main>Useful visible text.</main>
+          </body>
+        </html>
+        """
+        % ("x" * 500),
+        _hash="content-hash",
+        meta={},
+        status_error=PageStatusError.too_big,
+        raw_content_type="text/html",
+        raw_content_size=700,
+    )
+    calls = []
+
+    class _Result:
+        def first(self):
+            return row
+
+    class _Session:
+        def execute(self, stmt):
+            calls.append(("execute", stmt))
+            return _Result()
+
+    context = crawler_tasks.fetch_page_context(_Session(), 13)
+
+    assert context is not None
+    assert context.id == 13
+    assert context.status_error == PageStatusError.too_big
     assert calls

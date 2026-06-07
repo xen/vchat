@@ -23,6 +23,7 @@ from vchat.settings import config
 Msg = namedtuple("Message", ["role", "content"])
 
 RERANK_FIELD_WEIGHTS = {
+    "title": 0.14,
     "header_text": 0.15,
     "section_path": 0.12,
     "entity_terms": 0.10,
@@ -30,6 +31,7 @@ RERANK_FIELD_WEIGHTS = {
 RERANK_OVERLAP_WEIGHT = 0.08
 RERANK_KIND_BONUS: dict[str, float] = {
     "text": 0.12,
+    "file_summary": 0.08,
     "section_summary": 0.05,
     "summary": 0.05,
 }
@@ -38,6 +40,7 @@ RERANK_TABLE_MODE_BONUS: dict[str, float] = {
     "table_rows": 0.20,
 }
 RERANK_SUMMARY_ZERO_OVERLAP_PENALTY = 0.12
+RERANK_QUERY_ECHO_PENALTY = 0.20
 RERANK_DOC_MIN_RATIO_TO_BEST = 0.55
 
 logger = logging.getLogger(__name__)
@@ -60,10 +63,46 @@ CONTEXT_SAFETY_MARGIN = 1024
 RERANK_LIMIT = 48
 RRF_K = 60
 RERANK_MODEL = cfg.get("reranker_model_id", "BAAI/bge-reranker-v2-m3")
+QUOTE_CONTEXT_KINDS = {"text", "summary", "section_summary", "file_summary"}
+COVERAGE_CONTEXT_KINDS = {
+    "table",
+    "table_rows",
+    "text",
+    "section_summary",
+    "summary",
+    "file_summary",
+}
 
 SNIPPET_INJECTION_PATTERNS = re.compile(
     r"(?i)\b(system|assistant|user|instruction|command|rules?|prompt)\b"
 )
+LEXICAL_STOP_TERMS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "can",
+    "does",
+    "for",
+    "how",
+    "is",
+    "list",
+    "show",
+    "summarize",
+    "tell",
+    "the",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "как",
+    "где",
+    "дай",
+    "что",
+    "это",
+}
 
 user_id_ctx: contextvars.ContextVar[int | str | None] = contextvars.ContextVar(
     "user_id", default=None
@@ -82,6 +121,7 @@ nlps = _nlps
 @dataclass(frozen=True)
 class ContextSnippet:
     text: str
+    citation_id: int
     kind: str | None = None
     src: str | None = None
     uri: str | None = None
@@ -256,10 +296,16 @@ def queryprofile(text: str) -> dict[str, Any]:
     seen_terms = set()
     for term in re.split(r"\s+OR\s+", rewritten):
         normalized = term.strip().strip('"').lower()
-        if len(normalized) < 2 or normalized in seen_terms:
+        if (
+            len(normalized) < 2
+            or normalized in seen_terms
+            or normalized in LEXICAL_STOP_TERMS
+        ):
             continue
         seen_terms.add(normalized)
         lexical_terms.append(normalized)
+        if len(lexical_terms) >= MAX_LEXICAL_TERMS:
+            break
 
     table_mode = any(
         token in lowered
@@ -557,6 +603,7 @@ async def vector_supply(
                NULL AS title
         FROM chunk c
         WHERE c.chat_id = :chat_id
+          AND c.is_duplicate = false
           AND c.embedding IS NOT NULL
           AND c.embedding <=> :qvec <= :max_dist
         ORDER BY c.embedding <=> :qvec
@@ -576,6 +623,7 @@ async def vector_supply(
         JOIN page d ON c.page_id = d.id
         WHERE c.chat_id IS NULL
           AND c.page_id IS NOT NULL
+          AND c.is_duplicate = false
           AND c.embedding IS NOT NULL
           AND c.embedding <=> :qvec <= :max_dist
           AND (d.content_value IS NULL OR d.content_value > 0.1)
@@ -625,6 +673,7 @@ async def fulltext_supply(
                c.fts @@ websearch_to_tsquery('russian', :q)
             OR c.fts @@ websearch_to_tsquery('english', :q)
         )
+          AND c.is_duplicate = false
           AND (d.content_value IS NULL OR d.content_value > 0.1)
         ORDER BY
             CASE
@@ -731,8 +780,10 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
     scores = model.predict(pairs, show_progress_bar=False)
 
     rescored: list[Snippet] = []
+    normalized_query = re.sub(r"\s+", " ", query.strip().lower())
     for snippet, score in zip(ranked[:RERANK_LIMIT], scores, strict=True):
         boosted = float(score)
+        title = (snippet.title or "").lower()
         header_text = (snippet.header_text or "").lower()
         section_path = (snippet.section_path or "").lower()
         entity_terms = [term.lower() for term in (snippet.entity_terms or [])]
@@ -740,6 +791,9 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
 
         overlap = 0
         for term in profile["lexical_terms"]:
+            if term in title:
+                boosted += RERANK_FIELD_WEIGHTS["title"]
+                overlap += 1
             if term in header_text:
                 boosted += RERANK_FIELD_WEIGHTS["header_text"]
                 overlap += 1
@@ -763,6 +817,13 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
 
         if snippet.kind in {"section_summary", "summary"} and overlap == 0:
             boosted -= RERANK_SUMMARY_ZERO_OVERLAP_PENALTY
+
+        if (
+            snippet.kind in {"section_summary", "summary"}
+            and normalized_query
+            and normalized_query in re.sub(r"\s+", " ", snippet_text_lower)
+        ):
+            boosted -= RERANK_QUERY_ECHO_PENALTY
 
         rescored.append(
             Snippet(**{**asdict(snippet), "rerank_score": round(boosted, 6)})
@@ -857,27 +918,14 @@ def build_context_from_snippets(
     provider: BaseAIProvider,
     model: ModelInfo,
 ) -> Msg:
+    snippets = select_context_snippets(snippets, provider=provider, model=model)
     payload_snippets: list[ContextSnippet] = []
-    snippet_tokens = 0
-    for snippet in snippets:
-        if snippet.kind in {"table", "table_rows"}:
-            clean = re.sub(
-                r"\n{3,}", "\n\n", (snippet.text or "").replace("\r", "")
-            ).strip()
-        else:
-            clean = sanitize_snippet_text(snippet.text or "")
-        if not clean:
-            continue
-        clean_tokens = provider.token_count(clean, model=model)
-        if (
-            snippet_tokens + clean_tokens > MAX_CONTEXT_SNIPPET_TOKENS
-            and payload_snippets
-        ):
-            break
-        snippet_tokens += clean_tokens
+    for citation_id, snippet in enumerate(snippets):
+        clean = snippet.text or ""
         payload_snippets.append(
             ContextSnippet(
                 text=clean,
+                citation_id=citation_id,
                 kind=snippet.kind,
                 src=snippet.src,
                 uri=snippet.uri,
@@ -904,6 +952,32 @@ def build_context_from_snippets(
     )
 
 
+def select_context_snippets(
+    snippets: list[Snippet],
+    provider: BaseAIProvider,
+    model: ModelInfo,
+) -> list[Snippet]:
+    selected: list[Snippet] = []
+    snippet_tokens = 0
+    for snippet in snippets:
+        if snippet.kind in {"table", "table_rows"}:
+            clean = re.sub(
+                r"\n{3,}", "\n\n", (snippet.text or "").replace("\r", "")
+            ).strip()
+        else:
+            clean = sanitize_snippet_text(snippet.text or "")
+        if not clean:
+            continue
+        clean_tokens = provider.token_count(clean, model=model)
+        if snippet_tokens + clean_tokens > MAX_CONTEXT_SNIPPET_TOKENS and selected:
+            break
+        snippet_tokens += clean_tokens
+        selected.append(Snippet(**{**asdict(snippet), "text": clean}))
+        if len(selected) >= MAX_CONTEXT_SNIPPETS:
+            break
+    return selected
+
+
 def _build_policy_and_coverage(
     prompt_text: str,
     snippets: list[Snippet],
@@ -911,8 +985,7 @@ def _build_policy_and_coverage(
     profile = queryprofile(prompt_text)
     has_source_url = any(snippet.uri for snippet in snippets)
     has_quote_candidate = any(
-        snippet.uri and snippet.kind in {"text", "summary", "section_summary"}
-        for snippet in snippets
+        snippet.uri and snippet.kind in QUOTE_CONTEXT_KINDS for snippet in snippets
     )
     has_table_candidate = any(
         snippet.kind in {"table", "table_rows"} for snippet in snippets
@@ -923,7 +996,7 @@ def _build_policy_and_coverage(
             snippet.section_path or snippet.header_text or snippet.title or snippet.id,
         )
         for snippet in snippets
-        if snippet.kind in {"table", "table_rows", "text", "section_summary", "summary"}
+        if snippet.kind in COVERAGE_CONTEXT_KINDS
     }
     has_enumeration_coverage = len(coverage_refs) >= 2
 
@@ -962,19 +1035,7 @@ def _build_policy_and_coverage(
 
 def _build_source_payloads(snippets: list[Snippet]) -> list[dict[str, Any]]:
     sources: list[dict[str, Any]] = []
-    seen: set[tuple[Any, ...]] = set()
     for citation_id, snippet in enumerate(snippets):
-        key = (
-            snippet.uri,
-            snippet.document_id,
-            snippet.chunk_ix,
-            snippet.section_path,
-            snippet.header_text,
-            snippet.kind,
-        )
-        if key in seen:
-            continue
-        seen.add(key)
         sources.append(
             {
                 "citation_id": citation_id,
@@ -1052,8 +1113,9 @@ async def get_context(
         )
     snippets = crossrerank(prompt, snippets)
     snippets = filter_snippets_by_document_relevance(snippets)
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
 
-    policy, coverage = _build_policy_and_coverage(prompt, snippets)
+    policy, coverage = _build_policy_and_coverage(prompt, context_snippets)
     policy_msg = Msg(
         role="developer",
         content="[policy]\n"
@@ -1062,7 +1124,11 @@ async def get_context(
             ensure_ascii=False,
         ),
     )
-    context_msg = build_context_from_snippets(snippets, provider=provider, model=model)
+    context_msg = build_context_from_snippets(
+        context_snippets,
+        provider=provider,
+        model=model,
+    )
 
     context_msgs = tail + [policy_msg, context_msg, Msg(role="user", content=prompt)]
     context_budget = max(
@@ -1081,8 +1147,8 @@ async def get_context(
 
     return ContextResult(
         messages=context_msgs,
-        used_chunks=_build_used_chunks(snippets),
-        sources=_build_source_payloads(snippets),
+        used_chunks=_build_used_chunks(context_snippets),
+        sources=_build_source_payloads(context_snippets),
         policy=asdict(policy),
         coverage=coverage,
     )

@@ -21,7 +21,10 @@ PENDING_CHUNKS_COUNTER_TTL = max(
 def count_pending_chunks(session: Any) -> int:
     return int(
         session.execute(
-            sa.select(sa.func.count(Chunk.id)).where(Chunk.embedding.is_(None))
+            sa.select(sa.func.count(Chunk.id)).where(
+                Chunk.embedding.is_(None),
+                Chunk.is_duplicate.is_(False),
+            )
         ).scalar_one()
         or 0
     )
@@ -30,7 +33,12 @@ def count_pending_chunks(session: Any) -> int:
 def pending_chunks_remain(session: Any) -> bool:
     return (
         session.execute(
-            sa.select(Chunk.id).where(Chunk.embedding.is_(None)).limit(1)
+            sa.select(Chunk.id)
+            .where(
+                Chunk.embedding.is_(None),
+                Chunk.is_duplicate.is_(False),
+            )
+            .limit(1)
         ).first()
         is not None
     )

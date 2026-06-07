@@ -1,9 +1,10 @@
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from sqlalchemy import create_engine, delete, select
+from sqlalchemy import create_engine, delete, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from jobs.crawler.document_pipeline import (
@@ -15,9 +16,13 @@ from jobs.indexing.documents import (
     raw_content_payload,
     sync_document_has_chunks,
 )
-from vchat.document_content import document_too_big_message, is_document_too_big
+from vchat.document_content import (
+    content_sha256,
+    document_too_big_message,
+    is_document_too_big,
+)
 from vchat.document_types import guess_document_type
-from vchat.models.data import Chunk, CrawlRun, Page, PageLink, Source
+from vchat.models.data import Chunk, CrawlRun, Page, PageLink, PageShingle, Source
 from vchat.page_status import PageStatus, PageStatusError
 from vchat.settings import config
 from vchat.triggers import source_trigger_rules_match_url
@@ -38,7 +43,19 @@ ERROR_META_KEYS = (
     "message",
     "reason",
     "exception_class",
+    "duplicate_of_page_id",
+    "duplicate_of_uri",
 )
+AUTO_INDEX_POLICY_META_KEYS = (
+    "index_policy",
+    "index_policy_reason",
+)
+
+
+@dataclass(frozen=True)
+class DuplicatePage:
+    id: int
+    uri: str
 
 
 def is_auth_redirect(original_url: str, final_url: str) -> bool:
@@ -196,6 +213,12 @@ def clear_error_meta(meta: dict) -> dict:
     return meta
 
 
+def clear_auto_index_policy_meta(meta: dict) -> dict:
+    for key in AUTO_INDEX_POLICY_META_KEYS:
+        meta.pop(key, None)
+    return meta
+
+
 def set_error_meta(
     meta: dict,
     *,
@@ -213,6 +236,96 @@ def set_error_meta(
     if exception_class:
         meta["exception_class"] = exception_class
     return meta
+
+
+def find_duplicate_content_page(
+    session: Session,
+    *,
+    page_id: int | None,
+    source_id: int,
+    uri: str,
+    content_hash: str,
+) -> DuplicatePage | None:
+    row = session.execute(
+        select(Page.id, Page.uri)
+        .where(
+            Page.source_id == source_id,
+            Page._hash == content_hash,
+            Page.uri.isnot(None),
+            Page.status_error.is_(None),
+        )
+        .where(Page.id != page_id if page_id is not None else true())
+        .order_by(func.length(Page.uri).asc(), Page.id.asc())
+        .limit(1)
+    ).first()
+    if row is None:
+        return None
+
+    duplicate_id = getattr(row, "id", None)
+    duplicate_uri = getattr(row, "uri", None)
+    if not isinstance(duplicate_id, int) or not duplicate_uri:
+        return None
+    current_key = (len(uri or ""), page_id or 0)
+    duplicate_key = (len(duplicate_uri), duplicate_id)
+    if current_key <= duplicate_key:
+        return None
+    return DuplicatePage(id=duplicate_id, uri=duplicate_uri)
+
+
+def mark_existing_duplicate_content_pages(
+    session: Session,
+    *,
+    canonical_page: Page,
+    content_hash: str,
+) -> int:
+    if (
+        canonical_page.id is None
+        or canonical_page.source_id is None
+        or not canonical_page.uri
+    ):
+        return 0
+
+    canonical_key = (len(canonical_page.uri), canonical_page.id)
+    rows = session.execute(
+        select(Page).where(
+            Page.source_id == canonical_page.source_id,
+            Page._hash == content_hash,
+            Page.id != canonical_page.id,
+            Page.uri.isnot(None),
+            or_(
+                Page.status_error.is_(None),
+                Page.status_error == PageStatusError.duplicate_content,
+            ),
+        )
+    ).scalars()
+
+    duplicate_ids: list[int] = []
+    for page in rows:
+        if page.id is None or not page.uri:
+            continue
+        if (len(page.uri), page.id) <= canonical_key:
+            continue
+        meta = dict(page.meta or {})
+        set_error_meta(
+            meta,
+            reason=PageStatusError.duplicate_content.value,
+            message=(
+                "Extracted content fully matches another page from the same source."
+            ),
+        )
+        meta["duplicate_of_page_id"] = canonical_page.id
+        meta["duplicate_of_uri"] = canonical_page.uri
+        page.status = PageStatus.ready
+        page.status_error = PageStatusError.duplicate_content
+        page.meta = meta
+        duplicate_ids.append(page.id)
+
+    if duplicate_ids:
+        session.execute(delete(Chunk).where(Chunk.page_id.in_(duplicate_ids)))
+        session.execute(
+            delete(PageShingle).where(PageShingle.page_id.in_(duplicate_ids))
+        )
+    return len(duplicate_ids)
 
 
 class DatabasePipeline:
@@ -394,6 +507,7 @@ class DatabasePipeline:
 
         low_content = is_low_content_page(markdown_content, extracted_meta)
         too_big = is_document_too_big(markdown_content)
+        content_hash = content_sha256(markdown_content)
 
         try:
             with Session(bind=self.engine) as session:
@@ -404,6 +518,7 @@ class DatabasePipeline:
                     discover_by="page" if item.get("referer_url") else None,
                     discover_source=item.get("referer_url") or None,
                 )
+                session.flush()
 
                 if page.status_error == PageStatusError.excluded_ignored:
                     page.status = PageStatus.ready
@@ -455,6 +570,7 @@ class DatabasePipeline:
                 meta = dict(page.meta or {})
                 meta.pop("force_reprocess_once", None)
                 clear_error_meta(meta)
+                clear_auto_index_policy_meta(meta)
                 meta.update(extracted_meta)
                 if item_meta:
                     meta.update(item_meta)
@@ -465,6 +581,16 @@ class DatabasePipeline:
                     meta["doc_type"] = doc_type
                 if content_type:
                     meta["content_type"] = content_type
+
+                duplicate_page = None
+                if not low_content and not too_big:
+                    duplicate_page = find_duplicate_content_page(
+                        session,
+                        page_id=page.id,
+                        source_id=source_id,
+                        uri=url,
+                        content_hash=content_hash,
+                    )
 
                 page.content = markdown_content
                 page.raw_content = raw_content
@@ -517,9 +643,31 @@ class DatabasePipeline:
                     page.status_error = PageStatusError.too_big
                     if page.id is not None:
                         session.execute(delete(Chunk).where(Chunk.page_id == page.id))
+                elif duplicate_page is not None:
+                    set_error_meta(
+                        meta,
+                        reason=PageStatusError.duplicate_content.value,
+                        message=(
+                            "Extracted content fully matches another page from "
+                            "the same source."
+                        ),
+                    )
+                    meta["duplicate_of_page_id"] = duplicate_page.id
+                    meta["duplicate_of_uri"] = duplicate_page.uri
+                    page.status = PageStatus.ready
+                    page.status_error = PageStatusError.duplicate_content
+                    if page.id is not None:
+                        session.execute(delete(Chunk).where(Chunk.page_id == page.id))
                 else:
                     clear_error_meta(meta)
                 page.meta = meta
+
+                if not low_content and not too_big and duplicate_page is None:
+                    mark_existing_duplicate_content_pages(
+                        session,
+                        canonical_page=page,
+                        content_hash=content_hash,
+                    )
 
                 if normalized_title:
                     page.title = normalized_title
@@ -529,11 +677,12 @@ class DatabasePipeline:
                         page.title = fallback_title
 
                 session.flush()
+                shingle_content = None if duplicate_page is not None else page.content
                 update_page_shingles(
                     session,
                     page_id=page.id,
                     source_id=page.source_id,
-                    content=page.content,
+                    content=shingle_content,
                 )
                 sync_page_links(
                     session,
@@ -545,7 +694,7 @@ class DatabasePipeline:
 
                 session.commit()
 
-                if low_content or too_big:
+                if low_content or too_big or duplicate_page is not None:
                     increment_run_stat(
                         self.engine, self._crawl_run_id, "pages_excluded"
                     )
@@ -555,11 +704,17 @@ class DatabasePipeline:
                             url,
                             len(markdown_content.strip()),
                         )
-                    else:
+                    elif too_big:
                         spider.logger.info(
                             "Excluded %s from indexing due to oversized content (%s chars)",
                             url,
                             len(markdown_content),
+                        )
+                    elif duplicate_page is not None:
+                        spider.logger.info(
+                            "Excluded %s from indexing as duplicate of %s",
+                            url,
+                            duplicate_page.uri,
                         )
                     return item
 
@@ -672,6 +827,7 @@ def save_page_status(
             PageStatusError.excluded_rules,
             PageStatusError.excluded_auth,
             PageStatusError.excluded_ignored,
+            PageStatusError.duplicate_content,
             PageStatusError.extraction_failed,
             PageStatusError.no_content,
             PageStatusError.low_content,

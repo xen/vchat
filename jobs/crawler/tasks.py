@@ -2,8 +2,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import sys
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -21,9 +23,13 @@ from sqlalchemy.orm import Session
 from jobs.celery import app
 from jobs.db import create_sync_engine
 from jobs.embedder.chunking import (
+    ChunkData,
     EMBEDDING_DOCUMENT_MAX_CHARS,
     EmbedderDocumentError,
     chunk_document_text,
+    count_token_ids,
+    get_embed_tokenizer,
+    normalize_html_document_for_chunking,
     validate_chunk_data,
 )
 from jobs.embedder.queue import ensure_pending_chunk_workers
@@ -34,7 +40,12 @@ from jobs.crawler.url_rules import (
 )
 from jobs.crawler.url_rules import url_allowed_by_rules
 from vchat.document_shingles import compute_trigram_hashes, extract_content_blocks
-from vchat.document_content import document_too_big_message
+from vchat.document_content import (
+    CHUNK_TEXT_HASH_IGNORED_CHARS,
+    chunk_text_sha256,
+    document_too_big_message,
+    normalize_chunk_text_for_hash,
+)
 from vchat.models.data import Chunk, CrawlRun, Page, PageShingle, Sitemap, Source
 from vchat.metrics import record_crawl_run
 from vchat.page_status import PageStatus, PageStatusError
@@ -82,6 +93,60 @@ INDEX_DOCUMENT_SCHEDULE_TTL = max(
         or config.get("celery_visibility_timeout", 21600)
     ),
 )
+METADATA_ONLY_INDEX_POLICY = "metadata_only"
+METADATA_ONLY_CSV_MIN_CHARS = max(
+    1, int(config.get("metadata_only_csv_min_chars", 50000) or 50000)
+)
+METADATA_ONLY_RAW_SIZE_MIN_BYTES = max(
+    1, int(config.get("metadata_only_raw_size_min_bytes", 1_000_000) or 1_000_000)
+)
+STATISTICAL_DUMP_SAMPLE_MAX_LINES = 200
+STATISTICAL_DUMP_MIN_ROWS = 50
+STATISTICAL_DUMP_MIN_COLUMNS = 6
+STATISTICAL_DUMP_MIN_CONSISTENT_ROW_RATIO = 0.8
+STATISTICAL_DUMP_MIN_NUMERIC_CELL_RATIO = 0.55
+STATISTICAL_DUMP_MAX_NATURAL_LANGUAGE_CELL_RATIO = 0.25
+STATISTICAL_DUMP_DELIMITERS = (",", "\t", ";", "|")
+DOWNLOADABLE_DOCUMENT_EXTENSIONS = (
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+    ".xls",
+    ".xlsx",
+)
+DOWNLOADABLE_DOCUMENT_CONTENT_TYPE_TERMS = (
+    "pdf",
+    "msword",
+    "powerpoint",
+    "excel",
+    "spreadsheet",
+    "officedocument",
+)
+LOW_VALUE_STATUS_TITLE_PREFIXES = (
+    "301 ",
+    "302 ",
+    "303 ",
+    "307 ",
+    "308 ",
+    "400 ",
+    "401 ",
+    "403 ",
+    "404 ",
+    "500 ",
+    "502 ",
+    "503 ",
+)
+LOW_VALUE_STATUS_TITLE_TERMS = (
+    "moved permanently",
+    "moved temporarily",
+    "not found",
+    "forbidden",
+    "unauthorized",
+    "bad gateway",
+    "service unavailable",
+)
 PAGE_SHINGLE_INSERT_BATCH_SIZE = max(
     100,
     int(config.get("page_shingle_insert_batch_size", 2000) or 2000),
@@ -117,24 +182,252 @@ def mark_blocked_source_pages_ready(
 
 
 class PageChunkContext:
-    __slots__ = ("id", "source_id", "content", "content_hash", "meta", "status_error")
+    __slots__ = (
+        "id",
+        "source_id",
+        "uri",
+        "title",
+        "content",
+        "content_hash",
+        "meta",
+        "status_error",
+        "raw_content_type",
+        "raw_content_size",
+    )
 
     def __init__(
         self,
         *,
         id: int,
         source_id: int | None,
+        uri: str | None,
+        title: str | None,
         content: str,
         content_hash: str,
         meta: dict | None,
         status_error: str | None,
+        raw_content_type: str | None,
+        raw_content_size: int | None,
     ) -> None:
         self.id = id
         self.source_id = source_id
+        self.uri = uri
+        self.title = title
         self.content = content
         self.content_hash = content_hash
         self.meta = meta or {}
         self.status_error = status_error
+        self.raw_content_type = raw_content_type
+        self.raw_content_size = raw_content_size
+
+
+def _metadata_only_index_reason(doc: Page | PageChunkContext) -> str | None:
+    meta = dict(getattr(doc, "meta", None) or {})
+    if meta.get("index_policy") == METADATA_ONLY_INDEX_POLICY:
+        reason = str(meta.get("index_policy_reason") or "").strip()
+        return reason or "explicit_metadata_only"
+
+    uri = str(getattr(doc, "uri", "") or "")
+    path = urlparse(uri).path.lower()
+    doc_type = str(meta.get("doc_type") or "").lower()
+    content_type = str(
+        meta.get("content_type") or getattr(doc, "raw_content_type", "") or ""
+    ).lower()
+    content_len = len(getattr(doc, "content", "") or "")
+    raw_content_size = int(getattr(doc, "raw_content_size", None) or 0)
+    title = str(getattr(doc, "title", "") or "").strip()
+
+    content = getattr(doc, "content", "") or ""
+    csv_hint = (
+        path.endswith((".csv", ".tsv"))
+        or "csv" in content_type
+        or _looks_like_statistical_dump(content)
+    )
+    if csv_hint and (
+        content_len > METADATA_ONLY_CSV_MIN_CHARS
+        or content_len > EMBEDDING_DOCUMENT_MAX_CHARS
+        or raw_content_size > METADATA_ONLY_RAW_SIZE_MIN_BYTES
+    ):
+        return "csv_statistical_dump"
+
+    document_hint = path.endswith(DOWNLOADABLE_DOCUMENT_EXTENSIONS) or any(
+        term in content_type for term in DOWNLOADABLE_DOCUMENT_CONTENT_TYPE_TERMS
+    )
+    if document_hint and (
+        content_len > EMBEDDING_DOCUMENT_MAX_CHARS
+        or raw_content_size > METADATA_ONLY_RAW_SIZE_MIN_BYTES
+    ):
+        return "large_downloadable_document"
+
+    if "/assets/vendor/" in path or "/node_modules/" in path:
+        return "vendor_asset"
+
+    if doc_type == "code" and content_len > METADATA_ONLY_CSV_MIN_CHARS:
+        return "large_code_asset"
+
+    if (
+        content_len
+        and title
+        and not _low_value_status_title(title)
+        and not _indexable_content_for_size_policy(doc).strip()
+    ):
+        return "empty_visible_text"
+
+    return None
+
+
+def _looks_like_statistical_dump(content: str) -> bool:
+    lines = [
+        line.strip()
+        for line in (content or "")
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .split("\n")
+        if line.strip()
+    ][:STATISTICAL_DUMP_SAMPLE_MAX_LINES]
+    if len(lines) < STATISTICAL_DUMP_MIN_ROWS:
+        return False
+
+    best_delimiter = ""
+    best_consistent_lines: list[list[str]] = []
+    for delimiter in STATISTICAL_DUMP_DELIMITERS:
+        rows = [
+            [cell.strip() for cell in line.split(delimiter)]
+            for line in lines
+            if delimiter in line
+        ]
+        if len(rows) < STATISTICAL_DUMP_MIN_ROWS:
+            continue
+        widths = [len(row) for row in rows]
+        common_width, common_count = max(
+            Counter(widths).items(),
+            key=lambda item: item[1],
+        )
+        if common_width < STATISTICAL_DUMP_MIN_COLUMNS:
+            continue
+        consistent_rows = [row for row in rows if len(row) == common_width]
+        if common_count / len(lines) < STATISTICAL_DUMP_MIN_CONSISTENT_ROW_RATIO:
+            continue
+        if len(consistent_rows) > len(best_consistent_lines):
+            best_delimiter = delimiter
+            best_consistent_lines = consistent_rows
+
+    if not best_delimiter:
+        return False
+
+    cells = [
+        cell
+        for row in best_consistent_lines[:STATISTICAL_DUMP_SAMPLE_MAX_LINES]
+        for cell in row
+        if cell
+    ]
+    if not cells:
+        return False
+
+    numeric_cells = sum(1 for cell in cells if _looks_numeric_cell(cell))
+    natural_language_cells = sum(
+        1 for cell in cells if _looks_natural_language_cell(cell)
+    )
+    return (
+        numeric_cells / len(cells) >= STATISTICAL_DUMP_MIN_NUMERIC_CELL_RATIO
+        and natural_language_cells / len(cells)
+        <= STATISTICAL_DUMP_MAX_NATURAL_LANGUAGE_CELL_RATIO
+    )
+
+
+def _looks_numeric_cell(cell: str) -> bool:
+    normalized = cell.strip().replace(",", ".")
+    if not normalized:
+        return False
+    if normalized in {"0", "1"}:
+        return True
+    try:
+        float(normalized)
+    except ValueError:
+        return False
+    return True
+
+
+def _looks_natural_language_cell(cell: str) -> bool:
+    words = [
+        part
+        for part in re.split(r"\W+", cell, flags=re.UNICODE)
+        if len(part) >= 3 and any(char.isalpha() for char in part)
+    ]
+    return len(words) >= 3
+
+
+def _low_value_status_title(title: str) -> bool:
+    normalized = " ".join((title or "").lower().split())
+    if not normalized:
+        return False
+    return normalized.startswith(LOW_VALUE_STATUS_TITLE_PREFIXES) or any(
+        term in normalized for term in LOW_VALUE_STATUS_TITLE_TERMS
+    )
+
+
+def _metadata_only_chunk(doc: Page | PageChunkContext, reason: str) -> ChunkData:
+    meta = dict(getattr(doc, "meta", None) or {})
+    uri = str(getattr(doc, "uri", "") or "")
+    title = str(getattr(doc, "title", "") or "").strip()
+    if not title and uri:
+        title = Path(urlparse(uri).path).name or uri
+    doc_type = str(meta.get("doc_type") or "unknown")
+    content_type = str(
+        meta.get("content_type") or getattr(doc, "raw_content_type", "") or "unknown"
+    )
+    content = getattr(doc, "content", "") or ""
+    preview = ""
+    if reason != "empty_visible_text":
+        preview_lines = [
+            line.strip()
+            for line in content[:2000]
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .split("\n")
+            if line.strip()
+        ]
+        preview = " ".join(preview_lines[:3])[:500].strip()
+
+    lines = [
+        "Document indexed as metadata only.",
+        f"Title: {title or 'Untitled document'}",
+        f"URL: {uri or 'unknown'}",
+        f"Document type: {doc_type}",
+        f"Content type: {content_type}",
+        f"Index policy reason: {reason}",
+        f"Content length: {len(content)} chars",
+    ]
+    if preview:
+        lines.append(f"Preview: {preview}")
+    text = "\n".join(lines)
+    return ChunkData(
+        index=0,
+        start=None,
+        end=None,
+        text=text,
+        kind="file_summary",
+        header_text=title or None,
+        section_path=None,
+        entity_terms=None,
+        token_count=count_token_ids(get_embed_tokenizer(), text),
+    )
+
+
+def _indexable_content_for_size_policy(doc: Page | PageChunkContext) -> str:
+    return normalize_html_document_for_chunking(getattr(doc, "content", "") or "")
+
+
+def _document_exceeds_indexable_size_limit(doc: Page | PageChunkContext) -> bool:
+    return len(_indexable_content_for_size_policy(doc)) > EMBEDDING_DOCUMENT_MAX_CHARS
+
+
+def _status_error_blocks_indexing(doc: PageChunkContext) -> bool:
+    if doc.status_error is None:
+        return False
+    if doc.status_error == PageStatusError.too_big:
+        return _document_exceeds_indexable_size_limit(doc)
+    return True
 
 
 def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | None:
@@ -142,10 +435,14 @@ def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | Non
         select(
             Page.id,
             Page.source_id,
+            Page.uri,
+            Page.title,
             Page.content,
             Page._hash,
             Page.meta,
             Page.status_error,
+            Page.raw_content_type,
+            Page.raw_content_size,
         ).where(Page.id == page_id)
     ).first()
     if not row:
@@ -155,18 +452,28 @@ def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | Non
     doc = PageChunkContext(
         id=row.id,
         source_id=row.source_id,
+        uri=getattr(row, "uri", None),
+        title=getattr(row, "title", None),
         content=row.content or "",
         content_hash=row._hash,
         meta=row.meta,
         status_error=row.status_error,
+        raw_content_type=getattr(row, "raw_content_type", None),
+        raw_content_size=getattr(row, "raw_content_size", None),
     )
     if not doc.content:
         logging.warning("Page %s has no content", page_id)
         return None
-    if len(doc.content) > EMBEDDING_DOCUMENT_MAX_CHARS:
-        mark_page_too_big(session, doc.id, content=doc.content)
+    if _metadata_only_index_reason(
+        doc
+    ) is None and _document_exceeds_indexable_size_limit(doc):
+        mark_page_too_big(
+            session,
+            doc.id,
+            content=_indexable_content_for_size_policy(doc),
+        )
         return None
-    if doc.status_error is not None:
+    if _metadata_only_index_reason(doc) is None and _status_error_blocks_indexing(doc):
         logging.info("Page %s has status_error=%s, skipping", page_id, doc.status_error)
         return None
     return doc
@@ -232,6 +539,113 @@ def update_page_shingles(
     if rows:
         session.execute(sa.insert(PageShingle), rows)
     return len(rows)
+
+
+def chunk_text_hash(text: str) -> str:
+    return chunk_text_sha256(text or "")
+
+
+def normalized_chunk_text_expr(column):
+    return sa.func.btrim(
+        sa.func.translate(
+            column,
+            CHUNK_TEXT_HASH_IGNORED_CHARS,
+            "",
+        )
+    )
+
+
+def reuse_existing_chunk_embeddings(session: Session, *, page_id: int) -> int:
+    page_chunks = list(
+        session.execute(
+            sa.select(Chunk)
+            .where(
+                Chunk.page_id == page_id,
+                Chunk.chat_id.is_(None),
+                Chunk.embedding.is_(None),
+                Chunk.is_duplicate.is_(False),
+                Chunk.text_hash.isnot(None),
+            )
+            .order_by(Chunk.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not page_chunks:
+        return 0
+
+    reused_count = 0
+    for chunk in page_chunks:
+        normalized_text = normalize_chunk_text_for_hash(chunk.text or "")
+        if not chunk.text_hash or not normalized_text:
+            continue
+        embedding = session.execute(
+            sa.select(Chunk.embedding)
+            .where(
+                Chunk.chat_id.is_(None),
+                Chunk.page_id.isnot(None),
+                Chunk.id != chunk.id,
+                Chunk.embedding.isnot(None),
+                Chunk.is_duplicate.is_(False),
+                Chunk.text_hash == chunk.text_hash,
+                normalized_chunk_text_expr(Chunk.text) == normalized_text,
+            )
+            .order_by(Chunk.id.asc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if embedding is None:
+            continue
+        chunk.embedding = embedding
+        reused_count += 1
+    return reused_count
+
+
+def mark_duplicate_page_chunks(session: Session, *, page_id: int) -> int:
+    page_chunks = list(
+        session.execute(
+            sa.select(Chunk)
+            .where(
+                Chunk.page_id == page_id,
+                Chunk.chat_id.is_(None),
+                Chunk.text_hash.isnot(None),
+            )
+            .order_by(Chunk.id.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not page_chunks:
+        return 0
+
+    text_hashes = {chunk.text_hash for chunk in page_chunks if chunk.text_hash}
+    canonical_rows = session.execute(
+        sa.select(Chunk.text_hash, Chunk.id)
+        .where(
+            Chunk.chat_id.is_(None),
+            Chunk.page_id == page_id,
+            Chunk.text_hash.in_(text_hashes),
+            Chunk.is_duplicate.is_(False),
+        )
+        .order_by(Chunk.text_hash.asc(), Chunk.id.asc())
+    ).all()
+    canonical_by_hash: dict[str, int] = {}
+    for text_hash, chunk_id in canonical_rows:
+        canonical_by_hash.setdefault(text_hash, chunk_id)
+
+    duplicate_count = 0
+    for chunk in page_chunks:
+        if not chunk.text_hash:
+            continue
+        canonical_id = canonical_by_hash.setdefault(chunk.text_hash, chunk.id)
+        if chunk.id == canonical_id:
+            chunk.is_duplicate = False
+            chunk.duplicate_of_chunk_id = None
+            continue
+        chunk.is_duplicate = True
+        chunk.duplicate_of_chunk_id = canonical_id
+        chunk.embedding = None
+        duplicate_count += 1
+    return duplicate_count
 
 
 async def async_update_page_shingles(
@@ -338,34 +752,46 @@ def mark_page_too_big(session: Session, page_id: int, *, content: str) -> None:
 
 def materialize_page_chunks(
     session: Session,
-    doc: Page | PageChunkContext,
+    page: Page | PageChunkContext,
     user_uid: str = "system",
 ) -> int:
-    content = doc.content or ""
-    if len(content) > EMBEDDING_DOCUMENT_MAX_CHARS:
-        mark_page_too_big(session, doc.id, content=content)
+    content = page.content or ""
+    metadata_only_reason = _metadata_only_index_reason(page)
+    if metadata_only_reason is None and _document_exceeds_indexable_size_limit(page):
+        mark_page_too_big(
+            session,
+            page.id,
+            content=_indexable_content_for_size_policy(page),
+        )
         return 0
 
     boilerplate_hashes: frozenset[int] = frozenset()
-    if doc.source_id is not None:
-        boilerplate_hashes = load_boilerplate_hashes(session, doc.source_id)
+    if page.source_id is not None and metadata_only_reason is None:
+        boilerplate_hashes = load_boilerplate_hashes(session, page.source_id)
 
-    chunks = chunk_document_text(
-        content,
-        boilerplate_hashes=boilerplate_hashes or None,
-    )
-    validate_chunk_data(chunks, page_id=doc.id)
-    logging.info("Materializing %s chunks for Page %s", len(chunks), doc.id)
+    if metadata_only_reason is not None:
+        meta = dict(page.meta or {})
+        meta["index_policy"] = METADATA_ONLY_INDEX_POLICY
+        meta["index_policy_reason"] = metadata_only_reason
+        page.meta = meta
+        chunks = [_metadata_only_chunk(page, metadata_only_reason)]
+    else:
+        chunks = chunk_document_text(
+            content,
+            boilerplate_hashes=boilerplate_hashes or None,
+        )
+    validate_chunk_data(chunks, page_id=page.id)
+    logging.info("Materializing %s chunks for Page %s", len(chunks), page.id)
 
-    session.execute(sa.delete(Chunk).where(Chunk.page_id == doc.id))
+    session.execute(sa.delete(Chunk).where(Chunk.page_id == page.id))
 
     if not chunks:
-        logging.info("No content to index for Page %s", doc.id)
-        mark_page_chunks_current(session, doc)
+        logging.info("No content to index for Page %s", page.id)
+        mark_page_chunks_current(session, page)
         session.execute(
             sa.update(Page)
-            .where(Page.id == doc.id)
-            .values(status=PageStatus.ready, status_error=None, meta=doc.meta)
+            .where(Page.id == page.id)
+            .values(status=PageStatus.ready, status_error=None, meta=page.meta)
         )
         session.commit()
         return 0
@@ -376,7 +802,7 @@ def materialize_page_chunks(
                 chat_id=None,
                 user_uid=user_uid,
                 msg_id=None,
-                page_id=doc.id,
+                page_id=page.id,
                 chunk_ix=chunk_data.index,
                 start_offset=chunk_data.start,
                 end_offset=chunk_data.end,
@@ -386,23 +812,41 @@ def materialize_page_chunks(
                 entity_terms=chunk_data.entity_terms,
                 token_count=chunk_data.token_count,
                 text=chunk_data.text,
+                text_hash=chunk_text_hash(chunk_data.text),
+                is_duplicate=False,
+                duplicate_of_chunk_id=None,
                 embedding=None,
             )
         )
+    session.flush()
+    reused_embedding_count = reuse_existing_chunk_embeddings(session, page_id=page.id)
+    if reused_embedding_count:
+        logging.info(
+            "Reused embeddings for %s chunks on Page %s by text hash",
+            reused_embedding_count,
+            page.id,
+        )
+    duplicate_count = mark_duplicate_page_chunks(session, page_id=page.id)
+    if duplicate_count:
+        logging.info(
+            "Marked %s duplicate chunks for Page %s by text hash",
+            duplicate_count,
+            page.id,
+        )
 
-    mark_page_chunks_current(session, doc)
+    mark_page_chunks_current(session, page)
     session.execute(
         sa.update(Page)
-        .where(Page.id == doc.id)
-        .values(status=PageStatus.ready, status_error=None, meta=doc.meta)
+        .where(Page.id == page.id)
+        .values(status=PageStatus.ready, status_error=None, meta=page.meta)
     )
     session.commit()
     session.expunge_all()
     return len(chunks)
 
 
-def index_page_chunks(session: Session, doc: Page | PageChunkContext) -> bool:
-    chunk_count = materialize_page_chunks(session, doc)
+def index_page_chunks(session: Session, page: Page | PageChunkContext) -> bool:
+    chunk_count = materialize_page_chunks(session, page)
     if chunk_count == 0:
         return False
     schedule_ensure_pending_chunks()
@@ -422,6 +866,7 @@ def index_page_inner(session: Session, page_id: int) -> bool:
             sa.select(sa.func.count(Chunk.id)).where(
                 Chunk.page_id == page_id,
                 Chunk.embedding.is_(None),
+                Chunk.is_duplicate.is_(False),
             )
         ).scalar_one()
         if pending:
@@ -1908,9 +2353,11 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
             continue
 
         now = datetime.now(timezone.utc)
-        if sm.last_fetched_at is not None and sm.last_fetched_at > now - timedelta(
-            days=1
-        ) and not force_page_rehydrate:
+        if (
+            sm.last_fetched_at is not None
+            and sm.last_fetched_at > now - timedelta(days=1)
+            and not force_page_rehydrate
+        ):
             print(f"Sitemap fetch skipped (<24h since last check): {sm.url}")
             continue
 
