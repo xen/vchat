@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
+import jinja2
 import pytest
 from aiohttp import web
 from yarl import URL
@@ -89,7 +91,12 @@ async def test_history_list_builds_pagination_and_filters(
         def all(self):
             return [
                 SimpleNamespace(
-                    Chat=fake_chat, upvotes=1, downvotes=0, guardrail_hits=1
+                    Chat=fake_chat,
+                    upvotes=1,
+                    downvotes=0,
+                    guardrail_hits=1,
+                    message_count=3,
+                    token_count=42,
                 )
             ]
 
@@ -148,6 +155,8 @@ async def test_history_list_builds_pagination_and_filters(
     assert payload["pagination"]["page"] == 1
     assert payload["guardrail_filter"] is True
     assert payload["chats"][0].guardrail_triggered is True
+    assert payload["chats"][0].message_count == 3
+    assert payload["chats"][0].token_count == 42
 
 
 @pytest.mark.asyncio
@@ -286,6 +295,67 @@ async def test_history_detail_404_when_chat_missing() -> None:
     raw = chats_views.history_detail.__wrapped__.__wrapped__.__wrapped__
     with pytest.raises(web.HTTPNotFound):
         await raw(_Req(db=_Db(), match_info={"chat_id": "x"}))
+
+
+def test_history_detail_template_renders_vote_icons_without_feedback_text() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader(
+                    {"admin.html": "{% block content %}{% endblock %}"}
+                ),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        _=lambda value: value,
+        url=lambda name, **kwargs: URL(
+            f"/history/{kwargs['chat_id']}"
+            if name == "project_history_detail"
+            else "/history"
+        ),
+    )
+    now = datetime(2026, 5, 31, 15, 30, 43, tzinfo=timezone.utc)
+    messages = [
+        SimpleNamespace(
+            role="assistant",
+            created_at=now,
+            has_masked_pii=False,
+            text_display="Ответ",
+            text="Ответ",
+            guardrail_hit=False,
+            context_sources=[],
+            vote=True,
+        ),
+        SimpleNamespace(
+            role="assistant",
+            created_at=now,
+            has_masked_pii=False,
+            text_display="Ответ",
+            text="Ответ",
+            guardrail_hit=False,
+            context_sources=[],
+            vote=False,
+        ),
+    ]
+
+    rendered = env.get_template("projects/history_detail.html").render(
+        chat=SimpleNamespace(id="chat-1", title="Demo", user_uid="u", created_at=now),
+        chat_meta={},
+        messages=messages,
+    )
+
+    assert 'icon="lucide:thumbs-up"' in rendered
+    assert 'icon="lucide:thumbs-down"' in rendered
+    assert "Полезно" not in rendered
+    assert "Не полезно" not in rendered
+    assert "Обратная связь" not in rendered
+    assert 'style="width: 90%' not in rendered
+    assert "chat-footer" not in rendered
+    assert "justify-self: stretch" not in rendered
 
 
 def test_document_pipeline_steps_returns_error_description() -> None:

@@ -313,12 +313,26 @@ async def history_list(request):
 
     offset = (page - 1) * per_page if total else 0
 
+    aggregate_msg = sa.orm.aliased(ChatMsg)
+    message_count = (
+        sa.select(sa.func.count(aggregate_msg.id))
+        .where(aggregate_msg.chat_id == Chat.id)
+        .scalar_subquery()
+    )
+    token_count = (
+        sa.select(sa.func.coalesce(sa.func.sum(aggregate_msg.tokens), 0))
+        .where(aggregate_msg.chat_id == Chat.id)
+        .scalar_subquery()
+    )
+
     stmt = (
         sa.select(
             Chat,
             sa.func.count(sa.case((ChatMsg.vote.is_(True), 1))).label("upvotes"),
             sa.func.count(sa.case((ChatMsg.vote.is_(False), 1))).label("downvotes"),
             sa.func.count(guardrail_case).label("guardrail_hits"),
+            message_count.label("message_count"),
+            token_count.label("token_count"),
         )
         .outerjoin(
             ChatMsg, sa.and_(Chat.id == ChatMsg.chat_id, ChatMsg.role == "assistant")
@@ -368,6 +382,8 @@ async def history_list(request):
         chat.upvotes = row.upvotes
         chat.downvotes = row.downvotes
         chat.guardrail_triggered = (row.guardrail_hits or 0) > 0
+        chat.message_count = row.message_count or 0
+        chat.token_count = row.token_count or 0
         chat.browser = (chat.meta or {}).get("browser")
         chat.device_type = (chat.meta or {}).get("device_type")
         chat.device_fingerprint = (chat.meta or {}).get("device_fingerprint")

@@ -164,6 +164,7 @@
                             <th class="text-right">Объем данных</th>
                             <th class="text-right">Чанки</th>
                             <th class="text-right">Хранилище чанков</th>
+                            <th class="text-right">Metadata-only</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -192,6 +193,16 @@
                                     {{ "%.2f"|format(source.chunk_storage / (1024 * 1024)) }} MB
                                 {% else %}
                                     {{ "%.2f"|format(source.chunk_storage / (1024 * 1024 * 1024)) }} GB
+                                {% endif %}
+                            </td>
+                            <td class="text-right">
+                                {{ source.metadata_only_count }}
+                                {% if source.metadata_policy_reasons %}
+                                    <div class="text-xs opacity-60">
+                                        {% for item in source.metadata_policy_reasons %}
+                                            {{ item.reason }}: {{ item.doc_count }}{% if not loop.last %}, {% endif %}
+                                        {% endfor %}
+                                    </div>
                                 {% endif %}
                             </td>
                         </tr>
@@ -224,6 +235,7 @@
                                     {{ "%.2f"|format(total_chunk_storage / (1024 * 1024 * 1024)) }} GB
                                 {% endif %}
                             </td>
+                            <td class="text-right">{{ total_metadata_only_docs }}</td>
                         </tr>
                     </tfoot>
                 </table>

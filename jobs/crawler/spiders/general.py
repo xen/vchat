@@ -4,8 +4,8 @@ from urllib.parse import urlparse
 
 import pycld2 as cld2
 from dateutil import parser as date_parser
-from scrapy.linkextractors import LinkExtractor
-from scrapy.http import HtmlResponse, Request
+from scrapy.linkextractors import IGNORED_EXTENSIONS, LinkExtractor
+from scrapy.http import HtmlResponse, Request, TextResponse
 from scrapy.spiders import CrawlSpider, Rule
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,6 +21,12 @@ from ..url_rules import (
 from jobs.db import create_sync_engine
 from vchat.models.data import Page
 from vchat.page_status import PageStatusError
+
+DOWNLOADABLE_DOCUMENT_EXTENSIONS = {
+    "doc",
+    "docx",
+    "pdf",
+}
 
 
 class GeneralSpider(CrawlSpider):
@@ -62,6 +68,11 @@ class GeneralSpider(CrawlSpider):
         ]
         if regexes:
             le_kwargs["allow"] = regexes
+        le_kwargs["deny_extensions"] = [
+            extension
+            for extension in IGNORED_EXTENSIONS
+            if extension not in DOWNLOADABLE_DOCUMENT_EXTENSIONS
+        ]
 
         source_hostname = urlparse(url).hostname if url else None
         for tracked_source in self.tracked_sources:
@@ -219,7 +230,8 @@ class GeneralSpider(CrawlSpider):
         item["etag"] = response.headers.get("ETag", b"").decode("utf-8") or None
         item["source_id"] = page_source_id
         item["content_type"] = response.headers.get("Content-Type", b"").decode("utf-8")
-        item["content"] = response.text
+        response_text = response.text if isinstance(response, TextResponse) else None
+        item["content"] = response_text
         item["raw_content"] = response.body
         extracted_links = []
         if self._link_extractor is not None and isinstance(response, HtmlResponse):
@@ -238,14 +250,14 @@ class GeneralSpider(CrawlSpider):
         )
 
         # Detect language
-        try:
-            is_reliable, _, details = cld2.detect(response.text)
-            if is_reliable and details:
-                lang = details[0][1]
-            else:
+        lang = None
+        if response_text:
+            try:
+                is_reliable, _, details = cld2.detect(response_text)
+                if is_reliable and details:
+                    lang = details[0][1]
+            except ValueError:
                 lang = None
-        except ValueError:
-            lang = None
 
         # Detect date
         date = None

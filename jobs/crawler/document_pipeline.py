@@ -4,9 +4,14 @@ import html
 import logging
 import re
 from collections import Counter
+from io import BytesIO
+from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
+from docx import Document
+from pypdf import PdfReader
 
 from vchat.document_types import guess_document_type
 
@@ -57,6 +62,10 @@ AUTH_HEADING_HINTS = {
     "forgot password",
 }
 CODE_FENCE_RE = re.compile(r"^```(?P<lang>[a-zA-Z0-9_+-]*)\s*$")
+WORD_DOCUMENT_TYPES = {
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 
 def normalize_markdown(text: str) -> str:
@@ -388,6 +397,92 @@ def build_document_payload(
         meta.update(extra_meta)
     normalized_title = _coerce_title(title, structure)
     return normalized, normalized_title, meta
+
+
+def _title_from_url(source_url: str) -> str | None:
+    filename = unquote(Path(source_url.split("?", 1)[0]).name)
+    if not filename:
+        return None
+    return normalize_title_candidate(Path(filename).stem.replace("_", " "))
+
+
+def _extract_pdf_text(raw_body: bytes) -> tuple[str, dict[str, Any]]:
+    reader = PdfReader(BytesIO(raw_body))
+    pages: list[str] = []
+    for index, page in enumerate(reader.pages, start=1):
+        text = (page.extract_text() or "").strip()
+        if not text:
+            continue
+        pages.append(f"## Page {index}\n\n{text}")
+    return "\n\n".join(pages), {"page_count": len(reader.pages)}
+
+
+def _extract_docx_text(raw_body: bytes) -> tuple[str, dict[str, Any]]:
+    document = Document(BytesIO(raw_body))
+    parts: list[str] = []
+    for paragraph in document.paragraphs:
+        text = paragraph.text.strip()
+        if text:
+            parts.append(text)
+
+    for table in document.tables:
+        rows: list[list[str]] = []
+        for row in table.rows:
+            cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+            if any(cells):
+                rows.append(cells)
+        if not rows:
+            continue
+        width = max(len(row) for row in rows)
+        normalized_rows = [row + [""] * (width - len(row)) for row in rows]
+        header = normalized_rows[0]
+        parts.append(f"| {' | '.join(header)} |")
+        parts.append(f"| {' | '.join(['---'] * width)} |")
+        parts.extend(f"| {' | '.join(row)} |" for row in normalized_rows[1:])
+
+    return "\n\n".join(parts), {
+        "paragraph_count": len(document.paragraphs),
+        "table_count": len(document.tables),
+    }
+
+
+def extract_binary_url_document(
+    source_url: str,
+    raw_body: bytes,
+    content_type: str | None = None,
+) -> tuple[str, str | None, dict[str, Any]]:
+    normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
+    doc_type = guess_document_type(source_url, content_type)
+    path = source_url.split("?", 1)[0].lower()
+    title = _title_from_url(source_url)
+
+    if normalized_content_type == "application/pdf" or path.endswith(".pdf"):
+        content, file_meta = _extract_pdf_text(raw_body)
+        extractor = "pypdf"
+    elif (
+        normalized_content_type
+        == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        or path.endswith(".docx")
+    ):
+        content, file_meta = _extract_docx_text(raw_body)
+        extractor = "python-docx"
+    elif normalized_content_type in WORD_DOCUMENT_TYPES or path.endswith(".doc"):
+        raise ValueError("Legacy .doc files are not supported by the current extractor")
+    else:
+        raise ValueError(
+            f"Unsupported downloadable document type: {content_type or source_url}"
+        )
+
+    return build_document_payload(
+        content=content,
+        title=title,
+        extractor=extractor,
+        fallback_used=False,
+        degraded_mode=False,
+        content_type=content_type,
+        doc_type=doc_type,
+        extra_meta={"file": file_meta},
+    )
 
 
 def _strip_boilerplate(soup: BeautifulSoup) -> int:

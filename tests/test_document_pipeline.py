@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from jobs.crawler.document_pipeline import extract_url_document
+from io import BytesIO
+
+from docx import Document
+from scrapy.linkextractors import IGNORED_EXTENSIONS
+
+from jobs.crawler.document_pipeline import (
+    extract_binary_url_document,
+    extract_url_document,
+)
+from jobs.crawler.spiders.general import GeneralSpider
 
 
 def test_extract_url_document_prefers_html_title_and_strips_auth_forms() -> None:
@@ -52,3 +61,43 @@ def test_extract_url_document_prefers_html_title_and_strips_auth_forms() -> None
     assert "Основное описание продукта." in content
     assert meta["extraction"]["extractor"] == "beautifulsoup"
     assert meta["extraction"]["boilerplate_removed_count"] >= 1
+
+
+def test_extract_binary_url_document_extracts_docx_text_and_tables() -> None:
+    document = Document()
+    document.add_heading("Регламент поддержки", level=1)
+    document.add_paragraph("PDF и Word документы должны попадать в базу знаний.")
+    table = document.add_table(rows=2, cols=2)
+    table.rows[0].cells[0].text = "Раздел"
+    table.rows[0].cells[1].text = "Ответственный"
+    table.rows[1].cells[0].text = "Индексация"
+    table.rows[1].cells[1].text = "Команда поиска"
+    buffer = BytesIO()
+    document.save(buffer)
+
+    content, title, meta = extract_binary_url_document(
+        "https://example.com/files/Support%20Rules.docx",
+        buffer.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "wordprocessingml.document"
+        ),
+    )
+
+    assert title == "Support Rules"
+    assert "PDF и Word документы должны попадать в базу знаний." in content
+    assert "| Раздел | Ответственный |" in content
+    assert meta["doc_type"] == "office"
+    assert meta["extraction"]["extractor"] == "python-docx"
+    assert meta["file"]["table_count"] == 1
+
+
+def test_general_spider_allows_word_and_pdf_links() -> None:
+    spider = GeneralSpider(url="https://example.com", source_id=1, config={})
+    try:
+        assert {"pdf", "doc", "docx"}.issubset(IGNORED_EXTENSIONS)
+        assert "pdf" not in spider._link_extractor.deny_extensions
+        assert "doc" not in spider._link_extractor.deny_extensions
+        assert "docx" not in spider._link_extractor.deny_extensions
+    finally:
+        spider.closed("test")

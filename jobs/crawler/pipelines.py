@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, delete, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from jobs.crawler.document_pipeline import (
+    extract_binary_url_document,
     extract_url_document,
     normalize_title_candidate,
 )
@@ -455,13 +456,23 @@ class DatabasePipeline:
 
         if markdown_content is None:
             try:
-                markdown_content, normalized_title, extracted_meta = (
-                    extract_url_document(
-                        url,
-                        html_body=html_body,
-                        content_type=content_type,
+                doc_type_hint = guess_document_type(url, content_type)
+                if doc_type_hint == "office":
+                    markdown_content, normalized_title, extracted_meta = (
+                        extract_binary_url_document(
+                            url,
+                            raw_content or b"",
+                            content_type=content_type,
+                        )
                     )
-                )
+                else:
+                    markdown_content, normalized_title, extracted_meta = (
+                        extract_url_document(
+                            url,
+                            html_body=html_body,
+                            content_type=content_type,
+                        )
+                    )
             except Exception as exc:
                 spider.logger.error(
                     "Extraction failed for %s: %s", url, exc, exc_info=True

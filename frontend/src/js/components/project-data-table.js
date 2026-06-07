@@ -547,7 +547,10 @@ window.useProjectDataTable = () => {
     setPageIndex(index) {
       this.table?.setPageIndex(index)
     },
-    updateSearch() {
+    updateSearch(event) {
+      if (event?.target) {
+        this.search = event.target.value
+      }
       this.table?.setPageIndex(0)
       this.table?.setGlobalFilter(this.search)
     },

@@ -1,0 +1,346 @@
+[
+  {
+    "name": "exact_fact_lookup_course_start",
+    "case_type": "exact_fact_lookup",
+    "user_query": "When does the AI bootcamp start?",
+    "answer": "The AI bootcamp starts on September 1, 2026 [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.edu/ai-bootcamp",
+        "title": "AI Bootcamp",
+        "kind": "text",
+        "text": "AI Bootcamp starts on September 1, 2026. Applications close on August 20."
+      }
+    ],
+    "expected_source_urls": ["https://example.edu/ai-bootcamp"],
+    "expected_source_titles": ["AI Bootcamp"],
+    "expected_answer_facts": ["September 1, 2026"],
+    "forbidden_claims": ["September 2, 2026", "October 1, 2026"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Answer should cite the page that contains the exact start date.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "faq_help_answer_password_reset",
+    "case_type": "faq_help_answer",
+    "user_query": "How do I reset my password?",
+    "answer": "Open Account settings, choose Security, then select Reset password [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/help/account",
+        "title": "Account FAQ",
+        "kind": "text",
+        "text": "To reset your password, open Account settings, choose Security, then select Reset password."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/help/account"],
+    "expected_source_titles": ["Account FAQ"],
+    "expected_answer_facts": ["Account settings", "Security", "Reset password"],
+    "forbidden_claims": ["contact support to reset it manually"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Answer may be concise but must stay within the FAQ procedure.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "procedural_instruction_answer_export_csv",
+    "case_type": "procedural_instruction_answer",
+    "user_query": "How can I export the report as CSV?",
+    "answer": "Go to Reports, open the needed report, click Export, and select CSV [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/docs/reports/export",
+        "title": "Export reports",
+        "kind": "text",
+        "text": "To export a report, go to Reports, open the needed report, click Export, and select CSV."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/docs/reports/export"],
+    "expected_source_titles": ["Export reports"],
+    "expected_answer_facts": ["Reports", "Export", "CSV"],
+    "forbidden_claims": ["JSON", "administrator approval"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Answer should preserve the documented step order.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "table_numeric_lookup_price",
+    "case_type": "table_numeric_lookup",
+    "user_query": "What is the Pro plan monthly price?",
+    "answer": "The Pro plan costs $29 per month [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/pricing",
+        "title": "Pricing",
+        "kind": "table_rows",
+        "text": "| Plan | Monthly price |\n| Free | $0 |\n| Pro | $29 per month |"
+      }
+    ],
+    "expected_source_urls": ["https://example.com/pricing"],
+    "expected_source_titles": ["Pricing"],
+    "expected_answer_facts": ["$29", "per month"],
+    "forbidden_claims": ["$19", "$49", "per year"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Numeric answer must cite the table row source.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "quote_source_request_policy_sentence",
+    "case_type": "quote_source_request",
+    "user_query": "Quote the refund policy source.",
+    "answer": "The policy says: \"Refund requests are accepted within 14 days of purchase\" [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/legal/refunds",
+        "title": "Refund policy",
+        "kind": "text",
+        "text": "Refund requests are accepted within 14 days of purchase."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/legal/refunds"],
+    "expected_source_titles": ["Refund policy"],
+    "expected_answer_facts": ["Refund requests are accepted within 14 days of purchase"],
+    "forbidden_claims": ["30 days", "no refunds"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": ["entity_projection"],
+    "citation_required": true,
+    "acceptable_answer_notes": "Quote-style answer must cite direct text evidence, not entity projection.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "broad_page_summary_release_notes",
+    "case_type": "broad_page_summary",
+    "user_query": "Summarize the March release notes.",
+    "answer": "The March release notes cover dashboard filters, faster imports, and new audit-log exports [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/releases/2026-03",
+        "title": "March release notes",
+        "kind": "summary",
+        "text": "March release notes summary: dashboard filters, faster imports, and new audit-log exports."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/releases/2026-03"],
+    "expected_source_titles": ["March release notes"],
+    "expected_answer_facts": ["dashboard filters", "faster imports", "audit-log exports"],
+    "forbidden_claims": ["mobile redesign", "billing changes"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Broad summary may cite a page summary when it covers the requested page.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "multi_section_enumeration_requirements",
+    "case_type": "multi_section_enumeration",
+    "user_query": "List the onboarding requirements.",
+    "answer": "The onboarding requirements are identity verification [[citation:0]], payment method setup [[citation:1]], and workspace invitation acceptance [[citation:2]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/docs/onboarding#identity",
+        "title": "Onboarding",
+        "kind": "text",
+        "text": "Identity: new users must complete identity verification before activation."
+      },
+      {
+        "citation_id": 1,
+        "uri": "https://example.com/docs/onboarding#billing",
+        "title": "Onboarding",
+        "kind": "text",
+        "text": "Billing: each workspace must finish payment method setup."
+      },
+      {
+        "citation_id": 2,
+        "uri": "https://example.com/docs/onboarding#workspace",
+        "title": "Onboarding",
+        "kind": "text",
+        "text": "Workspace: invited members must accept the workspace invitation."
+      }
+    ],
+    "expected_source_urls": [
+      "https://example.com/docs/onboarding#identity",
+      "https://example.com/docs/onboarding#billing",
+      "https://example.com/docs/onboarding#workspace"
+    ],
+    "expected_source_titles": ["Onboarding"],
+    "expected_answer_facts": [
+      "identity verification",
+      "payment method setup",
+      "workspace invitation acceptance"
+    ],
+    "forbidden_claims": ["phone interview", "manual approval"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Enumeration should cite each section that supports a listed item.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "negative_absent_answer_no_ios_app",
+    "case_type": "negative_query_absent",
+    "user_query": "Does the indexed site mention an iOS app?",
+    "answer": "I could not find an iOS app mention in the indexed sources.",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/docs/platforms",
+        "title": "Supported platforms",
+        "kind": "text",
+        "text": "Supported platforms are web and Android. This page does not mention an iOS app."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/docs/platforms"],
+    "expected_source_titles": ["Supported platforms"],
+    "expected_answer_facts": [],
+    "forbidden_claims": ["iOS app is available", "App Store", "iPhone"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": false,
+    "negative_answer_required": true,
+    "acceptable_answer_notes": "Answer should explicitly say the content was not found instead of inventing support.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "noisy_context_uses_relevant_source_only",
+    "case_type": "noisy_source_context",
+    "user_query": "What is the support email?",
+    "answer": "The support email is support@example.com [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/contact",
+        "title": "Contact",
+        "kind": "text",
+        "text": "For help, email support@example.com."
+      },
+      {
+        "citation_id": 1,
+        "uri": "https://example.com/blog/welcome",
+        "title": "Welcome blog post",
+        "kind": "summary",
+        "text": "Welcome blog post summary: product launch background and team notes."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/contact"],
+    "expected_source_titles": ["Contact"],
+    "expected_answer_facts": ["support@example.com"],
+    "forbidden_claims": ["sales@example.com", "hello@example.com"],
+    "forbidden_citation_urls": ["https://example.com/blog/welcome"],
+    "expected_context_noise_urls": ["https://example.com/blog/welcome"],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Noisy retrieved context can exist, but the answer must cite only the contact page.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "downloadable_document_metadata_only",
+    "case_type": "downloadable_document_query",
+    "user_query": "Is there a downloadable admissions CSV file?",
+    "answer": "Yes. The indexed source contains a metadata-only admissions.csv file at https://example.com/files/admissions.csv [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/files/admissions.csv",
+        "title": "admissions.csv",
+        "kind": "file_summary",
+        "text": "Document indexed as metadata only. Title: admissions.csv. URL: https://example.com/files/admissions.csv. Content type: text/csv."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/files/admissions.csv"],
+    "expected_source_titles": ["admissions.csv"],
+    "expected_answer_facts": ["admissions.csv", "metadata-only"],
+    "forbidden_claims": ["full file contents", "1,000 accepted applicants"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Answer may state that the file exists and link it, but should not invent file rows.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "empty_visible_html_metadata_only",
+    "case_type": "downloadable_document_query",
+    "user_query": "Is there a page for the teacher opportunities school?",
+    "answer": "Yes. The indexed source contains a metadata-only page titled \"Школа возможностей\" at https://teacher.vbudushee.ru/ [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://teacher.vbudushee.ru/",
+        "title": "Школа возможностей",
+        "kind": "file_summary",
+        "text": "Document indexed as metadata only. Title: Школа возможностей. URL: https://teacher.vbudushee.ru/. Document type: html. Content type: text/html; charset=UTF-8. Index policy reason: empty_visible_text. Content length: 2065 chars."
+      }
+    ],
+    "expected_source_urls": ["https://teacher.vbudushee.ru/"],
+    "expected_source_titles": ["Школа возможностей"],
+    "expected_answer_facts": ["Школа возможностей", "metadata-only"],
+    "forbidden_claims": ["course schedule", "application deadline", "teacher requirements"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Answer may state that the page exists and cite it, but must not infer body content from an empty visible HTML shell.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "large_pdf_metadata_only",
+    "case_type": "downloadable_document_query",
+    "user_query": "Is there a downloadable program guide PDF?",
+    "answer": "Yes. The indexed source contains a metadata-only PDF titled \"Program guide\" at https://example.com/docs/program-guide.pdf [[citation:0]].",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://example.com/docs/program-guide.pdf",
+        "title": "Program guide",
+        "kind": "file_summary",
+        "text": "Document indexed as metadata only. Title: Program guide. URL: https://example.com/docs/program-guide.pdf. Document type: pdf. Content type: application/pdf. Index policy reason: large_downloadable_document. Content length: 120000 chars."
+      }
+    ],
+    "expected_source_urls": ["https://example.com/docs/program-guide.pdf"],
+    "expected_source_titles": ["Program guide"],
+    "expected_answer_facts": ["Program guide", "metadata-only", "PDF"],
+    "forbidden_claims": ["applications close on August 20", "full requirements", "complete PDF contents"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": true,
+    "acceptable_answer_notes": "Answer may state that a large PDF exists and cite its metadata-only source, but must not invent detailed body facts.",
+    "current_baseline_result": "fixture_expected_pass"
+  },
+  {
+    "name": "metadata_only_absent_body_fact",
+    "case_type": "negative_query_absent",
+    "user_query": "What is the application deadline for Школа возможностей?",
+    "answer": "I could not find an application deadline for Школа возможностей in the indexed sources.",
+    "sources": [
+      {
+        "citation_id": 0,
+        "uri": "https://teacher.vbudushee.ru/",
+        "title": "Школа возможностей",
+        "kind": "file_summary",
+        "text": "Document indexed as metadata only. Title: Школа возможностей. URL: https://teacher.vbudushee.ru/. Document type: html. Content type: text/html; charset=UTF-8. Index policy reason: empty_visible_text. Content length: 2065 chars."
+      }
+    ],
+    "expected_source_urls": ["https://teacher.vbudushee.ru/"],
+    "expected_source_titles": ["Школа возможностей"],
+    "expected_answer_facts": [],
+    "forbidden_claims": ["deadline is", "applications close", "September 1", "August 20"],
+    "forbidden_citation_urls": [],
+    "forbidden_source_kinds": [],
+    "citation_required": false,
+    "negative_answer_required": true,
+    "acceptable_answer_notes": "Metadata-only source can identify the page title, but it does not support deadline facts; answer should not cite it as evidence for a missing body fact.",
+    "current_baseline_result": "fixture_expected_pass"
+  }
+]

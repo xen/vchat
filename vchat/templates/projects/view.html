@@ -16,7 +16,8 @@
                         class="text-base placeholder:text-sm"
                         type="search"
                         x-model="search"
-                        @input="updateSearch"
+                        @input="updateSearch($event)"
+                        @search="updateSearch($event)"
                         placeholder="Поиск по названию или URL..." />
                 </label>
                 <label class="select select-sm w-40 shrink-0">

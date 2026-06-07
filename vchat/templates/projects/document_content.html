@@ -258,19 +258,19 @@
                             <td class="align-top">{{ chunk.token_count or 0 }}</td>
                             <td class="align-top">
                                 <div class="max-w-3xl whitespace-pre-wrap break-words text-xs">
-                                    {{ chunk.text }}
-                                    {% if loop.index0 > 0 and document_chunks[loop.index0-1].end_offset is not none and chunk.start_offset is not none %}
-                                        {% set overlap = document_chunks[loop.index0-1].end_offset - chunk.start_offset %}
-                                        {% if overlap > 0 %}
-                                            <div class="mt-1 text-amber-700 text-xs">overlap с предыдущим: {{ overlap }} символов</div>
-                                        {% endif %}
-                                    {% endif %}
-                                    {% if loop.index0 < document_chunks|length - 1 and chunk.end_offset is not none and document_chunks[loop.index0+1].start_offset is not none %}
-                                        {% set overlap_next = chunk.end_offset - document_chunks[loop.index0+1].start_offset %}
-                                        {% if overlap_next > 0 %}
+                                    {%- if loop.index0 > 0 and document_chunks[loop.index0-1].end_offset is not none and chunk.start_offset is not none -%}
+                                        {%- set overlap = document_chunks[loop.index0-1].end_offset - chunk.start_offset -%}
+                                        {%- if overlap > 0 -%}
+                                            <div class="mb-1 text-amber-700 text-xs">overlap с предыдущим: {{ overlap }} символов</div>
+                                        {%- endif -%}
+                                    {%- endif -%}
+                                    {{- chunk.text -}}
+                                    {%- if loop.index0 < document_chunks|length - 1 and chunk.end_offset is not none and document_chunks[loop.index0+1].start_offset is not none -%}
+                                        {%- set overlap_next = chunk.end_offset - document_chunks[loop.index0+1].start_offset -%}
+                                        {%- if overlap_next > 0 -%}
                                             <div class="mt-1 text-amber-700 text-xs">overlap со следующим: {{ overlap_next }} символов</div>
-                                        {% endif %}
-                                    {% endif %}
+                                        {%- endif -%}
+                                    {%- endif -%}
                                 </div>
                                 {% if chunk.entity_terms %}
                                 <div class="mt-2 flex flex-wrap gap-1">
@@ -295,9 +295,6 @@
         <div class="card-body gap-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <h3 class="card-title text-base">Нормализованное содержимое</h3>
-                {% if document_content_is_truncated %}
-                    <span class="badge badge-outline badge-sm">первые {{ document_content_preview_chars }} символов</span>
-                {% endif %}
             </div>
             {% if document.meta.removed_shingles %}
                 <div class="mb-2">
@@ -306,10 +303,24 @@
             {% endif %}
             {% if document_content_is_truncated %}
                 <p class="text-xs text-base-content/60">
-                    Показан фрагмент: {{ document_content_preview_chars }} из {{ document_content_char_count }} символов.
+                    Показаны: {{ document_content_preview_chars }} из {{ document_content_char_count }} символов.
+                </p>
+            {% else %}
+                <p class="text-xs text-base-content/60">
+                    Размер: {{ document_content_char_count }} символов.
                 </p>
             {% endif %}
-            <pre class="whitespace-pre-wrap break-words text-xs bg-base-200/40 rounded-box p-4 overflow-x-auto">{{ document_content_preview }}</pre>
+            <pre class="whitespace-pre-wrap break-words text-xs bg-base-200/40 rounded-box p-4 overflow-x-auto">{{ document_content_preview }}{% if document_content_is_truncated %}<span id="document-content-ellipsis">...</span>{% endif %}{% if document_content_can_expand %}<span id="document-content-rest"></span>{% endif %}</pre>
+            {% if document_content_can_expand %}
+                <button type="button"
+                        class="btn btn-ghost btn-sm self-start"
+                        hx-get="{{ url('project_document_content_rest', document_id=document.id) }}?offset={{ document_content_preview_source_chars }}"
+                        hx-target="#document-content-rest"
+                        hx-swap="outerHTML"
+                        hx-on::after-request="if(event.detail.successful) { document.getElementById('document-content-ellipsis')?.remove(); this.remove(); }">
+                    [показать остальные {{ document_content_remaining_chars }} символов]
+                </button>
+            {% endif %}
         </div>
     </div>
 </div>
