@@ -391,7 +391,7 @@ class TestGeneralSpiderTrackedSources:
         page_row = (
             "https://vbudushee.ru/already-known/",
             False,
-            datetime(2026, 6, 1, tzinfo=timezone.utc),
+            datetime.now(timezone.utc) - timedelta(days=1),
             7,
             None,
         )
