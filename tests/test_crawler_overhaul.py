@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import zipfile
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from scrapy.http import HtmlResponse, Request, TextResponse
@@ -836,6 +838,88 @@ class TestCrawlRunCreation:
         assert page.status == PageStatus.parsing
         assert "force_reprocess_once" not in page.meta
         schedule_mock.assert_called_once_with(55)
+
+    def test_pipeline_routes_broad_binary_mime_docx_to_binary_extractor(self):
+        from jobs.crawler.pipelines import DatabasePipeline
+
+        page = SimpleNamespace(
+            id=56,
+            source_id=1,
+            uri="https://example.com/api/file?filename=consent.docx",
+            meta={},
+            status_error=None,
+            is_hub_page=False,
+            content_value=None,
+            stable_count=0,
+            error_count=0,
+            check_interval_days=7,
+            title="",
+        )
+        raw_buffer = BytesIO()
+        with zipfile.ZipFile(raw_buffer, "w") as archive:
+            archive.writestr("[Content_Types].xml", "<Types />")
+            archive.writestr("word/document.xml", "<w:document />")
+
+        session = MagicMock()
+        session.__enter__ = lambda s: session
+        session.__exit__ = MagicMock(return_value=False)
+        session.commit = MagicMock()
+        session.flush = MagicMock()
+        session.execute.return_value.scalars.return_value.first.return_value = page
+
+        pipeline = DatabasePipeline.__new__(DatabasePipeline)
+        pipeline.logger = MagicMock()
+        pipeline.engine = MagicMock()
+        pipeline._crawl_run_id = None
+
+        spider = MagicMock()
+        spider.logger = MagicMock()
+
+        item = {
+            "url": page.uri,
+            "source_id": 1,
+            "http_status": 200,
+            "content_type": "application/octet-stream",
+            "raw_content": raw_buffer.getvalue(),
+            "content": "",
+            "meta": {},
+            "out_links": [],
+        }
+
+        with (
+            patch("jobs.crawler.pipelines.Session", return_value=session),
+            patch(
+                "jobs.crawler.pipelines.extract_binary_url_document",
+                return_value=(
+                    "Extracted DOCX body with enough searchable text.",
+                    "consent",
+                    {"extraction": {"word_count": 20, "extractor": "python-docx"}},
+                ),
+            ) as binary_mock,
+            patch("jobs.crawler.pipelines.extract_url_document") as html_mock,
+            patch(
+                "jobs.crawler.pipelines.document_content_effectively_unchanged",
+                return_value=False,
+            ),
+            patch("jobs.crawler.pipelines.is_low_content_page", return_value=False),
+            patch("jobs.crawler.pipelines.is_document_too_big", return_value=False),
+            patch(
+                "jobs.crawler.pipelines.find_duplicate_content_page",
+                return_value=None,
+            ),
+            patch(
+                "jobs.crawler.pipelines.source_trigger_rules_match_url",
+                return_value=False,
+            ),
+            patch("jobs.crawler.pipelines.sync_page_links"),
+            patch("jobs.crawler.pipelines.update_page_shingles"),
+            patch("jobs.crawler.pipelines.schedule_index_document") as schedule_mock,
+        ):
+            pipeline.process_item(item, spider)
+
+        binary_mock.assert_called_once()
+        html_mock.assert_not_called()
+        schedule_mock.assert_called_once_with(56)
 
 
 class TestPageLinkSync:

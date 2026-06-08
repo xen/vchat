@@ -3,11 +3,12 @@ from __future__ import annotations
 import html
 import logging
 import re
+import zipfile
 from collections import Counter
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 from docx import Document
@@ -65,6 +66,20 @@ CODE_FENCE_RE = re.compile(r"^```(?P<lang>[a-zA-Z0-9_+-]*)\s*$")
 WORD_DOCUMENT_TYPES = {
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+PDF_DOCUMENT_TYPES = {"application/pdf"}
+DOCX_DOCUMENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+LEGACY_DOC_DOCUMENT_TYPES = {"application/msword"}
+BROAD_BINARY_DOCUMENT_TYPES = {
+    "",
+    "application/octet-stream",
+    "binary/octet-stream",
+    "application/binary",
+    "application/download",
+    "application/force-download",
+    "application/x-download",
 }
 
 
@@ -362,6 +377,31 @@ def normalize_title_candidate(candidate: str | None) -> str | None:
     return cleaned[:512]
 
 
+def normalize_file_metadata_title_candidate(candidate: str | None) -> str | None:
+    if not candidate:
+        return None
+
+    cleaned = html.unescape(str(candidate))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return None
+
+    lowered = cleaned.lower()
+    bad_markers = (
+        "fatal error",
+        "traceback (most recent call last)",
+        "exception:",
+        "warning:",
+        "<script",
+    )
+    if any(marker in lowered for marker in bad_markers):
+        return None
+    if len(cleaned) > 220 or len(cleaned.split()) > 30:
+        return None
+
+    return cleaned[:512]
+
+
 def build_document_payload(
     *,
     content: str,
@@ -399,15 +439,35 @@ def build_document_payload(
     return normalized, normalized_title, meta
 
 
-def _title_from_url(source_url: str) -> str | None:
-    filename = unquote(Path(source_url.split("?", 1)[0]).name)
+def _title_from_filename(filename: str | None) -> str | None:
     if not filename:
         return None
-    return normalize_title_candidate(Path(filename).stem.replace("_", " "))
+    stem = Path(unquote(filename)).stem.replace("_", " ").replace("-", " ").strip()
+    if not stem:
+        return None
+    return normalize_title_candidate(stem) or re.sub(r"\s+", " ", stem).strip()[:512]
 
 
-def _extract_pdf_text(raw_body: bytes) -> tuple[str, dict[str, Any]]:
-    reader = PdfReader(BytesIO(raw_body))
+def _title_from_url(source_url: str) -> str | None:
+    parsed = urlparse(source_url)
+    filename = Path(unquote(parsed.path)).name
+    if "." not in filename:
+        params = parse_qs(parsed.query)
+        for key in ("filename", "file", "name"):
+            values = params.get(key) or []
+            for value in values:
+                candidate = Path(unquote(value)).name
+                if candidate:
+                    filename = candidate
+                    break
+            if "." in filename:
+                break
+    if not filename:
+        return None
+    return _title_from_filename(filename)
+
+
+def _extract_pdf_text(reader: PdfReader) -> tuple[str, dict[str, Any]]:
     pages: list[str] = []
     for index, page in enumerate(reader.pages, start=1):
         text = (page.extract_text() or "").strip()
@@ -417,8 +477,18 @@ def _extract_pdf_text(raw_body: bytes) -> tuple[str, dict[str, Any]]:
     return "\n\n".join(pages), {"page_count": len(reader.pages)}
 
 
-def _extract_docx_text(raw_body: bytes) -> tuple[str, dict[str, Any]]:
-    document = Document(BytesIO(raw_body))
+def _extract_pdf_metadata_title(reader: PdfReader) -> str | None:
+    metadata = reader.metadata
+    if metadata is None:
+        return None
+    return normalize_file_metadata_title_candidate(getattr(metadata, "title", None))
+
+
+def _extract_docx_metadata_title(document: Document) -> str | None:
+    return normalize_file_metadata_title_candidate(document.core_properties.title)
+
+
+def _extract_docx_text(document: Document) -> tuple[str, dict[str, Any]]:
     parts: list[str] = []
     for paragraph in document.paragraphs:
         text = paragraph.text.strip()
@@ -446,43 +516,78 @@ def _extract_docx_text(raw_body: bytes) -> tuple[str, dict[str, Any]]:
     }
 
 
+def _normalized_content_type(content_type: str | None) -> str:
+    return (content_type or "").split(";", 1)[0].strip().lower()
+
+
+def _sniff_binary_document_kind(raw_body: bytes) -> str | None:
+    if raw_body.startswith(b"%PDF-"):
+        return "pdf"
+    if raw_body.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        return "legacy_doc"
+    if zipfile.is_zipfile(BytesIO(raw_body)):
+        with zipfile.ZipFile(BytesIO(raw_body)) as archive:
+            names = set(archive.namelist())
+        if "[Content_Types].xml" in names and "word/document.xml" in names:
+            return "docx"
+    return None
+
+
+def detect_binary_document_kind(
+    raw_body: bytes,
+    content_type: str | None,
+) -> str | None:
+    normalized_content_type = _normalized_content_type(content_type)
+    if normalized_content_type in PDF_DOCUMENT_TYPES:
+        return "pdf"
+    if normalized_content_type in DOCX_DOCUMENT_TYPES:
+        return "docx"
+    if normalized_content_type in LEGACY_DOC_DOCUMENT_TYPES:
+        return "legacy_doc"
+    if normalized_content_type in BROAD_BINARY_DOCUMENT_TYPES:
+        return _sniff_binary_document_kind(raw_body)
+    return None
+
+
 def extract_binary_url_document(
     source_url: str,
     raw_body: bytes,
     content_type: str | None = None,
 ) -> tuple[str, str | None, dict[str, Any]]:
-    normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
-    doc_type = guess_document_type(source_url, content_type)
-    path = source_url.split("?", 1)[0].lower()
+    document_kind = detect_binary_document_kind(raw_body, content_type)
+    doc_type = "office" if document_kind else guess_document_type(None, content_type)
     title = _title_from_url(source_url)
 
-    if normalized_content_type == "application/pdf" or path.endswith(".pdf"):
-        content, file_meta = _extract_pdf_text(raw_body)
+    if document_kind == "pdf":
+        reader = PdfReader(BytesIO(raw_body))
+        content, file_meta = _extract_pdf_text(reader)
+        title = _extract_pdf_metadata_title(reader) or title
         extractor = "pypdf"
-    elif (
-        normalized_content_type
-        == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        or path.endswith(".docx")
-    ):
-        content, file_meta = _extract_docx_text(raw_body)
+        fallback_used = False
+    elif document_kind == "docx":
+        document = Document(BytesIO(raw_body))
+        title = _extract_docx_metadata_title(document) or title
+        content, file_meta = _extract_docx_text(document)
         extractor = "python-docx"
-    elif normalized_content_type in WORD_DOCUMENT_TYPES or path.endswith(".doc"):
+        fallback_used = False
+    elif document_kind == "legacy_doc":
         raise ValueError("Legacy .doc files are not supported by the current extractor")
     else:
         raise ValueError(
             f"Unsupported downloadable document type: {content_type or source_url}"
         )
 
-    return build_document_payload(
+    content, _document_title, meta = build_document_payload(
         content=content,
         title=title,
         extractor=extractor,
-        fallback_used=False,
+        fallback_used=fallback_used,
         degraded_mode=False,
         content_type=content_type,
         doc_type=doc_type,
         extra_meta={"file": file_meta},
     )
+    return content, title, meta
 
 
 def _strip_boilerplate(soup: BeautifulSoup) -> int:

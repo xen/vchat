@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, delete, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from jobs.crawler.document_pipeline import (
+    detect_binary_document_kind,
     extract_binary_url_document,
     extract_url_document,
     normalize_title_candidate,
@@ -456,8 +457,11 @@ class DatabasePipeline:
 
         if markdown_content is None:
             try:
-                doc_type_hint = guess_document_type(url, content_type)
-                if doc_type_hint == "office":
+                binary_document_kind = detect_binary_document_kind(
+                    raw_content or b"",
+                    content_type,
+                )
+                if binary_document_kind is not None:
                     markdown_content, normalized_title, extracted_meta = (
                         extract_binary_url_document(
                             url,

@@ -78,6 +78,7 @@
     "meta": {"doc_type": "pdf", "content_type": "application/pdf"},
     "raw_content_type": "application/pdf",
     "raw_content_size": 3000000,
+    "embedding_document_max_chars": 80,
     "expected_count": 1,
     "expected_kind": "file_summary",
     "expected_policy": "metadata_only",

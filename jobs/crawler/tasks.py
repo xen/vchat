@@ -94,6 +94,7 @@ INDEX_DOCUMENT_SCHEDULE_TTL = max(
     ),
 )
 METADATA_ONLY_INDEX_POLICY = "metadata_only"
+INDEX_POLICY_REASON_META_KEY = "embedding_index_policy_reason"
 METADATA_ONLY_CSV_MIN_CHARS = max(
     1, int(config.get("metadata_only_csv_min_chars", 50000) or 50000)
 )
@@ -223,10 +224,6 @@ class PageChunkContext:
 
 def _metadata_only_index_reason(doc: Page | PageChunkContext) -> str | None:
     meta = dict(getattr(doc, "meta", None) or {})
-    if meta.get("index_policy") == METADATA_ONLY_INDEX_POLICY:
-        reason = str(meta.get("index_policy_reason") or "").strip()
-        return reason or "explicit_metadata_only"
-
     uri = str(getattr(doc, "uri", "") or "")
     path = urlparse(uri).path.lower()
     doc_type = str(meta.get("doc_type") or "").lower()
@@ -253,10 +250,7 @@ def _metadata_only_index_reason(doc: Page | PageChunkContext) -> str | None:
     document_hint = path.endswith(DOWNLOADABLE_DOCUMENT_EXTENSIONS) or any(
         term in content_type for term in DOWNLOADABLE_DOCUMENT_CONTENT_TYPE_TERMS
     )
-    if document_hint and (
-        content_len > EMBEDDING_DOCUMENT_MAX_CHARS
-        or raw_content_size > METADATA_ONLY_RAW_SIZE_MIN_BYTES
-    ):
+    if document_hint and content_len > EMBEDDING_DOCUMENT_MAX_CHARS:
         return "large_downloadable_document"
 
     if "/assets/vendor/" in path or "/node_modules/" in path:
@@ -677,6 +671,9 @@ def _try_acquire_document_index_lock(session: Session, page_id: int) -> bool:
 def page_chunks_match_current_content(session: Session, doc: PageChunkContext) -> bool:
     if doc.meta.get(INDEX_CONTENT_HASH_META_KEY) != doc.content_hash:
         return False
+    expected_policy_reason = _metadata_only_index_reason(doc) or ""
+    if doc.meta.get(INDEX_POLICY_REASON_META_KEY) != expected_policy_reason:
+        return False
 
     chunk_count = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(Chunk.page_id == doc.id)
@@ -688,6 +685,7 @@ def mark_page_chunks_current(session: Session, doc: Page | PageChunkContext) -> 
     meta = dict(doc.meta or {})
     content_hash = getattr(doc, "content_hash", None) or getattr(doc, "hash_value")
     meta[INDEX_CONTENT_HASH_META_KEY] = content_hash
+    meta[INDEX_POLICY_REASON_META_KEY] = _metadata_only_index_reason(doc) or ""
     doc.meta = meta
 
 
@@ -776,6 +774,10 @@ def materialize_page_chunks(
         page.meta = meta
         chunks = [_metadata_only_chunk(page, metadata_only_reason)]
     else:
+        meta = dict(page.meta or {})
+        meta.pop("index_policy", None)
+        meta.pop("index_policy_reason", None)
+        page.meta = meta
         chunks = chunk_document_text(
             content,
             boilerplate_hashes=boilerplate_hashes or None,

@@ -39,6 +39,9 @@ class _Session:
     def add(self, obj):
         self.added.append(obj)
 
+    def flush(self):
+        pass
+
     def commit(self):
         pass
 
@@ -54,6 +57,16 @@ def _cases() -> list[dict]:
 def test_chunking_policy_eval(case: dict, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(chunking, "get_embed_tokenizer", lambda: _WordTokenizer())
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
+    monkeypatch.setattr(
+        crawler_tasks, "reuse_existing_chunk_embeddings", lambda *_, **__: 0
+    )
+    monkeypatch.setattr(crawler_tasks, "mark_duplicate_page_chunks", lambda *_, **__: 0)
+    if "embedding_document_max_chars" in case:
+        monkeypatch.setattr(
+            crawler_tasks,
+            "EMBEDDING_DOCUMENT_MAX_CHARS",
+            int(case["embedding_document_max_chars"]),
+        )
 
     if case["mode"] == "chunk_document_text":
         chunks = chunking.chunk_document_text(case["content"])

@@ -445,7 +445,9 @@ def test_materialize_page_chunks_sizes_full_html_by_visible_text(monkeypatch) ->
     assert page.meta[crawler_tasks.INDEX_CONTENT_HASH_META_KEY] == "content-hash"
 
 
-def test_materialize_page_chunks_uses_metadata_only_for_vendor_asset(monkeypatch) -> None:
+def test_materialize_page_chunks_uses_metadata_only_for_vendor_asset(
+    monkeypatch,
+) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
@@ -552,7 +554,10 @@ def test_materialize_page_chunks_detects_large_statistical_dump_without_csv_hint
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
 
     rows = ["user_id|match_id|score|duration|rank|won"]
-    rows.extend(f"{idx}|{idx + 1000}|{idx % 50}|{idx * 3}|{idx % 10}|{idx % 2}" for idx in range(120))
+    rows.extend(
+        f"{idx}|{idx + 1000}|{idx % 50}|{idx * 3}|{idx % 10}|{idx % 2}"
+        for idx in range(120)
+    )
     content = "\n".join(rows)
     page = SimpleNamespace(
         id=94,
@@ -703,7 +708,7 @@ def test_materialize_page_chunks_uses_metadata_only_for_large_downloadable_docum
     assert "deadlines and requirements" in added[0].text
 
 
-def test_materialize_page_chunks_keeps_small_downloadable_document_full_text(
+def test_materialize_page_chunks_keeps_large_raw_downloadable_document_full_text(
     monkeypatch,
 ) -> None:
     from jobs.crawler import tasks as crawler_tasks
@@ -719,11 +724,16 @@ def test_materialize_page_chunks_keeps_small_downloadable_document_full_text(
         title="Short guide",
         content="Short extracted PDF text with a grounded answer.",
         hash_value="content-hash",
-        meta={"doc_type": "pdf", "content_type": "application/pdf"},
+        meta={
+            "doc_type": "pdf",
+            "content_type": "application/pdf",
+            "index_policy": "metadata_only",
+            "index_policy_reason": "large_downloadable_document",
+        },
         status=None,
         status_error=None,
         raw_content_type="application/pdf",
-        raw_content_size=20_000,
+        raw_content_size=3_000_000,
     )
     added = []
 

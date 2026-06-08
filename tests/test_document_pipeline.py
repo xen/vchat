@@ -3,9 +3,11 @@ from __future__ import annotations
 from io import BytesIO
 
 from docx import Document
+from pypdf import PdfWriter
 from scrapy.linkextractors import IGNORED_EXTENSIONS
 
 from jobs.crawler.document_pipeline import (
+    detect_binary_document_kind,
     extract_binary_url_document,
     extract_url_document,
 )
@@ -65,6 +67,7 @@ def test_extract_url_document_prefers_html_title_and_strips_auth_forms() -> None
 
 def test_extract_binary_url_document_extracts_docx_text_and_tables() -> None:
     document = Document()
+    document.core_properties.title = "Metadata Support Rules"
     document.add_heading("Регламент поддержки", level=1)
     document.add_paragraph("PDF и Word документы должны попадать в базу знаний.")
     table = document.add_table(rows=2, cols=2)
@@ -79,17 +82,88 @@ def test_extract_binary_url_document_extracts_docx_text_and_tables() -> None:
         "https://example.com/files/Support%20Rules.docx",
         buffer.getvalue(),
         content_type=(
-            "application/vnd.openxmlformats-officedocument."
-            "wordprocessingml.document"
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ),
     )
 
-    assert title == "Support Rules"
+    assert title == "Metadata Support Rules"
     assert "PDF и Word документы должны попадать в базу знаний." in content
     assert "| Раздел | Ответственный |" in content
     assert meta["doc_type"] == "office"
     assert meta["extraction"]["extractor"] == "python-docx"
     assert meta["file"]["table_count"] == 1
+
+
+def test_extract_binary_url_document_uses_query_filename_when_metadata_title_empty() -> (
+    None
+):
+    document = Document()
+    document.add_heading("Заголовок внутри документа", level=1)
+    document.add_paragraph("Title должен быть взят из имени файла.")
+    buffer = BytesIO()
+    document.save(buffer)
+
+    content, title, meta = extract_binary_url_document(
+        "https://example.com/public/api/file?filename=consent.docx",
+        buffer.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+    )
+
+    assert title == "consent"
+    assert "Title должен быть взят из имени файла." in content
+    assert meta["extraction"]["extractor"] == "python-docx"
+
+
+def test_extract_binary_url_document_sniffs_docx_for_broad_binary_mime() -> None:
+    document = Document()
+    document.core_properties.title = "metadata-slug"
+    document.add_paragraph("DOCX with a broad binary MIME still extracts.")
+    buffer = BytesIO()
+    document.save(buffer)
+
+    content, title, meta = extract_binary_url_document(
+        "https://example.com/public/api/file?filename=ignored.bin",
+        buffer.getvalue(),
+        content_type="application/octet-stream",
+    )
+
+    assert title == "metadata-slug"
+    assert "DOCX with a broad binary MIME still extracts." in content
+    assert meta["extraction"]["extractor"] == "python-docx"
+
+
+def test_extract_binary_url_document_returns_empty_content_for_image_only_pdf() -> None:
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.add_metadata({"/Title": "Metadata Terms"})
+    buffer = BytesIO()
+    writer.write(buffer)
+
+    content, title, meta = extract_binary_url_document(
+        "https://example.com/files/Terms.pdf",
+        buffer.getvalue(),
+        content_type="application/pdf",
+    )
+
+    assert content == ""
+    assert title == "Metadata Terms"
+    assert meta["extraction"]["extractor"] == "pypdf"
+    assert meta["extraction"]["fallback_used"] is False
+
+
+def test_detect_binary_document_kind_uses_mime_before_url_path() -> None:
+    assert (
+        detect_binary_document_kind(
+            b"<html><body>not a pdf</body></html>",
+            "text/html",
+        )
+        is None
+    )
+    assert (
+        detect_binary_document_kind(b"%PDF-1.7\n", "application/octet-stream") == "pdf"
+    )
 
 
 def test_general_spider_allows_word_and_pdf_links() -> None:
