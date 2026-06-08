@@ -11,6 +11,12 @@
       max-width: 100%;
       overflow-x: hidden;
     }
+
+    .pinned-message-rich a {
+      color: var(--color-primary);
+      text-decoration-line: underline;
+      text-underline-offset: 2px;
+    }
   </style>
 </head>
 
@@ -57,8 +63,8 @@
           } %}
           {% for pinned in pinned_messages[:3] %}
           {% set pinned_color = pinned.color if pinned.color in pinned_classes else 'neutral' %}
-          <div class="rounded border px-3 py-2 text-sm leading-relaxed {{ pinned_classes[pinned_color] }}">
-            {{ pinned.text }}
+          <div class="pinned-message-rich rounded border px-3 py-2 text-sm leading-relaxed {{ pinned_classes[pinned_color] }}">
+            {{ pinned.text|safe }}
           </div>
           {% endfor %}
         </section>

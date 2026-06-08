@@ -53,6 +53,18 @@
     }
 }
 
+.textarea {
+    @apply !outline-none;
+    border-width: 1px;
+
+    &:focus,
+    &:focus-within {
+        @apply !outline-none !ring-0 !shadow-none;
+        border-color: color-mix(in oklab, var(--color-primary) 45%, var(--color-base-300));
+        box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-primary) 25%, transparent);
+    }
+}
+
 .input input,
 .select {
     @apply !outline-none;

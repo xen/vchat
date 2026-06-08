@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import hmac
+import html
 import io
 import json
 import logging
@@ -10,6 +11,7 @@ import uuid
 from celery import chain
 from celery.schedules import crontab
 from datetime import datetime, time, timedelta, timezone
+from html.parser import HTMLParser
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import unquote, urlencode as urlencode_qs, urlparse
@@ -122,6 +124,7 @@ logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
 DOCUMENT_CONTENT_PREVIEW_CHARS = 500
 DEFAULT_WIDGET_WELCOME_MESSAGE = "Здравствуйте! Чем могу помочь?"
+PINNED_MESSAGE_MAX_CHARS = 400
 
 __all__ = [
     "index",
@@ -223,6 +226,93 @@ def _new_widget_code() -> str:
     return secrets.token_urlsafe(8).rstrip("_-")
 
 
+async def _assign_new_widget_code(db_session, widget: WidgetIntegration) -> None:
+    code = _new_widget_code()
+    while await db_session.scalar(
+        sa.select(WidgetIntegration.id).where(WidgetIntegration.code == code)
+    ):
+        code = _new_widget_code()
+    widget.code = code
+
+
+class _PinnedMessageHTMLSanitizer(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.visible_chars = 0
+        self.open_tags: list[str] = []
+
+    def _remaining_chars(self) -> int:
+        return PINNED_MESSAGE_MAX_CHARS - self.visible_chars
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self._remaining_chars() <= 0:
+            return
+        if tag in {"strong", "b"}:
+            self.parts.append(f"<{tag}>")
+            self.open_tags.append(tag)
+            return
+        if tag != "a":
+            return
+        href = ""
+        for name, value in attrs:
+            if name == "href" and value:
+                href = value.strip()
+                break
+        parsed = urlparse(href)
+        if parsed.scheme not in {"http", "https", "mailto"}:
+            return
+        escaped_href = html.escape(href, quote=True)
+        self.parts.append(
+            f'<a href="{escaped_href}" target="_blank" rel="noopener noreferrer" class="link link-hover">'
+        )
+        self.open_tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag not in {"strong", "b", "a"}:
+            return
+        if tag not in self.open_tags:
+            return
+        while self.open_tags:
+            open_tag = self.open_tags.pop()
+            self.parts.append(f"</{open_tag}>")
+            if open_tag == tag:
+                break
+
+    def handle_data(self, data: str) -> None:
+        remaining = self._remaining_chars()
+        if remaining <= 0:
+            return
+        chunk = data[:remaining]
+        self.visible_chars += len(chunk)
+        self.parts.append(html.escape(chunk))
+
+    def sanitized(self) -> str:
+        while self.open_tags:
+            self.parts.append(f"</{self.open_tags.pop()}>")
+        return "".join(self.parts).strip()
+
+
+def _sanitize_pinned_message_html(raw_html: str) -> str:
+    parser = _PinnedMessageHTMLSanitizer()
+    parser.feed(raw_html or "")
+    parser.close()
+    return parser.sanitized()
+
+
+def _safe_pinned_messages(
+    pinned_messages: list[dict[str, Any]] | None,
+) -> list[dict[str, str]]:
+    safe_messages: list[dict[str, str]] = []
+    for item in (pinned_messages or [])[:3]:
+        text = _sanitize_pinned_message_html(str(item.get("text") or ""))
+        if not text:
+            continue
+        color = str(item.get("color") or "neutral")
+        safe_messages.append({"text": text, "color": color})
+    return safe_messages
+
+
 def _pinned_messages_from_form(data) -> list[dict[str, str]]:
     texts = data.getall("pinned_text[]", [])
     colors = data.getall("pinned_color[]", [])
@@ -237,13 +327,13 @@ def _pinned_messages_from_form(data) -> list[dict[str, str]]:
         "warning",
     }
     for index, raw_text in enumerate(texts[:3]):
-        text = (raw_text or "").strip()
+        text = _sanitize_pinned_message_html(raw_text or "")
         if not text:
             continue
         color = (colors[index] if index < len(colors) else "neutral") or "neutral"
         if color not in allowed_colors:
             color = "neutral"
-        messages.append({"text": text[:1000], "color": color})
+        messages.append({"text": text, "color": color})
     return messages
 
 
@@ -267,7 +357,7 @@ async def _widget_integration_list_context(db_session) -> dict[str, Any]:
             agent_name=widget.agent_name,
             welcome_message=widget.welcome_message,
             system_prompt=widget.system_prompt,
-            pinned_messages=widget.pinned_messages or [],
+            pinned_messages=_safe_pinned_messages(widget.pinned_messages),
         )
         for widget in rows
     ]
@@ -288,7 +378,7 @@ def _widget_integration_snapshot(widget: WidgetIntegration) -> SimpleNamespace:
         agent_name=widget.agent_name,
         welcome_message=widget.welcome_message,
         system_prompt=widget.system_prompt,
-        pinned_messages=widget.pinned_messages or [],
+        pinned_messages=_safe_pinned_messages(widget.pinned_messages),
     )
 
 
@@ -2100,15 +2190,9 @@ async def project_action(request):
         if not name:
             return web.Response(text=_("Название обязательно"), status=400)
 
-        code = _new_widget_code()
-        while await db_session.scalar(
-            sa.select(WidgetIntegration.id).where(WidgetIntegration.code == code)
-        ):
-            code = _new_widget_code()
-
         widget = WidgetIntegration(
             name=name[:128],
-            code=code,
+            code="",
             contact_url=(data.get("contact_url") or "").strip(),
             agent_name=(data.get("agent_name") or "").strip()[:100],
             welcome_message=(
@@ -2120,6 +2204,7 @@ async def project_action(request):
             ),
             pinned_messages=[],
         )
+        await _assign_new_widget_code(db_session, widget)
         db_session.add(widget)
         await db_session.flush()
         widget_id = widget.id
@@ -2162,6 +2247,24 @@ async def project_action(request):
             request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
 
+    if action == "widget_reset_code":
+        widget_id = int(item_id)
+        widget = await db_session.scalar(
+            sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+        )
+        if not widget:
+            raise web.HTTPNotFound()
+
+        await _assign_new_widget_code(db_session, widget)
+        widget.updated_at = datetime.now(timezone.utc)
+
+        await db_session.commit()
+        await admin_event("widget_reset_code", request)
+        await flash(request, _("Код виджета сброшен"), "success")
+        return _htmx_redirect_response(
+            request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
+        )
+
     if action == "widget_delete":
         widget_id = int(item_id)
         widget = await db_session.scalar(
@@ -2174,9 +2277,7 @@ async def project_action(request):
         await db_session.commit()
         await admin_event("widget_delete", request)
 
-        response = web.Response(text="ok")
-        response.headers["HX-Refresh"] = "true"
-        return response
+        return _htmx_redirect_response(request.app.router["project_integration"].url_for())
 
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)
@@ -3267,7 +3368,7 @@ async def _render_public_chat(request, widget: WidgetIntegration):
         "agent_name": widget.agent_name,
         "welcome_message": widget.welcome_message,
         "contact_url": widget.contact_url,
-        "pinned_messages": widget.pinned_messages or [],
+        "pinned_messages": _safe_pinned_messages(widget.pinned_messages),
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,
         "current_ai_model": model_obj.id,

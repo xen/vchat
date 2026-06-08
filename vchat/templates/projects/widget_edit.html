@@ -11,6 +11,113 @@
   ('warning', _('Желтый'))
 ] %}
 
+{% macro color_swatch(value) -%}
+  {% if value == 'primary' -%}
+    bg-primary
+  {%- elif value == 'secondary' -%}
+    bg-secondary
+  {%- elif value == 'accent' -%}
+    bg-accent
+  {%- elif value == 'info' -%}
+    bg-info
+  {%- elif value == 'success' -%}
+    bg-success
+  {%- elif value == 'warning' -%}
+    bg-warning
+  {%- else -%}
+    bg-base-300
+  {%- endif %}
+{%- endmacro %}
+
+{% macro color_option_style(value) -%}
+  {% if value == 'primary' -%}
+    color: var(--color-primary); background-color: color-mix(in oklab, var(--color-primary) 10%, var(--color-base-100));
+  {%- elif value == 'secondary' -%}
+    color: var(--color-secondary); background-color: color-mix(in oklab, var(--color-secondary) 10%, var(--color-base-100));
+  {%- elif value == 'accent' -%}
+    color: var(--color-accent); background-color: color-mix(in oklab, var(--color-accent) 10%, var(--color-base-100));
+  {%- elif value == 'info' -%}
+    color: var(--color-info); background-color: color-mix(in oklab, var(--color-info) 10%, var(--color-base-100));
+  {%- elif value == 'success' -%}
+    color: var(--color-success); background-color: color-mix(in oklab, var(--color-success) 10%, var(--color-base-100));
+  {%- elif value == 'warning' -%}
+    color: var(--color-warning); background-color: color-mix(in oklab, var(--color-warning) 12%, var(--color-base-100));
+  {%- else -%}
+    color: var(--color-base-content); background-color: var(--color-base-100);
+  {%- endif %}
+{%- endmacro %}
+
+{% macro pinned_message_color_class(value) -%}
+  {% if value == 'primary' -%}
+    bg-primary/10 text-primary border-primary/20
+  {%- elif value == 'secondary' -%}
+    bg-secondary/10 text-secondary border-secondary/20
+  {%- elif value == 'accent' -%}
+    bg-accent/10 text-accent border-accent/20
+  {%- elif value == 'info' -%}
+    bg-info/10 text-info border-info/20
+  {%- elif value == 'success' -%}
+    bg-success/10 text-success border-success/20
+  {%- elif value == 'warning' -%}
+    bg-warning/10 text-warning border-warning/20
+  {%- else -%}
+    bg-base-200 text-base-content border-base-300
+  {%- endif %}
+{%- endmacro %}
+
+{% macro pinned_message_row(item=None) %}
+  {% set current_color = item.color|default('neutral') if item else 'neutral' %}
+  <tr class="align-top border {{ pinned_message_color_class(current_color) }}" data-pinned-message>
+    <td class="w-8 p-1">
+      <button
+        type="button"
+        class="btn btn-square btn-xs btn-ghost cursor-grab active:cursor-grabbing"
+        data-pinned-drag-handle
+        title="{{ _('Перетащить') }}"
+        aria-label="{{ _('Перетащить') }}"
+      >
+        <iconify-icon icon="lucide:grip-vertical" class="size-3.5"></iconify-icon>
+      </button>
+    </td>
+    <td class="min-w-0">
+      <input
+        type="hidden"
+        name="pinned_text[]"
+        value="{{ item.text if item else '' }}"
+        data-pinned-html-input
+      >
+      <div
+        class="textarea textarea-bordered min-h-24 h-auto w-full max-w-full resize-y overflow-y-auto whitespace-pre-wrap break-words bg-transparent leading-relaxed"
+        contenteditable="true"
+        role="textbox"
+        data-pinned-editor
+        data-placeholder="{{ _('Сообщение') }}"
+        data-max-length="400"
+      >{{ item.text|safe if item else '' }}</div>
+    </td>
+    <td class="w-60 align-top">
+      <div class="join w-full items-start">
+        <span
+          class="join-item inline-flex h-8 min-h-8 w-10 items-center justify-center border border-base-300 bg-base-100"
+          aria-hidden="true"
+        >
+          <span class="size-4 rounded-full {{ color_swatch(current_color) }}" data-pinned-color-preview></span>
+        </span>
+        <select name="pinned_color[]" class="select select-bordered select-sm join-item w-full bg-base-100 text-base-content" data-pinned-color>
+          {% for value, label in colors %}
+          <option value="{{ value }}" style="{{ color_option_style(value) }}" {% if current_color == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </td>
+    <td class="w-10 p-1 text-right">
+      <button type="button" class="btn btn-square btn-sm btn-ghost text-error" data-remove-pinned-message title="{{ _('Удалить') }}" aria-label="{{ _('Удалить') }}">
+        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+      </button>
+    </td>
+  </tr>
+{% endmacro %}
+
 {% block content %}
 <div id="widget-edit-page" class="w-full max-w-none space-y-6">
   <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -30,23 +137,48 @@
         {{ _('Открыть демо') }}
       </a>
     </div>
-    <div class="join w-full md:w-auto md:max-w-xl">
-      <input
-        id="widget-url"
-        type="text"
-        class="input input-bordered input-sm join-item min-w-0 flex-1 font-mono text-sm"
-        value="{{ widget.public_url }}"
-        readonly
-      >
-      <button
-        type="button"
-        class="btn btn-outline btn-sm join-item"
-        title="{{ _('Скопировать') }}"
-        aria-label="{{ _('Скопировать') }}"
-        data-copy-value="widget-url"
-      >
-        <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
-      </button>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body grid gap-4">
+      <div class="grid gap-2">
+        <label for="widget-url" class="label-text">{{ _('Адрес виджета') }}</label>
+        <div class="join w-full max-w-3xl">
+          <input
+            id="widget-url"
+            type="text"
+            class="input input-bordered input-sm join-item min-w-0 flex-1 font-mono text-sm"
+            value="{{ widget.public_url }}"
+            readonly
+          >
+          <button
+            type="button"
+            class="btn btn-outline btn-sm join-item"
+            title="{{ _('Скопировать') }}"
+            aria-label="{{ _('Скопировать') }}"
+            data-copy-value="widget-url"
+          >
+            <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+          </button>
+        </div>
+      </div>
+      <div class="grid gap-2">
+        <label for="widget-embed-code" class="label-text">{{ _('Код вставки') }}</label>
+        <div class="grid gap-2">
+          <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ widget.public_url }}" defer&gt;&lt;/script&gt;
+&lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
+          <div>
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              data-copy-value="widget-embed-code"
+            >
+              <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+              {{ _('Скопировать код') }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -119,45 +251,34 @@
       <section class="grid gap-3">
         <div class="flex items-center justify-between gap-3">
           <h2 class="text-base font-medium">{{ _('Закрепленные сообщения') }}</h2>
-          <button
-            type="button"
-            class="btn btn-outline btn-sm"
-            data-add-pinned-message
-          >
-            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-            {{ _('Добавить сообщение') }}
-          </button>
         </div>
-        <div id="pinned-messages" class="grid gap-3">
-          {% for item in widget.pinned_messages %}
-          <div class="rounded border border-base-300 p-3" data-pinned-message>
-            <label class="form-control">
-              <span class="label-text mb-1">{{ _('Сообщение') }}</span>
-              <input
-                type="text"
-                name="pinned_text[]"
-                value="{{ item.text }}"
-                class="input input-bordered w-full"
-                maxlength="1000"
-              >
-            </label>
-            <label class="form-control mt-3">
-              <span class="label-text mb-1">{{ _('Цвет подложки') }}</span>
-              <select name="pinned_color[]" class="select select-bordered w-full">
-                {% for value, label in colors %}
-                <option value="{{ value }}" {% if item.color|default('neutral') == value %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <div class="mt-3 flex justify-end">
-              <button type="button" class="btn btn-outline btn-sm" data-remove-pinned-message>
-                <iconify-icon icon="lucide:x" class="size-4"></iconify-icon>
-                {{ _('Убрать') }}
-              </button>
-            </div>
-          </div>
-          {% endfor %}
+        <div id="pinned-messages-container" class="overflow-x-auto">
+          {% if widget.pinned_messages %}
+          <table class="table table-zebra w-full table-fixed">
+            <thead>
+              <tr>
+                <th class="w-8"></th>
+                <th>{{ _('Сообщение') }}</th>
+                <th class="w-60">{{ _('Цвет подложки') }}</th>
+                <th class="w-10"></th>
+              </tr>
+            </thead>
+            <tbody id="pinned-messages">
+              {% for item in widget.pinned_messages %}
+              {{ pinned_message_row(item) }}
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
         </div>
+        <button
+          type="button"
+          class="btn btn-outline btn-primary btn-sm w-fit"
+          data-add-pinned-message
+        >
+          <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+          {{ _('Добавить сообщение') }}
+        </button>
       </section>
 
       <div class="flex justify-end gap-2">
@@ -166,43 +287,339 @@
       </div>
     </form>
   </div>
+
+  <div class="card border border-error/30 bg-base-100 shadow">
+    <div class="card-body grid gap-3">
+      <div>
+        <h2 class="text-base font-medium text-error">{{ _('Опасная зона') }}</h2>
+        <p class="mt-1 text-sm text-base-content/60">{{ _('Сброс кода отключит старый код вставки. Удаление полностью отключит виджет на всех сайтах, где он установлен.') }}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          class="btn btn-warning btn-outline btn-sm"
+          hx-post="{{ url('actions', action='widget_reset_code', item_id=widget.id) }}"
+          hx-swap="none"
+          hx-confirm="{{ _('Сбросить код виджета? Старый код вставки перестанет работать.') }}"
+        >
+          <iconify-icon icon="lucide:rotate-ccw" class="size-4"></iconify-icon>
+          {{ _('Сбросить код виджета') }}
+        </button>
+        <button
+          class="btn btn-error btn-outline btn-sm"
+          hx-post="{{ url('actions', action='widget_delete', item_id=widget.id) }}"
+          hx-swap="none"
+          hx-confirm="{{ _('Удалить код виджета?') }}"
+        >
+          <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
+          {{ _('Удалить виджет') }}
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <template id="pinned-message-template">
-  <div class="rounded border border-base-300 p-3" data-pinned-message>
-    <label class="form-control">
-      <span class="label-text mb-1">{{ _('Сообщение') }}</span>
-      <input
-        type="text"
-        name="pinned_text[]"
-        class="input input-bordered w-full"
-        maxlength="1000"
-      >
-    </label>
-    <label class="form-control mt-3">
-      <span class="label-text mb-1">{{ _('Цвет подложки') }}</span>
-      <select name="pinned_color[]" class="select select-bordered w-full">
-        {% for value, label in colors %}
-        <option value="{{ value }}">{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <div class="mt-3 flex justify-end">
-      <button type="button" class="btn btn-outline btn-sm" data-remove-pinned-message>
-        <iconify-icon icon="lucide:x" class="size-4"></iconify-icon>
-        {{ _('Убрать') }}
-      </button>
-    </div>
-  </div>
+  {{ pinned_message_row() }}
 </template>
 
+<div
+  id="pinned-rich-toolbar"
+  class="fixed z-50 hidden items-center gap-1 rounded border border-base-300 bg-base-100 p-1 shadow"
+>
+  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="bold" title="{{ _('Жирный') }}" aria-label="{{ _('Жирный') }}">
+    <iconify-icon icon="lucide:bold" class="size-3.5"></iconify-icon>
+  </button>
+  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="link" title="{{ _('Ссылка') }}" aria-label="{{ _('Ссылка') }}">
+    <iconify-icon icon="lucide:link" class="size-3.5"></iconify-icon>
+  </button>
+  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="unlink" title="{{ _('Удалить ссылку') }}" aria-label="{{ _('Удалить ссылку') }}">
+    <iconify-icon icon="lucide:unlink" class="size-3.5"></iconify-icon>
+  </button>
+  <div class="join hidden" data-rich-link-panel>
+    <input
+      type="url"
+      class="input input-bordered input-xs join-item h-8 min-h-8 w-48"
+      placeholder="https://example.com"
+      data-rich-link-url
+    >
+    <button type="button" class="btn btn-primary btn-xs join-item h-8 min-h-8" data-rich-command="apply-link" title="{{ _('Применить ссылку') }}" aria-label="{{ _('Применить ссылку') }}">
+      <iconify-icon icon="lucide:check" class="size-3.5"></iconify-icon>
+    </button>
+  </div>
+</div>
+
+<style>
+  [data-pinned-editor]:empty::before {
+    content: attr(data-placeholder);
+    color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
+    pointer-events: none;
+  }
+
+  [data-pinned-editor] a {
+    color: var(--color-primary);
+    text-decoration-line: underline;
+    text-underline-offset: 2px;
+  }
+</style>
+
 <script>
-  const pinnedMessages = document.getElementById('pinned-messages');
+  const pinnedRichToolbar = document.getElementById('pinned-rich-toolbar');
+  const pinnedRichLinkPanel = pinnedRichToolbar.querySelector('[data-rich-link-panel]');
+  const pinnedRichLinkUrl = pinnedRichToolbar.querySelector('[data-rich-link-url]');
+  let activePinnedEditor = null;
+  let activePinnedRange = null;
+
+  const colorPreviewClasses = {
+    neutral: 'bg-base-300',
+    primary: 'bg-primary',
+    secondary: 'bg-secondary',
+    accent: 'bg-accent',
+    info: 'bg-info',
+    success: 'bg-success',
+    warning: 'bg-warning',
+  };
+  const pinnedMessageColorClasses = {
+    neutral: 'bg-base-200 text-base-content border-base-300',
+    primary: 'bg-primary/10 text-primary border-primary/20',
+    secondary: 'bg-secondary/10 text-secondary border-secondary/20',
+    accent: 'bg-accent/10 text-accent border-accent/20',
+    info: 'bg-info/10 text-info border-info/20',
+    success: 'bg-success/10 text-success border-success/20',
+    warning: 'bg-warning/10 text-warning border-warning/20',
+  };
+  const swatchClassList = Object.values(colorPreviewClasses);
+  const pinnedMessageClassList = Object.values(pinnedMessageColorClasses).flatMap((classes) => classes.split(' '));
+  const pinnedContainer = document.getElementById('pinned-messages-container');
   const pinnedTemplate = document.getElementById('pinned-message-template');
   const addPinnedButton = document.querySelector('[data-add-pinned-message]');
+  let draggedPinnedMessage = null;
+  let isPinnedMessageDragging = false;
+
+  const ensurePinnedTable = () => {
+    let tbody = document.getElementById('pinned-messages');
+    if (tbody) return tbody;
+    pinnedContainer.innerHTML = `
+      <table class="table table-zebra w-full table-fixed">
+        <thead>
+          <tr>
+            <th class="w-8"></th>
+            <th>{{ _('Сообщение') }}</th>
+            <th class="w-60">{{ _('Цвет подложки') }}</th>
+            <th class="w-10"></th>
+          </tr>
+        </thead>
+        <tbody id="pinned-messages"></tbody>
+      </table>
+    `;
+    return document.getElementById('pinned-messages');
+  };
+
+  const updateColorPreview = (select) => {
+    const row = select.closest('[data-pinned-message]');
+    const preview = row?.querySelector('[data-pinned-color-preview]');
+    if (preview) {
+      preview.classList.remove(...swatchClassList);
+      preview.classList.add(colorPreviewClasses[select.value] || colorPreviewClasses.neutral);
+    }
+    if (row) {
+      row.classList.remove(...pinnedMessageClassList);
+      row.classList.add(...(pinnedMessageColorClasses[select.value] || pinnedMessageColorClasses.neutral).split(' '));
+    }
+  };
 
   const syncPinnedButton = () => {
-    addPinnedButton.disabled = pinnedMessages.querySelectorAll('[data-pinned-message]').length >= 3;
+    const tbody = document.getElementById('pinned-messages');
+    addPinnedButton.disabled = (tbody?.querySelectorAll('[data-pinned-message]').length || 0) >= 3;
+  };
+
+  const pinnedDropTarget = (tbody, pointerY) => {
+    const rows = [...tbody.querySelectorAll('[data-pinned-message]:not([data-dragging])')];
+    return rows.find((row) => {
+      const box = row.getBoundingClientRect();
+      return pointerY < box.top + box.height / 2;
+    }) || null;
+  };
+
+  const syncPinnedEditorInput = (editor) => {
+    const row = editor.closest('[data-pinned-message]');
+    const input = row?.querySelector('[data-pinned-html-input]');
+    if (input) input.value = editor.innerHTML.trim();
+  };
+
+  const syncAllPinnedEditors = () => {
+    document.querySelectorAll('[data-pinned-editor]').forEach(syncPinnedEditorInput);
+  };
+
+  const insertPlainTextAtSelection = (text) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    selection.deleteFromDocument();
+    const textNode = document.createTextNode(text);
+    selection.getRangeAt(0).insertNode(textNode);
+    const range = document.createRange();
+    range.setStartAfter(textNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const plainTextLength = (element) => (element.textContent || '').length;
+
+  const trimEditorToLimit = (editor) => {
+    const maxLength = Number(editor.dataset.maxLength || 400);
+    if (plainTextLength(editor) <= maxLength) return;
+    const selection = window.getSelection();
+    while (plainTextLength(editor) > maxLength && editor.lastChild) {
+      const lastChild = editor.lastChild;
+      if (lastChild.nodeType === Node.TEXT_NODE) {
+        const overflow = plainTextLength(editor) - maxLength;
+        lastChild.textContent = lastChild.textContent.slice(0, Math.max(0, lastChild.textContent.length - overflow));
+        if (!lastChild.textContent) lastChild.remove();
+      } else {
+        lastChild.remove();
+      }
+    }
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const currentSelectionInsidePinnedEditor = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+    const anchor = selection.anchorNode;
+    const editor = anchor?.nodeType === Node.ELEMENT_NODE
+      ? anchor.closest?.('[data-pinned-editor]')
+      : anchor?.parentElement?.closest('[data-pinned-editor]');
+    return editor || null;
+  };
+
+  const hidePinnedLinkPanel = () => {
+    pinnedRichLinkPanel.classList.add('hidden');
+  };
+
+  const savePinnedSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    activePinnedRange = selection.getRangeAt(0).cloneRange();
+  };
+
+  const restorePinnedSelection = () => {
+    if (!activePinnedRange) return;
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(activePinnedRange);
+  };
+
+  const selectedPinnedLink = () => {
+    if (!activePinnedRange) return null;
+    const node = activePinnedRange.commonAncestorContainer;
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return element?.closest?.('a') || null;
+  };
+
+  const showPinnedToolbar = () => {
+    if (pinnedRichToolbar.contains(document.activeElement)) {
+      return;
+    }
+    const editor = currentSelectionInsidePinnedEditor();
+    if (!editor) {
+      pinnedRichToolbar.classList.add('hidden');
+      pinnedRichToolbar.classList.remove('flex');
+      hidePinnedLinkPanel();
+      return;
+    }
+    activePinnedEditor = editor;
+    savePinnedSelection();
+    const range = activePinnedRange;
+    const box = range.getBoundingClientRect();
+    pinnedRichToolbar.style.left = `${Math.max(8, box.left + box.width / 2 - pinnedRichToolbar.offsetWidth / 2)}px`;
+    pinnedRichToolbar.style.top = `${Math.max(8, box.top - 40)}px`;
+    pinnedRichToolbar.classList.remove('hidden');
+    pinnedRichToolbar.classList.add('flex');
+  };
+
+  const normalizeLinkUrl = (rawUrl) => {
+    const url = String(rawUrl || '').trim();
+    if (!url) return '';
+    if (/^(https?:|mailto:)/i.test(url)) return url;
+    return `https://${url}`;
+  };
+
+  const openPinnedLinkPanel = () => {
+    const link = selectedPinnedLink();
+    pinnedRichLinkUrl.value = link?.getAttribute('href') || '';
+    pinnedRichLinkPanel.classList.remove('hidden');
+    pinnedRichLinkUrl.focus();
+    pinnedRichLinkUrl.select();
+  };
+
+  const applyPinnedLink = () => {
+    if (!activePinnedEditor) return;
+    const url = normalizeLinkUrl(pinnedRichLinkUrl.value);
+    if (!url) return;
+    activePinnedEditor.focus();
+    restorePinnedSelection();
+    document.execCommand('createLink', false, url);
+    activePinnedEditor.querySelectorAll('a').forEach((link) => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.classList.add('link', 'link-hover');
+    });
+    trimEditorToLimit(activePinnedEditor);
+    syncPinnedEditorInput(activePinnedEditor);
+    hidePinnedLinkPanel();
+    showPinnedToolbar();
+  };
+
+  const removePinnedLink = () => {
+    if (!activePinnedEditor) return;
+    activePinnedEditor.focus();
+    restorePinnedSelection();
+    const link = selectedPinnedLink();
+    if (link) {
+      const text = document.createTextNode(link.textContent || '');
+      link.replaceWith(text);
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      activePinnedRange = range;
+    } else {
+      document.execCommand('unlink');
+    }
+    syncPinnedEditorInput(activePinnedEditor);
+    hidePinnedLinkPanel();
+    showPinnedToolbar();
+  };
+
+  const applyPinnedRichCommand = (command) => {
+    if (!activePinnedEditor) return;
+    activePinnedEditor.focus();
+    restorePinnedSelection();
+    if (command === 'bold') {
+      document.execCommand('bold');
+    }
+    if (command === 'link') {
+      openPinnedLinkPanel();
+      return;
+    }
+    if (command === 'apply-link') {
+      applyPinnedLink();
+      return;
+    }
+    if (command === 'unlink') {
+      removePinnedLink();
+      return;
+    }
+    activePinnedEditor.querySelectorAll('a').forEach((link) => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.classList.add('link', 'link-hover');
+    });
+    trimEditorToLimit(activePinnedEditor);
+    syncPinnedEditorInput(activePinnedEditor);
+    showPinnedToolbar();
   };
 
   document.addEventListener('click', async (event) => {
@@ -213,8 +630,13 @@
     }
 
     if (event.target.closest('[data-add-pinned-message]')) {
-      if (pinnedMessages.querySelectorAll('[data-pinned-message]').length >= 3) return;
-      pinnedMessages.append(pinnedTemplate.content.cloneNode(true));
+      const tbody = ensurePinnedTable();
+      if (tbody.querySelectorAll('[data-pinned-message]').length >= 3) return;
+      tbody.append(pinnedTemplate.content.cloneNode(true));
+      const select = tbody.querySelector('[data-pinned-message]:last-child [data-pinned-color]');
+      if (select) updateColorPreview(select);
+      const editor = tbody.querySelector('[data-pinned-message]:last-child [data-pinned-editor]');
+      if (editor) syncPinnedEditorInput(editor);
       syncPinnedButton();
     }
 
@@ -225,6 +647,89 @@
     }
   });
 
+  document.addEventListener('change', (event) => {
+    const select = event.target.closest('[data-pinned-color]');
+    if (select) updateColorPreview(select);
+  });
+
+  document.addEventListener('input', (event) => {
+    const editor = event.target.closest('[data-pinned-editor]');
+    if (!editor) return;
+    trimEditorToLimit(editor);
+    syncPinnedEditorInput(editor);
+  });
+
+  document.addEventListener('paste', (event) => {
+    const editor = event.target.closest('[data-pinned-editor]');
+    if (!editor) return;
+    event.preventDefault();
+    insertPlainTextAtSelection(event.clipboardData.getData('text/plain'));
+    trimEditorToLimit(editor);
+    syncPinnedEditorInput(editor);
+  });
+
+  document.addEventListener('selectionchange', showPinnedToolbar);
+
+  pinnedRichToolbar.addEventListener('mousedown', (event) => {
+    if (!event.target.closest('[data-rich-link-url]')) {
+      event.preventDefault();
+    }
+  });
+
+  pinnedRichToolbar.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-rich-command]');
+    if (!button) return;
+    applyPinnedRichCommand(button.dataset.richCommand);
+  });
+
+  pinnedRichLinkUrl.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      applyPinnedLink();
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      hidePinnedLinkPanel();
+      activePinnedEditor?.focus();
+      restorePinnedSelection();
+    }
+  });
+
+  const startPinnedMessageDrag = (event) => {
+    const handle = event.target.closest('[data-pinned-drag-handle]');
+    if (!handle) return;
+    event.preventDefault();
+    draggedPinnedMessage = handle.closest('[data-pinned-message]');
+    isPinnedMessageDragging = true;
+    draggedPinnedMessage.dataset.dragging = 'true';
+    draggedPinnedMessage.classList.add('opacity-50');
+  };
+
+  const movePinnedMessageDrag = (event) => {
+    if (!isPinnedMessageDragging || !draggedPinnedMessage) return;
+    const tbody = draggedPinnedMessage.closest('#pinned-messages');
+    if (!tbody) return;
+    event.preventDefault();
+    const target = pinnedDropTarget(tbody, event.clientY);
+    tbody.insertBefore(draggedPinnedMessage, target);
+  };
+
+  const stopPinnedMessageDrag = () => {
+    if (!draggedPinnedMessage) return;
+    draggedPinnedMessage.classList.remove('opacity-50');
+    delete draggedPinnedMessage.dataset.dragging;
+    draggedPinnedMessage = null;
+    isPinnedMessageDragging = false;
+  };
+
+  document.addEventListener('mousedown', startPinnedMessageDrag);
+  document.addEventListener('mousemove', movePinnedMessageDrag);
+  document.addEventListener('mouseup', stopPinnedMessageDrag);
+  document.addEventListener('mouseleave', stopPinnedMessageDrag);
+
+  document.querySelector('form[hx-post*="widget_update"]').addEventListener('submit', syncAllPinnedEditors);
+  document.querySelectorAll('[data-pinned-color]').forEach(updateColorPreview);
+  document.querySelectorAll('[data-pinned-editor]').forEach(syncPinnedEditorInput);
   syncPinnedButton();
 </script>
 {% endblock %}

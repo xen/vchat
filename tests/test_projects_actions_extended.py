@@ -46,6 +46,7 @@ class _App(dict):
         self.router = {
             "users": _Route("/users/"),
             "actions": _Route("/actions/{action}/{item_id}"),
+            "project_integration": _Route("/integration"),
             "project_triggers": _Route("/triggers"),
             "project_widget_edit": _Route("/integration/widgets/{widget_id}"),
         }
@@ -292,6 +293,65 @@ async def test_project_action_widget_create_requires_signed_header() -> None:
 
     with pytest.raises(web.HTTPForbidden):
         await _raw_project_action()(req)
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_reset_code_generates_new_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    widget = SimpleNamespace(id=7, code="old-code", updated_at=None)
+    req = _Request(action="widget_reset_code", item_id="7", post_data=MultiDict())
+    db = _DB(scalar_values=[widget, None])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    monkeypatch.setattr(project_views, "_new_widget_code", lambda: "new-code")
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 204
+    assert resp.headers["HX-Redirect"] == "/integration/widgets/7"
+    assert widget.code == "new-code"
+    assert widget.updated_at is not None
+    assert db.commits == 1
+    assert events == ["widget_reset_code"]
+    assert flashes == [("Код виджета сброшен", "success")]
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_delete_redirects_to_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    widget = SimpleNamespace(id=7)
+    req = _Request(action="widget_delete", item_id="7", post_data=MultiDict())
+    db = _DB(scalar_values=[widget])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    monkeypatch.setattr(project_views, "admin_event", _event)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 204
+    assert resp.headers["HX-Redirect"] == "/integration"
+    assert "HX-Refresh" not in resp.headers
+    assert db.deleted == [widget]
+    assert db.commits == 1
+    assert events == ["widget_delete"]
 
 
 @pytest.mark.asyncio

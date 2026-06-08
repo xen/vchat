@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -100,6 +102,29 @@ def test_pinned_messages_from_form_keeps_three_messages() -> None:
         {"text": "One", "color": "primary"},
         {"text": "Three", "color": "warning"},
     ]
+
+
+def test_pinned_messages_from_form_sanitizes_rich_text_and_limits_length() -> None:
+    data = SimpleNamespace(
+        getall=lambda key, default=None: (
+            [
+                '<strong>Bold</strong> <a href="example.com">bad</a> '
+                '<a href="https://example.com">ok</a><script>x</script>'
+                + ("x" * 500)
+            ]
+            if key == "pinned_text[]"
+            else ["success"]
+        )
+    )
+
+    messages = project_views._pinned_messages_from_form(data)
+
+    assert messages[0]["color"] == "success"
+    assert "<strong>Bold</strong>" in messages[0]["text"]
+    assert '<a href="https://example.com"' in messages[0]["text"]
+    assert "script" not in messages[0]["text"]
+    assert "href=\"example.com\"" not in messages[0]["text"]
+    assert len(html.unescape(re.sub("<[^>]+>", "", messages[0]["text"]))) == 400
 
 
 @pytest.mark.asyncio
