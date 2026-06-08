@@ -29,6 +29,11 @@
 <body {% block body_id %}{% endblock %}>
 <div class="h-screen w-full overflow-hidden">
   {% block content %}{% endblock %}
+  <div class="fixed inset-x-0 bottom-6 text-center">
+    <a href="/" class="text-sm font-medium text-sky-700 underline underline-offset-4 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-200">
+      {{ _("Назад на главную") }}
+    </a>
+  </div>
 </div>
 
 {% block extra_bottom %}{% endblock %}

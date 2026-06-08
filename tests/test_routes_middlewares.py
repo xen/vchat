@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -216,3 +217,10 @@ def test_get_middlewares_and_routes() -> None:
 
     assert to_path(app.router["login"].url_for()) == "/login/"
     assert to_path(app.router["users"].url_for(), has_trailing_slash=False) == "/users"
+
+
+def test_error_base_template_defines_home_link() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    template = (templates_dir / "error.html").read_text()
+    assert 'href="/"' in template
+    assert "underline" in template
