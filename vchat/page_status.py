@@ -30,6 +30,21 @@ class PageStatusError(str, Enum):
     embedder_failed = "embedder_failed"
 
 
+EXCLUDED_INDEX_STATUS_ERRORS = frozenset(
+    {
+        PageStatusError.excluded_auth.value,
+        PageStatusError.excluded_ignored.value,
+        PageStatusError.excluded_robots.value,
+        PageStatusError.excluded_rules.value,
+        PageStatusError.duplicate_content.value,
+        PageStatusError.no_content.value,
+        PageStatusError.low_content.value,
+        PageStatusError.too_big.value,
+        PageStatusError.redirect.value,
+    }
+)
+
+
 STATUS_ERROR_DESCRIPTIONS: dict[PageStatusError, str] = {
     PageStatusError.http_4xx: "Клиентская ошибка HTTP",
     PageStatusError.http_5xx: "Серверная ошибка HTTP",

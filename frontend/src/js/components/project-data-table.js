@@ -67,7 +67,7 @@ const formatBytes = (value) => {
 
 const EXCLUDED_ERRORS = new Set([
   'excluded_robots', 'excluded_rules', 'excluded_auth', 'excluded_ignored',
-  'no_content', 'low_content', 'redirect',
+  'duplicate_content', 'no_content', 'low_content', 'too_big', 'redirect',
 ])
 
 function computeGroup(status, statusError, isIgnored) {

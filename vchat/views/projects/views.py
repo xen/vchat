@@ -87,7 +87,12 @@ from vchat.source_blocking import (
     describe_blocked_reason,
 )
 from vchat.settings import config
-from vchat.page_status import PageStatus, PageStatusError, STATUS_ERROR_DESCRIPTIONS
+from vchat.page_status import (
+    EXCLUDED_INDEX_STATUS_ERRORS,
+    PageStatus,
+    PageStatusError,
+    STATUS_ERROR_DESCRIPTIONS,
+)
 from vchat.triggers import (
     DEFAULT_SOURCE_TRIGGER_PATTERN,
     TRIGGER_DEFAULTS_SETTING,
@@ -1451,18 +1456,7 @@ async def project_trigger_rule_count(request):
 
 
 def _build_progress_conditions():
-    _EXCLUDED_ERRORS = [
-        PageStatusError.excluded_auth.value,
-        PageStatusError.excluded_ignored.value,
-        PageStatusError.excluded_robots.value,
-        PageStatusError.excluded_rules.value,
-        PageStatusError.duplicate_content.value,
-        PageStatusError.no_content.value,
-        PageStatusError.low_content.value,
-        PageStatusError.too_big.value,
-        PageStatusError.redirect.value,
-    ]
-    is_excl = Page.status_error.in_(_EXCLUDED_ERRORS)
+    is_excl = Page.status_error.in_(EXCLUDED_INDEX_STATUS_ERRORS)
     is_err = sa.and_(
         Page.status_error.isnot(None),
         sa.not_(is_excl),

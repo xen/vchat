@@ -408,6 +408,10 @@ class Sitemap(Base):
 
 class PageLink(Base):
     __tablename__ = "page_link"
+    __table_args__ = (
+        sa.Index("ix_page_link_source_page_id", "source_page_id"),
+        sa.Index("ix_page_link_target_page_id", "target_page_id"),
+    )
 
     id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
     source_uri: Mapped[str] = mapped_column(sa.Text, nullable=False)

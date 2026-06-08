@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +13,7 @@ import pytest
 from aiohttp import web
 
 from vchat.app_keys import REDIS_KEY
+from vchat.page_status import EXCLUDED_INDEX_STATUS_ERRORS
 from vchat.views.projects import views as project_views
 
 
@@ -117,6 +119,22 @@ def test_document_content_template_renders_structure_items() -> None:
         document_links_graph={"currentNodeId": "page-1", "nodes": [], "links": []},
     )
     assert "one\ntwo" in rendered
+
+
+def test_frontend_status_groups_match_backend_excluded_errors() -> None:
+    js_path = (
+        Path(__file__).resolve().parents[1]
+        / "frontend"
+        / "src"
+        / "js"
+        / "components"
+        / "project-data-table.js"
+    )
+    js_source = js_path.read_text()
+    match = re.search(r"const EXCLUDED_ERRORS = new Set\(\[(.*?)\]\)", js_source, re.S)
+    assert match is not None
+    frontend_excluded = set(re.findall(r"'([^']+)'", match.group(1)))
+    assert EXCLUDED_INDEX_STATUS_ERRORS <= frontend_excluded
 
 
 def test_document_content_preview_truncates_at_word_boundary() -> None:
