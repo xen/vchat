@@ -15,10 +15,7 @@ def json_response(
     status: int = 200,
     reason: str | None = None,
     headers: (
-        Mapping[str | istr, str]
-        | CIMultiDict[str]
-        | CIMultiDictProxy[str]
-        | None
+        Mapping[str | istr, str] | CIMultiDict[str] | CIMultiDictProxy[str] | None
     ) = None,
     content_type: str = "application/json",
 ) -> web.Response:

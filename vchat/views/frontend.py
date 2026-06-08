@@ -208,17 +208,14 @@ async def widget_triggers_resolve(request):
 @aiohttp_jinja2.template("demo.html")
 async def demo_page(request):
     widget_rows = (
-        (
-            await request["db"].execute(
-                sa.select(
-                    WidgetIntegration.id,
-                    WidgetIntegration.name,
-                    WidgetIntegration.code,
-                ).order_by(WidgetIntegration.name.asc(), WidgetIntegration.id.asc())
-            )
+        await request["db"].execute(
+            sa.select(
+                WidgetIntegration.id,
+                WidgetIntegration.name,
+                WidgetIntegration.code,
+            ).order_by(WidgetIntegration.name.asc(), WidgetIntegration.id.asc())
         )
-        .all()
-    )
+    ).all()
     trigger_candidates = (
         (
             await request["db"].execute(

@@ -29,7 +29,9 @@ def raw_content_max_bytes() -> int:
     )
 
 
-def raw_content_payload(raw_content: bytes | None) -> tuple[bytes | None, dict[str, Any]]:
+def raw_content_payload(
+    raw_content: bytes | None,
+) -> tuple[bytes | None, dict[str, Any]]:
     if raw_content is None:
         return None, {"stored": False, "size": 0}
 
