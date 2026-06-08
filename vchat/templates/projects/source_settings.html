@@ -140,23 +140,23 @@
 
                 <div class="form-control w-full">
                     <label class="label">
-                        <span class="label-text">{{ _('Заголовок') }}</span>
+                        <span class="label-text">{{ 'Заголовок' }}</span>
                     </label>
-                    {{ form.title(class="input input-bordered w-full", placeholder=_("Необязательный заголовок")) }}
+                    {{ form.title(class="input input-bordered w-full", placeholder="Необязательный заголовок") }}
                 </div>
 
                 <div class="form-control w-full">
                     <label class="label">
-                        <span class="label-text">{{ _('Cron переиндексации (UTC)') }}</span>
+                        <span class="label-text">{{ 'Cron переиндексации (UTC)' }}</span>
                     </label>
                     {{ form.reindex_cron(class="input input-bordered w-full", placeholder="0 3 * * 1") }}
-                    <p class="text-xs text-base-content/60 mt-1">{{ _('Формат: minute hour day month weekday. Пустое значение = ручной режим. Пример по умолчанию: 0 3 * * 1 (раз в неделю).') }}</p>
+                    <p class="text-xs text-base-content/60 mt-1">{{ 'Формат: minute hour day month weekday. Пустое значение = ручной режим. Пример по умолчанию: 0 3 * * 1 (раз в неделю).' }}</p>
                 </div>
 
                 <div id="site_fields" class="space-y-5">
                     <div class="form-control w-full">
                         <label class="label">
-                            <span class="label-text">{{ _('URL') }}</span>
+                            <span class="label-text">{{ 'URL' }}</span>
                         </label>
                         {{ form.url(class="input input-bordered w-full", placeholder="https://example.com") }}
                         {% if form.url.errors %}
@@ -168,18 +168,18 @@
                         {% endif %}
                     </div>
 
-                    <h3 class="text-base font-semibold">{{ _('Правила индексации') }}</h3>
+                    <h3 class="text-base font-semibold">{{ 'Правила индексации' }}</h3>
                     <div class="text-sm space-y-2 break-words">
                         <div class="space-y-2">
                             <p>
-                                {{ _('Эти правила помогают исключать страницы из индекса и обхода, даже если URL есть в sitemap.xml или был найден роботом при переходе по ссылкам.') }}
+                                {{ 'Эти правила помогают исключать страницы из индекса и обхода, даже если URL есть в sitemap.xml или был найден роботом при переходе по ссылкам.' }}
                             </p>
-                            <p>{{ _('Примеры исключения:') }}</p>
+                            <p>{{ 'Примеры исключения:' }}</p>
                             <ul class="list-disc pl-5 space-y-1">
-                                <li><strong>XPath:</strong> <code class="break-all">//a[contains(@href, "/private/")]</code> — {{ _('не переходить по ссылкам на приватные разделы.') }}</li>
-                                <li><strong>CSS:</strong> <code class="break-all">a[href*="/checkout"], a[href*="/cart"]</code> — {{ _('исключить служебные страницы корзины/оформления.') }}</li>
-                                <li><strong>Игнорируемый параметр:</strong> <code class="break-all">utm_source</code>, <code class="break-all">session_id</code> — {{ _('не создавать отдельные URL в обходе и индексе из-за параметров трекинга/сессии.') }}</li>
-                                <li><strong>Регулярное выражение URL:</strong> <code class="break-all">^https://example\\.com/(admin|internal|tmp)/</code> — {{ _('полностью исключить ветки URL из обхода и индексации.') }}</li>
+                                <li><strong>XPath:</strong> <code class="break-all">//a[contains(@href, "/private/")]</code> — {{ 'не переходить по ссылкам на приватные разделы.' }}</li>
+                                <li><strong>CSS:</strong> <code class="break-all">a[href*="/checkout"], a[href*="/cart"]</code> — {{ 'исключить служебные страницы корзины/оформления.' }}</li>
+                                <li><strong>Игнорируемый параметр:</strong> <code class="break-all">utm_source</code>, <code class="break-all">session_id</code> — {{ 'не создавать отдельные URL в обходе и индексе из-за параметров трекинга/сессии.' }}</li>
+                                <li><strong>Регулярное выражение URL:</strong> <code class="break-all">^https://example\\.com/(admin|internal|tmp)/</code> — {{ 'полностью исключить ветки URL из обхода и индексации.' }}</li>
                             </ul>
                         </div>
                     </div>
@@ -188,8 +188,8 @@
                             <table class="table table-zebra w-full">
                                 <thead>
                                     <tr>
-                                        <th class="w-px whitespace-nowrap">{{ _('Тип') }}</th>
-                                        <th>{{ _('Значение') }}</th>
+                                        <th class="w-px whitespace-nowrap">{{ 'Тип' }}</th>
+                                        <th>{{ 'Значение' }}</th>
                                         <th class="w-16"></th>
                                     </tr>
                                 </thead>
@@ -219,7 +219,7 @@
                                                 hx-target="closest tr"
                                                 hx-swap="delete"
                                                 class="btn btn-square btn-sm btn-ghost text-error"
-                                                title="{{ _('Удалить') }}"
+                                                title="{{ 'Удалить' }}"
                                             >
                                                 <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
                                             </button>
@@ -232,7 +232,7 @@
                     </div>
                     <button type="button" onclick="addIndexRule()" class="btn btn-sm btn-outline btn-primary mt-3">
                         <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-                        {{ _('Добавить правило') }}
+                        {{ 'Добавить правило' }}
                     </button>
                 </div>
 
@@ -256,7 +256,7 @@
                     </label>
                     {{ form.download_delay }}
                     <label class="label">
-                        <span class="label-text-alt">{{ _('Пауза между HTTP-запросами в секундах.') }}</span>
+                        <span class="label-text-alt">{{ 'Пауза между HTTP-запросами в секундах.' }}</span>
                     </label>
                     {% if form.download_delay.errors %}
                         <div class="label">
@@ -273,7 +273,7 @@
                     </label>
                     {{ form.download_timeout }}
                     <label class="label">
-                        <span class="label-text-alt">{{ _('Максимальное время ожидания ответа от сайта в секундах.') }}</span>
+                        <span class="label-text-alt">{{ 'Максимальное время ожидания ответа от сайта в секундах.' }}</span>
                     </label>
                     {% if form.download_timeout.errors %}
                         <div class="label">
@@ -290,7 +290,7 @@
                         <span class="label-text">{{ form.ignore_robots_txt.label.text }}</span>
                     </label>
                     <label class="label w-full pt-1 pl-9">
-                        <span class="label-text-alt">{{ _('Не запрашивать robots.txt и не применять его правила при обходе источника.') }}</span>
+                        <span class="label-text-alt">{{ 'Не запрашивать robots.txt и не применять его правила при обходе источника.' }}</span>
                     </label>
                 </div>
 
@@ -300,13 +300,13 @@
                         <span class="label-text">{{ form.enable_triggers.label.text }}</span>
                     </label>
                     <label class="label w-full pt-1 pl-9">
-                        <span class="label-text-alt whitespace-normal break-words">{{ _('Во время работы пользователя на странице сайта рядом с виджетом будет появляться приглашение начать диалог.') }}</span>
+                        <span class="label-text-alt whitespace-normal break-words">{{ 'Во время работы пользователя на странице сайта рядом с виджетом будет появляться приглашение начать диалог.' }}</span>
                     </label>
                 </div>
 
                 <div class="pt-2 flex items-center gap-2">
-                    <button type="submit" class="btn btn-primary">{{ _('Сохранить') }}</button>
-                    <a class="btn btn-ghost" href="{{ url('project_edit_sources') }}">{{ _('Отмена') }}</a>
+                    <button type="submit" class="btn btn-primary">{{ 'Сохранить' }}</button>
+                    <a class="btn btn-ghost" href="{{ url('project_edit_sources') }}">{{ 'Отмена' }}</a>
                 </div>
             </form>
         </div>
@@ -341,7 +341,7 @@
             <input type="text" name="rule_value[]" class="input input-bordered input-sm w-full" placeholder="Значение">
         </td>
         <td class="text-right">
-            <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error" title="{{ _('Удалить') }}">
+            <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error" title="{{ 'Удалить' }}">
                 <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
             </button>
         </td>
@@ -363,8 +363,8 @@
             <table class="table table-zebra w-full">
                 <thead>
                     <tr>
-                        <th class="w-px whitespace-nowrap">{{ _('Тип') }}</th>
-                        <th>{{ _('Значение') }}</th>
+                        <th class="w-px whitespace-nowrap">{{ 'Тип' }}</th>
+                        <th>{{ 'Значение' }}</th>
                         <th class="w-16"></th>
                     </tr>
                 </thead>

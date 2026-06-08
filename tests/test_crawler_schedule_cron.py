@@ -8,7 +8,7 @@ import pytest
 
 from jobs.crawler import tasks as crawler_tasks
 from jobs.celery import app as celery_app
-from vchat.source_settings import normalize_reindex_cron, validate_reindex_cron
+from jobs.crawler.source_settings import normalize_reindex_cron, validate_reindex_cron
 
 
 class _Engine:

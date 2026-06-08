@@ -4,8 +4,8 @@ from typing import Any, List
 
 from bs4 import BeautifulSoup
 
-from vchat.document_shingles import is_boilerplate_block
-from vchat.embedding_tokenizer import load_embedding_tokenizer
+from jobs.documents.shingles import is_boilerplate_block
+from jobs.embedder.tokenizer import load_embedding_tokenizer
 from vchat.settings import config
 
 EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]

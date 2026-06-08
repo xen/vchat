@@ -13,7 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, Created, Updated, generate_uuid7
 
 from .source_config import SourceConfig
-from vchat.page_status import PageStatus
+from vchat.views.projects.page_status import PageStatus
 
 
 class Chat(Base, Created, Updated):

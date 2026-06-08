@@ -15,8 +15,8 @@ import tiktoken
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from vchat.ai_providers import BaseAIProvider, ModelInfo
-from vchat.embeddings import load_embedding_model
+from vchat.views.chat.ai import BaseAIProvider, ModelInfo
+from jobs.embedder.model import load_embedding_model
 from vchat.models import ChatMsg
 from vchat.settings import config
 

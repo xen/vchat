@@ -5,7 +5,7 @@ import logging
 from aiohttp import web
 from redis.exceptions import RedisError
 
-from vchat.app_keys import REDIS_KEY
+from vchat.settings import REDIS_KEY
 from vchat.utils import login_required
 
 __all__ = [

@@ -4,7 +4,7 @@ import sys
 
 import aiohttp
 
-from vchat.gigachat_oauth import get_gigachat_access_token
+from vchat.views.chat.oauth import get_gigachat_access_token
 from vchat.settings import config
 
 logger = logging.getLogger("gigatest")

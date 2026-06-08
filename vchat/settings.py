@@ -1,10 +1,33 @@
 import logging
 from pathlib import Path
 import os
+from typing import Any, Dict
 import yaml
+from aiohttp import web
 from expandvars import expandvars
+from itsdangerous import URLSafeTimedSerializer
+from redis.asyncio.client import Redis
 
-__all__ = ("config",)
+__all__ = (
+    "CONFIG_KEY",
+    "LOGGER_KEY",
+    "REDIS_KEY",
+    "SIGNER_KEY",
+    "SETTINGS_KEY",
+    "STATIC_VERSION_KEY",
+    "config",
+)
+
+ConfigDict = Dict[str, Any]
+
+CONFIG_KEY: web.AppKey[ConfigDict] = web.AppKey("config", dict)
+LOGGER_KEY: web.AppKey[logging.Logger] = web.AppKey("logger", logging.Logger)
+REDIS_KEY: web.AppKey[Redis] = web.AppKey("redis", Redis)
+SIGNER_KEY: web.AppKey[URLSafeTimedSerializer] = web.AppKey(
+    "signer", URLSafeTimedSerializer
+)
+SETTINGS_KEY: web.AppKey[ConfigDict] = web.AppKey("settings", dict)
+STATIC_VERSION_KEY: web.AppKey[str] = web.AppKey("static_version", str)
 
 
 # C loader is much faster than Python based loader, but it requires libyaml to be

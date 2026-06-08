@@ -17,10 +17,10 @@ from presidio_analyzer.nlp_engine import NlpArtifacts, NlpEngine
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
-from vchat.ai_providers import BaseAIProvider
+from vchat.views.chat.ai import BaseAIProvider
 from vchat.settings import config
 
-logger = logging.getLogger("vchat.guardrails")
+logger = logging.getLogger("vchat.views.chat.guardrails")
 
 _cached_client: Any | None = None
 _cached_key: tuple[str, str] | None = None

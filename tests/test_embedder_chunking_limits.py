@@ -218,7 +218,7 @@ def test_validate_chunk_data_rejects_embedder_oversize() -> None:
 
 def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
     from jobs.crawler import tasks as crawler_tasks
-    from vchat.page_status import PageStatus, PageStatusError
+    from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     executed = []
     page = SimpleNamespace(
@@ -329,7 +329,7 @@ def test_materialize_page_chunks_rolls_back_after_boilerplate_load(monkeypatch) 
 
 def test_materialize_page_chunks_marks_oversize_document_too_big(monkeypatch) -> None:
     from jobs.crawler import tasks as crawler_tasks
-    from vchat.page_status import PageStatus, PageStatusError
+    from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
     monkeypatch.setattr(
@@ -913,7 +913,7 @@ def test_fetch_page_context_keeps_transaction_open_for_index_lock() -> None:
 
 def test_fetch_page_context_marks_old_oversize_error_too_big(monkeypatch) -> None:
     from jobs.crawler import tasks as crawler_tasks
-    from vchat.page_status import PageStatus, PageStatusError
+    from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
     monkeypatch.setattr(
@@ -978,7 +978,7 @@ def test_fetch_page_context_allows_old_too_big_when_visible_html_fits(
     monkeypatch,
 ) -> None:
     from jobs.crawler import tasks as crawler_tasks
-    from vchat.page_status import PageStatusError
+    from vchat.views.projects.page_status import PageStatusError
 
     monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 30)
 

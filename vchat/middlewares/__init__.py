@@ -11,9 +11,8 @@ from aiohttp.web_middlewares import normalize_path_middleware
 from aiohttp_session import get_session, session_middleware
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY
 from vchat.db import async_session_factory
-from vchat.i18n import _
 from vchat.models import User
 from vchat.utils import Meta
 
@@ -32,7 +31,7 @@ async def meta_middleware(request: web.Request, handler) -> web.StreamResponse:
 async def handle_error(request: web.Request, code: int = 404) -> web.Response:
     if not request.get("meta"):
         request["meta"] = Meta()
-    request["meta"].title = _("Error {code}").format(code=code)
+    request["meta"].title = "Ошибка {code}".format(code=code)
     return aiohttp_jinja2.render_template(f"misc/{code}.html", request, {}, status=code)
 
 

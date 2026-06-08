@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from tests.rag_quality import answer_eval
-from vchat.ai_providers import get_default_provider_id, resolve_ai_settings
+from vchat.views.chat.ai import get_default_provider_id, resolve_ai_settings
 from vchat.views.chat import views as chat_views
 
 

@@ -7,8 +7,7 @@ from aiohttp_session import get_session
 from wtforms import Form, PasswordField, StringField, validators
 from wtforms.csrf.session import SessionCSRF
 
-from vchat.app_keys import CONFIG_KEY
-from vchat.i18n import _
+from vchat.settings import CONFIG_KEY
 from vchat.settings import config
 from vchat.models import AdminEvent, ApiClient, Source, User
 from vchat.models.data import api_client_source
@@ -26,56 +25,50 @@ class BaseForm(Form):
 
 class CreateUserForm(BaseForm):
     email = StringField(
-        _("Email"),
+        "Email",
         [
-            validators.Length(
-                min=6, max=254, message=_("Length from 6 to 254 characters")
-            ),
-            validators.Email(message=_("Enter a valid email")),
-            validators.DataRequired(message=_("Required field")),
+            validators.Length(min=6, max=254, message="Длина от 6 до 254 символов"),
+            validators.Email(message="Введите корректный email"),
+            validators.DataRequired(message="Обязательное поле"),
         ],
-        render_kw={"placeholder": _("name@company.com")},
+        render_kw={"placeholder": "name@company.com"},
     )
     password = PasswordField(
-        _("Password"),
+        "Пароль",
         [
-            validators.Length(
-                min=6, max=35, message=_("Length from 6 to 35 characters")
-            ),
-            validators.DataRequired(message=_("Required field")),
+            validators.Length(min=6, max=35, message="Длина от 6 до 35 символов"),
+            validators.DataRequired(message="Обязательное поле"),
         ],
-        render_kw={"placeholder": _("Password")},
+        render_kw={"placeholder": "Пароль"},
     )
 
 
 class UserPasswordForm(BaseForm):
     password = PasswordField(
-        _("New password"),
+        "Новый пароль",
         [
-            validators.Length(
-                min=6, max=35, message=_("Length from 6 to 35 characters")
-            ),
-            validators.EqualTo("confirm", message=_("Passwords must match")),
-            validators.DataRequired(message=_("Required field")),
+            validators.Length(min=6, max=35, message="Длина от 6 до 35 символов"),
+            validators.EqualTo("confirm", message="Пароли должны совпадать"),
+            validators.DataRequired(message="Обязательное поле"),
         ],
-        render_kw={"placeholder": _("New password")},
+        render_kw={"placeholder": "Новый пароль"},
     )
     confirm = PasswordField(
-        _("Confirm password"),
-        render_kw={"placeholder": _("Confirm password")},
+        "Подтвердите пароль",
+        render_kw={"placeholder": "Подтвердите пароль"},
     )
 
 
 class ApiClientForm(BaseForm):
     name = StringField(
-        _("Name"),
+        "Имя",
         [
             validators.Length(
-                min=1, max=128, message=_("Length from 1 to 128 characters")
+                min=1, max=128, message="Length from 1 to 128 characters"
             ),
-            validators.DataRequired(message=_("Required field")),
+            validators.DataRequired(message="Обязательное поле"),
         ],
-        render_kw={"placeholder": _("Client name")},
+        render_kw={"placeholder": "Client name"},
     )
 
 
@@ -145,7 +138,7 @@ async def _get_api_client_sources(db_session) -> list[Source]:
     ]
 
 
-@meta(title=_("Action Log"))
+@meta(title="Журнал действий")
 @login_required()
 @aiohttp_jinja2.template("admin/event_list.html")
 async def event_list(request):
@@ -193,7 +186,7 @@ async def event_list(request):
     }
 
 
-@meta(title=_("User List"))
+@meta(title="Список пользователей")
 @login_required()
 @aiohttp_jinja2.template("admin/user_list.html")
 async def user_list(request):
@@ -208,7 +201,7 @@ async def user_list(request):
     }
 
 
-@meta(title=_("API Clients"))
+@meta(title="API-клиенты")
 @login_required()
 @aiohttp_jinja2.template("admin/api_client_list.html")
 async def api_client_list(request):

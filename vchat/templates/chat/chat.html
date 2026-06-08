@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ _('Чат') }} - {{ project.title }}</title>
+  <title>{{ 'Чат' }} - {{ project.title }}</title>
   <link rel="stylesheet" href="/static/chat/chat.css" />
   <script type="module" src="/static/chat/chat.js"></script>
   <style>
@@ -27,7 +27,7 @@
   <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
     <div class="flex-1 gap-2 items-center">
       <div class="flex flex-col">
-        <span class="font-bold text-sm leading-tight">{{ agent_name if agent_name else _('Виртуальный ассистент') }}</span>
+        <span class="font-bold text-sm leading-tight">{{ agent_name if agent_name else ('Виртуальный ассистент') }}</span>
       </div>
     </div>
     <div class="flex-none">
@@ -38,7 +38,7 @@
         rel="noopener"
         class="btn btn-outline btn-sm"
       >
-        {{ _('Контакты') }}
+        {{ 'Контакты' }}
       </a>
       {% endif %}
     </div>
@@ -51,7 +51,7 @@
     <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
       <main id="log" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
         {% if pinned_messages %}
-        <section class="space-y-2" aria-label="{{ _('Закрепленные сообщения') }}">
+        <section class="space-y-2" aria-label="{{ 'Закрепленные сообщения' }}">
           {% set pinned_classes = {
             'neutral': 'bg-base-200 text-base-content border-base-300',
             'primary': 'bg-primary/10 text-primary border-primary/20',
@@ -77,14 +77,14 @@
         <form id="composer" class="relative w-full">
           <textarea id="prompt"
             class="textarea textarea-bordered textarea-md w-full pr-12 resize-none bg-base-100 focus:outline-none" rows="2"
-            placeholder="{{ _('Введите сообщение…') }}"></textarea>
+            placeholder="{{ 'Введите сообщение…' }}"></textarea>
           <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm absolute bottom-3 right-3"
-            aria-label="{{ _('Отправить') }}">
-            {{ _('Отправить') }}
+            aria-label="{{ 'Отправить' }}">
+            {{ 'Отправить' }}
           </button>
         </form>
         <div id="status" class="text-xs text-left mt-2 opacity-50">
-          <span class="badge badge-xs badge-warning mr-1"></span> {{ _('подключение…') }}
+          <span class="badge badge-xs badge-warning mr-1"></span> {{ 'подключение…' }}
         </div>
       </div>
     </div>
@@ -101,7 +101,7 @@
       style="width: 0; min-width: 0; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; user-select: none;">
       <div style="flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; min-width: 14rem;"
            class="border-b border-base-200">
-        <span class="font-semibold text-sm">{{ _('Источники') }}</span>
+        <span class="font-semibold text-sm">{{ 'Источники' }}</span>
         <button id="sources-sidebar-close" class="btn btn-ghost btn-xs btn-square">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -140,7 +140,7 @@
 
     function setSidebarContent(sources) {
       sidebarListEl.innerHTML = sources.map((s) => {
-        const title = escapeHtml(s.title || '{{ _("Источник") }}');
+        const title = escapeHtml(s.title || '{{ "Источник" }}');
         const href = escapeHtml(s.uri || '#');
         return `<a href="${href}" target="_blank" rel="noopener" style="color: var(--color-primary, #6366f1); word-break: break-word; line-height: 1.4; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${title}</a>`;
       }).join('');
@@ -253,10 +253,10 @@
 
       const count = unique.length;
       const label = count === 1
-        ? '{{ _("1 источник") }}'
+        ? '{{ "1 источник" }}'
         : count < 5
-          ? `${count} {{ _("источника") }}`
-          : `${count} {{ _("источников") }}`;
+          ? `${count} {{ "источника" }}`
+          : `${count} {{ "источников" }}`;
 
       const wrapper = document.createElement('div');
       wrapper.setAttribute('data-structured-context', 'true');
@@ -427,15 +427,15 @@
     function connect() {
       ws = new WebSocket(wsUrl());
       ws.onopen = () => {
-        updateStatus('{{ _("подключено") }}', 'подключено');
+        updateStatus('{{ "подключено" }}', 'подключено');
       };
       ws.onclose = () => {
-        updateStatus('{{ _("отключено") }}', 'warning');
+        updateStatus('{{ "отключено" }}', 'warning');
         setSending(false);
         currentBotBubble = null;
       };
       ws.onerror = () => {
-        updateStatus('{{ _("ошибка") }}', 'error');
+        updateStatus('{{ "ошибка" }}', 'error');
         setSending(false);
         currentBotBubble = null;
       };

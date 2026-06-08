@@ -8,7 +8,7 @@ import sys
 import time
 from pathlib import Path
 
-from vchat.embeddings import resolve_embedding_device
+from jobs.embedder.model import resolve_embedding_device
 from vchat.settings import config
 
 

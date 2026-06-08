@@ -6,17 +6,12 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urldefrag, urlsplit
 
-import aiohttp
 import sqlalchemy as sa
 
-from vchat.ai_providers import BaseAIProvider, ModelInfo, resolve_ai_settings
-from vchat.gigachat_oauth import get_gigachat_access_token
 from vchat.models import Page, Source
 from vchat.models.source_config import CrawlerRule
-from vchat.page_status import PageStatus
-from vchat.project_settings import get_setting_json
-from vchat.settings import config
-from vchat.utils import json
+from vchat.views.projects.page_status import PageStatus
+from vchat.views.projects.settings import get_setting_json
 
 
 DEFAULT_TRIGGER_TEMPLATES = [
@@ -29,8 +24,6 @@ DEFAULT_TRIGGER_TEMPLATES = [
 ]
 
 TRIGGER_DEFAULTS_SETTING = "triggers.default_templates"
-TRIGGER_GENERATION_LIMIT = 10
-TRIGGER_CONTENT_CHARS = 8000
 TRIGGER_RULE_MAX_LENGTH = 256
 DEFAULT_SOURCE_TRIGGER_PATTERN = "^/.*"
 UNSUPPORTED_TRIGGER_REGEX_TOKENS = (
@@ -234,123 +227,3 @@ async def apply_source_trigger_rules(db, source: Source) -> int:
             page.has_triggers = matched
             updated += 1
     return updated
-
-
-def parse_generated_trigger_texts(raw: str) -> list[str]:
-    payload = raw.strip()
-    if payload.startswith("```"):
-        payload = payload.strip("` \n")
-        if payload.startswith("json"):
-            payload = payload[4:].strip()
-    data = json.loads(payload)
-    if isinstance(data, dict):
-        data = data.get("triggers")
-    if not isinstance(data, list):
-        raise ValueError("Trigger generation response must be a JSON array")
-
-    result: list[str] = []
-    seen: set[str] = set()
-    for item in data:
-        text = " ".join(str(item).split()).strip()
-        if not text or text in seen:
-            continue
-        words = text.split()
-        if len(words) > 10:
-            text = " ".join(words[:10])
-        seen.add(text)
-        result.append(text)
-    return result[:TRIGGER_GENERATION_LIMIT]
-
-
-def build_trigger_generation_messages(page: Page) -> list[dict[str, str]]:
-    title = " ".join((page.title or "").split()).strip() or "Без названия"
-    content = " ".join((page.content or "").split()).strip()
-    if len(content) > TRIGGER_CONTENT_CHARS:
-        content = content[:TRIGGER_CONTENT_CHARS]
-    return [
-        {
-            "role": "system",
-            "content": (
-                "Ты генерируешь короткие приглашения для чат-виджета. "
-                "Верни только JSON-массив строк без markdown. "
-                "Каждая строка должна быть до 10 слов, естественной и релевантной странице."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                "Сделай 10 зазывающих приглашений начать диалог по содержимому страницы.\n\n"
-                f"URL: {page.uri or ''}\n"
-                f"Title: {title}\n"
-                f"Content:\n{content}"
-            ),
-        },
-    ]
-
-
-async def generate_trigger_texts_for_page(app, page: Page) -> list[str]:
-    provider_id = config.get("chat_provider")
-    model_id = config.get("chat_model")
-    provider, model = resolve_ai_settings(provider_id, model_id)
-    raw = await request_trigger_generation(
-        provider, model, build_trigger_generation_messages(page)
-    )
-    return parse_generated_trigger_texts(raw)
-
-
-async def request_trigger_generation(
-    provider: BaseAIProvider,
-    model: ModelInfo,
-    messages: list[dict[str, str]],
-) -> str:
-    if not getattr(provider, "supports_chat", True):
-        raise RuntimeError(f"Provider '{provider.id}' does not support chat")
-    meta = provider.request_meta()
-    api_key = meta.get("api_key")
-    base_url = meta.get("base_url")
-    if provider.id == "openai":
-        api_key = api_key or config.get("openai_api_key")
-        base_url = base_url or config.get(
-            "openai_base_url", "https://api.openai.com/v1"
-        )
-    if not api_key:
-        raise RuntimeError("Missing API key for trigger generation")
-    if not base_url:
-        raise RuntimeError("Missing base URL for trigger generation")
-
-    async with aiohttp.ClientSession() as session:
-        timeout_seconds = 30.0
-        ssl = True
-        if provider.id == "gigachat":
-            api_key = await get_gigachat_access_token(
-                session,
-                basic_auth_key=api_key,
-                oauth_timeout_seconds=float(
-                    config.get("gigachat_oauth_timeout_seconds", 15.0)
-                ),
-            )
-            timeout_seconds = float(
-                config.get("gigachat_request_timeout_seconds", 60.0)
-            )
-            ssl = bool(config.get("gigachat_verify_ssl_certs", True))
-
-        async with session.post(
-            f"{base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model.id,
-                "messages": messages,
-                "temperature": 0.4,
-                "max_tokens": 600,
-            },
-            timeout=aiohttp.ClientTimeout(total=timeout_seconds),
-            ssl=ssl,
-        ) as resp:
-            if resp.status >= 400:
-                detail = await resp.text()
-                raise RuntimeError(f"Trigger generation failed: {resp.status} {detail}")
-            data = await resp.json()
-    return str(data["choices"][0]["message"]["content"])

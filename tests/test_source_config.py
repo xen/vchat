@@ -4,7 +4,7 @@ import json
 import pytest
 
 from vchat.models.source_config import CrawlerRule, SourceConfig
-from vchat.source_settings import (
+from jobs.crawler.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,

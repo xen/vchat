@@ -46,7 +46,7 @@
   </svg>
   <span>{{ msg.message }}</span>
   <button class="btn btn-sm btn-ghost" onclick="this.parentElement.remove()">
-    {{ _('Закрыть') }}
+    {{ 'Закрыть' }}
   </button>
 </div>
 {% endfor %}
@@ -55,17 +55,17 @@
 {# admin macros #}
 {% macro search(request, placeholder) %}
 <form class="sm:pr-3" action="{{ url(request.match_info.route.name) }}" method="GET">
-  <label for="products-search" class="sr-only">{{ _('Поиск') }}</label>
+  <label for="products-search" class="sr-only">{{ 'Поиск' }}</label>
   <div class="relative w-48 mt-1 sm:w-64 xl:w-96">
     <input type="text" name="search" id="products-search" value="{{ request.query.search }}"
-      placeholder="{{ _('Поиск по') }} {{ placeholder }}" class="input border w-full" />
+      placeholder="{{ 'Поиск по' }} {{ placeholder }}" class="input border w-full" />
   </div>
 </form>
 {% endmacro %}
 
 {# Theme switcher button #}
 {% macro theme_switcher() %}
-<button aria-label="{{ _('Сменить тему') }}" class="btn btn-sm btn-circle btn-ghost relative overflow-hidden"
+<button aria-label="{{ 'Сменить тему' }}" class="btn btn-sm btn-circle btn-ghost relative overflow-hidden"
   data-theme-control="toggle">
   <iconify-icon icon="lucide:sun"
     class="absolute size-5 -translate-y-4 opacity-0 transition-all duration-300 group-data-[theme=light]/html:translate-y-0 group-data-[theme=light]/html:opacity-100"></iconify-icon>

@@ -1,5 +1,5 @@
 {% extends "admin.html" %}
-{% set page_title = _("API клиенты") %}
+{% set page_title = "API клиенты" %}
 
 {% macro credential_row(label, value, input_id, secret=False) %}
 <div>
@@ -16,8 +16,8 @@
     <button
       type="button"
       class="btn btn-outline btn-sm join-item"
-      title="{{ _('Показать секрет') }}"
-      aria-label="{{ _('Показать секрет') }}"
+      title="{{ 'Показать секрет' }}"
+      aria-label="{{ 'Показать секрет' }}"
       data-secret-toggle="{{ input_id }}"
       onclick="toggleApiClientSecret('{{ input_id }}', this)"
     >
@@ -27,8 +27,8 @@
     <button
       type="button"
       class="btn btn-outline btn-sm join-item"
-      title="{{ _('Скопировать') }}"
-      aria-label="{{ _('Скопировать') }}"
+      title="{{ 'Скопировать' }}"
+      aria-label="{{ 'Скопировать' }}"
       data-copy-value="{{ input_id }}"
     >
       <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
@@ -43,7 +43,7 @@
 <div class="grid max-h-64 gap-1 overflow-auto">
     <button type="button" class="flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm font-medium text-primary hover:bg-base-200" data-select-all-sources>
       <iconify-icon icon="lucide:check-check" class="size-4"></iconify-icon>
-      {{ _('Выбрать все') }}
+      {{ 'Выбрать все' }}
     </button>
     {% for source in sources %}
     {% set checked = namespace(value=false) %}
@@ -63,7 +63,7 @@
       <span class="truncate">{{ source.title or source.uri }}</span>
     </label>
     {% else %}
-    <p class="text-sm text-base-content/60">{{ _('Источники не найдены') }}</p>
+    <p class="text-sm text-base-content/60">{{ 'Источники не найдены' }}</p>
     {% endfor %}
 </div>
 {% endmacro %}
@@ -71,7 +71,7 @@
 {% block content %}
 <div id="api-clients-page" class="space-y-6">
   <div class="flex items-center justify-between gap-3">
-    <h1 class="text-lg font-medium">{{ _('API клиенты') }}</h1>
+    <h1 class="text-lg font-medium">{{ 'API клиенты' }}</h1>
     <div class="flex items-center gap-2">
       <a href="/api-docs" class="link inline-flex items-center gap-1.5 text-sm">
         <iconify-icon icon="lucide:file-text" class="size-4"></iconify-icon>
@@ -79,7 +79,7 @@
       </a>
       <button type="button" class="btn btn-primary btn-sm" onclick="add_api_client_modal.showModal()">
         <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-        {{ _('Добавить') }}
+        {{ 'Добавить' }}
       </button>
     </div>
   </div>
@@ -90,7 +90,7 @@
       <iconify-icon icon="lucide:key-round" class="mt-1 size-5 text-success"></iconify-icon>
       <div class="min-w-0 flex-1">
         <div class="font-medium">{{ new_credentials.message }}</div>
-        <p class="mt-1 text-sm text-base-content/70">{{ _('Секрет показывается только один раз в целях безопасности.') }}</p>
+        <p class="mt-1 text-sm text-base-content/70">{{ 'Секрет показывается только один раз в целях безопасности.' }}</p>
         <div class="mt-4 grid gap-4 text-sm">
           {{ credential_row("VCHAT_CLIENT_ID", new_credentials.client_id, "new-api-client-id") }}
           {{ credential_row("VCHAT_CLIENT_SECRET", new_credentials.client_secret, "new-api-client-secret", True) }}
@@ -106,9 +106,9 @@
         <table class="table w-full">
           <thead>
             <tr>
-              <th class="align-top text-left">{{ _('Клиент') }}</th>
-              <th class="align-top text-left">{{ _('Источники') }}</th>
-              <th class="text-right">{{ _('Действия') }}</th>
+              <th class="align-top text-left">{{ 'Клиент' }}</th>
+              <th class="align-top text-left">{{ 'Источники' }}</th>
+              <th class="text-right">{{ 'Действия' }}</th>
             </tr>
           </thead>
           <tbody>
@@ -123,11 +123,11 @@
                       id="api-client-id-{{ client.id }}"
                       class="block max-w-64 truncate font-mono text-base-content"
                     >{{ client.client_id }}</code>
-                    <div class="tooltip" data-tip="{{ _('Скопировать') }}">
+                    <div class="tooltip" data-tip="{{ 'Скопировать' }}">
                       <button
                         type="button"
                         class="btn btn-ghost btn-xs btn-square"
-                        aria-label="{{ _('Скопировать') }}"
+                        aria-label="{{ 'Скопировать' }}"
                         data-copy-value="api-client-id-{{ client.id }}"
                       >
                         <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
@@ -153,10 +153,10 @@
                       hx-select="#api-clients-page"
                       hx-target="#api-clients-page"
                       hx-swap="outerHTML"
-                      hx-confirm="{{ _('Создать новый секрет API клиента? Старый секрет перестанет работать.') }}"
+                      hx-confirm="{{ 'Создать новый секрет API клиента? Старый секрет перестанет работать.' }}"
                     >
                       <iconify-icon icon="lucide:key-round" class="size-3.5"></iconify-icon>
-                      {{ _('Новый секрет') }}
+                      {{ 'Новый секрет' }}
                     </button>
                   </div>
                 </div>
@@ -166,29 +166,29 @@
                   {% for source in client.sources %}
                   <span>{{ source.title or source.uri }}</span>{% if not loop.last %}<span class="text-base-content/40">, </span>{% endif %}
                   {% else %}
-                  <span class="text-base-content/50">{{ _('Не выбраны') }}</span>
+                  <span class="text-base-content/50">{{ 'Не выбраны' }}</span>
                   {% endfor %}
                 </div>
               </td>
               <td class="align-top text-right">
                 <div class="flex justify-end gap-2">
-                  <div class="tooltip" data-tip="{{ _('Редактировать') }}">
+                  <div class="tooltip" data-tip="{{ 'Редактировать' }}">
                     <button
                       type="button"
                       class="btn btn-xs btn-square btn-outline"
-                      aria-label="{{ _('Редактировать') }}"
+                      aria-label="{{ 'Редактировать' }}"
                       onclick="api_client_edit_modal_{{ client.id }}.showModal()"
                     >
                       <iconify-icon icon="lucide:pencil" class="size-3.5"></iconify-icon>
                     </button>
                   </div>
-                  <div class="tooltip" data-tip="{{ _('Удалить') }}">
+                  <div class="tooltip" data-tip="{{ 'Удалить' }}">
                     <button
                       class="btn btn-xs btn-square btn-error btn-outline"
-                      aria-label="{{ _('Удалить') }}"
+                      aria-label="{{ 'Удалить' }}"
                       hx-post="{{ url('actions', action='api_client_delete', item_id=client.id) }}"
                       hx-swap="none"
-                      hx-confirm="{{ _('Удалить API клиента?') }}"
+                      hx-confirm="{{ 'Удалить API клиента?' }}"
                     >
                       <iconify-icon icon="lucide:trash-2" class="size-3.5"></iconify-icon>
                     </button>
@@ -199,7 +199,7 @@
             {% else %}
             <tr>
               <td colspan="3" class="text-center text-base-content/60 py-8">
-                {{ _('API клиенты не найдены') }}
+                {{ 'API клиенты не найдены' }}
               </td>
             </tr>
             {% endfor %}
@@ -211,9 +211,9 @@
 
   <section class="card bg-base-100 shadow">
     <div class="card-body gap-4">
-      <h2 class="text-base font-medium">{{ _('Примеры отправки URL') }}</h2>
+      <h2 class="text-base font-medium">{{ 'Примеры отправки URL' }}</h2>
       <p class="mt-1 text-sm text-base-content/60">
-        {{ _('Запрос отправляется POST-формой application/x-www-form-urlencoded.') }}
+        {{ 'Запрос отправляется POST-формой application/x-www-form-urlencoded.' }}
       </p>
 
       <div class="grid gap-5">
@@ -316,11 +316,11 @@ echo $response;</code></pre>
 
 <dialog id="add_api_client_modal" class="modal">
   <div class="modal-box">
-    <h2 class="card-title text-base mb-3">{{ _('Добавить API клиента') }}</h2>
+    <h2 class="card-title text-base mb-3">{{ 'Добавить API клиента' }}</h2>
     <form method="POST" action="{{ url('actions', action='api_client_create', item_id='global') }}" class="grid gap-3">
       {{ add_form.csrf_token }}
       <div>
-        <label class="label"><span class="label-text">{{ _('Название') }}</span></label>
+        <label class="label"><span class="label-text">{{ 'Название' }}</span></label>
         {{ add_form.name(class="input input-bordered w-full", autocomplete="off") }}
         {% if add_form.name.errors %}
           {% for error in add_form.name.errors %}
@@ -329,24 +329,24 @@ echo $response;</code></pre>
         {% endif %}
       </div>
       <div>
-        <div class="label"><span class="label-text">{{ _('Источники') }}</span></div>
+        <div class="label"><span class="label-text">{{ 'Источники' }}</span></div>
         {{ source_checkbox_list(sources) }}
       </div>
       <div class="modal-action mt-1">
-        <button type="submit" class="btn btn-primary btn-sm">{{ _('Добавить') }}</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="add_api_client_modal.close()">{{ _('Отмена') }}</button>
+        <button type="submit" class="btn btn-primary btn-sm">{{ 'Добавить' }}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="add_api_client_modal.close()">{{ 'Отмена' }}</button>
       </div>
     </form>
   </div>
   <form method="dialog" class="modal-backdrop">
-    <button>{{ _('Закрыть') }}</button>
+    <button>{{ 'Закрыть' }}</button>
   </form>
 </dialog>
 
 {% for client in clients %}
 <dialog id="api_client_edit_modal_{{ client.id }}" class="modal">
   <div class="modal-box">
-    <h2 class="card-title text-base mb-3">{{ _('Редактировать API клиента') }}</h2>
+    <h2 class="card-title text-base mb-3">{{ 'Редактировать API клиента' }}</h2>
     <form
       method="POST"
       action="{{ url('actions', action='api_client_update', item_id=client.id) }}"
@@ -358,7 +358,7 @@ echo $response;</code></pre>
     >
       {{ add_form.csrf_token }}
       <div>
-        <label class="label"><span class="label-text">{{ _('Название') }}</span></label>
+        <label class="label"><span class="label-text">{{ 'Название' }}</span></label>
         <input
           type="text"
           name="name"
@@ -370,17 +370,17 @@ echo $response;</code></pre>
         >
       </div>
       <div>
-        <div class="label"><span class="label-text">{{ _('Источники') }}</span></div>
+        <div class="label"><span class="label-text">{{ 'Источники' }}</span></div>
         {{ source_checkbox_list(sources, client.sources) }}
       </div>
       <div class="modal-action mt-1 flex-wrap">
-        <button type="submit" class="btn btn-primary btn-sm">{{ _('Сохранить') }}</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="api_client_edit_modal_{{ client.id }}.close()">{{ _('Отмена') }}</button>
+        <button type="submit" class="btn btn-primary btn-sm">{{ 'Сохранить' }}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="api_client_edit_modal_{{ client.id }}.close()">{{ 'Отмена' }}</button>
       </div>
     </form>
   </div>
   <form method="dialog" class="modal-backdrop">
-    <button>{{ _('Закрыть') }}</button>
+    <button>{{ 'Закрыть' }}</button>
   </form>
 </dialog>
 {% endfor %}

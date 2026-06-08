@@ -2,18 +2,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from vchat import triggers
-from vchat.triggers import (
+from jobs.triggers import generation as trigger_generation
+from jobs.triggers.generation import (
+    parse_generated_trigger_texts,
+    request_trigger_generation,
+)
+from vchat.views.triggers.rules import (
     TriggerPatternError,
     canonical_page_url,
-    parse_generated_trigger_texts,
     render_default_triggers,
     trigger_key,
     trigger_pattern_matches_url,
     trigger_prompt_hash,
     trigger_rule_url_part,
     trigger_rules_match_url,
-    request_trigger_generation,
     source_trigger_rules_match_url,
     validate_trigger_pattern,
 )
@@ -52,9 +54,9 @@ def test_canonical_page_url_drops_fragment_and_trailing_slash():
     assert canonical_page_url("https://example.com/") == "https://example.com"
 
 
-def test_parse_generated_trigger_texts_accepts_array_and_limits_words():
+def test_parse_generated_trigger_texts_accepts_object_and_limits_words():
     rows = parse_generated_trigger_texts(
-        '["Короткий вопрос?", "Это слишком длинный триггер из большого количества слов для проверки лимита"]'
+        '{"triggers": ["Короткий вопрос?", "Это слишком длинный триггер из большого количества слов для проверки лимита"]}'
     )
 
     assert rows == [
@@ -169,11 +171,10 @@ def test_trigger_pattern_matches_url_accepts_simple_numeric_product_rule():
     )
 
 
-@pytest.mark.asyncio
-async def test_request_trigger_generation_passes_gigachat_ssl_setting(
+def test_request_trigger_generation_passes_gigachat_ssl_setting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured = {}
+    captured = []
     provider = SimpleNamespace(
         id="gigachat",
         supports_chat=True,
@@ -184,45 +185,40 @@ async def test_request_trigger_generation_passes_gigachat_ssl_setting(
     )
     model = SimpleNamespace(id="GigaChat-Pro")
 
-    async def _token(*args, **kwargs):
-        _ = args, kwargs
-        return "access-token"
-
     class _Resp:
-        status = 200
+        def __init__(self, payload, *, status_code=200, text=""):
+            self._payload = payload
+            self.status_code = status_code
+            self.text = text
 
-        async def __aenter__(self):
-            return self
+        def json(self):
+            return self._payload
 
-        async def __aexit__(self, exc_type, exc, tb):
-            _ = exc_type, exc, tb
-            return False
+    def _post(url, **kwargs):
+        captured.append((url, kwargs))
+        if url.endswith("/oauth"):
+            return _Resp({"access_token": "access-token", "expires_in": 60})
+        return _Resp(
+            {
+                "choices": [
+                    {"message": {"content": "{\"triggers\": [\"Триггер\"]}"}}
+                ]
+            }
+        )
 
-        async def json(self):
-            return {"choices": [{"message": {"content": "[\"Триггер\"]"}}]}
+    monkeypatch.setitem(
+        trigger_generation.config, "gigachat_verify_ssl_certs", False
+    )
+    monkeypatch.setattr(trigger_generation, "_gigachat_token_cache", None)
+    monkeypatch.setattr(trigger_generation.requests, "post", _post)
 
-    class _Session:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            _ = exc_type, exc, tb
-            return False
-
-        def post(self, *args, **kwargs):
-            _ = args
-            captured.update(kwargs)
-            return _Resp()
-
-    monkeypatch.setitem(triggers.config, "gigachat_verify_ssl_certs", False)
-    monkeypatch.setattr(triggers, "get_gigachat_access_token", _token)
-    monkeypatch.setattr(triggers.aiohttp, "ClientSession", lambda: _Session())
-
-    raw = await request_trigger_generation(
+    raw = request_trigger_generation(
         provider,
         model,
         [{"role": "user", "content": "x"}],
     )
 
-    assert raw == "[\"Триггер\"]"
-    assert captured["ssl"] is False
+    assert raw == "{\"triggers\": [\"Триггер\"]}"
+    assert captured[0][1]["verify"] is False
+    assert captured[1][1]["verify"] is False
+    assert captured[1][1]["json"]["response_format"]["type"] == "json_schema"

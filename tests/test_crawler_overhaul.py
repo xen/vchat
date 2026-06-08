@@ -776,7 +776,7 @@ class TestCrawlRunCreation:
         """force_reprocess_once should bypass unchanged-content short circuit."""
         from jobs.crawler.pipelines import DatabasePipeline
 
-        from vchat.page_status import PageStatus
+        from vchat.views.projects.page_status import PageStatus
 
         page = SimpleNamespace(
             id=55,
@@ -1491,7 +1491,7 @@ class TestPageStatusOnErrors:
             logger = MagicMock()
             engine = MagicMock()
 
-            from vchat.page_status import PageStatus, PageStatusError
+            from vchat.views.projects.page_status import PageStatus, PageStatusError
 
             handle_error_page(engine, "https://example.com/gone", 1, 404, None, logger)
 
@@ -1529,7 +1529,7 @@ class TestPageStatusOnErrors:
     def test_5xx_sets_error_5xx_status(self):
         """save_page_status with http_5xx should record the right status."""
         from jobs.crawler.pipelines import save_page_status
-        from vchat.page_status import PageStatus, PageStatusError
+        from vchat.views.projects.page_status import PageStatus, PageStatusError
 
         with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
             session = MagicMock()
@@ -1580,7 +1580,7 @@ class TestPageStatusOnErrors:
             logger = MagicMock()
             engine = MagicMock()
 
-            from vchat.page_status import PageStatus, PageStatusError
+            from vchat.views.projects.page_status import PageStatus, PageStatusError
 
             save_page_status(
                 engine,
@@ -1627,7 +1627,7 @@ class TestPageStatusOnErrors:
             )
             mock_session_cls.return_value = session
 
-            from vchat.page_status import PageStatus
+            from vchat.views.projects.page_status import PageStatus
 
             save_page_status(
                 MagicMock(),
@@ -1684,7 +1684,7 @@ class TestPageStatusModel:
 
     def test_page_status_column_default_is_crawler(self):
         from vchat.models.data import Page
-        from vchat.page_status import PageStatus
+        from vchat.views.projects.page_status import PageStatus
 
         col = Page.__table__.c["status"]
         assert col.default.arg == PageStatus.crawler
@@ -1693,7 +1693,7 @@ class TestPageStatusModel:
 class TestEmbedderSkipsErrorPages:
     def test_fetch_page_context_skips_pages_with_status_error(self):
         from jobs.crawler.tasks import fetch_page_context
-        from vchat.page_status import PageStatusError
+        from vchat.views.projects.page_status import PageStatusError
 
         page = SimpleNamespace(
             id=1,
@@ -1859,7 +1859,7 @@ class TestChunkTextDeduplication:
 class TestSoft404Pages:
     def test_pipeline_marks_oversize_content_too_big_without_scheduling(self):
         from jobs.crawler.pipelines import DatabasePipeline
-        from vchat.page_status import PageStatus, PageStatusError
+        from vchat.views.projects.page_status import PageStatus, PageStatusError
 
         page = SimpleNamespace(
             id=12121,
@@ -1937,7 +1937,7 @@ class TestSoft404Pages:
 
     def test_pipeline_excludes_full_duplicate_content_without_scheduling(self):
         from jobs.crawler.pipelines import DatabasePipeline, DuplicatePage
-        from vchat.page_status import PageStatus, PageStatusError
+        from vchat.views.projects.page_status import PageStatus, PageStatusError
 
         page = SimpleNamespace(
             id=1416,
@@ -2019,7 +2019,7 @@ class TestSoft404Pages:
 
     def test_pipeline_treats_extractable_404_as_content_page(self):
         from jobs.crawler.pipelines import DatabasePipeline
-        from vchat.page_status import PageStatus
+        from vchat.views.projects.page_status import PageStatus
 
         page = SimpleNamespace(
             id=25154,

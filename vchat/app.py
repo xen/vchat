@@ -12,7 +12,7 @@ from itsdangerous import URLSafeTimedSerializer
 from jinja2 import Environment
 from redis.asyncio import from_url as redis_from_url
 
-from vchat.app_keys import (
+from vchat.settings import (
     CONFIG_KEY,
     LOGGER_KEY,
     REDIS_KEY,
@@ -21,9 +21,8 @@ from vchat.app_keys import (
     STATIC_VERSION_KEY,
 )
 from vchat.db import engine
-from vchat.i18n import _
-from vchat.metrics import validate_multiprocess_setup
-from vchat.project_settings import init_settings_cache
+from vchat.views.metrics import validate_multiprocess_setup
+from vchat.views.projects.settings import init_settings_cache
 from vchat.utils import (
     make_full_url,
     protect,
@@ -132,5 +131,4 @@ async def init_jinja(request):
         "csrf_token": csrf_token,
         "project_settings": request.app[SETTINGS_KEY],
         "static_version": request.app.get(STATIC_VERSION_KEY, ""),
-        "_": _,
     }

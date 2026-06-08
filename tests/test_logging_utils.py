@@ -5,7 +5,7 @@ import json
 import logging
 from pathlib import Path
 
-from vchat.logging_utils import (
+from vchat.logging import (
     JsonLogFormatter,
     PlainLogFormatter,
     configure_logging,

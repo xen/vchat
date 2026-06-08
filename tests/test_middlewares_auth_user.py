@@ -6,7 +6,7 @@ import pytest
 from aiohttp import web
 from yarl import URL
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY
 import vchat.middlewares as mdw
 from vchat.views.auth import views as auth_views
 from vchat.views.user import views as user_views

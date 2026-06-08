@@ -18,24 +18,24 @@ from itsdangerous import (
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from vchat.ai_providers import (
+from vchat.views.chat.ai import (
     BaseAIProvider,
     ModelInfo,
     resolve_ai_settings,
 )
-from vchat.app_keys import SIGNER_KEY
-from vchat.chat_meta import merge_chat_meta
+from vchat.settings import SIGNER_KEY
+from vchat.views.chat.meta import merge_chat_meta
 from vchat.db import async_session_factory
-from vchat.guardrails import (
+from vchat.views.chat.guardrails import (
     check_input_guardrails,
     check_output_guardrails,
     extract_tripwire_details,
     get_guardrails_client,
 )
-from vchat.gigachat_oauth import get_gigachat_access_token
-from vchat.json_response import json_response
-from vchat.logging_utils import log_json
-from vchat.metrics import record_chat_request
+from vchat.views.chat.oauth import get_gigachat_access_token
+from vchat.utils import json_response
+from vchat.logging import log_json
+from vchat.views.metrics import record_chat_request
 from vchat.models import (
     Chat,
     ChatMsg,
@@ -45,7 +45,7 @@ from vchat.models import (
     WidgetIntegration,
 )
 from vchat.settings import config
-from vchat.triggers import page_trigger_items, trigger_prompt_hash
+from vchat.views.triggers.rules import page_trigger_items, trigger_prompt_hash
 from vchat.utils import htmx_required, json, run_task
 
 from .ctx import chat_id_ctx, get_context, user_id_ctx

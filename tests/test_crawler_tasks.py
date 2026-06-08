@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from vchat.models.source_config import CrawlerRule, SourceConfig
-from vchat.page_status import PageStatusError
+from vchat.views.projects.page_status import PageStatusError
 
 
 # ---------------------------------------------------------------------------

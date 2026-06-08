@@ -1,14 +1,8 @@
 {% extends "admin.html" %}
-{% set page_title = _("Редактировать код виджета") %}
+{% set page_title = "Редактировать код виджета" %}
 
 {% set colors = [
-  ('neutral', _('Серый')),
-  ('primary', _('Основной')),
-  ('secondary', _('Вторичный')),
-  ('accent', _('Акцент')),
-  ('info', _('Синий')),
-  ('success', _('Зеленый')),
-  ('warning', _('Желтый'))
+  ('neutral', 'Серый'), 'primary', ('Основной'), 'secondary', ('Вторичный'), 'accent', ('Акцент'), 'info', ('Синий'), 'success', ('Зеленый'), 'warning', ('Желтый')
 ] %}
 
 {% macro color_swatch(value) -%}
@@ -73,8 +67,8 @@
         type="button"
         class="btn btn-square btn-xs btn-ghost cursor-grab active:cursor-grabbing"
         data-pinned-drag-handle
-        title="{{ _('Перетащить') }}"
-        aria-label="{{ _('Перетащить') }}"
+        title="{{ 'Перетащить' }}"
+        aria-label="{{ 'Перетащить' }}"
       >
         <iconify-icon icon="lucide:grip-vertical" class="size-3.5"></iconify-icon>
       </button>
@@ -91,7 +85,7 @@
         contenteditable="true"
         role="textbox"
         data-pinned-editor
-        data-placeholder="{{ _('Сообщение') }}"
+        data-placeholder="{{ 'Сообщение' }}"
         data-max-length="400"
       >{{ item.text|safe if item else '' }}</div>
     </td>
@@ -111,7 +105,7 @@
       </div>
     </td>
     <td class="w-10 p-1 text-right">
-      <button type="button" class="btn btn-square btn-sm btn-ghost text-error" data-remove-pinned-message title="{{ _('Удалить') }}" aria-label="{{ _('Удалить') }}">
+      <button type="button" class="btn btn-square btn-sm btn-ghost text-error" data-remove-pinned-message title="{{ 'Удалить' }}" aria-label="{{ 'Удалить' }}">
         <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
       </button>
     </td>
@@ -123,7 +117,7 @@
   <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
     <div class="min-w-0">
       <h1 class="flex flex-wrap items-center gap-2 break-words text-lg font-medium">
-        <a href="{{ url('project_integration') }}" class="text-base-content/50 transition-colors hover:text-base-content">{{ _('Код виджета') }}</a>
+        <a href="{{ url('project_integration') }}" class="text-base-content/50 transition-colors hover:text-base-content">{{ 'Код виджета' }}</a>
         <span class="mx-2 text-base-content/40">&gt;</span>
         <span class="text-base-content">{{ widget.name }}</span>
       </h1>
@@ -134,7 +128,7 @@
         rel="noopener"
       >
         <iconify-icon icon="lucide:external-link" class="size-4"></iconify-icon>
-        {{ _('Открыть демо') }}
+        {{ 'Открыть демо' }}
       </a>
     </div>
   </div>
@@ -142,7 +136,7 @@
   <div class="card bg-base-100 shadow">
     <div class="card-body grid gap-4">
       <div class="grid gap-2">
-        <label for="widget-url" class="label-text">{{ _('Адрес виджета') }}</label>
+        <label for="widget-url" class="label-text">{{ 'Адрес виджета' }}</label>
         <div class="join w-full max-w-3xl">
           <input
             id="widget-url"
@@ -154,8 +148,8 @@
           <button
             type="button"
             class="btn btn-outline btn-sm join-item"
-            title="{{ _('Скопировать') }}"
-            aria-label="{{ _('Скопировать') }}"
+            title="{{ 'Скопировать' }}"
+            aria-label="{{ 'Скопировать' }}"
             data-copy-value="widget-url"
           >
             <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
@@ -163,7 +157,7 @@
         </div>
       </div>
       <div class="grid gap-2">
-        <label for="widget-embed-code" class="label-text">{{ _('Код вставки') }}</label>
+        <label for="widget-embed-code" class="label-text">{{ 'Код вставки' }}</label>
         <div class="grid gap-2">
           <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ widget.public_url }}" defer&gt;&lt;/script&gt;
 &lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
@@ -174,7 +168,7 @@
               data-copy-value="widget-embed-code"
             >
               <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
-              {{ _('Скопировать код') }}
+              {{ 'Скопировать код' }}
             </button>
           </div>
         </div>
@@ -192,7 +186,7 @@
       class="card-body grid gap-5"
     >
       <label class="form-control">
-        <span class="label-text mb-1">{{ _('Название') }}</span>
+        <span class="label-text mb-1">{{ 'Название' }}</span>
         <input
           type="text"
           name="name"
@@ -201,11 +195,11 @@
           maxlength="128"
           required
         >
-        <span class="mt-1 text-xs text-base-content/60">{{ _('Внутреннее название, нужно только для удобства в админке.') }}</span>
+        <span class="mt-1 text-xs text-base-content/60">{{ 'Внутреннее название, нужно только для удобства в админке.' }}</span>
       </label>
 
       <label class="form-control">
-        <span class="label-text mb-1">{{ _('Контакты') }}</span>
+        <span class="label-text mb-1">{{ 'Контакты' }}</span>
         <input
           type="url"
           name="contact_url"
@@ -216,20 +210,20 @@
       </label>
 
       <label class="form-control">
-        <span class="label-text mb-1">{{ _('Название чата') }}</span>
+        <span class="label-text mb-1">{{ 'Название чата' }}</span>
         <input
           type="text"
           name="agent_name"
           value="{{ widget.agent_name }}"
           class="input input-bordered w-full"
           maxlength="100"
-          placeholder="{{ _('Виртуальный ассистент') }}"
+          placeholder="{{ 'Виртуальный ассистент' }}"
         >
-        <span class="mt-1 text-xs text-base-content/60">{{ _('Показывается пользователю в окне чата.') }}</span>
+        <span class="mt-1 text-xs text-base-content/60">{{ 'Показывается пользователю в окне чата.' }}</span>
       </label>
 
       <label class="form-control">
-        <span class="label-text mb-1">{{ _('Приветственное сообщение') }}</span>
+        <span class="label-text mb-1">{{ 'Приветственное сообщение' }}</span>
         <textarea
           name="welcome_message"
           class="textarea textarea-bordered w-full"
@@ -239,7 +233,7 @@
       </label>
 
       <label class="form-control">
-        <span class="label-text mb-1">{{ _('Системный промпт') }}</span>
+        <span class="label-text mb-1">{{ 'Системный промпт' }}</span>
         <textarea
           name="system_prompt"
           class="textarea textarea-bordered w-full font-mono text-sm"
@@ -250,7 +244,7 @@
 
       <section class="grid gap-3">
         <div class="flex items-center justify-between gap-3">
-          <h2 class="text-base font-medium">{{ _('Закрепленные сообщения') }}</h2>
+          <h2 class="text-base font-medium">{{ 'Закрепленные сообщения' }}</h2>
         </div>
         <div id="pinned-messages-container" class="overflow-x-auto">
           {% if widget.pinned_messages %}
@@ -258,8 +252,8 @@
             <thead>
               <tr>
                 <th class="w-8"></th>
-                <th>{{ _('Сообщение') }}</th>
-                <th class="w-60">{{ _('Цвет подложки') }}</th>
+                <th>{{ 'Сообщение' }}</th>
+                <th class="w-60">{{ 'Цвет подложки' }}</th>
                 <th class="w-10"></th>
               </tr>
             </thead>
@@ -277,13 +271,13 @@
           data-add-pinned-message
         >
           <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-          {{ _('Добавить сообщение') }}
+          {{ 'Добавить сообщение' }}
         </button>
       </section>
 
       <div class="flex justify-end gap-2">
-        <a href="{{ url('project_integration') }}" class="btn btn-ghost btn-sm">{{ _('Отмена') }}</a>
-        <button type="submit" class="btn btn-primary btn-sm">{{ _('Сохранить') }}</button>
+        <a href="{{ url('project_integration') }}" class="btn btn-ghost btn-sm">{{ 'Отмена' }}</a>
+        <button type="submit" class="btn btn-primary btn-sm">{{ 'Сохранить' }}</button>
       </div>
     </form>
   </div>
@@ -291,27 +285,27 @@
   <div class="card border border-error/30 bg-base-100 shadow">
     <div class="card-body grid gap-3">
       <div>
-        <h2 class="text-base font-medium text-error">{{ _('Опасная зона') }}</h2>
-        <p class="mt-1 text-sm text-base-content/60">{{ _('Сброс кода отключит старый код вставки. Удаление полностью отключит виджет на всех сайтах, где он установлен.') }}</p>
+        <h2 class="text-base font-medium text-error">{{ 'Опасная зона' }}</h2>
+        <p class="mt-1 text-sm text-base-content/60">{{ 'Сброс кода отключит старый код вставки. Удаление полностью отключит виджет на всех сайтах, где он установлен.' }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <button
           class="btn btn-warning btn-outline btn-sm"
           hx-post="{{ url('actions', action='widget_reset_code', item_id=widget.id) }}"
           hx-swap="none"
-          hx-confirm="{{ _('Сбросить код виджета? Старый код вставки перестанет работать.') }}"
+          hx-confirm="{{ 'Сбросить код виджета? Старый код вставки перестанет работать.' }}"
         >
           <iconify-icon icon="lucide:rotate-ccw" class="size-4"></iconify-icon>
-          {{ _('Сбросить код виджета') }}
+          {{ 'Сбросить код виджета' }}
         </button>
         <button
           class="btn btn-error btn-outline btn-sm"
           hx-post="{{ url('actions', action='widget_delete', item_id=widget.id) }}"
           hx-swap="none"
-          hx-confirm="{{ _('Удалить код виджета?') }}"
+          hx-confirm="{{ 'Удалить код виджета?' }}"
         >
           <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
-          {{ _('Удалить виджет') }}
+          {{ 'Удалить виджет' }}
         </button>
       </div>
     </div>
@@ -326,13 +320,13 @@
   id="pinned-rich-toolbar"
   class="fixed z-50 hidden items-center gap-1 rounded border border-base-300 bg-base-100 p-1 shadow"
 >
-  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="bold" title="{{ _('Жирный') }}" aria-label="{{ _('Жирный') }}">
+  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="bold" title="{{ 'Жирный' }}" aria-label="{{ 'Жирный' }}">
     <iconify-icon icon="lucide:bold" class="size-3.5"></iconify-icon>
   </button>
-  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="link" title="{{ _('Ссылка') }}" aria-label="{{ _('Ссылка') }}">
+  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="link" title="{{ 'Ссылка' }}" aria-label="{{ 'Ссылка' }}">
     <iconify-icon icon="lucide:link" class="size-3.5"></iconify-icon>
   </button>
-  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="unlink" title="{{ _('Удалить ссылку') }}" aria-label="{{ _('Удалить ссылку') }}">
+  <button type="button" class="btn btn-square btn-xs btn-ghost" data-rich-command="unlink" title="{{ 'Удалить ссылку' }}" aria-label="{{ 'Удалить ссылку' }}">
     <iconify-icon icon="lucide:unlink" class="size-3.5"></iconify-icon>
   </button>
   <div class="join hidden" data-rich-link-panel>
@@ -342,7 +336,7 @@
       placeholder="https://example.com"
       data-rich-link-url
     >
-    <button type="button" class="btn btn-primary btn-xs join-item h-8 min-h-8" data-rich-command="apply-link" title="{{ _('Применить ссылку') }}" aria-label="{{ _('Применить ссылку') }}">
+    <button type="button" class="btn btn-primary btn-xs join-item h-8 min-h-8" data-rich-command="apply-link" title="{{ 'Применить ссылку' }}" aria-label="{{ 'Применить ссылку' }}">
       <iconify-icon icon="lucide:check" class="size-3.5"></iconify-icon>
     </button>
   </div>
@@ -403,8 +397,8 @@
         <thead>
           <tr>
             <th class="w-8"></th>
-            <th>{{ _('Сообщение') }}</th>
-            <th class="w-60">{{ _('Цвет подложки') }}</th>
+            <th>{{ 'Сообщение' }}</th>
+            <th class="w-60">{{ 'Цвет подложки' }}</th>
             <th class="w-10"></th>
           </tr>
         </thead>

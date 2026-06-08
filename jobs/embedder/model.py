@@ -5,7 +5,7 @@ from typing import Any
 import torch
 from sentence_transformers import SentenceTransformer
 
-from vchat.embedding_tokenizer import (
+from jobs.embedder.tokenizer import (
     load_embedding_tokenizer as load_embedding_tokenizer,
 )
 from vchat.settings import config

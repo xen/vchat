@@ -7,9 +7,9 @@
       <div class="w-400 max-w-3xl rounded-[32px] border border-base-200 bg-base-100/90 p-6 shadow-2xl md:p-10">
         <div class="flex items-center justify-between gap-4">
           <a href="{{ url('index') }}">
-            <img alt="{{ _('Логотип vchat') }}" class="hidden h-8 dark:inline"
+            <img alt="{{ 'Логотип vchat' }}" class="hidden h-8 dark:inline"
               src="{{ url_for('static', filename='images/logo/logo-dark.svg') }}" />
-            <img alt="{{ _('Логотип vchat') }}" class="h-8 dark:hidden"
+            <img alt="{{ 'Логотип vchat' }}" class="h-8 dark:hidden"
               src="{{ url_for('static', filename='images/logo/logo-light.svg') }}" />
           </a>
           {% from "macros.html" import theme_switcher with context %}

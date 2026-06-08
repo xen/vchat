@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from scrapy import signals
 
-from vchat.logging_utils import log_json
+from vchat.logging import log_json
 
 
 logger = logging.getLogger("vchat.crawler.requests")

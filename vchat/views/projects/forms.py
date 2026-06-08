@@ -12,14 +12,13 @@ from wtforms import (
 )
 from wtforms.csrf.session import SessionCSRF
 
-from vchat.ai_providers import (
+from vchat.views.chat.ai import (
     get_default_model_id,
     get_default_provider_id,
     get_model_choices,
     get_provider_choices,
 )
-from vchat.i18n import _
-from vchat.source_settings import (
+from jobs.crawler.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
@@ -29,7 +28,7 @@ from vchat.source_settings import (
 )
 from vchat.settings import config
 
-DEFAULT_SYSTEM_PROMPT = _(
+DEFAULT_SYSTEM_PROMPT = (
     "Ты дружелюбный ИИ-ассистент, который помогает людям достигать их целей. "
     "Отвечай кратко, проактивно предлагай следующие шаги и задавай уточняющие "
     "вопросы, когда не хватает информации."
@@ -49,70 +48,70 @@ class WorkspaceForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     title = StringField(
-        _("Workspace Title"),
+        "Название пространства",
         validators=[
             validators.DataRequired(),
-            validators.Length(max=100, message=_("Length up to 100 characters")),
+            validators.Length(max=100, message="Длина до 100 символов"),
         ],
         render_kw={"class": "form-control"},
-        description=_("Workspace title. Recommended size is 70 characters"),
+        description="Название пространства. Рекомендуемый размер — до 70 символов",
     )
 
     system_prompt = TextAreaField(
-        _("System Prompt"),
+        "Системный промпт",
         validators=[
             validators.Optional(),
-            validators.Length(max=2000, message=_("Length up to 2000 characters")),
+            validators.Length(max=2000, message="Длина до 2000 символов"),
         ],
         render_kw={"class": "textarea textarea-bordered w-full", "rows": "5"},
         default=DEFAULT_SYSTEM_PROMPT,
-        description=_("Custom system prompt for the AI agent"),
+        description="Пользовательский системный промпт ИИ-агента",
     )
 
     agent_style = StringField(
-        _("Agent Style"),
+        "Стиль агента",
         validators=[
             validators.Optional(),
-            validators.Length(max=100, message=_("Length up to 100 characters")),
+            validators.Length(max=100, message="Длина до 100 символов"),
         ],
         render_kw={"class": "input input-bordered w-full"},
-        description=_("Communication style for the agent"),
+        description="Стиль общения агента",
     )
 
     provider = SelectField(
-        _("AI Provider"),
+        "AI-провайдер",
         validators=[validators.DataRequired()],
         choices=[],
         render_kw={"class": "select select-bordered w-full"},
-        description=_("Provider used for chat responses"),
+        description="Провайдер для ответов в чате",
     )
 
     model = SelectField(
-        _("Model"),
+        "Модель",
         validators=[validators.DataRequired()],
         choices=[],
         render_kw={"class": "select select-bordered w-full"},
-        description=_("Model that will be used for this project's chats"),
+        description="Модель для чатов проекта",
     )
 
     agent_name = StringField(
-        _("Agent Name"),
+        "Имя агента",
         validators=[
             validators.Optional(),
-            validators.Length(max=100, message=_("Length up to 100 characters")),
+            validators.Length(max=100, message="Длина до 100 символов"),
         ],
         render_kw={"class": "input input-bordered w-full"},
-        description=_("Name shown to users in the chat widget"),
+        description="Имя, которое пользователи видят в чат-виджете",
     )
 
     welcome_message = TextAreaField(
-        _("Welcome Message"),
+        "Приветственное сообщение",
         validators=[
             validators.Optional(),
-            validators.Length(max=2000, message=_("Length up to 2000 characters")),
+            validators.Length(max=2000, message="Длина до 2000 символов"),
         ],
         render_kw={"class": "textarea textarea-bordered w-full", "rows": "3"},
-        description=_("Message shown to users when the chat opens"),
+        description="Сообщение при открытии чата",
     )
 
     def __init__(self, *args, **kwargs):
@@ -142,10 +141,10 @@ class TriggerSettingsForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     default_templates = TextAreaField(
-        _("Стандартные триггеры"),
+        "Стандартные триггеры",
         validators=[
             validators.Optional(),
-            validators.Length(max=4000, message=_("Length up to 4000 characters")),
+            validators.Length(max=4000, message="Длина до 4000 символов"),
         ],
         render_kw={"class": "textarea textarea-bordered w-full", "rows": "8"},
     )
@@ -159,23 +158,23 @@ class SourceForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     url = StringField(
-        _("URL"),
+        "URL",
         validators=[
             validators.DataRequired(),
-            validators.URL(message=_("Invalid URL")),
+            validators.URL(message="Некорректный URL"),
         ],
         render_kw={"class": "form-control"},
     )
     title = StringField(
-        _("Title"),
+        "Заголовок",
         validators=[
-            validators.Length(max=255, message=_("Length up to 255 characters")),
+            validators.Length(max=255, message="Длина до 255 символов"),
         ],
         render_kw={"class": "form-control"},
-        description=_("Source title. If empty, domain will be used."),
+        description="Название источника. Если оставить пустым, будет использован домен.",
     )
     reindex_cron = StringField(
-        _("Reindexing Cron"),
+        "Cron переиндексации",
         validators=[validators.Optional(), validators.Length(max=100)],
         default="",
         render_kw={
@@ -190,9 +189,7 @@ class SourceForm(Form):
             return
         if not validate_reindex_cron(field.data):
             raise validators.ValidationError(
-                _(
-                    "Invalid cron expression. Use 5 fields: minute hour day month weekday"
-                )
+                "Некорректное cron-выражение. Используйте 5 полей: минута час день месяц день-недели"
             )
 
     def validate_url(self, field):
@@ -207,10 +204,10 @@ class InviteUserForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     email = StringField(
-        _("Email"),
+        "Email",
         validators=[
             validators.DataRequired(),
-            validators.Email(message=_("Invalid Email")),
+            validators.Email(message="Некорректный email"),
         ],
         render_kw={"class": "form-control"},
     )
@@ -224,7 +221,7 @@ class SourceCrawlerSettingsForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     reindex_cron = StringField(
-        _("Reindexing Cron"),
+        "Cron переиндексации",
         validators=[validators.Optional(), validators.Length(max=100)],
         default="",
         render_kw={
@@ -239,36 +236,34 @@ class SourceCrawlerSettingsForm(Form):
             return
         if not validate_reindex_cron(field.data):
             raise validators.ValidationError(
-                _(
-                    "Invalid cron expression. Use 5 fields: minute hour day month weekday"
-                )
+                "Некорректное cron-выражение. Используйте 5 полей: минута час день месяц день-недели"
             )
 
     concurrent_requests = IntegerField(
-        _("Параллельные запросы (CONCURRENT_REQUESTS)"),
+        "Параллельные запросы (CONCURRENT_REQUESTS)",
         validators=[validators.Optional(), validators.NumberRange(min=1, max=256)],
         default=DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
         render_kw={"class": "input input-bordered w-full"},
     )
     download_delay = IntegerField(
-        _("Задержка между запросами (DOWNLOAD_DELAY)"),
+        "Задержка между запросами (DOWNLOAD_DELAY)",
         validators=[validators.Optional(), validators.NumberRange(min=0, max=120)],
         default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
         render_kw={"class": "input input-bordered w-full"},
     )
     download_timeout = IntegerField(
-        _("Таймаут запроса (DOWNLOAD_TIMEOUT, сек)"),
+        "Таймаут запроса (DOWNLOAD_TIMEOUT, сек)",
         validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
         render_kw={"class": "input input-bordered w-full"},
     )
     ignore_robots_txt = BooleanField(
-        _("Игнорировать robots.txt"),
+        "Игнорировать robots.txt",
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
     enable_triggers = BooleanField(
-        _("Разрешить пользовательские триггеры"),
+        "Разрешить пользовательские триггеры",
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
@@ -276,30 +271,30 @@ class SourceCrawlerSettingsForm(Form):
 
 class SourceSettingsForm(SourceForm):
     concurrent_requests = IntegerField(
-        _("Параллельные запросы (CONCURRENT_REQUESTS)"),
+        "Параллельные запросы (CONCURRENT_REQUESTS)",
         validators=[validators.Optional(), validators.NumberRange(min=1, max=256)],
         default=DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
         render_kw={"class": "input input-bordered w-full"},
     )
     download_delay = IntegerField(
-        _("Задержка между запросами (DOWNLOAD_DELAY)"),
+        "Задержка между запросами (DOWNLOAD_DELAY)",
         validators=[validators.Optional(), validators.NumberRange(min=0, max=120)],
         default=DEFAULT_CRAWLER_DOWNLOAD_DELAY,
         render_kw={"class": "input input-bordered w-full"},
     )
     download_timeout = IntegerField(
-        _("Таймаут запроса (DOWNLOAD_TIMEOUT, сек)"),
+        "Таймаут запроса (DOWNLOAD_TIMEOUT, сек)",
         validators=[validators.Optional(), validators.NumberRange(min=1, max=300)],
         default=DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
         render_kw={"class": "input input-bordered w-full"},
     )
     ignore_robots_txt = BooleanField(
-        _("Игнорировать robots.txt"),
+        "Игнорировать robots.txt",
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
     enable_triggers = BooleanField(
-        _("Разрешить пользовательские триггеры"),
+        "Разрешить пользовательские триггеры",
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
@@ -313,39 +308,39 @@ class OnboardingForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     project_title = StringField(
-        _("Workspace Title"),
+        "Название пространства",
         validators=[
             validators.DataRequired(),
-            validators.Length(max=100, message=_("Length up to 100 characters")),
+            validators.Length(max=100, message="Длина до 100 символов"),
         ],
         render_kw={"class": "form-control"},
     )
 
     system_prompt = TextAreaField(
-        _("System Prompt"),
+        "Системный промпт",
         validators=[
             validators.Optional(),
-            validators.Length(max=2000, message=_("Length up to 2000 characters")),
+            validators.Length(max=2000, message="Длина до 2000 символов"),
         ],
         render_kw={"class": "textarea textarea-bordered w-full", "rows": "5"},
         default=DEFAULT_SYSTEM_PROMPT,
     )
 
     source_url = StringField(
-        _("Source URL"),
+        "URL источника",
         validators=[
             validators.DataRequired(),
-            validators.URL(message=_("Invalid URL")),
+            validators.URL(message="Некорректный URL"),
         ],
         render_kw={"class": "form-control"},
     )
 
     source_title = StringField(
-        _("Source Title"),
+        "Название источника",
         validators=[
             validators.Length(
                 max=255,
-                message=_("Length up to 255 characters"),
+                message="Длина до 255 символов",
             ),
         ],
         render_kw={"class": "form-control"},

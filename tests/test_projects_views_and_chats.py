@@ -359,7 +359,7 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
 
 
 def test_document_pipeline_steps_returns_error_description() -> None:
-    from vchat.page_status import PageStatus, PageStatusError
+    from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     document = SimpleNamespace(
         status=PageStatus.crawler,
@@ -380,7 +380,7 @@ def test_document_pipeline_steps_returns_error_description() -> None:
 
 
 def test_document_pipeline_steps_returns_embedder_error_description() -> None:
-    from vchat.page_status import PageStatus, PageStatusError
+    from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     document = SimpleNamespace(
         status=PageStatus.parsing,

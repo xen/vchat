@@ -14,6 +14,7 @@ import markdown
 import msgspec
 import redis.asyncio as aioredis
 import sqlalchemy as sa
+from aiohttp import web
 from aiohttp.abc import AbstractCookieJar, AbstractView
 from aiohttp_session import get_session
 from itsdangerous import (
@@ -22,10 +23,10 @@ from itsdangerous import (
     URLSafeSerializer,
     URLSafeTimedSerializer,
 )
+from multidict import CIMultiDict, CIMultiDictProxy, istr
 from yarl import URL
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
-from vchat.i18n import _
+from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
 from vchat.settings import config
 
 
@@ -60,6 +61,29 @@ class _MsgSpecJSON:
 json = _MsgSpecJSON()
 
 
+def encode_json(obj) -> bytes:
+    return msgspec.json.encode(obj)
+
+
+def json_response(
+    data,
+    *,
+    status: int = 200,
+    reason: str | None = None,
+    headers: (
+        dict[str | istr, str] | CIMultiDict[str] | CIMultiDictProxy[str] | None
+    ) = None,
+    content_type: str = "application/json",
+) -> web.Response:
+    return web.Response(
+        body=encode_json(data),
+        status=status,
+        reason=reason,
+        headers=headers,
+        content_type=content_type,
+    )
+
+
 REDIS_URL = config.get("redis_uri")
 CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "celery")
 
@@ -77,7 +101,7 @@ def to_str(item: Optional[str]) -> str:
 
 
 class Meta:
-    title = _("Title")
+    title = "Заголовок"
     author = "vchat"
     description = ""
     props = {}

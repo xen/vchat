@@ -19,13 +19,13 @@ from scrapy.settings import Settings
 
 from jobs.crawler import settings as my_settings
 from jobs.crawler.spiders.general import GeneralSpider
-from vchat.source_settings import (
+from jobs.crawler.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
 )
 from vchat.settings import config as project_config
-from vchat.logging_utils import configure_logging
+from vchat.logging import configure_logging
 
 configure_logging(
     logging.INFO,

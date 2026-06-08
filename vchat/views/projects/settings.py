@@ -5,7 +5,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
-from vchat.app_keys import SETTINGS_KEY
+from vchat.settings import SETTINGS_KEY
 from vchat.db import async_session_factory
 from vchat.models import Settings
 from vchat.utils import json

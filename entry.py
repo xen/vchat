@@ -12,7 +12,7 @@ from passlib.hash import pbkdf2_sha512
 
 from vchat.app import create_app
 from vchat.db import async_session_factory
-from vchat.logging_utils import configure_logging
+from vchat.logging import configure_logging
 from vchat.models import User
 from vchat.settings import config
 

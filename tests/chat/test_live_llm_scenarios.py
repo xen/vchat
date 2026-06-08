@@ -10,8 +10,8 @@ import aiohttp
 import pytest
 from itsdangerous import URLSafeSerializer
 
-from vchat.ai_providers import resolve_ai_settings
-from vchat.guardrails import GuardrailDecision
+from vchat.views.chat.ai import resolve_ai_settings
+from vchat.views.chat.guardrails import GuardrailDecision
 from vchat.views.chat import views as chat_views
 
 

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from vchat.embeddings import (
+from jobs.embedder.model import (
     load_embedding_model,
     release_torch_cache,
     resolve_embedding_device,
@@ -26,13 +26,13 @@ from jobs.embedder.queue import (
     pending_chunks_remain,
     release_pending_chunk_slots,
 )
-from vchat.document_content import (
+from jobs.documents.content import (
     CHUNK_TEXT_HASH_IGNORED_CHARS,
     chunk_text_sha256,
     normalize_chunk_text_for_hash,
 )
 from vchat.models import ChatMsg, Chunk, Page
-from vchat.page_status import PageStatus
+from vchat.views.projects.page_status import PageStatus
 from vchat.settings import config
 
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")

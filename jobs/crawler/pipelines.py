@@ -18,16 +18,16 @@ from jobs.indexing.documents import (
     raw_content_payload,
     sync_document_has_chunks,
 )
-from vchat.document_content import (
+from jobs.documents.content import (
     content_sha256,
     document_too_big_message,
     is_document_too_big,
 )
-from vchat.document_types import guess_document_type
+from jobs.documents.types import guess_document_type
 from vchat.models.data import Chunk, CrawlRun, Page, PageLink, PageShingle, Source
-from vchat.page_status import PageStatus, PageStatusError
+from vchat.views.projects.page_status import PageStatus, PageStatusError
 from vchat.settings import config
-from vchat.triggers import source_trigger_rules_match_url
+from vchat.views.triggers.rules import source_trigger_rules_match_url
 from jobs.crawler.tasks import schedule_index_document, update_page_shingles
 from jobs.crawler.url_rules import (
     normalize_url_for_queue,

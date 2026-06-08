@@ -27,34 +27,31 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased, defer
 from sqlalchemy.orm.attributes import set_committed_value
 
-from jobs.crawler import (
-    crawl_page_task,
-    crawl_source_task,
-    reapply_source_rules_task,
-    sitemap_sync_task,
-)
 from jobs.crawler.tasks import (
     async_update_page_shingles,
-    generate_missing_triggers_task,
+    crawl_page_task,
+    crawl_source_task,
     index_project,
     load_boilerplate_hashes,
+    reapply_source_rules_task,
     refresh_source_index,
     schedule_index_document,
     schedule_refresh_project_index,
+    sitemap_sync_task,
 )
+from jobs.triggers.tasks import generate_missing_triggers_task
 
-from vchat.ai_providers import (
+from vchat.views.chat.ai import (
     DEFAULT_OPENAI_MODEL,
     get_ai_provider_options,
     resolve_ai_settings,
 )
-from vchat.app_keys import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
-from vchat.chat_meta import merge_chat_meta
-from vchat.document_types import DEFAULT_DOCUMENT_TYPE
-from vchat.document_content import document_too_big_message, is_document_too_big
-from vchat.document_shingles import compute_trigram_hashes
-from vchat.i18n import _
-from vchat.json_response import json_response
+from vchat.settings import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.views.chat.meta import merge_chat_meta
+from jobs.documents.types import DEFAULT_DOCUMENT_TYPE
+from jobs.documents.content import document_too_big_message, is_document_too_big
+from jobs.documents.shingles import compute_trigram_hashes
+from vchat.utils import json_response
 from vchat.models import (
     Chat,
     ChatMsg,
@@ -70,11 +67,11 @@ from vchat.models import (
 )
 from vchat.models.data import api_client_source
 from vchat.models.source_config import CrawlerRule, SourceConfig
-from vchat.project_settings import (
+from vchat.views.projects.settings import (
     apply_settings_updates,
     get_setting,
 )
-from vchat.source_settings import (
+from jobs.crawler.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
@@ -83,19 +80,19 @@ from vchat.source_settings import (
     is_manual_reindex,
     normalize_reindex_cron,
 )
-from vchat.source_blocking import (
+from jobs.crawler.source_blocking import (
     apply_source_blocking_result,
     check_source_blocking,
     describe_blocked_reason,
 )
 from vchat.settings import config
-from vchat.page_status import (
+from vchat.views.projects.page_status import (
     EXCLUDED_INDEX_STATUS_ERRORS,
     PageStatus,
     PageStatusError,
     STATUS_ERROR_DESCRIPTIONS,
 )
-from vchat.triggers import (
+from vchat.views.triggers.rules import (
     DEFAULT_SOURCE_TRIGGER_PATTERN,
     TRIGGER_DEFAULTS_SETTING,
     TriggerPatternError,
@@ -411,7 +408,7 @@ async def _check_source_blocking_and_commit(
     if result.is_blocked:
         await flash(
             request,
-            result.message or _("Source is blocked for crawling"),
+            result.message or "Источник заблокирован для обхода",
             "error",
         )
         return True
@@ -1247,7 +1244,7 @@ def _file_row_to_payload(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@meta(title=_("Страницы"))
+@meta(title="Страницы")
 @login_required()
 @aiohttp_jinja2.template("projects/view.html")
 async def index(request):
@@ -1624,7 +1621,7 @@ async def _get_source_row_data(db_session, source_id: int) -> dict[str, Any] | N
     return _serialize_source_row(row)
 
 
-@meta(title=_("Sources"))
+@meta(title="Источники")
 @login_required()
 @aiohttp_jinja2.template("projects/sources.html")
 async def project_edit_sources(request):
@@ -1706,7 +1703,7 @@ async def project_edit_sources(request):
     }
 
 
-@meta(title=_("Source Settings"))
+@meta(title="Настройки источника")
 @login_required()
 @aiohttp_jinja2.template("projects/source_settings.html")
 async def project_source_settings(request):
@@ -1785,7 +1782,7 @@ async def project_source_settings(request):
         await db_session.commit()
         reapply_source_rules_task.delay(source.id)
         await admin_event("source_update", request)
-        await flash(request, _("Source settings updated"), "success")
+        await flash(request, "Настройки источника обновлены", "success")
         raise web.HTTPFound(request.path)
 
     doc_stats_row = (
@@ -1904,7 +1901,7 @@ async def project_action(request):
         email = form.email.data.strip().lower()
         exists = await db_session.scalar(sa.select(User.id).where(User.email == email))
         if exists:
-            form.email.errors.append(_("This email is already in use"))
+            form.email.errors.append("Этот email уже используется")
             return aiohttp_jinja2.render_template(
                 "admin/user_list.html",
                 request,
@@ -1927,7 +1924,7 @@ async def project_action(request):
         )
         await db_session.commit()
         await admin_event("user_create", request)
-        await flash(request, _("User created"), "success")
+        await flash(request, "Пользователь создан", "success")
         raise web.HTTPFound(request.app.router["users"].url_for())
 
     if action == "user_password":
@@ -1954,7 +1951,7 @@ async def project_action(request):
             user_obj.password = password_context.hash(form.password.data)
             await db_session.commit()
             await admin_event("user_update", request)
-            await flash(request, _("Password updated"), "success")
+            await flash(request, "Пароль обновлён", "success")
             response = web.Response(text="ok")
             response.headers["HX-Refresh"] = "true"
             return response
@@ -1970,7 +1967,7 @@ async def project_action(request):
         is_htmx = request.headers.get("HX-Request", "").lower() == "true"
 
         if target_user_id == request["user"].id:
-            message = _("You cannot delete yourself")
+            message = "Нельзя удалить самого себя"
             if is_htmx:
                 return web.Response(text=message, status=400)
             await flash(request, message, "error")
@@ -1978,7 +1975,7 @@ async def project_action(request):
 
         total_users = await db_session.scalar(sa.select(sa.func.count(User.id))) or 0
         if total_users <= 1:
-            message = _("Cannot delete the last user")
+            message = "Нельзя удалить последнего пользователя"
             if is_htmx:
                 return web.Response(text=message, status=400)
             await flash(request, message, "error")
@@ -1999,7 +1996,7 @@ async def project_action(request):
             response.headers["HX-Refresh"] = "true"
             return response
 
-        await flash(request, _("User deleted"), "success")
+        await flash(request, "Пользователь удалён", "success")
         raise web.HTTPFound(request.app.router["users"].url_for())
 
     if action == "api_client_create":
@@ -2068,7 +2065,7 @@ async def project_action(request):
                 db_session,
                 add_form=ApiClientForm(meta={"csrf_context": session}),
                 new_credentials=SimpleNamespace(
-                    message=_("Клиент {name} создан").format(name=client.name),
+                    message="Клиент {name} создан".format(name=client.name),
                     client_id=client_id,
                     client_secret=client_secret,
                 ),
@@ -2156,7 +2153,7 @@ async def project_action(request):
                 add_form=ApiClientForm(meta={"csrf_context": session}),
                 new_credentials=(
                     SimpleNamespace(
-                        message=_("Секрет клиента {name} сброшен").format(
+                        message="Секрет клиента {name} сброшен".format(
                             name=client.name
                         ),
                         client_id=client.client_id,
@@ -2188,7 +2185,7 @@ async def project_action(request):
         data = await request.post()
         name = (data.get("name") or "").strip()
         if not name:
-            return web.Response(text=_("Название обязательно"), status=400)
+            return web.Response(text="Название обязательно", status=400)
 
         widget = WidgetIntegration(
             name=name[:128],
@@ -2210,7 +2207,7 @@ async def project_action(request):
         widget_id = widget.id
         await db_session.commit()
         await admin_event("widget_create", request)
-        await flash(request, _("Код виджета создан"), "success")
+        await flash(request, "Код виджета создан", "success")
         return _htmx_redirect_response(
             request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
@@ -2226,7 +2223,7 @@ async def project_action(request):
         data = await request.post()
         name = (data.get("name") or "").strip()
         if not name:
-            return web.Response(text=_("Название обязательно"), status=400)
+            return web.Response(text="Название обязательно", status=400)
 
         widget.name = name[:128]
         widget.contact_url = (data.get("contact_url") or "").strip()
@@ -2242,7 +2239,7 @@ async def project_action(request):
 
         await db_session.commit()
         await admin_event("widget_update", request)
-        await flash(request, _("Код виджета обновлен"), "success")
+        await flash(request, "Код виджета обновлен", "success")
         return _htmx_redirect_response(
             request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
@@ -2260,7 +2257,7 @@ async def project_action(request):
 
         await db_session.commit()
         await admin_event("widget_reset_code", request)
-        await flash(request, _("Код виджета сброшен"), "success")
+        await flash(request, "Код виджета сброшен", "success")
         return _htmx_redirect_response(
             request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
@@ -2277,7 +2274,9 @@ async def project_action(request):
         await db_session.commit()
         await admin_event("widget_delete", request)
 
-        return _htmx_redirect_response(request.app.router["project_integration"].url_for())
+        return _htmx_redirect_response(
+            request.app.router["project_integration"].url_for()
+        )
 
     if action == "reset_secret":
         secret = secrets.token_urlsafe(32)
@@ -2394,7 +2393,7 @@ async def project_action(request):
             raise web.HTTPNotFound()
         if not await _check_source_blocking_and_commit(request, db_session, source):
             _queue_source_crawl_from_ui(source.id)
-            await flash(request, _("Crawl task started for source"), "success")
+            await flash(request, "Задача обхода источника запущена", "success")
         return web.Response(text="ok", status=200)
 
     if action == "refresh_page":
@@ -2416,7 +2415,7 @@ async def project_action(request):
         await admin_event("page_refresh_request", request)
         await flash(
             request,
-            _("Обновление страницы запущено"),
+            "Обновление страницы запущено",
             "success",
         )
         return web.Response(text="ok", status=200)
@@ -2431,7 +2430,8 @@ async def project_action(request):
         await admin_event("source_reindex_request", request)
         await flash(
             request,
-            _("Update task started for %(title)s", title=source.title or source.uri),
+            "Задача обновления запущена для %(title)s"
+            % {"title": source.title or source.uri},
             "success",
         )
         return web.Response(text="ok", status=200)
@@ -2451,7 +2451,7 @@ async def project_action(request):
         )
         for source_id in source_ids:
             _queue_source_crawl_from_ui(source_id)
-        await flash(request, _("Crawl task started for all sources"), "success")
+        await flash(request, "Задача обхода всех источников запущена", "success")
         return web.Response(text="ok", status=200)
 
     if action == "pause_source":
@@ -2496,12 +2496,12 @@ async def project_action(request):
 
     if action == "refresh_project_index":
         schedule_refresh_project_index()
-        await flash(request, _("Update task started"), "success")
+        await flash(request, "Задача обновления запущена", "success")
         return web.Response(text="ok", status=200)
 
     if action == "index_project":
         index_project.delay()
-        await flash(request, _("Full rebuild task started"), "success")
+        await flash(request, "Полная переиндексация запущена", "success")
         return web.Response(text="ok", status=200)
 
     if action == "delete_source_rule":
@@ -2635,7 +2635,7 @@ async def project_action(request):
     raise web.HTTPBadRequest(text="Unknown action")
 
 
-@meta(title=_("Страницы"))
+@meta(title="Страницы")
 @login_required()
 @aiohttp_jinja2.template("projects/view.html")
 async def project_view(request):
@@ -2744,7 +2744,7 @@ async def project_documents_csv(request):
                 "id": str(document_id),
                 "title": _display_document_title(title, uri),
                 "uri": uri or "",
-                "source": source_title or source_uri or _("Файлы"),
+                "source": source_title or source_uri or "Файлы",
                 "status": _enum_value(status),
                 "status_error": _enum_value(status_error),
                 "is_ignored": "1"
@@ -2764,7 +2764,7 @@ async def project_files_json(request):
     return json_response([_file_row_to_payload(row) for row in rows])
 
 
-@meta(title=_("Stats"))
+@meta(title="Статистика")
 @login_required()
 @aiohttp_jinja2.template("projects/stats.html")
 async def project_stats(request):
@@ -3065,7 +3065,7 @@ async def project_stats(request):
         source_stats.append(
             {
                 "id": None,
-                "title": _("Файлы"),
+                "title": "Файлы",
                 "doc_count": files_doc_count,
                 "data_volume": files_data_volume,
                 "chunk_count": files_chunk_count,
@@ -3155,7 +3155,7 @@ async def project_document_content_rest(request):
     }
 
 
-@meta(title=_("Структура документа"))
+@meta(title="Структура документа")
 @login_required()
 @aiohttp_jinja2.template("projects/document_detail.html")
 async def project_document_detail(request):
@@ -3163,7 +3163,7 @@ async def project_document_detail(request):
     return await _document_detail_context(request, document_id)
 
 
-@meta(title=_("Chat"))
+@meta(title="Чат")
 @login_required()
 @aiohttp_jinja2.template("chat/chat.html")
 async def project_chat(request):
@@ -3272,7 +3272,7 @@ async def project_chat(request):
     }
 
 
-@meta(title=_("Код виджета"))
+@meta(title="Код виджета")
 @login_required()
 @aiohttp_jinja2.template("projects/integration.html")
 async def project_integration(request):
@@ -3289,7 +3289,7 @@ async def project_integration(request):
     return context
 
 
-@meta(title=_("Редактировать код виджета"))
+@meta(title="Редактировать код виджета")
 @login_required()
 @aiohttp_jinja2.template("projects/widget_edit.html")
 async def project_widget_edit(request):
@@ -3382,7 +3382,7 @@ async def _render_public_chat(request, widget: WidgetIntegration):
     }
 
 
-@meta(title=_("Chat Widget"))
+@meta(title="Виджет чата")
 @aiohttp_jinja2.template("chat/chat.html")
 async def public_widget_chat(request):
     code = request.match_info.get("code", "").strip()
@@ -3390,7 +3390,7 @@ async def public_widget_chat(request):
     return await _render_public_chat(request, widget)
 
 
-@meta(title=_("Files"))
+@meta(title="Файлы")
 @login_required()
 @aiohttp_jinja2.template("projects/files.html")
 async def project_files(request):
@@ -3450,7 +3450,7 @@ async def project_files(request):
     }
 
 
-@meta(title=_("Files"))
+@meta(title="Файлы")
 @login_required()
 @aiohttp_jinja2.template("projects/files.html")
 async def file_document(request):
@@ -3502,7 +3502,7 @@ async def file_document(request):
         if not too_big:
             schedule_index_document(document.id)
         await admin_event("file_update", request)
-        await flash(request, _("Файл сохранен"), "success")
+        await flash(request, "Файл сохранен", "success")
         raise web.HTTPFound(location=request.path)
 
     files_rows = await _files_rows(db_session)

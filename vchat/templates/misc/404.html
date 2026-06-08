@@ -5,10 +5,10 @@
 <main class="bg-gray-50 dark:bg-gray-900">
   <div class="flex flex-col justify-center items-center px-6 mx-auto h-screen xl:px-0 dark:bg-gray-900">
     <div class="text-center xl:max-w-4xl">
-      <h1 class="mb-3 text-2xl font-bold leading-tight text-gray-900 sm:text-4xl lg:text-5xl dark:text-white">{{ _("Ошибка 404: Страница не найдена") }}</h1>
-      <p class="mb-3 text-base font-normal text-gray-500 md:text-lg dark:text-gray-400">{{ _("The page <code class='font-mono font-medium text-xs leading-6 text-sky-500 whitespace-nowrap dark:text-sky-400'>{url}</code> you are looking for is not found.".format(url=request.path_qs))|safe }}</p>
+      <h1 class="mb-3 text-2xl font-bold leading-tight text-gray-900 sm:text-4xl lg:text-5xl dark:text-white">{{ "Ошибка 404: Страница не найдена" }}</h1>
+      <p class="mb-3 text-base font-normal text-gray-500 md:text-lg dark:text-gray-400">{{ "Страница <code class='font-mono font-medium text-xs leading-6 text-sky-500 whitespace-nowrap dark:text-sky-400'>{url}</code> не найдена.".format(url=request.path_qs)|safe }}</p>
       <p class="mb-5 text-base font-normal text-gray-500 md:text-lg dark:text-gray-400">
-        <a href="https://dzen.dev?from=vchat" target="_blank" rel="noopener">{{ _("Please contact us.") }}</a>
+        <a href="https://dzen.dev?from=vchat" target="_blank" rel="noopener">{{ "Свяжитесь с нами." }}</a>
       </p>
     </div>
   </div>

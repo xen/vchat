@@ -7,8 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from types import SimpleNamespace
 from yarl import URL
 
-from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
-from vchat.i18n import _
+from vchat.settings import CONFIG_KEY, SIGNER_KEY
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat import utils as vchat_utils
 from vchat.views import frontend
@@ -519,15 +518,6 @@ async def test_widget_triggers_resolve_handles_concurrent_discovery_conflict(
     assert db.rollbacks == 2
     assert db.commits == 0
     assert delayed == []
-
-
-def test_i18n_translation_with_kwargs_and_fallbacks() -> None:
-    assert _("Error {code}", code=500) == "Ошибка {code}"
-    assert (
-        _("Update task started for %(title)s", title="Doc")
-        == "Задача обновления запущена для Doc"
-    )
-    assert _("Unknown untranslated string") == "Unknown untranslated string"
 
 
 @pytest.mark.asyncio

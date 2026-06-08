@@ -1,12 +1,12 @@
 {% extends "admin.html" %}
-{% set page_title = _("Список пользователей") %}
+{% set page_title = "Список пользователей" %}
 
 {% block content %}
 <div class="space-y-6">
   <div class="flex items-center justify-between">
-    <h1 class="text-lg font-medium">{{ _('Пользователи') }}</h1>
+    <h1 class="text-lg font-medium">{{ 'Пользователи' }}</h1>
     <button type="button" class="btn btn-primary btn-sm" onclick="add_user_modal.showModal()">
-      {{ _('Добавить пользователя') }}
+      {{ 'Добавить пользователя' }}
     </button>
   </div>
 
@@ -16,10 +16,10 @@
         <table class="table w-full">
           <thead>
             <tr>
-              <th>{{ _('ID') }}</th>
-              <th>{{ _('Почта') }}</th>
-              <th>{{ _('Статус') }}</th>
-              <th>{{ _('Действия') }}</th>
+              <th>{{ 'ID' }}</th>
+              <th>{{ 'Почта' }}</th>
+              <th>{{ 'Статус' }}</th>
+              <th>{{ 'Действия' }}</th>
             </tr>
           </thead>
           <tbody>
@@ -33,9 +33,9 @@
               </td>
               <td>
                 {% if user.is_active %}
-                  <span class="badge badge-success">{{ _('Активен') }}</span>
+                  <span class="badge badge-success">{{ 'Активен' }}</span>
                 {% else %}
-                  <span class="badge badge-warning">{{ _('Не активен') }}</span>
+                  <span class="badge badge-warning">{{ 'Не активен' }}</span>
                 {% endif %}
               </td>
               <td>
@@ -46,17 +46,17 @@
                     hx-target="#user_password_modal_content"
                     onclick="user_password_modal.showModal()"
                   >
-                    {{ _('Сменить пароль') }}
+                    {{ 'Сменить пароль' }}
                   </button>
                   <button
                     class="btn btn-xs btn-error btn-outline"
                     hx-post="{{ url('actions', action='user_delete', item_id=user.id) }}"
                     hx-swap="none"
-                    hx-confirm="{{ _('Удалить пользователя?') }}"
+                    hx-confirm="{{ 'Удалить пользователя?' }}"
                     {% if user.id == current_user_id or total_users <= 1 %}disabled{% endif %}
-                    title="{% if user.id == current_user_id %}{{ _('Нельзя удалить себя') }}{% elif total_users <= 1 %}{{ _('Нельзя удалить последнего пользователя') }}{% endif %}"
+                    title="{% if user.id == current_user_id %}{{ 'Нельзя удалить себя' }}{% elif total_users <= 1 %}{{ 'Нельзя удалить последнего пользователя' }}{% endif %}"
                   >
-                    {{ _('Удалить') }}
+                    {{ 'Удалить' }}
                   </button>
                 </div>
               </td>
@@ -64,7 +64,7 @@
             {% else %}
             <tr>
               <td colspan="4" class="text-center text-base-content/60 py-8">
-                {{ _('Пользователи не найдены') }}
+                {{ 'Пользователи не найдены' }}
               </td>
             </tr>
             {% endfor %}
@@ -77,11 +77,11 @@
 
 <dialog id="add_user_modal" class="modal">
   <div class="modal-box">
-    <h2 class="card-title text-base mb-3">{{ _('Добавить пользователя') }}</h2>
+    <h2 class="card-title text-base mb-3">{{ 'Добавить пользователя' }}</h2>
     <form method="POST" action="{{ url('actions', action='user_create', item_id='global') }}" class="grid gap-3 sm:grid-cols-2">
       {{ add_form.csrf_token }}
       <div class="sm:col-span-1">
-        <label class="label"><span class="label-text">{{ _('Почта') }}</span></label>
+        <label class="label"><span class="label-text">{{ 'Почта' }}</span></label>
         {{ add_form.email(class="input input-bordered w-full", autocomplete="email") }}
         {% if add_form.email.errors %}
           {% for error in add_form.email.errors %}
@@ -90,7 +90,7 @@
         {% endif %}
       </div>
       <div class="sm:col-span-1">
-        <label class="label"><span class="label-text">{{ _('Пароль') }}</span></label>
+        <label class="label"><span class="label-text">{{ 'Пароль' }}</span></label>
         {{ add_form.password(class="input input-bordered w-full", autocomplete="new-password") }}
         {% if add_form.password.errors %}
           {% for error in add_form.password.errors %}
@@ -99,13 +99,13 @@
         {% endif %}
       </div>
       <div class="sm:col-span-2 modal-action mt-1">
-        <button type="submit" class="btn btn-primary btn-sm">{{ _('Добавить') }}</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="add_user_modal.close()">{{ _('Отмена') }}</button>
+        <button type="submit" class="btn btn-primary btn-sm">{{ 'Добавить' }}</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="add_user_modal.close()">{{ 'Отмена' }}</button>
       </div>
     </form>
   </div>
   <form method="dialog" class="modal-backdrop">
-    <button>{{ _('Закрыть') }}</button>
+    <button>{{ 'Закрыть' }}</button>
   </form>
 </dialog>
 
@@ -114,7 +114,7 @@
     <div id="user_password_modal_content"></div>
   </div>
   <form method="dialog" class="modal-backdrop">
-    <button>{{ _('Закрыть') }}</button>
+    <button>{{ 'Закрыть' }}</button>
   </form>
 </dialog>
 {% if add_form.errors %}

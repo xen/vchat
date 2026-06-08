@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 from docx import Document
 from pypdf import PdfReader
 
-from vchat.document_types import guess_document_type
+from jobs.documents.types import guess_document_type
 
 logger = logging.getLogger(__name__)
 

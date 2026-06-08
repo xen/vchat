@@ -1,19 +1,19 @@
-<div role="navigation" aria-label="{{ _('Навигация') }}" class="flex items-center justify-between px-3" id="layout-topbar">
+<div role="navigation" aria-label="{{ 'Навигация' }}" class="flex items-center justify-between px-3" id="layout-topbar">
   <div class="inline-flex items-center gap-3">
     <label class="btn btn-square btn-ghost btn-sm group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:hidden"
-      aria-label="{{ _('Переключить левое меню') }}" for="layout-sidebar-toggle-trigger">
+      aria-label="{{ 'Переключить левое меню' }}" for="layout-sidebar-toggle-trigger">
       <iconify-icon icon="lucide:menu" class="size-5"></iconify-icon>
     </label>
     <label
       class="btn btn-square btn-ghost btn-sm hidden group-has-[[id=layout-sidebar-hover-trigger]:checked]/html:flex"
-      aria-label="{{ _('Переключить левое меню') }}" for="layout-sidebar-hover-trigger">
+      aria-label="{{ 'Переключить левое меню' }}" for="layout-sidebar-hover-trigger">
       <iconify-icon icon="lucide:menu" class="size-5"></iconify-icon>
     </label>
 
     <div class="flex items-center gap-2">
       <a href="{{ url('project_chat') }}" target="_blank" class="btn btn-sm btn-primary">
         <iconify-icon icon="lucide:message-circle" class="size-4"></iconify-icon>
-        {{ _('Новый чат') }}
+        {{ 'Новый чат' }}
       </a>
     </div>
   </div>
@@ -25,10 +25,10 @@
 
     <div class="dropdown dropdown-end">
       <div tabindex="0" role="button" class="btn btn-ghost">
-        {{ _('Пользователь') }}
+        {{ 'Пользователь' }}
       </div>
       <ul tabindex="-1" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-1 mt-3 w-52 p-2 shadow">
-        <li><a href="{{ url('logout') }}">{{ _('Выйти') }}</a></li>
+        <li><a href="{{ url('logout') }}">{{ 'Выйти' }}</a></li>
       </ul>
     </div>
   </div>

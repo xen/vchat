@@ -1,5 +1,5 @@
 {% extends "admin.html" %}
-{% set page_title = _("Код виджета") %}
+{% set page_title = "Код виджета" %}
 
 {% macro widget_create_form(action) %}
 <form
@@ -11,7 +11,7 @@
   class="grid gap-4"
 >
   <label class="form-control">
-    <span class="label-text mb-1">{{ _('Название') }}</span>
+    <span class="label-text mb-1">{{ 'Название' }}</span>
     <input
       type="text"
       name="name"
@@ -19,23 +19,23 @@
       maxlength="128"
       required
     >
-    <span class="mt-1 text-xs text-base-content/60">{{ _('Внутреннее название, нужно только для удобства в админке.') }}</span>
+    <span class="mt-1 text-xs text-base-content/60">{{ 'Внутреннее название, нужно только для удобства в админке.' }}</span>
   </label>
 
   <label class="form-control">
-    <span class="label-text mb-1">{{ _('Название чата') }}</span>
+    <span class="label-text mb-1">{{ 'Название чата' }}</span>
     <input
       type="text"
       name="agent_name"
       class="input input-bordered w-full"
       maxlength="100"
-      placeholder="{{ _('Виртуальный ассистент') }}"
+      placeholder="{{ 'Виртуальный ассистент' }}"
     >
-    <span class="mt-1 text-xs text-base-content/60">{{ _('Показывается пользователю в окне чата.') }}</span>
+    <span class="mt-1 text-xs text-base-content/60">{{ 'Показывается пользователю в окне чата.' }}</span>
   </label>
 
   <label class="form-control">
-    <span class="label-text mb-1">{{ _('Приветственное сообщение') }}</span>
+    <span class="label-text mb-1">{{ 'Приветственное сообщение' }}</span>
     <textarea
       name="welcome_message"
       class="textarea textarea-bordered w-full"
@@ -45,7 +45,7 @@
   </label>
 
   <label class="form-control">
-    <span class="label-text mb-1">{{ _('Системный промпт') }}</span>
+    <span class="label-text mb-1">{{ 'Системный промпт' }}</span>
     <textarea
       name="system_prompt"
       class="textarea textarea-bordered w-full font-mono text-sm"
@@ -55,7 +55,7 @@
   </label>
 
   <div class="flex justify-end gap-2">
-    <button type="submit" class="btn btn-primary btn-sm">{{ _('Создать') }}</button>
+    <button type="submit" class="btn btn-primary btn-sm">{{ 'Создать' }}</button>
   </div>
 </form>
 {% endmacro %}
@@ -63,10 +63,10 @@
 {% block content %}
 <div id="widget-integrations-page" class="space-y-6">
   <div class="flex items-center justify-between gap-3">
-    <h1 class="text-lg font-medium">{{ _('Код виджета') }}</h1>
+    <h1 class="text-lg font-medium">{{ 'Код виджета' }}</h1>
     <button type="button" class="btn btn-primary btn-sm" onclick="add_widget_modal.showModal()">
       <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-      {{ _('Добавить') }}
+      {{ 'Добавить' }}
     </button>
   </div>
 
@@ -76,8 +76,8 @@
         <table class="table w-full">
           <thead>
             <tr>
-              <th class="text-left">{{ _('Виджет') }}</th>
-              <th class="text-left">{{ _('Название чата') }}</th>
+              <th class="text-left">{{ 'Виджет' }}</th>
+              <th class="text-left">{{ 'Название чата' }}</th>
             </tr>
           </thead>
           <tbody>
@@ -94,13 +94,13 @@
                 </div>
               </td>
               <td class="align-top">
-                <span class="text-sm text-base-content/70">{{ widget.agent_name or _('Виртуальный ассистент') }}</span>
+                <span class="text-sm text-base-content/70">{{ widget.agent_name or ('Виртуальный ассистент') }}</span>
               </td>
             </tr>
             {% else %}
             <tr>
               <td colspan="2" class="py-8 text-center text-base-content/60">
-                {{ _('Коды виджета не созданы') }}
+                {{ 'Коды виджета не созданы' }}
               </td>
             </tr>
             {% endfor %}
@@ -112,11 +112,11 @@
 
   <dialog id="add_widget_modal" class="modal">
     <div class="modal-box max-w-2xl">
-      <h2 class="card-title mb-3 text-base">{{ _('Добавить код виджета') }}</h2>
+      <h2 class="card-title mb-3 text-base">{{ 'Добавить код виджета' }}</h2>
       {{ widget_create_form(url('actions', action='widget_create', item_id='global')) }}
     </div>
     <form method="dialog" class="modal-backdrop">
-      <button>{{ _('Закрыть') }}</button>
+      <button>{{ 'Закрыть' }}</button>
     </form>
   </dialog>
 </div>

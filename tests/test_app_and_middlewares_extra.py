@@ -10,11 +10,11 @@ from aiohttp.test_utils import make_mocked_request
 from yarl import URL
 
 import vchat.app as app_mod
-import vchat.project_settings as ps
+import vchat.views.projects.settings as ps
 import vchat.middlewares.cors as cors
 import vchat.middlewares.https as https_mw
 import vchat.middlewares.shield as shield
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 
 
 def test_project_settings_normalize_merge_and_getters(

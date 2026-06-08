@@ -6,10 +6,10 @@ from urllib.parse import urlparse
 import pytest
 from aiohttp import web
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY
 from vchat.settings import config
 from vchat.views.api import views as api_views
-from vchat.document_content import content_sha256
+from jobs.documents.content import content_sha256
 
 
 class _FakeScalarResult:

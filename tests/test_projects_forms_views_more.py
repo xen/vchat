@@ -9,7 +9,7 @@ from aiohttp import web
 from yarl import URL
 
 from vchat.models.source_config import CrawlerRule, SourceConfig
-from vchat.source_settings import DEFAULT_IGNORED_PARAMS
+from jobs.crawler.source_settings import DEFAULT_IGNORED_PARAMS
 from vchat.views.projects import forms as project_forms
 from vchat.views.projects import views as project_views
 

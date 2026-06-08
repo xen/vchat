@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import pytest
 import sqlalchemy as sa
 
-from vchat import embeddings
-from vchat import guardrails
-from vchat.document_types import get_document_type_label, guess_document_type
+from jobs.embedder import model as embeddings
+from vchat.views.chat import guardrails
+from jobs.documents.types import get_document_type_label, guess_document_type
 from vchat.models.base import (
     Base,
     DateTime_,

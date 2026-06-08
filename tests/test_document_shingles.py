@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from vchat.document_shingles import (
+from jobs.documents.shingles import (
     compute_trigram_hashes,
     extract_content_blocks,
     is_boilerplate_block,

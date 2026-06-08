@@ -5,8 +5,8 @@ from typing import Any
 
 import sqlalchemy as sa
 
-from vchat.document_content import content_sha256
-from vchat.document_shingles import extract_shingles
+from jobs.documents.content import content_sha256
+from jobs.documents.shingles import extract_shingles
 from vchat.models import Chunk, Page
 from vchat.settings import config
 

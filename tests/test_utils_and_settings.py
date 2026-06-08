@@ -7,13 +7,13 @@ import pytest
 from aiohttp import web
 from yarl import URL
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY
 from jobs.indexing import documents as indexing_documents
-from vchat import metrics
+from vchat.views import metrics
 from vchat import settings
 from vchat import utils
-from vchat.chat_meta import merge_chat_meta, validate_source_page_url
-from vchat.ai_providers import (
+from vchat.views.chat.meta import merge_chat_meta, validate_source_page_url
+from vchat.views.chat.ai import (
     get_default_model_id,
     get_model_choices,
     get_models_for_provider,

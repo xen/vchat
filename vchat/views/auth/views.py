@@ -11,8 +11,7 @@ from passlib.context import CryptContext
 from wtforms import Form, PasswordField, StringField, validators
 from wtforms.csrf.session import SessionCSRF
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
-from vchat.i18n import _
+from vchat.settings import CONFIG_KEY, REDIS_KEY
 from vchat.middlewares import UserInfo
 from vchat.models import User
 from vchat.settings import config
@@ -44,27 +43,25 @@ class LoginForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
     email = StringField(
-        _("Your email"),
+        "Ваш email",
         [
             validators.Length(
                 min=6,
                 max=254,
-                message=_("Length from 6 to 254 characters"),
+                message="Длина от 6 до 254 символов",
             ),
-            validators.Email(message=_("Enter a valid email")),
-            validators.DataRequired(message=_("Required field")),
+            validators.Email(message="Введите корректный email"),
+            validators.DataRequired(message="Обязательное поле"),
         ],
-        render_kw={"placeholder": _("name@company.com")},
+        render_kw={"placeholder": "name@company.com"},
     )
     password = PasswordField(
-        _("Your password"),
+        "Ваш пароль",
         [
-            validators.Length(
-                min=4, max=35, message=_("Length from 4 to 35 characters")
-            ),
-            validators.DataRequired(message=_("Required field")),
+            validators.Length(min=4, max=35, message="Длина от 4 до 35 символов"),
+            validators.DataRequired(message="Обязательное поле"),
         ],
-        render_kw={"placeholder": _("Password")},
+        render_kw={"placeholder": "Пароль"},
     )
 
 
@@ -114,7 +111,7 @@ async def authenticate_ldap(email: str, password: str, config: dict) -> dict | N
         return None
 
 
-@meta(title=_("Login to vchat"))
+@meta(title="Вход в vchat")
 @aiohttp_jinja2.template("auth/login.html")
 async def login(request):
     config = request.app[CONFIG_KEY]
@@ -131,7 +128,7 @@ async def login(request):
 
         if await request.app[REDIS_KEY].exists(lock_key):
             form.email.errors.append(
-                _("Too many login attempts. Try again in a few seconds")
+                "Слишком много попыток входа. Попробуйте ещё раз через несколько секунд"
             )
             return {
                 "form": form,
@@ -146,24 +143,24 @@ async def login(request):
         user = result.scalar()
         if not user:
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
-            form.email.errors.append(_("Email or password is incorrect"))
+            form.email.errors.append("Неверный email или пароль")
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
             }
         if user.is_active is False:
             form.email.errors.append(
-                _(
-                    "You have not confirmed your email. Check your email and Spam "
-                    "folder for the activation link, then try again."
-                )
+                "Вы не подтвердили email. Проверьте почту и папку Спам, "
+                "затем попробуйте снова."
             )
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
             }
         if user.is_ldap:
-            form.email.errors.append(_("This account uses LDAP authentication"))
+            form.email.errors.append(
+                "Для этой учётной записи используется LDAP-аутентификация"
+            )
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
@@ -172,7 +169,7 @@ async def login(request):
             form.password.data, user.password
         ):
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
-            form.email.errors.append(_("Wrong email or password"))
+            form.email.errors.append("Неверный email или пароль")
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
@@ -198,7 +195,7 @@ async def login(request):
     return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
 
 
-@meta(title=_("LDAP Login to vchat"))
+@meta(title="LDAP-вход в vchat")
 @aiohttp_jinja2.template("auth/login_ldap.html")
 async def login_ldap(request):
     config = request.app[CONFIG_KEY]
@@ -215,7 +212,7 @@ async def login_ldap(request):
 
         if await request.app[REDIS_KEY].exists(lock_key):
             form.email.errors.append(
-                _("Too many login attempts. Try again in a few seconds")
+                "Слишком много попыток входа. Попробуйте ещё раз через несколько секунд"
             )
             return {
                 "form": form,
@@ -229,7 +226,7 @@ async def login_ldap(request):
         )
         if ldap_result is None:
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
-            form.email.errors.append(_("Email or password is incorrect"))
+            form.email.errors.append("Неверный email или пароль")
             return {
                 "form": form,
                 "basic_enabled": config.get("auth_basic_enabled", True),
@@ -270,7 +267,7 @@ async def login_ldap(request):
     return {"form": form, "basic_enabled": config.get("auth_basic_enabled", True)}
 
 
-@meta(title=_("Logout from vchat"))
+@meta(title="Выход из vchat")
 @login_required()
 async def logout(request):
     await admin_event("user_logout", request)

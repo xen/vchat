@@ -10,10 +10,10 @@ import aiohttp
 import pytest
 from itsdangerous import BadSignature
 
-from vchat.app_keys import SIGNER_KEY
-from vchat.guardrails import GuardrailDecision
+from vchat.settings import SIGNER_KEY
+from vchat.views.chat.guardrails import GuardrailDecision
 from vchat.models.source_config import SourceConfig
-from vchat.triggers import trigger_key
+from vchat.views.triggers.rules import trigger_key
 from vchat.views.chat import views as chat_views
 
 

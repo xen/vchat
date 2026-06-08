@@ -18,7 +18,7 @@ from jobs.crawler.tasks import crawl_page_task
 from jobs.crawler.url_rules import build_source_id_by_host, resolve_source_id_for_url
 from jobs.db import create_sync_engine
 from vchat.models.data import Chunk, Page, PageLink, Source
-from vchat.page_status import PageStatus
+from vchat.views.projects.page_status import PageStatus
 
 DOWNLOADABLE_DOCUMENT_EXTENSIONS = (
     ".pdf",

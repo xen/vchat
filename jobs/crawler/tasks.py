@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import logging
@@ -39,25 +38,27 @@ from jobs.crawler.url_rules import (
     resolve_source_id_for_url,
 )
 from jobs.crawler.url_rules import url_allowed_by_rules
-from vchat.document_shingles import compute_trigram_hashes, extract_content_blocks
-from vchat.document_content import (
+from jobs.documents.shingles import compute_trigram_hashes, extract_content_blocks
+from jobs.documents.content import (
     CHUNK_TEXT_HASH_IGNORED_CHARS,
     chunk_text_sha256,
     document_too_big_message,
     normalize_chunk_text_for_hash,
 )
 from vchat.models.data import Chunk, CrawlRun, Page, PageShingle, Sitemap, Source
-from vchat.metrics import record_crawl_run
-from vchat.page_status import PageStatus, PageStatusError
+from vchat.views.metrics import record_crawl_run
+from vchat.views.projects.page_status import PageStatus, PageStatusError
 from vchat.settings import config
-from vchat.source_blocking import apply_source_blocking_result, check_source_blocking
-from vchat.source_settings import (
+from jobs.crawler.source_blocking import (
+    apply_source_blocking_result,
+    check_source_blocking,
+)
+from jobs.crawler.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_REINDEX_CRON,
     is_manual_reindex,
     normalize_reindex_cron,
 )
-from vchat.triggers import build_page_trigger_items, generate_trigger_texts_for_page
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -1106,43 +1107,6 @@ def schedule_index_document(document_id: int) -> bool:
         return True
     finally:
         redis_client.close()
-
-
-def _pages_for_trigger_generation(session: Session, limit: int = 20) -> list[Page]:
-    return list(
-        session.execute(
-            select(Page)
-            .where(Page.has_triggers.is_(True))
-            .where(Page.uri.is_not(None))
-            .where(Page.content.is_not(None))
-            .where(Page.content != "")
-            .where(Page.status == PageStatus.ready)
-            .where(Page.status_error.is_(None))
-            .where(sa.or_(Page.triggers.is_(None), Page.triggers == []))
-            .order_by(Page.updated_at.desc().nullslast(), Page.id.desc())
-            .limit(limit)
-        ).scalars()
-    )
-
-
-@app.task(name="jobs.crawler.tasks.generate_missing_triggers_task", queue="celery")
-def generate_missing_triggers_task(limit: int = 20) -> int:
-    engine = create_sync_engine()
-    created = 0
-    try:
-        with Session(bind=engine) as session:
-            pages = _pages_for_trigger_generation(session, limit=limit)
-            for page in pages:
-                texts = asyncio.run(generate_trigger_texts_for_page(None, page))
-                items = build_page_trigger_items(texts, source="generated")
-                page.triggers = items
-                page.updated_at = datetime.now(timezone.utc)
-                created += len(items)
-            session.commit()
-    finally:
-        engine.dispose()
-    logging.info("Generated %s trigger items", created)
-    return created
 
 
 @app.task(

@@ -20,7 +20,7 @@ from prometheus_client import (
 from prometheus_client.core import GaugeMetricFamily
 from vchat.settings import config
 
-logger = logging.getLogger("vchat.metrics")
+logger = logging.getLogger("vchat.views.metrics")
 
 CHAT_REQUESTS_TOTAL = Counter(
     "vchat_chat_requests_total",

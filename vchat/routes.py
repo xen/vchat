@@ -4,8 +4,15 @@ from aiohttp import web
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
 from yarl import URL
 
-from .metrics import metrics_handler
-from .views import admin, api, auth, chat, frontend, projects, user
+from vchat.views.metrics import metrics_handler
+from .views import frontend
+from .views.admin import views as admin
+from .views.api import views as api
+from .views.auth import views as auth
+from .views.chat import views as chat
+from .views.projects import chats as project_chats
+from .views.projects import views as projects
+from .views.user import views as user
 
 
 STATIC_PATH = Path(__file__).parent.parent / "static"
@@ -151,12 +158,12 @@ def setup_routes(app: web.Application) -> None:
         projects.project_widget_edit,
         name="project_widget_edit",
     )
-    add("GET", "/chats", projects.chats_list, name="project_chats_list")
-    add("GET", "/history", projects.history_list, name="project_history")
+    add("GET", "/chats", project_chats.chats_list, name="project_chats_list")
+    add("GET", "/history", project_chats.history_list, name="project_history")
     add(
         "GET",
         r"/history/{chat_id:[a-zA-Z0-9-]+}",
-        projects.history_detail,
+        project_chats.history_detail,
         name="project_history_detail",
     )
     # chat websocket + chat actions

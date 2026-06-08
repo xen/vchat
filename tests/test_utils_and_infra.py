@@ -8,9 +8,12 @@ from types import SimpleNamespace
 import pytest
 from aiohttp import web
 
-from vchat import ai_providers, document_types, metrics, settings, utils
-from vchat.json_response import json_response
-from vchat.page_status import PageStatus
+from vchat import settings, utils
+from vchat.views import metrics
+from vchat.utils import json_response
+from jobs.documents import types as document_types
+from vchat.views.projects.page_status import PageStatus
+from vchat.views.chat import ai as ai_providers
 
 
 def test_document_types_guess_and_labels() -> None:
@@ -31,18 +34,6 @@ def test_json_response_uses_msgspec_compatible_body() -> None:
     assert response.content_type == "application/json"
     assert response.body == b'{"status":"ready"}'
     assert response.text == '{"status":"ready"}'
-
-
-@pytest.mark.asyncio
-async def test_client_session_and_api_client() -> None:
-    mod = __import__("vchat.aiohttp_client", fromlist=["ApiClient", "client_session"])
-    session = mod.client_session(client_timeout=1)
-    try:
-        client = mod.ApiClient(session)
-        assert client.session is session
-        assert int(session.timeout.total) == 1
-    finally:
-        await session.close()
 
 
 def test_yaml_load_converts_bool_like_strings() -> None:

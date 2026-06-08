@@ -30,8 +30,8 @@
 <div class="h-screen w-full overflow-hidden">
   {% block fullbody %}
     <div class="flex h-screen">
-      <input type="checkbox" id="layout-sidebar-toggle-trigger" class="hidden" aria-label="{{ _('Переключить боковую панель') }}" />
-      <input type="checkbox" id="layout-sidebar-hover-trigger" class="hidden" aria-label="{{ _('Компактная боковая панель') }}" />
+      <input type="checkbox" id="layout-sidebar-toggle-trigger" class="hidden" aria-label="{{ 'Переключить боковую панель' }}" />
+      <input type="checkbox" id="layout-sidebar-hover-trigger" class="hidden" aria-label="{{ 'Компактная боковая панель' }}" />
       <div id="layout-sidebar-hover" class="bg-base-300 h-screen w-1"></div>
       {% block sidebar %}
       {% include "include/admin/sidebar.html" with context %}

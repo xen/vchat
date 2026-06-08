@@ -9,11 +9,7 @@ def test_error_templates_render_contact_link_on_separate_line() -> None:
         autoescape=True,
     )
 
-    def translate(value: str) -> str:
-        return value
-
     context = {
-        "_": translate,
         "csrf_token": None,
         "current_year": 2026,
         "debug": False,
@@ -35,7 +31,7 @@ def test_error_templates_render_contact_link_on_separate_line() -> None:
         assert (
             '<p class="mb-5 text-base font-normal text-gray-500 md:text-lg dark:text-gray-400">\n'
             '        <a href="https://dzen.dev?from=vchat" target="_blank" '
-            'rel="noopener">Please contact us.</a>\n'
+            'rel="noopener">Свяжитесь с нами.</a>\n'
             "      </p>"
             in html
         )

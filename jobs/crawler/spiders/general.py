@@ -20,7 +20,7 @@ from ..url_rules import (
 )
 from jobs.db import create_sync_engine
 from vchat.models.data import Page
-from vchat.page_status import PageStatusError
+from vchat.views.projects.page_status import PageStatusError
 
 DOWNLOADABLE_DOCUMENT_EXTENSIONS = {
     "doc",

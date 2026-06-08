@@ -12,8 +12,8 @@ import jinja2
 import pytest
 from aiohttp import web
 
-from vchat.app_keys import REDIS_KEY
-from vchat.page_status import EXCLUDED_INDEX_STATUS_ERRORS
+from vchat.settings import REDIS_KEY
+from vchat.views.projects.page_status import EXCLUDED_INDEX_STATUS_ERRORS
 from vchat.views.projects import views as project_views
 
 
@@ -623,7 +623,7 @@ async def test_project_edit_sources_keeps_active_sources_first(
 async def test_project_documents_csv_and_files_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from vchat.page_status import PageStatus
+    from vchat.views.projects.page_status import PageStatus
 
     now = datetime(2026, 3, 1, tzinfo=timezone.utc)
     source = SimpleNamespace(title="S", uri="https://example.local")

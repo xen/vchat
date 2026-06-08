@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from vchat import guardrails
+from vchat.views.chat import guardrails
 
 
 @pytest.mark.asyncio

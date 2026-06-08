@@ -12,7 +12,7 @@ from itsdangerous import BadSignature
 from multidict import MultiDict
 from yarl import URL
 
-from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
+from vchat.settings import CONFIG_KEY, SIGNER_KEY
 from vchat.views.projects import views as project_views
 
 
@@ -126,7 +126,7 @@ async def test_project_action_rejects_missing_csrf() -> None:
 async def test_project_action_ignore_document_toggle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from vchat.page_status import PageStatus, PageStatusError
+    from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     doc = SimpleNamespace(id=10, status=PageStatus.crawler, status_error=None)
     req = _Request(action="ignore_document", item_id="10", post_data={})
@@ -596,7 +596,7 @@ async def test_project_action_delete_file_success(
 
 @pytest.mark.asyncio
 async def test_project_documents_csv_serializes_rows() -> None:
-    from vchat.page_status import PageStatus
+    from vchat.views.projects.page_status import PageStatus
 
     source = SimpleNamespace(id=2, title="Source A", uri="https://example.com")
     req = _Request(action="noop")
@@ -636,7 +636,7 @@ async def test_project_documents_csv_serializes_rows() -> None:
 
 @pytest.mark.asyncio
 async def test_project_documents_csv_marks_excluded_as_ignored() -> None:
-    from vchat.page_status import PageStatus, PageStatusError
+    from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     source = SimpleNamespace(id=2, title="Source A", uri="https://example.com")
     req = _Request(action="noop")

@@ -2,12 +2,12 @@
 {% block content %}
 
 <div class="flex items-center justify-between">
-    <h1 class="text-lg font-medium">{{ _('История чатов') }}</h1>
+    <h1 class="text-lg font-medium">{{ 'История чатов' }}</h1>
 </div>
 
 <div class="card bg-base-100 shadow mt-4">
     <div class="p-4 border-b border-base-200">
-        <h2 class="text-lg font-medium">{{ _('Активные чаты') }}</h2>
+        <h2 class="text-lg font-medium">{{ 'Активные чаты' }}</h2>
     </div>
     <div class="p-2">
         {% for chat in active_chats %}
@@ -27,7 +27,7 @@
         </a>
         {% else %}
         <div class="p-4 text-center text-base-content/60">
-            {{ _('Нет активных чатов') }}
+            {{ 'Нет активных чатов' }}
         </div>
         {% endfor %}
     </div>

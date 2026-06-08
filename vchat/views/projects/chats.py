@@ -9,8 +9,7 @@ import sqlalchemy as sa
 from aiohttp import web
 
 from vchat.db import async_session_factory
-from vchat.guardrails import mask_russian_pii
-from vchat.i18n import _
+from vchat.views.chat.guardrails import mask_russian_pii
 from vchat.models import Chat, ChatMsg, Page
 from vchat.settings import config
 from vchat.utils import login_required, meta, paginator
@@ -121,7 +120,7 @@ async def _mark_deleted_history_sources(db, messages: list[ChatMsg]) -> None:
             source["page_deleted"] = bool(page_url) and page_url not in existing_urls
 
 
-@meta(title=_("Chats"))
+@meta(title="Чаты")
 @login_required()
 @aiohttp_jinja2.template("projects/chats.html")
 async def chats_list(request):
@@ -140,7 +139,7 @@ async def chats_list(request):
     }
 
 
-@meta(title=_("Chat History"))
+@meta(title="История чатов")
 @login_required()
 @aiohttp_jinja2.template("projects/history.html")
 async def history_list(request):
@@ -441,7 +440,7 @@ async def history_list(request):
     }
 
 
-@meta(title=_("Chat History"))
+@meta(title="История чатов")
 @login_required()
 @aiohttp_jinja2.template("projects/history_detail.html")
 async def history_detail(request):

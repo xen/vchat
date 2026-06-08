@@ -5,11 +5,11 @@ from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlsplit
 
 from jobs.crawler.tasks import crawl_page_task
-from vchat.app_keys import CONFIG_KEY, SIGNER_KEY
-from vchat.json_response import json_response
+from vchat.settings import CONFIG_KEY, SIGNER_KEY
+from vchat.utils import json_response
 from vchat.models import Page, Source, WidgetIntegration
-from vchat.page_status import PageStatus
-from vchat.triggers import (
+from vchat.views.projects.page_status import PageStatus
+from vchat.views.triggers.rules import (
     canonical_page_url,
     find_page_by_url,
     load_default_trigger_templates,

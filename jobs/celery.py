@@ -29,8 +29,8 @@ app.conf.broker_transport_options = {
 }
 
 # Autodiscover tasks from job packages so workers pick up every queue
-app.autodiscover_tasks(["jobs", "jobs.crawler", "jobs.embedder"])
-app.conf.imports = ("jobs.crawler.tasks", "jobs.embedder.tasks")
+app.autodiscover_tasks(["jobs", "jobs.crawler", "jobs.embedder", "jobs.triggers"])
+app.conf.imports = ("jobs.crawler.tasks", "jobs.embedder.tasks", "jobs.triggers.tasks")
 
 
 app.conf.worker_prefetch_multiplier = 1

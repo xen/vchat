@@ -8,7 +8,7 @@ import sqlalchemy as sa
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY
 import vchat.middlewares as mw
 from vchat.routes import setup_routes, to_path
 

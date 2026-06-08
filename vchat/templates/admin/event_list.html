@@ -1,11 +1,11 @@
 {% extends "admin.html" %}
-{% set page_title = _("Журнал действий") %}
+{% set page_title = "Журнал действий" %}
 {% import "include/admin/pagination.html" as ui_pagination %}
 
 {% block content %}
 <div class="space-y-6">
   <div class="flex items-center justify-between">
-    <h1 class="text-lg font-medium">{{ _('Журнал действий') }}</h1>
+    <h1 class="text-lg font-medium">{{ 'Журнал действий' }}</h1>
   </div>
 
   <div class="card bg-base-100 shadow">
@@ -14,10 +14,10 @@
         <table class="table w-full">
           <thead>
             <tr>
-              <th>{{ _('Кто') }}</th>
-              <th>{{ _('Откуда') }}</th>
-              <th>{{ _('Действие') }}</th>
-              <th>{{ _('Дата и время') }}</th>
+              <th>{{ 'Кто' }}</th>
+              <th>{{ 'Откуда' }}</th>
+              <th>{{ 'Действие' }}</th>
+              <th>{{ 'Дата и время' }}</th>
             </tr>
           </thead>
           <tbody>
@@ -38,7 +38,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="4" class="text-center text-base-content/60 py-8">{{ _('Записей пока нет') }}</td>
+              <td colspan="4" class="text-center text-base-content/60 py-8">{{ 'Записей пока нет' }}</td>
             </tr>
             {% endfor %}
           </tbody>

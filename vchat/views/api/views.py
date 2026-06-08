@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from aiohttp import ClientSession, ClientTimeout, web
 from cryptography.fernet import Fernet
 
-from vchat.app_keys import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY
 from jobs.crawler.tasks import async_update_page_shingles, schedule_index_document
 from jobs.crawler.document_pipeline import extract_url_document
 from jobs.indexing.documents import (
@@ -18,12 +18,12 @@ from jobs.indexing.documents import (
     document_content_effectively_unchanged,
     raw_content_payload,
 )
-from vchat.document_content import document_too_big_message, is_document_too_big
-from vchat.document_types import guess_document_type
-from vchat.json_response import json_response
+from jobs.documents.content import document_too_big_message, is_document_too_big
+from jobs.documents.types import guess_document_type
+from vchat.utils import json_response
 from vchat.models import ApiClient, Chunk, Page, Source
 from vchat.models.data import api_client_source
-from vchat.page_status import PageStatus, PageStatusError
+from vchat.views.projects.page_status import PageStatus, PageStatusError
 
 __all__ = [
     "update_document",

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from vchat.source_blocking import (
+from jobs.crawler.source_blocking import (
     SourceBlockedReason,
     apply_source_blocking_result,
     check_source_blocking,
@@ -22,7 +22,7 @@ class _Resp:
 
 def test_check_source_blocking_marks_dns_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "vchat.source_blocking._resolve_hostname",
+        "jobs.crawler.source_blocking._resolve_hostname",
         lambda hostname: False,
     )
 
@@ -33,7 +33,7 @@ def test_check_source_blocking_marks_dns_failure(monkeypatch: pytest.MonkeyPatch
 
 def test_check_source_blocking_marks_robots_disallow(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "vchat.source_blocking._resolve_hostname",
+        "jobs.crawler.source_blocking._resolve_hostname",
         lambda hostname: True,
     )
 
@@ -50,7 +50,7 @@ def test_check_source_blocking_marks_robots_disallow(monkeypatch: pytest.MonkeyP
 
 def test_check_source_blocking_can_skip_robots_txt(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "vchat.source_blocking._resolve_hostname",
+        "jobs.crawler.source_blocking._resolve_hostname",
         lambda hostname: True,
     )
 
@@ -69,11 +69,11 @@ def test_check_source_blocking_can_skip_robots_txt(monkeypatch: pytest.MonkeyPat
 
 def test_check_source_blocking_marks_external_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "vchat.source_blocking._resolve_hostname",
+        "jobs.crawler.source_blocking._resolve_hostname",
         lambda hostname: True,
     )
     monkeypatch.setattr(
-        "vchat.source_blocking._check_robots_txt",
+        "jobs.crawler.source_blocking._check_robots_txt",
         lambda *args, **kwargs: None,
     )
 
