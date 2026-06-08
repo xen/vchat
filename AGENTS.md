@@ -33,6 +33,20 @@ Default to fail-fast behavior.
 - Every time you think a legacy/backward-compatibility layer might be needed,
   stop and ask me a direct question first instead of implementing it.
 
+# Server Access Policy
+
+Do not access any remote server unless the user explicitly asks for server
+access in the current task. This includes SSH, remote psql, remote Redis,
+systemd, journalctl, deployment checks, and any command targeting
+`cdn.okumy.com` or another non-local host.
+
+The server details below are reference material only. They are not permission
+to run server commands while investigating unrelated issues, local failures,
+tests, migrations, UI work, or diagnostics.
+
+If server access might be useful but was not explicitly requested, ask for
+permission first and wait for confirmation.
+
 # Test Server Database Access
 
 **Server:** `deploy@cdn.okumy.com` (тестовый сервер)
