@@ -4,6 +4,16 @@
 
 Do not add any attribution lines (`Co-Authored-By`, `Signed-off-by` for AI, etc.) to commit messages.
 
+# Agent Knowledge
+
+Use [kb/index.md](kb/index.md) as the entry point for project-local agent
+knowledge. Read only the KB files relevant to the task.
+
+Do not treat `docs/` as agent operating knowledge. `docs/` is a materialized
+conversation/document archive used when the user asks to create, preserve, or
+work through documents. Read files from `docs/` only when the user explicitly
+pins a specific document or asks to work with documents.
+
 Always run Python tooling from the project virtualenv. Use `venv/bin/python`,
 `venv/bin/pytest`, and other `venv/bin/...` entrypoints directly; do not try the
 system `python`, `python3`, or global `pytest` first.
@@ -83,7 +93,7 @@ Do not mix project defaults with the current test server runtime.
 
 ### Repo / local default namespace
 
-Current repo defaults in [vchat/config.yaml](/Users/xen/Dev/sber/vchat/vchat/config.yaml:19):
+Current repo defaults in [vchat/config.yaml](vchat/config.yaml):
 
 - App Redis: `redis://localhost:6379/30`
 - Celery broker Redis: `redis://localhost:6379/31`

@@ -1,7 +1,8 @@
 .PHONY: clean setup run db lint user security-check \
         ensure-pip pip-compile autoupgrade \
         celery revision downgrade deploy \
-		frontend embedder embedder-worker docs
+		frontend embedder embedder-worker docs \
+		agent agent-check agent-kb-check
 
 EMBEDDER_POOL ?= solo
 EMBEDDER_CONCURRENCY ?= 1
@@ -162,6 +163,13 @@ test: venv/bin/activate ## run tests with coverage
 		--cov-report=term-missing:skip-covered \
 		--cov-report=xml:coverage.xml \
 		--cov-report=html:htmlcov
+
+agent-kb-check: venv/bin/activate ## validate agent knowledge base structure
+	venv/bin/python bin/check_kb.py
+
+agent-check: agent-kb-check test ## run the standard agent completion checks
+
+agent: agent-check ## alias for the standard agent completion ritual
 
 help: ## display this help message
 	@echo "Please use \`make <target>' where <target> is one of"
