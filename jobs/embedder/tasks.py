@@ -321,9 +321,8 @@ def process_pending_chunk_batch(
     batch_size: int,
     redis_client: Any = None,
 ) -> int:
-    _ = redis_client
     limit = max(1, int(batch_size or PENDING_CHUNKS_BATCH_SIZE))
-    chunk_table = Chunk.__table__
+    chunk_table: sa.Table = Chunk.__table__  # type: ignore
     stmt = (
         select(
             chunk_table.c.id,

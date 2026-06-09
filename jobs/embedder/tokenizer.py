@@ -1,6 +1,4 @@
 from pathlib import Path
-from typing import Any
-
 from tokenizers import Tokenizer
 
 from vchat.settings import config
@@ -19,7 +17,6 @@ class EmbeddingTokenizer:
         truncation: bool = False,
         verbose: bool = True,
     ) -> dict[str, list[int]]:
-        _ = verbose
         encoding = self._tokenizer.encode(
             text or "",
             add_special_tokens=add_special_tokens,
@@ -36,11 +33,10 @@ class EmbeddingTokenizer:
         skip_special_tokens: bool = True,
         clean_up_tokenization_spaces: bool = False,
     ) -> str:
-        _ = clean_up_tokenization_spaces
         return self._tokenizer.decode(ids, skip_special_tokens=skip_special_tokens)
 
 
-def load_embedding_tokenizer() -> Any:
+def load_embedding_tokenizer() -> EmbeddingTokenizer:
     max_seq_length = int(config.get("embedding_max_seq_length") or 0)
     tokenizer_path = Path(config["embedding_model_dir"]) / "tokenizer.json"
     return EmbeddingTokenizer(

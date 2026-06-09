@@ -10,6 +10,7 @@ from vchat.settings import CONFIG_KEY, REDIS_KEY
 from vchat.settings import config
 from vchat.views.api import views as api_views
 from jobs.documents.content import content_sha256
+from vchat.views.projects.page_status import PageStatus
 
 
 class _FakeScalarResult:
@@ -327,6 +328,8 @@ async def test_upsert_document_creates_and_indexes(
     assert created_doc.meta["doc_type"] == "html"
     assert created_doc.discover_by == "api"
     assert created_doc.discover_source == "vchat_test"
+    assert created_doc.status == PageStatus.parsing
+    assert not hasattr(created_doc, "index_status")
     assert db.commits == 1
     assert db.refresh_count == 1
     assert delayed
@@ -378,6 +381,8 @@ async def test_upsert_document_skips_reindex_for_unchanged_content(
     )
     assert status == "indexed"
     assert doc_id == 12
+    assert document.status == PageStatus.ready
+    assert not hasattr(document, "index_status")
     assert db.commits == 1
     assert db.refresh_count == 1
     assert delayed == []
@@ -452,6 +457,8 @@ async def test_upsert_document_skips_reindex_for_near_duplicate_content(
     assert doc_id == 13
     assert document.content == new_content
     assert document.hash_value == content_sha256(new_content)
+    assert document.status == PageStatus.ready
+    assert not hasattr(document, "index_status")
     assert delayed == []
 
 

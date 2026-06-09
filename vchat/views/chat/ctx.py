@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from collections import namedtuple
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 import pycld2 as cld2
@@ -20,7 +20,7 @@ from jobs.embedder.model import load_embedding_model
 from vchat.models import ChatMsg
 from vchat.settings import config
 
-Msg = namedtuple("Message", ["role", "content"])
+Msg = namedtuple("Msg", ["role", "content"])
 
 RERANK_FIELD_WEIGHTS = {
     "title": 0.14,
@@ -731,12 +731,10 @@ def reciprocal_rank_fusion(rankings: list[list[Snippet]]) -> list[Snippet]:
     ranked: list[Snippet] = []
     for key, snippet in fused.items():
         ranked.append(
-            Snippet(
-                **{
-                    **asdict(snippet),
-                    "rerank_score": round(scores[key], 6),
-                    "retrieval_origins": origins[key] or None,
-                }
+            replace(
+                snippet,
+                rerank_score=round(scores[key], 6),
+                retrieval_origins=origins[key] or None,
             )
         )
     ranked.sort(key=lambda item: item.rerank_score or 0.0, reverse=True)
@@ -826,7 +824,7 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
             boosted -= RERANK_QUERY_ECHO_PENALTY
 
         rescored.append(
-            Snippet(**{**asdict(snippet), "rerank_score": round(boosted, 6)})
+            replace(snippet, rerank_score=round(boosted, 6))
         )
 
     rescored.sort(key=lambda item: item.rerank_score or 0.0, reverse=True)
@@ -972,7 +970,7 @@ def select_context_snippets(
         if snippet_tokens + clean_tokens > MAX_CONTEXT_SNIPPET_TOKENS and selected:
             break
         snippet_tokens += clean_tokens
-        selected.append(Snippet(**{**asdict(snippet), "text": clean}))
+        selected.append(replace(snippet, text=clean))
         if len(selected) >= MAX_CONTEXT_SNIPPETS:
             break
     return selected

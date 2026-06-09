@@ -91,6 +91,19 @@ async def test_error_middleware_http_exception(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
+async def test_debug_access_control_header_middleware_sets_cors_headers() -> None:
+    async def _handler(_request):
+        return web.Response(text="ok")
+
+    response = await mdw.debug_access_control_header_middleware(_Request(), _handler)
+
+    assert response.text == "ok"
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert "PATCH" in response.headers["Access-Control-Allow-Methods"]
+    assert "upload-offset" in response.headers["Access-Control-Expose-Headers"]
+
+
+@pytest.mark.asyncio
 async def test_flash_and_force_https_middlewares() -> None:
     class _Redis:
         async def lrange(self, key, _start, _end):

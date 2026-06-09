@@ -25,6 +25,8 @@
   silent recovery.
 - Do not add backward-compatibility shims, deprecated task aliases, or old call
   paths unless the user explicitly approves that exact tradeoff.
+- Do not add runtime guards, assertions, or exceptions only to satisfy a type
+  checker. Restructure the control flow or use a narrow local type annotation.
 
 ## Python tooling
 

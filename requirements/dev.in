@@ -12,6 +12,7 @@ pre-commit
 ruff
 import-linter[toml]
 bandit
+ty
 
 # test
 pytest

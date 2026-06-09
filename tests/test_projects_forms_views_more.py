@@ -87,6 +87,14 @@ def test_normalize_source_origin_keeps_only_domain() -> None:
     )
 
 
+def test_source_form_exposes_enable_triggers_checkbox() -> None:
+    form = project_forms.SourceForm(meta={"csrf_context": {}})
+
+    assert hasattr(form, "enable_triggers")
+    assert form.enable_triggers.data is False
+    assert form.enable_triggers.label.text == "Разрешить пользовательские триггеры"
+
+
 def test_pinned_messages_from_form_keeps_three_messages() -> None:
     data = SimpleNamespace(
         getall=lambda key, default=None: (

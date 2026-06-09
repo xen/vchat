@@ -1,9 +1,11 @@
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 import pycld2 as cld2
 from dateutil import parser as date_parser
+from scrapy.link import Link
 from scrapy.linkextractors import IGNORED_EXTENSIONS, LinkExtractor
 from scrapy.http import HtmlResponse, Request, TextResponse
 from scrapy.spiders import CrawlSpider, Rule
@@ -48,7 +50,7 @@ class GeneralSpider(CrawlSpider):
         self._tracked_sources_by_host: dict[str, dict] = {}
 
         # Parse rules from config
-        le_kwargs = {}
+        le_kwargs: dict[str, Any] = {}
 
         # XPath rules
         xpaths = [
@@ -93,10 +95,10 @@ class GeneralSpider(CrawlSpider):
                 "rules": self.source_rules,
             }
 
-        def process_links(links):
-            filtered_links = []
+        def process_links(links: list[Link]) -> list[Link]:
+            filtered_links: list[Link] = []
             seen_urls: set[str] = set()
-            candidate_targets: list[tuple[object, int, str]] = []
+            candidate_targets: list[tuple[Link, int, str]] = []
             for link in links:
                 raw_url = (link.url or "").strip()
                 target_source = self._resolve_tracked_source(raw_url)
@@ -327,8 +329,8 @@ class GeneralSpider(CrawlSpider):
 
     def _filter_links_by_crawl_eligibility(
         self,
-        candidates: list[tuple[object, int, str]],
-    ) -> list[tuple[object, int, str]]:
+        candidates: list[tuple[Link, int, str]],
+    ) -> list[tuple[Link, int, str]]:
         if not candidates:
             return []
 

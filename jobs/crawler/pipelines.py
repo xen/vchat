@@ -2,6 +2,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, delete, func, or_, select, true
@@ -124,7 +125,7 @@ def get_or_create_page(
         )
         page._hash = ""
         session.add(page)
-    if source_has_trigger_context(source):
+    if source is not None and source_has_trigger_context(source):
         page.has_triggers = source_trigger_rules_match_url(source, uri)
     return page, created
 
@@ -140,7 +141,9 @@ def sync_page_links(
     if source_page.id is None or not source_page.uri:
         return
 
-    source_rows = session.execute(select(Source.id, Source.uri)).all()
+    source_rows = [
+        (row.id, row.uri) for row in session.execute(select(Source.id, Source.uri)).all()
+    ]
     source_id_by_host = build_source_id_by_host(source_rows)
 
     unique_links: list[str] = []
@@ -174,7 +177,7 @@ def sync_page_links(
                 session.add(target_page)
                 session.flush()
             target_source = session.get(Source, target_source_id)
-            if source_has_trigger_context(target_source):
+            if target_source is not None and source_has_trigger_context(target_source):
                 target_page.has_triggers = source_trigger_rules_match_url(
                     target_source,
                     target_uri,
@@ -196,9 +199,10 @@ def is_low_content_page(content: str, extracted_meta: dict[str, object]) -> bool
     if not stripped:
         return False
 
-    extraction = extracted_meta.get("extraction")
-    if not isinstance(extraction, dict):
+    raw_extraction = extracted_meta.get("extraction")
+    if not isinstance(raw_extraction, dict):
         return False
+    extraction: dict[str, Any] = raw_extraction  # type: ignore
 
     word_count = extraction.get("word_count")
     try:
@@ -520,6 +524,7 @@ class DatabasePipeline:
             increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
             return item
 
+        extracted_meta = extracted_meta or {}
         low_content = is_low_content_page(markdown_content, extracted_meta)
         too_big = is_document_too_big(markdown_content)
         content_hash = content_sha256(markdown_content)
@@ -810,7 +815,7 @@ def save_page_status(
     raw_content_meta: dict | None = None,
 ) -> None:
     with Session(bind=engine) as session:
-        page, _ = get_or_create_page(session, source_id=source_id, uri=url)
+        page, created = get_or_create_page(session, source_id=source_id, uri=url)
 
         page.status = status
         page.status_error = status_error
@@ -888,7 +893,7 @@ def handle_error_page(
     raw_content_meta: dict | None = None,
 ) -> None:
     with Session(bind=engine) as session:
-        page, _ = get_or_create_page(session, source_id=source_id, uri=url)
+        page, created = get_or_create_page(session, source_id=source_id, uri=url)
 
         page.http_status = http_status
         page.last_crawled_at = datetime.now(timezone.utc)

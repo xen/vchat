@@ -11,7 +11,8 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
-from docx import Document
+from docx import Document as load_docx_document
+from docx.document import Document as DocxDocument
 from pypdf import PdfReader
 
 from jobs.documents.types import guess_document_type
@@ -484,11 +485,11 @@ def _extract_pdf_metadata_title(reader: PdfReader) -> str | None:
     return normalize_file_metadata_title_candidate(getattr(metadata, "title", None))
 
 
-def _extract_docx_metadata_title(document: Document) -> str | None:
+def _extract_docx_metadata_title(document: DocxDocument) -> str | None:
     return normalize_file_metadata_title_candidate(document.core_properties.title)
 
 
-def _extract_docx_text(document: Document) -> tuple[str, dict[str, Any]]:
+def _extract_docx_text(document: DocxDocument) -> tuple[str, dict[str, Any]]:
     parts: list[str] = []
     for paragraph in document.paragraphs:
         text = paragraph.text.strip()
@@ -565,7 +566,7 @@ def extract_binary_url_document(
         extractor = "pypdf"
         fallback_used = False
     elif document_kind == "docx":
-        document = Document(BytesIO(raw_body))
+        document = load_docx_document(BytesIO(raw_body))
         title = _extract_docx_metadata_title(document) or title
         content, file_meta = _extract_docx_text(document)
         extractor = "python-docx"
@@ -650,11 +651,11 @@ def _html_to_markdown_like(soup: BeautifulSoup) -> tuple[str, int]:
             continue
         if element.name == "li":
             prefix = "- "
-            parent = element.parent.name if element.parent else ""
-            if parent == "ol":
+            parent = element.parent
+            if parent is not None and parent.name == "ol":
                 siblings = [
                     sibling
-                    for sibling in element.parent.find_all("li", recursive=False)
+                    for sibling in parent.find_all("li", recursive=False)
                 ]
                 index = siblings.index(element) + 1 if element in siblings else 1
                 prefix = f"{index}. "
@@ -706,7 +707,8 @@ def _extract_nav_title(soup: BeautifulSoup, url: str) -> str | None:
         return None
 
     for a in soup.find_all("a", href=True):
-        href = (a.get("href") or "").rstrip("/")
+        raw_href = a.get("href")
+        href = raw_href.rstrip("/") if isinstance(raw_href, str) else ""
         if href == path or href == url.rstrip("/"):
             text = a.get_text(" ", strip=True)
             candidate = normalize_title_candidate(text)

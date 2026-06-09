@@ -215,9 +215,10 @@ class _NoopNlpEngine(NlpEngine):
         return True
 
     def process_text(self, text: str, language: str) -> NlpArtifacts:
+        tokens: Any = []
         return NlpArtifacts(
             entities=[],
-            tokens=[],
+            tokens=tokens,
             tokens_indices=[],
             lemmas=[],
             nlp_engine=self,

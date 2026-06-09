@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import sqlalchemy as sa
@@ -146,7 +147,7 @@ async def _check_update_rate_limit(request: web.Request, client_id: str) -> bool
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     key = f"api_update:rate:{client_id}"
     member = f"{now_ms}:{secrets.token_hex(8)}"
-    allowed = await redis.eval(
+    allowed: str = await redis.eval(  # type: ignore
         """
         local key = KEYS[1]
         local now = tonumber(ARGV[1])
@@ -182,7 +183,8 @@ async def _claim_update_nonce(
     nonce_hash = hashlib.sha256(nonce.encode("utf-8")).hexdigest()
     key = f"api_update:nonce:{client_id}:{nonce_hash}"
     redis = request.app[REDIS_KEY]
-    return bool(await redis.set(key, "1", ex=ttl, nx=True))
+    claimed: Any = await redis.set(key, "1", ex=ttl, nx=True)
+    return bool(claimed)
 
 
 async def _authenticate_update_request(
@@ -406,9 +408,9 @@ async def _upsert_document(
     if too_big:
         await db.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
     elif not (effectively_unchanged and has_chunks):
-        document.index_status = "queued"
+        document.status = PageStatus.parsing
     else:
-        document.index_status = "indexed"
+        document.status = PageStatus.ready
 
     await db.flush()
     await async_update_page_shingles(

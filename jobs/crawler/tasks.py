@@ -7,6 +7,7 @@ import sys
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -1150,17 +1151,18 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
                 ignore_robots_txt=source.config.ignore_robots_txt,
             )
             apply_source_blocking_result(source, blocking_result)
-            if blocking_result.is_blocked:
+            blocked_reason = blocking_result.reason
+            if blocked_reason is not None:
                 mark_blocked_source_pages_ready(
                     session,
                     source_id=source_id,
-                    blocked_reason=blocking_result.reason.value,
+                    blocked_reason=blocked_reason.value,
                 )
             session.commit()
-            if blocking_result.is_blocked:
+            if blocked_reason is not None:
                 print(
                     f"Source {source_id} blocked before crawl: "
-                    f"{blocking_result.reason.value}"
+                    f"{blocked_reason.value}"
                 )
                 return
 
@@ -1752,7 +1754,8 @@ def cron_matches_now(cron_expression: str, now: datetime) -> bool:
         day_of_week=day_of_week,
         nowfun=lambda: now,
     )
-    return schedule.is_due(now - timedelta(seconds=60)).is_due
+    is_due, next_check_seconds = schedule.is_due(now - timedelta(seconds=60))
+    return is_due
 
 
 def source_is_due_for_reindex(source: Source, now: datetime) -> bool:
@@ -1776,7 +1779,8 @@ def source_is_due_for_reindex(source: Source, now: datetime) -> bool:
     baseline = last_reference or created_at or (now - timedelta(days=366))
     if baseline > now:
         baseline = now
-    return schedule.is_due(baseline).is_due
+    is_due, next_check_seconds = schedule.is_due(baseline)
+    return is_due
 
 
 @app.task(
@@ -1795,7 +1799,7 @@ def schedule_reindex_sources_task():
     try:
         with Session(bind=engine) as session:
             print("Updating inlink counts for all pages")
-            updated_pages = session.execute(
+            updated_pages: sa.CursorResult[Any] = session.execute(  # type: ignore
                 text(
                     """
                     UPDATE page AS p
@@ -1817,7 +1821,7 @@ def schedule_reindex_sources_task():
             print(f"Updated inlink counts for {updated_pages.rowcount or 0} pages")
 
             print("Running orphan cleanup for all sources")
-            deleted_pages = session.execute(
+            deleted_pages: sa.CursorResult[Any] = session.execute(  # type: ignore
                 text(
                     """
                     DELETE FROM page AS p
@@ -2228,7 +2232,7 @@ def _upsert_sitemap_pages(
         if existing_lastmod is None:
             prioritized_urls.add(page_url)
             continue
-        if existing_lastmod < new_lastmod:
+        if new_lastmod is not None and existing_lastmod < new_lastmod:
             prioritized_urls.add(page_url)
     return prioritized_urls
 
@@ -2280,7 +2284,9 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
         print(f"Source {source_id} is not eligible for sitemap sync, skipping")
         return
     source_rules = [rule.to_dict() for rule in source.config.rules]
-    source_rows = session.execute(select(Source.id, Source.uri)).all()
+    source_rows = [
+        (row.id, row.uri) for row in session.execute(select(Source.id, Source.uri)).all()
+    ]
     source_id_by_host = build_source_id_by_host(source_rows)
 
     sitemaps = (
@@ -2521,11 +2527,12 @@ def refresh_source_blocking_state(source_id: int) -> bool:
                 ignore_robots_txt=source.config.ignore_robots_txt,
             )
             apply_source_blocking_result(source, result)
-            if result.is_blocked:
+            blocked_reason = result.reason
+            if blocked_reason is not None:
                 mark_blocked_source_pages_ready(
                     session,
                     source_id=source_id,
-                    blocked_reason=result.reason.value,
+                    blocked_reason=blocked_reason.value,
                 )
             source.updated_at = datetime.now(timezone.utc)
             session.commit()

@@ -5,10 +5,9 @@ import logging
 import re
 import sys
 
-import aiohttp
-import aiohttp.web
 import sqlalchemy as sa
-from passlib.hash import pbkdf2_sha512
+from aiohttp import web
+from passlib.context import CryptContext
 
 from vchat.app import create_app
 from vchat.db import async_session_factory
@@ -17,6 +16,7 @@ from vchat.models import User
 from vchat.settings import config
 
 logger = logging.getLogger()
+password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
 logger.setLevel(logging.INFO)
 logging.getLogger("aiohttp").setLevel(logging.INFO)
 configure_logging(
@@ -28,7 +28,7 @@ configure_logging(
 try:
     import uvloop
 
-    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+    uvloop.install()
 except ImportError:
     logging.warning("Uvloop is not available")
 
@@ -96,7 +96,7 @@ async def create_user() -> int:
         user = User(
             email=email,
             name=email,
-            password=pbkdf2_sha512.hash(password),
+            password=password_context.hash(password),
             is_active=True,
         )
         db.add(user)
@@ -144,4 +144,4 @@ from vchat import views  # noqa
 from vchat.models import *  # noqa
 
 if __name__ == "__main__":
-    aiohttp.web.run_app(app, host=args.host, port=args.port, access_log=logger)
+    web.run_app(app, host=args.host, port=args.port, access_log=logger)

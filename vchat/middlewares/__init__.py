@@ -1,7 +1,9 @@
 import logging
 import sys
 import traceback
+from collections.abc import Awaitable, Callable
 from collections import namedtuple
+from typing import Any
 
 import aiohttp_jinja2
 import sqlalchemy as sa
@@ -21,6 +23,8 @@ from .https import https_middleware
 
 logger = logging.getLogger(__name__)
 
+RequestHandler = Callable[[web.Request], Awaitable[web.StreamResponse]]
+
 
 @web.middleware
 async def meta_middleware(request: web.Request, handler) -> web.StreamResponse:
@@ -37,7 +41,7 @@ async def handle_error(request: web.Request, code: int = 404) -> web.Response:
 
 @web.middleware
 async def error_middleware(
-    request: web.Request, handler: web.RequestHandler
+    request: web.Request, handler: RequestHandler
 ) -> web.StreamResponse:
     # Disable error handling for development
     if DEBUG:
@@ -75,25 +79,25 @@ async def error_middleware(
 
 @web.middleware
 async def debug_access_control_header_middleware(
-    request: web.Request, handler: web.RequestHandler
+    request: web.Request, handler: RequestHandler
 ) -> web.StreamResponse:
-    handler = await handler(request)
-    handler.headers["Access-Control-Allow-Origin"] = "*"
-    handler.headers["Access-Control-Allow-Credentials"] = "true"
-    handler.headers["Access-Control-Allow-Headers"] = (
+    response = await handler(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Headers"] = (
         "accept, accept-encoding, authorization, "
         "content-type, dnt, origin, user-agent, "
         "x-csrftoken, x-requested-with, "
         "upload-length, upload-metadata, "
         "upload-offset, location"
     )
-    handler.headers["Access-Control-Allow-Methods"] = (
+    response.headers["Access-Control-Allow-Methods"] = (
         "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
     )
-    handler.headers["Access-Control-Expose-Headers"] = (
+    response.headers["Access-Control-Expose-Headers"] = (
         "upload-length, upload-metadata, upload-offset, location"
     )
-    return handler
+    return response
 
 
 @web.middleware
@@ -124,8 +128,8 @@ async def db_session_middleware(request, handler):
 @web.middleware
 async def auth_middleware(
     request: web.Request,
-    handler: web.RequestHandler,
-) -> web.RequestHandler:
+    handler: RequestHandler,
+) -> web.StreamResponse:
     # Skip static files
     if request.path.startswith("/static/"):
         return await handler(request)
@@ -178,8 +182,8 @@ async def flash_middleware(request, handler):
         key = f"message_{user.id}"
 
         # Retrieve all messages, then clear them
-        msgs = await r.lrange(key, 0, -1)  # Returns list of JSON strings
-        await r.delete(key)  # Clear after retrieval
+        msgs: list[Any] = await r.lrange(key, 0, -1)
+        await r.delete(key)
 
         # Parse them; store on request for a context processor
         request["flash_messages"] = [Msg(*i.decode().split("|")) for i in msgs]

@@ -13,6 +13,10 @@ These rules should be enforced by hooks, checks, or review whenever practical.
 - Normal application dependencies must not use lazy import fallbacks.
 - Missing declared dependencies are environment problems, not code fallback
   opportunities.
+- Do not use `_` as a scratch or ignored variable name outside i18n/gettext
+  contexts. Use a visible `_ignore_*` or `_skip_*` name, or omit the assignment.
+- Runtime code must not use `assert` for ordinary validation or type narrowing.
+- Type-checker fixes should not introduce impossible runtime branches.
 
 ## Architecture and operations
 

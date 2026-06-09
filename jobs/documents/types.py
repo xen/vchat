@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import mimetypes
 import os
+from typing import TypedDict
 from urllib.parse import urlparse
 
 DEFAULT_DOCUMENT_TYPE = "other"
 
-DOCUMENT_TYPE_INFO: dict[str, dict[str, tuple[str, ...] | str]] = {
+
+class DocumentTypeInfo(TypedDict):
+    label: str
+    extensions: tuple[str, ...]
+    content_types: tuple[str, ...]
+
+
+DOCUMENT_TYPE_INFO: dict[str, DocumentTypeInfo] = {
     "html": {
         "label": "HTML document",
         "extensions": (".html", ".htm", ".xhtml", ".shtml"),
@@ -137,11 +145,11 @@ DOCUMENT_TYPE_INFO: dict[str, dict[str, tuple[str, ...] | str]] = {
 _EXTENSION_TO_TYPE: dict[str, str] = {}
 _CONTENT_TYPE_TO_TYPE: dict[str, str] = {}
 
-for _doc_type, _info in DOCUMENT_TYPE_INFO.items():
-    for _ext in _info.get("extensions", ()):  # type: ignore[arg-type]
-        _EXTENSION_TO_TYPE[_ext] = _doc_type
-    for _ctype in _info.get("content_types", ()):  # type: ignore[arg-type]
-        _CONTENT_TYPE_TO_TYPE[_ctype] = _doc_type
+for document_type, info in DOCUMENT_TYPE_INFO.items():
+    for extension in info["extensions"]:
+        _EXTENSION_TO_TYPE[extension] = document_type
+    for content_type in info["content_types"]:
+        _CONTENT_TYPE_TO_TYPE[content_type] = document_type
 
 _CODE_CONTENT_SUFFIXES = (
     "x-python",
@@ -234,9 +242,9 @@ def get_document_type_label(doc_type: str) -> str:
 
     info = DOCUMENT_TYPE_INFO.get(doc_type)
     if info:
-        return info["label"]  # type: ignore[index]
+        return info["label"]
     if not doc_type:
-        return DOCUMENT_TYPE_INFO[DEFAULT_DOCUMENT_TYPE]["label"]  # type: ignore[index]
+        return DOCUMENT_TYPE_INFO[DEFAULT_DOCUMENT_TYPE]["label"]
     return doc_type.replace("_", " ").title()
 
 

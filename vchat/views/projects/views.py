@@ -460,11 +460,12 @@ def _document_uniqueness_percent(
 async def _load_document_uniqueness_percent(db: Any, document: Page) -> int | None:
     if not document.content:
         return None
-    if not document.source_id:
+    source_id = document.source_id
+    if source_id is None:
         return _document_uniqueness_percent(document.content, frozenset())
 
     boilerplate_hashes = await db.run_sync(
-        lambda sync_db: load_boilerplate_hashes(sync_db, document.source_id)
+        lambda sync_db: load_boilerplate_hashes(sync_db, source_id)
     )
     return _document_uniqueness_percent(document.content, boilerplate_hashes)
 
@@ -1052,17 +1053,15 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     outline = (
         raw_meta.get("outline") if isinstance(raw_meta.get("outline"), list) else []
     )
-    extraction = (
-        raw_meta.get("extraction")
-        if isinstance(raw_meta.get("extraction"), dict)
-        else {}
-    )
+    raw_extraction = raw_meta.get("extraction")
+    extraction: dict[str, Any] = raw_extraction if isinstance(raw_extraction, dict) else {}
     uniqueness_percent = None
     if not document_content_is_truncated:
         boilerplate_hashes = frozenset()
-        if document.source_id:
+        source_id = document.source_id
+        if source_id is not None:
             boilerplate_hashes = await db.run_sync(
-                lambda sync_db: load_boilerplate_hashes(sync_db, document.source_id)
+                lambda sync_db: load_boilerplate_hashes(sync_db, source_id)
             )
         uniqueness_percent = _document_uniqueness_percent(
             document_content_preview,
@@ -1416,7 +1415,7 @@ async def project_triggers(request):
         },
     )
 
-    if request.method == "POST":
+    if data is not None:
         action = (data.get("action") or "save").strip()
         if action == "generate":
             generate_missing_triggers_task.delay()
@@ -1715,8 +1714,8 @@ async def project_source_settings(request):
 
     session = await get_session(request)
     form_kwargs: dict[str, Any] = {"meta": {"csrf_context": session}}
-    if request.method == "POST":
-        data = await request.post()
+    data = await request.post() if request.method == "POST" else None
+    if data is not None:
         form_kwargs["formdata"] = data
     else:
         cfg = source.config
@@ -1735,7 +1734,7 @@ async def project_source_settings(request):
 
     form = forms.SourceSettingsForm(**form_kwargs)
 
-    if request.method == "POST" and form.validate():
+    if data is not None and form.validate():
         current_cfg = source.config
         source.title = form.title.data
         source.reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
@@ -1901,7 +1900,10 @@ async def project_action(request):
         email = form.email.data.strip().lower()
         exists = await db_session.scalar(sa.select(User.id).where(User.email == email))
         if exists:
-            form.email.errors.append("Этот email уже используется")
+            email_field: Any = form.email
+            email_field.errors = list(form.email.errors)
+            email_errors: Any = email_field.errors
+            email_errors.append("Этот email уже используется")
             return aiohttp_jinja2.render_template(
                 "admin/user_list.html",
                 request,
@@ -3233,7 +3235,9 @@ async def project_chat(request):
         src["uri"]
         for msg in initial_messages
         for src in msg.get("sources") or []
-        if src.get("uri") and _is_slug_title(src.get("title"))
+        if isinstance(src, dict)
+        and src.get("uri")
+        and _is_slug_title(src.get("title"))
     }
     if slug_uris:
         fresh_rows = (
@@ -3244,6 +3248,8 @@ async def project_chat(request):
         uri_title_map = {r.uri: r.title for r in fresh_rows if r.title}
         for msg in initial_messages:
             for src in msg.get("sources") or []:
+                if not isinstance(src, dict):
+                    continue
                 fresh = uri_title_map.get(src.get("uri"))
                 if fresh:
                     src["title"] = fresh
@@ -3323,7 +3329,7 @@ async def _widget_integration_by_code(request, code: str) -> SimpleNamespace:
     return snapshot
 
 
-async def _render_public_chat(request, widget: WidgetIntegration):
+async def _render_public_chat(request, widget: SimpleNamespace):
     user_uid = request.query.get("user_uid", "").strip()
     user_name = request.query.get("user_name", "")
     user_email = request.query.get("user_email", "")

@@ -7,6 +7,7 @@ import aiohttp_jinja2
 import redis.asyncio as aioredis
 import sqlalchemy as sa
 from aiohttp import web
+from sqlalchemy.orm import aliased
 
 from vchat.db import async_session_factory
 from vchat.views.chat.guardrails import mask_russian_pii
@@ -220,9 +221,9 @@ async def history_list(request):
     date_to_value = parsed_to[2] if parsed_to else date_to_raw
 
     if (
-        created_from is not None
-        and created_to_exclusive is not None
-        and created_from > created_to_exclusive
+        parsed_from is not None
+        and parsed_to is not None
+        and parsed_from[0] > parsed_to[1]
     ):
         created_from, created_to_exclusive = parsed_to[0], parsed_from[1]
         date_from_value, date_to_value = date_to_value, date_from_value
@@ -236,10 +237,7 @@ async def history_list(request):
         )
     )
 
-    search_tsquery = None
-    chat_vector = None
-    search_msg = None
-    search_in_messages = None
+    search_filter = None
     if search_query:
         search_tsquery = sa.func.websearch_to_tsquery("simple", search_query)
         chat_search_text = (
@@ -248,7 +246,7 @@ async def history_list(request):
             + sa.func.coalesce(Chat.user_uid, "")
         )
         chat_vector = sa.func.to_tsvector("simple", chat_search_text)
-        search_msg = sa.orm.aliased(ChatMsg)
+        search_msg = aliased(ChatMsg)
         msg_vector = sa.func.to_tsvector(
             "simple", sa.func.coalesce(search_msg.text, "")
         )
@@ -259,6 +257,10 @@ async def history_list(request):
                 msg_vector.op("@@")(search_tsquery),
             )
         )
+        search_filter = sa.or_(
+            chat_vector.op("@@")(search_tsquery),
+            search_in_messages,
+        )
 
     total_query = (
         sa.select(Chat.id)
@@ -268,15 +270,10 @@ async def history_list(request):
         .group_by(Chat.id)
     )
 
-    if search_query:
-        total_query = total_query.where(
-            sa.or_(
-                chat_vector.op("@@")(search_tsquery),
-                search_in_messages,
-            )
-        )
+    if search_filter is not None:
+        total_query = total_query.where(search_filter)
     if guardrail_reason:
-        reason_msg = sa.orm.aliased(ChatMsg)
+        reason_msg = aliased(ChatMsg)
         reason_filter = sa.exists(
             sa.select(sa.literal(1)).where(
                 reason_msg.chat_id == Chat.id,
@@ -312,7 +309,7 @@ async def history_list(request):
 
     offset = (page - 1) * per_page if total else 0
 
-    aggregate_msg = sa.orm.aliased(ChatMsg)
+    aggregate_msg = aliased(ChatMsg)
     message_count = (
         sa.select(sa.func.count(aggregate_msg.id))
         .where(aggregate_msg.chat_id == Chat.id)
@@ -342,15 +339,10 @@ async def history_list(request):
         .limit(per_page)
     )
 
-    if search_query:
-        stmt = stmt.where(
-            sa.or_(
-                chat_vector.op("@@")(search_tsquery),
-                search_in_messages,
-            )
-        )
+    if search_filter is not None:
+        stmt = stmt.where(search_filter)
     if guardrail_reason:
-        reason_msg = sa.orm.aliased(ChatMsg)
+        reason_msg = aliased(ChatMsg)
         reason_filter = sa.exists(
             sa.select(sa.literal(1)).where(
                 reason_msg.chat_id == Chat.id,

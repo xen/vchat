@@ -219,7 +219,7 @@ async def generate_suggestions(
                     suggestions = json.loads(content)
                     if isinstance(suggestions, list):
                         return suggestions[:3]
-                except json.JSONDecodeError:
+                except ValueError:
                     logger.warning(
                         "Suggestion payload is not valid JSON array: provider=%s model=%s payload=%s",
                         ctx.provider_id,
@@ -338,7 +338,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
         if provider_id == "openai"
         else None
     )
-    assistant_message = {"role": "assistant", "content": ""}
+    assistant_message: dict[str, Any] = {"role": "assistant", "content": ""}
     pending_tool_calls: dict[int, dict] = {}
 
     if guardrails_client is not None:
@@ -535,12 +535,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                                         existing["function"]["arguments"] += func[
                                             "arguments"
                                         ]
-                            except (
-                                json.JSONDecodeError,
-                                TypeError,
-                                KeyError,
-                                AttributeError,
-                            ):
+                            except (ValueError, TypeError, KeyError, AttributeError):
                                 continue
             except asyncio.TimeoutError:
                 logger.error(
@@ -567,10 +562,10 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
             if raw_args:
                 try:
                     parsed_args = json.loads(raw_args)
-                except json.JSONDecodeError:
+                except ValueError:
                     try:
                         parsed_args = json.loads(raw_args.strip())
-                    except json.JSONDecodeError:
+                    except ValueError:
                         parsed_args = {}
             tool_call_events.append(
                 {
@@ -928,7 +923,7 @@ async def websocket(request):
                 if raw_user_text.lstrip().startswith("{"):
                     try:
                         parsed_payload = json.loads(raw_user_text)
-                    except json.JSONDecodeError:
+                    except ValueError:
                         parsed_payload = None
                     if (
                         isinstance(parsed_payload, dict)
@@ -1036,9 +1031,12 @@ async def websocket(request):
                 skip_rag = is_trivial_query(user_text)
 
                 async with async_session_factory() as ctx_db:
+                    chat_id = chat_id_ctx.get()
+                    if chat_id is None:
+                        raise RuntimeError("chat_id context is not set")
                     context_result = await get_context(
                         db=ctx_db,
-                        chat_id=chat_id_ctx.get(),
+                        chat_id=chat_id,
                         prompt=user_text,
                         provider=gen_context.provider,
                         model=gen_context.model,
@@ -1390,7 +1388,7 @@ async def chat_actions(request):
 
         try:
             payload = await request.json()
-        except (ContentTypeError, json.JSONDecodeError, ValueError):
+        except (ContentTypeError, ValueError):
             form = await request.post()
             payload = dict(form)
 

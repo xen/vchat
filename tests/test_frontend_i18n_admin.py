@@ -308,8 +308,7 @@ async def test_widget_triggers_resolve_signs_page_id_for_page_triggers(
     )
 
     class _Db:
-        async def execute(self, stmt):
-            _ = stmt
+        async def execute(self, unused_stmt):
             return _FakeExecuteResult([source])
 
     async def _find_page_by_url(*_args):
@@ -342,6 +341,52 @@ async def test_widget_triggers_resolve_signs_page_id_for_page_triggers(
     assert "page_id" not in payload["triggers"][0]
     assert "page_token" not in payload["triggers"][0]
     assert "source" not in payload["triggers"][0]
+
+
+@pytest.mark.asyncio
+async def test_widget_triggers_resolve_uses_empty_default_title_for_untitled_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(
+        id=10,
+        uri="https://example.com/",
+        enable_triggers=True,
+        config=SourceConfig(
+            trigger_rules=[CrawlerRule(type="regex", value=r"^/docs/.*")]
+        ),
+    )
+
+    class _Db:
+        async def execute(self, unused_stmt):
+            return _FakeExecuteResult([source])
+
+    async def _find_page_by_url(*_args):
+        return SimpleNamespace(
+            id=20,
+            title=None,
+            source_id=10,
+            has_triggers=False,
+            triggers=None,
+        )
+
+    captured = {}
+
+    def _render_default_triggers(templates, title):
+        captured["templates"] = templates
+        captured["title"] = title
+        return [{"key": "default", "text": title}]
+
+    request = _TriggerResolveRequest(db=_Db(), url="https://example.com/docs/page")
+    request.query["title"] = ""
+
+    monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
+    monkeypatch.setattr(frontend, "load_default_trigger_templates", lambda app: ["tpl"])
+    monkeypatch.setattr(frontend, "render_default_triggers", _render_default_triggers)
+
+    response = await frontend.widget_triggers_resolve(request)
+
+    assert response.status == 200
+    assert captured == {"templates": ["tpl"], "title": ""}
 
 
 @pytest.mark.asyncio
@@ -579,6 +624,19 @@ async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -
     assert context["total_users"] == 2
     assert context["current_user_id"] == 1
     assert context["add_form"]["meta"] is not None
+
+
+@pytest.mark.asyncio
+async def test_get_api_client_sources_returns_lightweight_rows() -> None:
+    class _Db:
+        async def execute(self, unused_stmt):
+            return _FakeExecuteResult([(7, "Docs", "https://example.com")])
+
+    sources = await admin_views._get_api_client_sources(_Db())
+
+    assert sources == [
+        SimpleNamespace(id=7, title="Docs", uri="https://example.com")
+    ]
 
 
 class _AsyncNoop:

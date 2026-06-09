@@ -130,8 +130,8 @@ async def test_history_list_builds_pagination_and_filters(
             self.query = {
                 "page": "1",
                 "search": "отпуск",
-                "date_from": "2026/01",
-                "date_to": "2026/02/01",
+                "date_from": "2026/03",
+                "date_to": "2026/01",
                 "guardrail": "1",
                 "guardrail_reason": "passport_ru",
             }
@@ -154,6 +154,8 @@ async def test_history_list_builds_pagination_and_filters(
     assert payload["pagination"]["total"] == 1
     assert payload["pagination"]["page"] == 1
     assert payload["guardrail_filter"] is True
+    assert payload["date_from"] == "2026/01"
+    assert payload["date_to"] == "2026/03"
     assert payload["chats"][0].guardrail_triggered is True
     assert payload["chats"][0].message_count == 3
     assert payload["chats"][0].token_count == 42

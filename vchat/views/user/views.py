@@ -2,6 +2,8 @@ import asyncio
 import contextlib
 import logging
 
+from typing import Any
+
 from aiohttp import web
 from redis.exceptions import RedisError
 
@@ -35,7 +37,7 @@ async def _forward_notifications(
                 continue
             await ws.send_str(data)
             with contextlib.suppress(RedisError):
-                await redis.lrem(key, 1, data)
+                await redis.lrem(key, 1, data)  # type: ignore
     except RedisError as exc:
         logger.warning("Notifications stream unavailable for %s: %s", channel, exc)
         if not getattr(ws, "closed", False):
@@ -57,7 +59,7 @@ async def notify_ws(request: web.Request) -> web.WebSocketResponse:
 
     # Drain pending flash messages for redirects/page reloads.
     try:
-        pending_messages = await redis.lrange(key, 0, -1)
+        pending_messages: list[Any] = await redis.lrange(key, 0, -1)  # type: ignore
         await redis.delete(key)
     except RedisError as exc:
         logger.warning("Pending notifications unavailable for %s: %s", key, exc)

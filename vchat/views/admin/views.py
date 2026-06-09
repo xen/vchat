@@ -123,7 +123,7 @@ async def _get_api_clients(db_session, secret_key: str) -> list[ApiClient]:
     return clients
 
 
-async def _get_api_client_sources(db_session) -> list[Source]:
+async def _get_api_client_sources(db_session) -> list[SimpleNamespace]:
     rows = (
         await db_session.execute(
             sa.select(Source.id, Source.title, Source.uri).order_by(

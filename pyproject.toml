@@ -18,5 +18,12 @@ include = ["vchat*", "jobs*"]
 [tool.ruff.lint]
 ignore = ["E712", "E402"]
 
+[tool.ty.environment]
+python = "./venv"
+python-version = "3.11"
+
+[tool.ty.src]
+include = ["entry.py", "vchat", "jobs"]
+
 [tool.uv.pip]
 index-strategy = "unsafe-best-match"

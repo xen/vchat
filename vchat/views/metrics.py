@@ -202,8 +202,10 @@ class CrawlerQueueCollector:
         try:
             broker_url = f"{config['celery_redis_uri']}{config['celery_broker_db']}"
             r = redis_lib.Redis.from_url(broker_url, decode_responses=False)
-            celery_metric.add_metric([], float(r.llen("celery")))
-            embedder_metric.add_metric([], float(r.llen("embeddings")))
+            celery_len: int = r.llen("celery")  # type: ignore
+            embedder_len: int = r.llen("embeddings")  # type: ignore
+            celery_metric.add_metric([], float(celery_len))
+            embedder_metric.add_metric([], float(embedder_len))
             r.close()
         except Exception as exc:
             logger.debug("CrawlerQueueCollector: Redis error: %s", exc)
@@ -222,7 +224,7 @@ def _build_registry() -> CollectorRegistry:
     if not _is_multiprocess_enabled():
         return REGISTRY
 
-    registry = CollectorRegistry(support_collectors_without_names=True)
+    registry = CollectorRegistry()
     multiprocess.MultiProcessCollector(registry)
     return registry
 

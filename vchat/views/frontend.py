@@ -193,7 +193,7 @@ async def widget_triggers_resolve(request):
     ):
         page = await _discover_widget_page(request, source=source, page_url=page_url)
 
-    default_title = title or (page.title if page is not None else "")
+    default_title = title or (page.title if page is not None else "") or ""
     return await _json_response_after_rollback(
         request,
         {

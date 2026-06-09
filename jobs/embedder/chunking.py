@@ -1,11 +1,11 @@
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import List
 
 from bs4 import BeautifulSoup
 
 from jobs.documents.shingles import is_boilerplate_block
-from jobs.embedder.tokenizer import load_embedding_tokenizer
+from jobs.embedder.tokenizer import EmbeddingTokenizer, load_embedding_tokenizer
 from vchat.settings import config
 
 EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]
@@ -61,15 +61,17 @@ HTML_NOISE_TAGS = (
 HTML_UI_CONFIG_JSON_LINE_RE = re.compile(
     r'^\s*\{(?=[\s\S]{0,2000}$)(?=[\s\S]*"(?:cookieKey|isActive)"\s*:)[\s\S]*\}\s*$'
 )
+_embed_tokenizer: EmbeddingTokenizer | None = None
 
 
-def get_embed_tokenizer() -> Any:
-    if not hasattr(get_embed_tokenizer, "_tokenizer"):
-        get_embed_tokenizer._tokenizer = load_embedding_tokenizer()
-    return get_embed_tokenizer._tokenizer
+def get_embed_tokenizer() -> EmbeddingTokenizer:
+    global _embed_tokenizer
+    if _embed_tokenizer is None:
+        _embed_tokenizer = load_embedding_tokenizer()
+    return _embed_tokenizer
 
 
-def count_token_ids(tokenizer: Any, text: str) -> int:
+def count_token_ids(tokenizer: EmbeddingTokenizer, text: str) -> int:
     return len(
         tokenizer(
             text,

@@ -9,7 +9,6 @@ from functools import wraps
 from typing import Callable, Optional, Tuple
 from urllib.parse import urlencode
 
-import aiohttp
 import markdown
 import msgspec
 import redis.asyncio as aioredis
@@ -269,7 +268,7 @@ class DummyJar(AbstractCookieJar):
     def __len__(self):
         return 0
 
-    def clear(self, predicate):
+    def clear(self, predicate=None):
         return
 
 
@@ -304,7 +303,7 @@ def login_required():
                 if request.path != url:
                     query_params = {"next": request.path}
                     url = f"{url}?{urlencode(query_params)}"
-                raise aiohttp.web.HTTPFound(url)
+                raise web.HTTPFound(url)
 
             return await func(request)
 
@@ -316,29 +315,29 @@ def login_required():
 def validate_signed_user_csrf(request) -> None:
     token = request.headers.get("X-CSRFToken")
     if not token:
-        raise aiohttp.web.HTTPForbidden(text="Missing CSRF Token")
+        raise web.HTTPForbidden(text="Missing CSRF Token")
 
     try:
         signed_user_id = request.app[SIGNER_KEY].loads(token, max_age=86400)
     except (BadSignature, SignatureExpired):
-        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token")
+        raise web.HTTPForbidden(text="Invalid CSRF Token")
 
     if signed_user_id != request["user"].id:
-        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token Owner")
+        raise web.HTTPForbidden(text="Invalid CSRF Token Owner")
 
 
 def validate_signed_chat_csrf(request) -> str:
     token = request.headers.get("X-CSRFToken")
     if not token:
-        raise aiohttp.web.HTTPForbidden(text="Missing CSRF Token")
+        raise web.HTTPForbidden(text="Missing CSRF Token")
 
     try:
         payload = request.app[SIGNER_KEY].loads(token, max_age=86400)
     except (BadSignature, SignatureExpired):
-        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token")
+        raise web.HTTPForbidden(text="Invalid CSRF Token")
 
     if not isinstance(payload, dict) or not payload.get("chat_id"):
-        raise aiohttp.web.HTTPForbidden(text="Invalid CSRF Token")
+        raise web.HTTPForbidden(text="Invalid CSRF Token")
 
     return str(payload["chat_id"])
 
@@ -397,6 +396,7 @@ def paginator(
     has_prev = total_pages > 0 and page > 1
     has_next = total_pages > 0 and page < total_pages
 
+    page_numbers: list[int | None]
     if total_pages <= 7 and total_pages > 0:
         page_numbers = list(range(1, total_pages + 1))
     elif total_pages > 0:
@@ -417,7 +417,7 @@ def paginator(
         if number is None:
             pages.append({"number": None})
             continue
-        item = {"number": number, "is_current": number == page}
+        item: dict[str, object] = {"number": number, "is_current": number == page}
         if query_factory is not None:
             item["query"] = query_factory(number)
         if href_factory is not None:

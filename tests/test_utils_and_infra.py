@@ -227,6 +227,20 @@ def test_protect_dummyjar_and_paginator() -> None:
     assert pagination["range_end"] == 30
     assert pagination["pages"][0]["number"] == 1
 
+    pagination_with_links = utils.paginator(
+        200,
+        page=10,
+        per_page=10,
+        query_factory=lambda number: {"page": str(number)},
+        href_factory=lambda number: f"/items?page={number}",
+    )
+    assert {"number": None} in pagination_with_links["pages"]
+    current = next(
+        item for item in pagination_with_links["pages"] if item.get("number") == 10
+    )
+    assert current["query"] == {"page": "10"}
+    assert current["href"] == "/items?page=10"
+
 
 @pytest.mark.asyncio
 async def test_run_command_and_run_task(monkeypatch: pytest.MonkeyPatch) -> None:

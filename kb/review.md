@@ -16,6 +16,7 @@ bugs, regressions, inconsistency with KB rules, and missing tests.
 - Findings first, ordered by severity.
 - Use exact file and line references.
 - Keep comments terse: location, problem, fix.
+- Answer reviews in Russian unless the user explicitly asks for another language.
 - If there are no findings, say so and mention remaining test gaps or residual
   risk.
 

@@ -195,6 +195,12 @@ class SourceForm(Form):
     def validate_url(self, field):
         field.data = normalize_source_origin(field.data)
 
+    enable_triggers = BooleanField(
+        "Разрешить пользовательские триггеры",
+        default=False,
+        render_kw={"class": "checkbox checkbox-primary"},
+    )
+
 
 class InviteUserForm(Form):
     class Meta:

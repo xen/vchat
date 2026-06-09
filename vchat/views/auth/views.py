@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Any
 
 import aiohttp_jinja2
 import sqlalchemy as sa
@@ -127,9 +128,11 @@ async def login(request):
         lock_key = f"auth:login_check_lock:{normalized_email}"
 
         if await request.app[REDIS_KEY].exists(lock_key):
-            form.email.errors.append(
-                "Слишком много попыток входа. Попробуйте ещё раз через несколько секунд"
-            )
+            email_field: Any = form.email
+            email_field.errors = [
+                *form.email.errors,
+                "Слишком много попыток входа. Попробуйте ещё раз через несколько секунд",
+            ]
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
@@ -143,24 +146,29 @@ async def login(request):
         user = result.scalar()
         if not user:
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
-            form.email.errors.append("Неверный email или пароль")
+            email_field: Any = form.email
+            email_field.errors = [*form.email.errors, "Неверный email или пароль"]
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
             }
         if user.is_active is False:
-            form.email.errors.append(
+            email_field: Any = form.email
+            email_field.errors = [
+                *form.email.errors,
                 "Вы не подтвердили email. Проверьте почту и папку Спам, "
-                "затем попробуйте снова."
-            )
+                "затем попробуйте снова.",
+            ]
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
             }
         if user.is_ldap:
-            form.email.errors.append(
-                "Для этой учётной записи используется LDAP-аутентификация"
-            )
+            email_field: Any = form.email
+            email_field.errors = [
+                *form.email.errors,
+                "Для этой учётной записи используется LDAP-аутентификация",
+            ]
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
@@ -169,7 +177,8 @@ async def login(request):
             form.password.data, user.password
         ):
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
-            form.email.errors.append("Неверный email или пароль")
+            email_field: Any = form.email
+            email_field.errors = [*form.email.errors, "Неверный email или пароль"]
             return {
                 "form": form,
                 "ldap_enabled": config.get("auth_ldap_enabled", False),
@@ -211,9 +220,11 @@ async def login_ldap(request):
         lock_key = f"auth:login_check_lock:{normalized_email}"
 
         if await request.app[REDIS_KEY].exists(lock_key):
-            form.email.errors.append(
-                "Слишком много попыток входа. Попробуйте ещё раз через несколько секунд"
-            )
+            email_field: Any = form.email
+            email_field.errors = [
+                *form.email.errors,
+                "Слишком много попыток входа. Попробуйте ещё раз через несколько секунд",
+            ]
             return {
                 "form": form,
                 "basic_enabled": config.get("auth_basic_enabled", True),
@@ -226,7 +237,8 @@ async def login_ldap(request):
         )
         if ldap_result is None:
             await asyncio.sleep(LOGIN_FAILURE_DELAY_SECONDS)
-            form.email.errors.append("Неверный email или пароль")
+            email_field: Any = form.email
+            email_field.errors = [*form.email.errors, "Неверный email или пароль"]
             return {
                 "form": form,
                 "basic_enabled": config.get("auth_basic_enabled", True),
