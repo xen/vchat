@@ -23,7 +23,6 @@ var sanfile = requireFromFrontend('sanitize-filename');
 
 var prefix = 'diagram';
 var cmd = externalTool('mmdc');
-var imgur = externalTool('imgur');
 var counter = 0;
 var folder = process.cwd();
 
@@ -156,6 +155,7 @@ function mermaid(type, value, format, meta) {
       newPath = 'data:image/png;base64,' + Buffer.from(dataPng).toString('base64');
     }
   } else if (options.loc === 'imgur') {
+    var imgur = externalTool('imgur');
     newPath = exec(`${imgur} ${savePath}`).toString().trim().replace('http://', 'https://');
   } else {
     mv(savePath, newPath);
@@ -213,7 +213,12 @@ function firstExisting(paths, error) {
   error();
 }
 
-pandoc.toJSONFilter(function (type, value, format, meta) {
+(async function () {
   process.stderr.write = errorLog.write.bind(errorLog);
-  return mermaid(type, value, format, meta);
+  await pandoc.toJSONFilter(function (item, format, meta) {
+    return mermaid(item.t, item.c, format, meta);
+  });
+})().catch(function (error) {
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
 });

@@ -74,9 +74,17 @@ async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> No
     grd_counter = metrics.CHAT_GUARDRAIL_EVENTS_TOTAL.labels(
         provider="openai", model="gpt-4o-mini", reason="unknown"
     )
+    duration_histogram = metrics.CHAT_RESPONSE_DURATION_SECONDS.labels(
+        provider="openai", model="gpt-4o-mini", status="ok", guardrail="true"
+    )
+    chunks_histogram = metrics.CHAT_CONTEXT_CHUNKS.labels(
+        provider="openai", model="gpt-4o-mini", status="ok"
+    )
     before_req = req_counter._value.get()
     before_tok = tok_counter._value.get()
     before_grd = grd_counter._value.get()
+    before_duration_sum = duration_histogram._sum.get()
+    before_chunks_sum = chunks_histogram._sum.get()
 
     metrics.record_chat_request(
         provider="openai",
@@ -84,11 +92,15 @@ async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> No
         tokens=33,
         status="ok",
         guardrail_reasons={"something_unlisted"},
+        duration_seconds=1.25,
+        context_chunks=3,
     )
 
     assert req_counter._value.get() == before_req + 1
     assert tok_counter._value.get() == before_tok + 33
     assert grd_counter._value.get() == before_grd + 1
+    assert duration_histogram._sum.get() == before_duration_sum + 1.25
+    assert chunks_histogram._sum.get() == before_chunks_sum + 3
 
     monkeypatch.delenv("PROMETHEUS_MULTIPROC_DIR", raising=False)
     assert metrics._is_multiprocess_enabled() is False
@@ -96,6 +108,8 @@ async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> No
     response = await metrics.metrics_handler(None)
     assert response.status == 200
     assert b"vchat_chat_requests_total" in response.body
+    assert b"vchat_chat_response_duration_seconds" in response.body
+    assert b"vchat_chat_context_chunks" in response.body
 
 
 def test_utils_json_to_str_meta_and_convert() -> None:

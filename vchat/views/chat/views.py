@@ -946,6 +946,7 @@ async def websocket(request):
             if not user_text:
                 continue
 
+            request_started_at = time.monotonic()
             assistant_provider = None
             assistant_model = None
             guardrail_reasons: set[str] = set()
@@ -1322,7 +1323,7 @@ async def websocket(request):
                     for message in messages
                     if isinstance(message, dict)
                 ] or [user_text]
-                prompt_size = sum(
+                prompt_bytes = sum(
                     len(part.encode("utf-8")) for part in prompt_text_parts
                 )
                 prompt_chars = sum(len(part) for part in prompt_text_parts)
@@ -1340,10 +1341,10 @@ async def websocket(request):
                     guardrail_reasons=(
                         sorted(guardrail_reasons) if guardrail_reasons else []
                     ),
-                    prompt_size=prompt_size,
                     prompt_chars=prompt_chars,
-                    user_prompt_size=len(user_text.encode("utf-8")),
+                    prompt_bytes=prompt_bytes,
                     user_prompt_chars=len(user_text),
+                    user_prompt_bytes=len(user_text.encode("utf-8")),
                     messages_count=len(messages),
                     status=request_status,
                     chat_id=chat_id_ctx.get(None),
@@ -1356,6 +1357,8 @@ async def websocket(request):
                         tokens=total_tokens,
                         status=request_status,
                         guardrail_reasons=guardrail_reasons,
+                        duration_seconds=time.monotonic() - request_started_at,
+                        context_chunks=len(used_chunks),
                     )
                 except Exception as metrics_exc:
                     logger.warning("Failed to record chat metrics: %s", metrics_exc)

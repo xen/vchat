@@ -139,14 +139,15 @@ clean: ## cleanup project
 
 docs: ## convert all docs in docs/ to .docx
 	@mkdir -p docs/word
-	@for f in docs/*.md; do \
+	@set -e; \
+	for f in docs/*.md; do \
 		echo "Converting $$f to docs/word/$$(basename "$${f%.md}.docx")"; \
 		MERMAID_FILTER_WIDTH=400 \
 		MERMAID_FILTER_SCALE=3 \
 		MERMAID_FILTER_IMAGE_WIDTH=72% \
 		MERMAID_FILTER_FORCE_VERTICAL=1 \
 		MERMAID_FILTER_FORCE_C4_ONE_COLUMN=1 \
-		PUPPETEER_EXECUTABLE_PATH=$$(find $(HOME)/.cache/puppeteer -name Chromium | grep 1108766 | head -n 1) \
+		PUPPETEER_EXECUTABLE_PATH=$$(find $(HOME)/.cache/puppeteer/chrome-headless-shell -name chrome-headless-shell -type f | sort | tail -n 1) \
 		pandoc "$$f" \
 			-f markdown \
 			-t docx \

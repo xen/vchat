@@ -360,6 +360,51 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
     assert "justify-self: stretch" not in rendered
 
 
+def test_widget_edit_template_renders_pinned_message_color_options() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader(
+                    {"admin.html": "{% block content %}{% endblock %}"}
+                ),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: URL(
+            f"/actions/{kwargs['action']}/{kwargs['item_id']}"
+            if name == "actions"
+            else "/integration"
+        ),
+        csrf_token=lambda: "token",
+    )
+    template = env.get_template("projects/widget_edit.html")
+
+    rendered = template.render(
+        widget=SimpleNamespace(
+            id=1,
+            name="Widget",
+            code="abc",
+            public_url="https://example.com/widget.js",
+            contact_url="https://example.com/contact",
+            agent_name="Agent",
+            welcome_message="Hello",
+            system_prompt="Prompt",
+            pinned_messages=[SimpleNamespace(text="Pinned", color="primary")],
+        ),
+        default_welcome_message="Hello",
+        default_system_prompt="Prompt",
+    )
+
+    assert '<option value="neutral"' in rendered
+    assert '<option value="primary"' in rendered
+    assert '<option value="warning"' in rendered
+    assert 'value="primary"' in rendered and "selected" in rendered
+
+
 def test_document_pipeline_steps_returns_error_description() -> None:
     from vchat.views.projects.page_status import PageStatus, PageStatusError
 

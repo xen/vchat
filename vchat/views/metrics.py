@@ -40,6 +40,20 @@ CHAT_GUARDRAIL_EVENTS_TOTAL = Counter(
     ("provider", "model", "reason"),
 )
 
+CHAT_RESPONSE_DURATION_SECONDS = Histogram(
+    "vchat_chat_response_duration_seconds",
+    "End-to-end duration of a websocket chat message handling cycle in seconds.",
+    ("provider", "model", "status", "guardrail"),
+    buckets=(1, 2.5, 5, 10, 15, 20, 30, 45, 60, 120),
+)
+
+CHAT_CONTEXT_CHUNKS = Histogram(
+    "vchat_chat_context_chunks",
+    "Number of retrieval chunks used in a chat response context.",
+    ("provider", "model", "status"),
+    buckets=(0, 1, 2, 3, 5, 8, 10, 15, 20, 30),
+)
+
 CRAWLER_PAGES_TOTAL = Counter(
     "vchat_crawler_pages_total",
     "Total pages processed by the crawler, by result type.",
@@ -116,6 +130,8 @@ def record_chat_request(
     tokens: int | None,
     status: str,
     guardrail_reasons: Iterable[str] | None,
+    duration_seconds: float | None = None,
+    context_chunks: int | None = None,
 ) -> None:
     provider_label = _safe_label(provider, "unknown")
     model_label = _safe_label(model, "unknown")
@@ -146,6 +162,21 @@ def record_chat_request(
             model=model_label,
             reason=reason,
         ).inc()
+
+    if duration_seconds is not None and float(duration_seconds) >= 0:
+        CHAT_RESPONSE_DURATION_SECONDS.labels(
+            provider=provider_label,
+            model=model_label,
+            status=status_label,
+            guardrail=guardrail_label,
+        ).observe(float(duration_seconds))
+
+    if context_chunks is not None and int(context_chunks) >= 0:
+        CHAT_CONTEXT_CHUNKS.labels(
+            provider=provider_label,
+            model=model_label,
+            status=status_label,
+        ).observe(float(context_chunks))
 
 
 def record_crawl_run(
@@ -185,32 +216,65 @@ def record_crawl_run(
 
 
 class CrawlerQueueCollector:
-    """Reads Celery queue lengths from Redis at scrape time."""
+    """Reads runtime state from Redis at scrape time."""
 
     def describe(self):
         return []
 
-    def collect(self):
-        celery_metric = GaugeMetricFamily(
-            "vchat_celery_queue_size",
-            "Current number of tasks in the default Celery queue.",
-        )
-        embedder_metric = GaugeMetricFamily(
-            "vchat_embedder_queue_size",
-            "Current number of tasks in the embedder Celery queue.",
-        )
+    def _add_queue_metrics(self):
+        metrics = [
+            GaugeMetricFamily(
+                "vchat_celery_queue_size",
+                "Current number of tasks in the default Celery queue.",
+            ),
+            GaugeMetricFamily(
+                "vchat_embedder_queue_size",
+                "Current number of tasks in the embedder Celery queue.",
+            ),
+            GaugeMetricFamily(
+                "vchat_crawler_queue_size",
+                "Current number of tasks in the crawler Celery queue.",
+            ),
+        ]
+        r = None
         try:
             broker_url = f"{config['celery_redis_uri']}{config['celery_broker_db']}"
             r = redis_lib.Redis.from_url(broker_url, decode_responses=False)
-            celery_len: int = r.llen("celery")  # type: ignore
-            embedder_len: int = r.llen("embeddings")  # type: ignore
-            celery_metric.add_metric([], float(celery_len))
-            embedder_metric.add_metric([], float(embedder_len))
-            r.close()
+            queue_names = (
+                str(config.get("celery_default_queue", "celery") or "celery"),
+                "embeddings",
+                "crawler",
+            )
+            for metric, queue_name in zip(metrics, queue_names, strict=True):
+                queue_len: int = r.llen(queue_name)  # type: ignore
+                metric.add_metric([], float(queue_len))
         except Exception as exc:
-            logger.debug("CrawlerQueueCollector: Redis error: %s", exc)
-        yield celery_metric
-        yield embedder_metric
+            logger.debug("CrawlerQueueCollector: Redis queue error: %s", exc)
+        finally:
+            if r is not None:
+                r.close()
+        return metrics
+
+    def _add_active_chat_metric(self):
+        active_chats_metric = GaugeMetricFamily(
+            "vchat_active_chats",
+            "Current number of active websocket chat sessions.",
+        )
+        r = None
+        try:
+            r = redis_lib.Redis.from_url(config["redis_uri"], decode_responses=False)
+            active_chats: int = r.scard("active_chats")  # type: ignore
+            active_chats_metric.add_metric([], float(active_chats))
+        except Exception as exc:
+            logger.debug("CrawlerQueueCollector: Redis active chat error: %s", exc)
+        finally:
+            if r is not None:
+                r.close()
+        return active_chats_metric
+
+    def collect(self):
+        yield from self._add_queue_metrics()
+        yield self._add_active_chat_metric()
 
 
 REGISTRY.register(CrawlerQueueCollector())
@@ -226,6 +290,7 @@ def _build_registry() -> CollectorRegistry:
 
     registry = CollectorRegistry()
     multiprocess.MultiProcessCollector(registry)
+    registry.register(CrawlerQueueCollector())
     return registry
 
 

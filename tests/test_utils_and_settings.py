@@ -249,13 +249,18 @@ def test_crawler_queue_collector_uses_broker_db_and_default_and_embeddings_queue
     class _Redis:
         def llen(self, queue_name: str) -> int:
             calls.append(queue_name)
-            return {"celery": 7, "embeddings": 11}[queue_name]
+            return {"celery": 7, "embeddings": 11, "crawler": 13}[queue_name]
+
+        def scard(self, key: str) -> int:
+            calls.append(key)
+            return {"active_chats": 17}[key]
 
         def close(self) -> None:
             closed.append(True)
 
     monkeypatch.setitem(metrics.config, "celery_redis_uri", "redis://example/")
     monkeypatch.setitem(metrics.config, "celery_broker_db", 42)
+    monkeypatch.setitem(metrics.config, "redis_uri", "redis://app/30")
     monkeypatch.setattr(
         metrics.redis_lib.Redis,
         "from_url",
@@ -271,7 +276,15 @@ def test_crawler_queue_collector_uses_broker_db_and_default_and_embeddings_queue
     }
 
     assert calls[0] == "url=redis://example/42,decode=False"
-    assert calls[1:] == ["celery", "embeddings"]
+    assert calls[1:] == [
+        "celery",
+        "embeddings",
+        "crawler",
+        "url=redis://app/30,decode=False",
+        "active_chats",
+    ]
     assert samples["vchat_celery_queue_size"] == 7
     assert samples["vchat_embedder_queue_size"] == 11
-    assert closed == [True]
+    assert samples["vchat_crawler_queue_size"] == 13
+    assert samples["vchat_active_chats"] == 17
+    assert closed == [True, True]
