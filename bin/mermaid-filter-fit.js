@@ -9,6 +9,7 @@ var fs = require('fs');
 var path = require('path');
 var exec = require('child_process').execSync;
 var process = require('process');
+var url = require('url');
 
 // This repo keeps JS deps under frontend/node_modules.
 // When pandoc executes this filter from the repo root, Node won't find modules
@@ -25,12 +26,17 @@ var prefix = 'diagram';
 var cmd = externalTool('mmdc');
 var counter = 0;
 var folder = process.cwd();
+var renderer = (process.env.MERMAID_FILTER_RENDERER || 'mmdc').toLowerCase();
+var bmRequired = process.env.MERMAID_FILTER_BM_REQUIRED === '1';
+var bmPathOption = process.env.MERMAID_FILTER_BM_PATH || 'frontend/node_modules/beautiful-mermaid';
+var bmAvailableChecked = false;
+var bmAvailable = false;
 
 // Redirect stderr to a file; otherwise pandoc can hang on non-JSON output.
 var errFile = path.join(folder, 'mermaid-filter.err');
 var errorLog = fs.createWriteStream(errFile);
 
-function mermaid(type, value, format, meta) {
+async function mermaid(type, value, format, meta) {
   if (type != 'CodeBlock') return null;
 
   var attrs = value[0];
@@ -138,10 +144,52 @@ function mermaid(type, value, format, meta) {
     options.filename = `${prefix}-${counter}`;
   }
 
+  var requestedFormat = options.format;
   var savePath = tmpfileObj.name + '.' + options.format;
 
-  var fullCmd = `${cmd} ${confFileOpts} ${puppeteerOpts} -w ${options.width} -s ${options.scale} -f -i "${tmpfileObj.name}" -t ${options.theme} -b ${options.background} -o "${savePath}"`;
-  exec(fullCmd);
+  if (!bmAvailableChecked) {
+    if (renderer === 'beautiful-mermaid') {
+      console.error(
+        `[mermaid-filter] Renderer=beautiful-mermaid, path=${bmPathOption}, required=${bmRequired}`
+      );
+    } else {
+      console.error(`[mermaid-filter] Renderer=${renderer}`);
+    }
+    bmAvailableChecked = true;
+  }
+
+  var renderSucceeded = false;
+  if (renderer === 'beautiful-mermaid') {
+    options.format = 'svg';
+    savePath = tmpfileObj.name + '.' + options.format;
+    try {
+      await renderWithBeautifulMermaid(renderedContent, savePath, options);
+      bmAvailable = true;
+      renderSucceeded = true;
+    } catch (error) {
+      bmAvailable = false;
+      console.error(
+        `[mermaid-filter] beautiful-mermaid failed, fallback to mmdc: ${
+          error && error.message ? error.message : String(error)
+        }`
+      );
+      if (bmRequired) {
+        throw error;
+      }
+    }
+  }
+
+  if (!renderSucceeded) {
+    options.format = requestedFormat;
+    savePath = tmpfileObj.name + '.' + options.format;
+    renderWithMmdc(
+      tmpfileObj.name,
+      savePath,
+      confFileOpts,
+      puppeteerOpts,
+      options
+    );
+  }
 
   var newPath = path.join(outdir, `${options.filename}.${options.format}`);
   if (options.loc == 'inline') {
@@ -172,6 +220,44 @@ function mermaid(type, value, format, meta) {
   return pandoc.Para([
     pandoc.Image([id, imageClasses, imageKeyvals], [pandoc.Str(options.caption)], [newPath, fig])
   ]);
+}
+
+function renderWithBeautifulMermaid(sourceContent, outPath, options) {
+  return (async function () {
+    var packagePath = bmPathOption;
+    if (!path.isAbsolute(packagePath)) {
+      packagePath = path.resolve(__dirname, '..', packagePath);
+    }
+    if (!fs.existsSync(packagePath)) {
+      throw new Error(`beautiful-mermaid module not found at ${packagePath}`);
+    }
+
+    var moduleUrl = url.pathToFileURL(packagePath).href;
+    var imported = await import(moduleUrl);
+    var renderMermaidSVG = imported.renderMermaidSVG || imported.default;
+    if (typeof renderMermaidSVG !== 'function') {
+      throw new Error('No renderMermaidSVG entrypoint in beautiful-mermaid package');
+    }
+
+    var svg = await renderMermaidSVG(sourceContent, {
+      theme: options.theme,
+      backgroundColor: options.background,
+      width: parseInt(options.width, 10),
+      scale: parseInt(options.scale, 10)
+    });
+    if (svg && typeof svg === 'object' && svg.svg) {
+      svg = svg.svg;
+    }
+    if (typeof svg !== 'string') {
+      throw new Error('beautiful-mermaid returned non-string SVG payload');
+    }
+    fs.writeFileSync(outPath, svg);
+  })();
+}
+
+function renderWithMmdc(sourcePath, outPath, confFileOpts, puppeteerOpts, options) {
+  var mmdcCmd = `${cmd} ${confFileOpts} ${puppeteerOpts} -w ${options.width} -s ${options.scale} -f -i "${sourcePath}" -t ${options.theme} -b ${options.background} -o "${outPath}"`;
+  exec(mmdcCmd);
 }
 
 

@@ -4,6 +4,8 @@
 		frontend embedder embedder-worker docs \
 		agent agent-check agent-kb-check
 
+MERMAID_FILTER_RENDERER ?= mmdc
+
 EMBEDDER_POOL ?= solo
 EMBEDDER_CONCURRENCY ?= 1
 
@@ -147,12 +149,14 @@ docs: ## convert all docs in docs/ to .docx
 		MERMAID_FILTER_IMAGE_WIDTH=72% \
 		MERMAID_FILTER_FORCE_VERTICAL=1 \
 		MERMAID_FILTER_FORCE_C4_ONE_COLUMN=1 \
+		MERMAID_FILTER_RENDERER=$(MERMAID_FILTER_RENDERER) \
 		PUPPETEER_EXECUTABLE_PATH=$$(find $(HOME)/.cache/puppeteer/chrome-headless-shell -name chrome-headless-shell -type f | sort | tail -n 1) \
 		pandoc "$$f" \
 			-f markdown \
 			-t docx \
 			--reference-doc=docs/template.dotx \
 			--standalone \
+			--lua-filter ./bin/pandoc-table-br.lua \
 			--filter ./bin/mermaid-filter-fit.js \
 			-o "docs/word/$$(basename "$${f%.md}.docx")"; \
 	done

@@ -7,8 +7,8 @@
     "c4BoundaryInRow": 1,
     "diagramMarginX": 30,
     "diagramMarginY": 36,
-    "c4ShapeMargin": 36,
-    "c4ShapePadding": 22
+    "c4ShapeMargin": 20,
+    "c4ShapePadding": 14
   },
   "flowchart": {
     "nodeSpacing": 70,
@@ -16,6 +16,12 @@
   },
   "sequence": {
     "diagramMarginX": 20,
-    "diagramMarginY": 20
+    "diagramMarginY": 20,
+    "actorFontSize": 40,
+    "messageFontSize": 38,
+    "noteFontSize": 36,
+    "actorFontFamily": "Arial, Helvetica, sans-serif",
+    "messageFontFamily": "Arial, Helvetica, sans-serif",
+    "noteFontFamily": "Arial, Helvetica, sans-serif"
   }
 }
