@@ -975,6 +975,15 @@ async def websocket(request):
                 continue
 
             request_started_at = time.monotonic()
+            stage_durations_ms: dict[str, float] = {}
+            first_content_ms: float | None = None
+
+            def finish_stage(name: str, started_at: float) -> None:
+                stage_durations_ms[name] = round(
+                    (time.monotonic() - started_at) * 1000,
+                    3,
+                )
+
             assistant_provider = None
             assistant_model = None
             guardrail_reasons: set[str] = set()
@@ -990,29 +999,36 @@ async def websocket(request):
                 context_policy: dict[str, Any] = {}
                 coverage: dict[str, Any] = {}
 
+                stage_started_at = time.monotonic()
                 gen_context = (
                     build_generation_context(request.app, widget)
                     if widget is not None
                     else build_generation_context(request.app)
                 )
+                finish_stage("generation_context", stage_started_at)
                 assistant_provider = gen_context.provider_id
                 assistant_model = gen_context.model_id
 
+                stage_started_at = time.monotonic()
                 input_guardrails = await check_input_guardrails(
                     text=user_text,
                     provider=gen_context.provider,
                 )
+                finish_stage("input_guardrails", stage_started_at)
                 guardrail_reasons.update(input_guardrails.reasons)
                 if not input_guardrails.allowed:
                     request_status = "guardrail_blocked_input"
+                    stage_started_at = time.monotonic()
                     _, assistant_msg_id = await persist_guardrail_messages(
                         user_text=user_text,
                         assistant_text=GUARDRAIL_USER_MESSAGE,
                         reasons=guardrail_reasons,
                         stage="input",
                     )
+                    finish_stage("persist_guardrail_messages", stage_started_at)
                     serializer = URLSafeSerializer(SECRET_KEY)
                     signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
+                    stage_started_at = time.monotonic()
                     await ws.send_json(
                         {
                             "ok": True,
@@ -1024,28 +1040,36 @@ async def websocket(request):
                             "guardrail": True,
                         }
                     )
+                    finish_stage("send_guardrail_response", stage_started_at)
                     continue
 
                 if trigger_page_id is not None and trigger_key:
+                    stage_started_at = time.monotonic()
                     trigger_cache_allowed = await validate_trigger_cache_request(
                         page_id=trigger_page_id,
                         trigger_key=trigger_key,
                         user_text=user_text,
                     )
+                    finish_stage("trigger_cache_validate", stage_started_at)
                     if trigger_cache_allowed:
+                        stage_started_at = time.monotonic()
                         cached_response = await load_trigger_response_cache(
                             page_id=trigger_page_id,
                             trigger_key=trigger_key,
                             user_text=user_text,
                         )
+                        finish_stage("trigger_cache_load", stage_started_at)
                         if cached_response is not None:
+                            stage_started_at = time.monotonic()
                             await stream_cached_trigger_response(
                                 ws=ws,
                                 cached_response=cached_response,
                                 user_text=user_text,
                             )
+                            finish_stage("trigger_cache_stream", stage_started_at)
                             continue
 
+                stage_started_at = time.monotonic()
                 await redis.publish(
                     f"chat_monitor:{chat_id_ctx.get()}",
                     json.dumps(
@@ -1056,9 +1080,11 @@ async def websocket(request):
                         }
                     ),
                 )
+                finish_stage("redis_publish_user", stage_started_at)
 
                 skip_rag = is_trivial_query(user_text)
 
+                stage_started_at = time.monotonic()
                 async with async_session_factory() as ctx_db:
                     chat_id = chat_id_ctx.get()
                     if chat_id is None:
@@ -1072,6 +1098,7 @@ async def websocket(request):
                         vector_top_k=0 if skip_rag else 10,
                         ft_top_m=0 if skip_rag else 10,
                     )
+                finish_stage("context_retrieval", stage_started_at)
 
                 used_chunks = context_result.used_chunks
                 sources = context_result.sources
@@ -1080,11 +1107,17 @@ async def websocket(request):
                 messages = [dict(m._asdict()) for m in context_result.messages]
 
                 while True:
+                    stage_started_at = time.monotonic()
                     async for event in ai_chat_stream(messages, gen_context):
                         event_type = event.get("event")
                         if event_type == "content":
                             delta = event.get("data", "")
                             if delta:
+                                if first_content_ms is None:
+                                    first_content_ms = round(
+                                        (time.monotonic() - request_started_at) * 1000,
+                                        3,
+                                    )
                                 total_content += delta
                                 await ws.send_json(
                                     {"ok": True, "content": delta, "partial": True}
@@ -1116,6 +1149,7 @@ async def websocket(request):
                             assistant_message = event.get("message")
                         # Tool calls are disabled for now
                         # Skip tool_call events since TOOLS list is empty
+                    finish_stage("ai_stream", stage_started_at)
 
                     if assistant_message is None:
                         raise RuntimeError("Assistant response missing from stream")
@@ -1135,21 +1169,26 @@ async def websocket(request):
                             }
                         )
 
+                stage_started_at = time.monotonic()
                 output_guardrails = await check_output_guardrails(
                     text=total_content,
                     provider=gen_context.provider,
                 )
+                finish_stage("output_guardrails", stage_started_at)
                 guardrail_reasons.update(output_guardrails.reasons)
                 if not output_guardrails.allowed:
                     request_status = "guardrail_blocked_output"
+                    stage_started_at = time.monotonic()
                     _, assistant_msg_id = await persist_guardrail_messages(
                         user_text=user_text,
                         assistant_text=GUARDRAIL_USER_MESSAGE,
                         reasons=guardrail_reasons,
                         stage="output",
                     )
+                    finish_stage("persist_guardrail_messages", stage_started_at)
                     serializer = URLSafeSerializer(SECRET_KEY)
                     signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
+                    stage_started_at = time.monotonic()
                     await ws.send_json(
                         {
                             "ok": True,
@@ -1161,23 +1200,29 @@ async def websocket(request):
                             "guardrail": True,
                         }
                     )
+                    finish_stage("send_guardrail_response", stage_started_at)
                     continue
 
                 # Generate suggestions if not a trivial query (or even if it is, maybe?)
                 # Let's generate suggestions generally, but maybe meaningful ones.
                 # If we skipped RAG, maybe we don't need deep suggestions, but "How does X work?" might be good.
+                stage_started_at = time.monotonic()
                 suggestions = await generate_suggestions(
                     messages + [assistant_message], gen_context
                 )
+                finish_stage("suggestions", stage_started_at)
                 if suggestions:
+                    stage_started_at = time.monotonic()
                     await ws.send_json(
                         {
                             "type": "suggested_actions",
                             "actions": suggestions,
                         }
                     )
+                    finish_stage("send_suggestions", stage_started_at)
 
                 # Save both messages after stream completes
+                stage_started_at = time.monotonic()
                 async with async_session_factory() as db:
                     res_user = await db.execute(
                         sa.insert(ChatMsg)
@@ -1233,12 +1278,14 @@ async def websocket(request):
                     assistant_msg_id = res_ai.scalar_one()
 
                     await db.commit()
+                finish_stage("persist_messages", stage_started_at)
 
                 # Send completion signal with sources AND message ID
                 # We need to send this AFTER commit to ensure ID exists
                 serializer = URLSafeSerializer(SECRET_KEY)
                 signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
 
+                stage_started_at = time.monotonic()
                 await ws.send_json(
                     {
                         "ok": True,
@@ -1252,6 +1299,7 @@ async def websocket(request):
                         "signed_msg_id": signed_msg_id,
                     }
                 )
+                finish_stage("send_final_response", stage_started_at)
 
                 if (
                     trigger_page_id is not None
@@ -1284,6 +1332,7 @@ async def websocket(request):
 
                 # Enqueue Celery-compatible background tasks (shared Redis queue)
                 try:
+                    stage_started_at = time.monotonic()
                     await run_task(
                         task="jobs.embedder.tasks.index_chat_message",
                         queue="embeddings",
@@ -1294,6 +1343,7 @@ async def websocket(request):
                         queue="embeddings",
                         msg_id=assistant_msg_id,
                     )
+                    finish_stage("enqueue_index_tasks", stage_started_at)
                 except Exception as enq_exc:
                     logger.warning("run_task failed: %s", enq_exc)
             except GuardrailTripwireTriggered as e:
@@ -1374,6 +1424,8 @@ async def websocket(request):
                     user_prompt_chars=len(user_text),
                     user_prompt_bytes=len(user_text.encode("utf-8")),
                     messages_count=len(messages),
+                    first_content_ms=first_content_ms,
+                    stage_durations_ms=stage_durations_ms,
                     status=request_status,
                     chat_id=chat_id_ctx.get(None),
                     user_id=str(user_id_ctx.get(None)),

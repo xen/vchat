@@ -124,6 +124,16 @@ body {
     color: var(--vchat-graphite-deep);
 }
 
+.vchat-mobile-close {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .vchat-embedded .vchat-mobile-close {
+        display: inline-flex;
+    }
+}
+
 #log {
     scrollbar-color: rgb(49 194 167 / 45%) transparent;
 }

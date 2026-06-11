@@ -206,14 +206,17 @@
             height: 100%;
             border: none;
         }
-        @media (max-width: 480px) {
+        @media (max-width: 640px) {
             #vchat-widget-iframe-container {
-                width: 100%;
-                height: 100%;
+                inset: 0;
+                width: 100dvw;
+                height: 100dvh;
                 bottom: 0;
                 right: 0;
+                max-height: none;
+                border: 0;
                 border-radius: 0;
-                max-height: 100vh;
+                box-shadow: none;
             }
             #vchat-widget-button {
                 bottom: 20px;
@@ -286,6 +289,19 @@
     iframeContainer.style.display = "none";
     button.innerHTML = closedWidgetIconSvg;
   }
+
+  window.addEventListener("message", function (event) {
+    if (event.origin !== widgetOrigin()) {
+      return;
+    }
+    if (!iframeEl || event.source !== iframeEl.contentWindow) {
+      return;
+    }
+    if (!event.data || event.data.type !== "vchat_close") {
+      return;
+    }
+    closeWidget();
+  });
 
   function canShowTrigger() {
     return hasScrolled || showByTimeout;

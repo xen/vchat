@@ -39,6 +39,13 @@
         {{ 'Контакты' }}
       </a>
       {% endif %}
+      <button id="vchat-mobile-close" type="button" class="vchat-mobile-close btn btn-ghost btn-sm btn-square"
+        aria-label="{{ 'Закрыть чат' }}">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+          stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -89,6 +96,7 @@
     const formEl = document.getElementById('composer');
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
+    const mobileCloseBtn = document.getElementById('vchat-mobile-close');
     const csrfToken = {{ (support_csrf_token if support_csrf_token is defined else csrf_token()) | tojson | safe }};
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
     const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
@@ -97,6 +105,10 @@
     let currentBotBubble = null;
     let sourceListIdCounter = 0;
     const loadingAnswerHtml = '<span class="loading loading-dots loading-sm" aria-label="Ответ загружается"></span>';
+
+    if (window.parent && window.parent !== window) {
+      document.documentElement.classList.add('vchat-embedded');
+    }
 
     function escapeHtml(str) {
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -534,6 +546,9 @@
       }
     });
     promptEl.addEventListener('input', resizePrompt);
+    mobileCloseBtn?.addEventListener('click', () => {
+      window.parent?.postMessage({ type: 'vchat_close' }, '*');
+    });
 
     window.addEventListener('message', (event) => {
       const data = event.data || {};
