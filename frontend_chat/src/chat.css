@@ -239,14 +239,24 @@ body {
     color: rgb(51 63 72 / 50%);
 }
 
-.vchat-status .badge-success {
+.vchat-status .badge {
+    width: 0.55rem;
+    min-width: 0;
+    height: 0.55rem;
+    min-height: 0;
+    padding: 0;
     border: 0;
+    border-radius: 9999px;
+    vertical-align: -0.05em;
+}
+
+.vchat-status .badge-success {
     background: rgb(49 194 167 / 42%);
 }
 
-.vchat-status .badge-warning {
-    border: 0;
-    background: rgb(178 235 56 / 48%);
+.vchat-status .badge-warning,
+.vchat-status .badge-error {
+    background: rgb(194 58 75 / 62%);
 }
 
 .textarea {

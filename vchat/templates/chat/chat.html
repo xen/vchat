@@ -104,10 +104,23 @@
     let ws;
     let currentBotBubble = null;
     let sourceListIdCounter = 0;
+    let reconnectTimer = null;
+    let reconnectAttempt = 0;
+    const pendingPayloads = [];
     const loadingAnswerHtml = '<span class="loading loading-dots loading-sm" aria-label="Ответ загружается"></span>';
 
     if (window.parent && window.parent !== window) {
       document.documentElement.classList.add('vchat-embedded');
+    }
+
+    function notifyChatActivity() {
+      if (!signedChatId || !window.parent || window.parent === window) {
+        return;
+      }
+      window.parent.postMessage({
+        type: 'vchat_chat_activity',
+        signed_chat_id: signedChatId,
+      }, '*');
     }
 
     function escapeHtml(str) {
@@ -402,24 +415,84 @@
       }
     }
 
+    function scheduleReconnect() {
+      if (reconnectTimer) {
+        return;
+      }
+      const delay = Math.min(1000 * (2 ** reconnectAttempt), 8000);
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delay);
+    }
+
+    function flushPendingPayloads() {
+      while (pendingPayloads.length > 0 && ws?.readyState === WebSocket.OPEN) {
+        ws.send(pendingPayloads.shift());
+      }
+    }
+
+    function sendPayload(payload) {
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+        return;
+      }
+      pendingPayloads.push(payload);
+      connect();
+    }
+
+    function refreshChatFrame() {
+      setSending(false);
+      removeLoadingMsg();
+      currentBotBubble = null;
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'vchat_refresh_chat' }, '*');
+        return;
+      }
+      window.location.reload();
+    }
+
     function connect() {
-      ws = new WebSocket(wsUrl());
-      ws.onopen = () => {
+      if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) {
+        return;
+      }
+
+      const socket = new WebSocket(wsUrl());
+      ws = socket;
+
+      socket.onopen = () => {
+        if (ws !== socket) return;
+        reconnectAttempt = 0;
+        if (reconnectTimer) {
+          window.clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
         updateStatus('{{ "подключено" }}', 'подключено');
+        flushPendingPayloads();
       };
-      ws.onclose = () => {
+      socket.onclose = (event) => {
+        if (ws !== socket) return;
+        if (event.code === 1008) {
+          updateStatus('{{ "подключение…" }}', 'warning');
+          refreshChatFrame();
+          return;
+        }
         updateStatus('{{ "отключено" }}', 'warning');
         setSending(false);
         removeLoadingMsg();
         currentBotBubble = null;
+        scheduleReconnect();
       };
-      ws.onerror = () => {
+      socket.onerror = () => {
+        if (ws !== socket) return;
         updateStatus('{{ "ошибка" }}', 'error');
         setSending(false);
         removeLoadingMsg();
         currentBotBubble = null;
       };
-      ws.onmessage = (ev) => {
+      socket.onmessage = (ev) => {
+        if (ws !== socket) return;
         let data;
         try {
           data = JSON.parse(ev.data);
@@ -465,6 +538,7 @@
               if (chatDiv && data.signed_msg_id) {
                 ensureVoteArea(chatDiv, data.msg_id, data.signed_msg_id);
               }
+              notifyChatActivity();
               setSending(false);
               currentBotBubble = null;
             } else {
@@ -478,6 +552,7 @@
                 data.sources || [],
                 data.reason_code || null,
               );
+              notifyChatActivity();
               setSending(false);
             }
           } else {
@@ -502,17 +577,13 @@
       appendMsg(text, 'user');
       setSending(true);
       appendLoadingMsg();
+      notifyChatActivity();
 
       const payload = options.triggerId
         ? JSON.stringify({ type: 'trigger_prompt', page_token: options.pageToken || null, trigger_key: options.triggerId, text })
         : text;
 
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        connect();
-        setTimeout(() => ws && ws.send(payload), 100);
-      } else {
-        ws.send(payload);
-      }
+      sendPayload(payload);
       if (providedText === null) {
         promptEl.value = '';
         resizePrompt();

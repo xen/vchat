@@ -21,7 +21,7 @@ import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp import web
 from aiohttp_session import get_session
-from itsdangerous import URLSafeSerializer
+from itsdangerous import BadSignature, URLSafeSerializer
 from passlib.context import CryptContext
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import aliased, defer
@@ -828,6 +828,64 @@ def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
             }
         )
     return sources
+
+
+async def _initial_messages_for_chat(
+    db,
+    *,
+    chat: Chat,
+    serializer: URLSafeSerializer,
+) -> list[dict[str, Any]]:
+    history_rows = (
+        (
+            await db.execute(
+                sa.select(ChatMsg)
+                .where(ChatMsg.chat_id == chat.id)
+                .order_by(ChatMsg.created_at.asc(), ChatMsg.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    initial_messages = []
+    for row in history_rows:
+        signed_msg_id = None
+        if row.role == "assistant":
+            signed_msg_id = serializer.dumps(row.id, salt="chat_msg")
+        initial_messages.append(
+            {
+                "role": row.role,
+                "content": row.text or "",
+                "msg_id": row.id,
+                "signed_msg_id": signed_msg_id,
+                "vote": row.vote,
+                "sources": _message_sources(row),
+            }
+        )
+
+    slug_uris = {
+        src["uri"]
+        for msg in initial_messages
+        for src in msg.get("sources") or []
+        if isinstance(src, dict)
+        and src.get("uri")
+        and _is_slug_title(src.get("title"))
+    }
+    if slug_uris:
+        fresh_rows = (
+            await db.execute(sa.select(Page.uri, Page.title).where(Page.uri.in_(slug_uris)))
+        ).all()
+        uri_title_map = {r.uri: r.title for r in fresh_rows if r.title}
+        for msg in initial_messages:
+            for src in msg.get("sources") or []:
+                if not isinstance(src, dict):
+                    continue
+                fresh = uri_title_map.get(src.get("uri"))
+                if fresh:
+                    src["title"] = fresh
+                    src["display_path"] = fresh
+
+    return initial_messages
 
 
 def next_reindex_at(cron_expr: str, now: datetime) -> datetime | None:
@@ -3203,57 +3261,11 @@ async def project_chat(request):
     serializer = URLSafeSerializer(config.get("secret_key"))
     payload = serializer.dumps([request["user"].id, chat.id], salt="vchat")
     signed_chat_id = serializer.dumps(chat.id, salt="chat")
-    history_rows = (
-        (
-            await request["db"].execute(
-                sa.select(ChatMsg)
-                .where(ChatMsg.chat_id == chat.id)
-                .order_by(ChatMsg.created_at.asc(), ChatMsg.id.asc())
-            )
-        )
-        .scalars()
-        .all()
+    initial_messages = await _initial_messages_for_chat(
+        request["db"],
+        chat=chat,
+        serializer=serializer,
     )
-    initial_messages = []
-    for row in history_rows:
-        signed_msg_id = None
-        if row.role == "assistant":
-            signed_msg_id = serializer.dumps(row.id, salt="chat_msg")
-        initial_messages.append(
-            {
-                "role": row.role,
-                "content": row.text or "",
-                "msg_id": row.id,
-                "signed_msg_id": signed_msg_id,
-                "vote": row.vote,
-                "sources": _message_sources(row),
-            }
-        )
-
-    # Refresh stale slug-titles from the document table
-    slug_uris = {
-        src["uri"]
-        for msg in initial_messages
-        for src in msg.get("sources") or []
-        if isinstance(src, dict)
-        and src.get("uri")
-        and _is_slug_title(src.get("title"))
-    }
-    if slug_uris:
-        fresh_rows = (
-            await request["db"].execute(
-                sa.select(Page.uri, Page.title).where(Page.uri.in_(slug_uris))
-            )
-        ).all()
-        uri_title_map = {r.uri: r.title for r in fresh_rows if r.title}
-        for msg in initial_messages:
-            for src in msg.get("sources") or []:
-                if not isinstance(src, dict):
-                    continue
-                fresh = uri_title_map.get(src.get("uri"))
-                if fresh:
-                    src["title"] = fresh
-                    src["display_path"] = fresh
 
     project = _project_context(request)
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
@@ -3335,6 +3347,7 @@ async def _render_public_chat(request, widget: SimpleNamespace):
     user_email = request.query.get("user_email", "")
     sign = request.query.get("sign", "")
     source_page_url = request.query.get("source_page_url", "")
+    signed_resume_chat_id = request.query.get("chat_id", "").strip()
 
     if not user_uid:
         user_uid = f"guest_{uuid.uuid4().hex[:8]}"
@@ -3347,22 +3360,50 @@ async def _render_public_chat(request, widget: SimpleNamespace):
         if not hmac.compare_digest(expected_sign, sign):
             return web.HTTPForbidden(text="Invalid signature")
 
-    chat = Chat(
-        title=f"Chat for {user_name or user_uid}",
-        user_uid=user_uid,
-        meta=merge_chat_meta(
-            {"name": user_name, "email": user_email},
+    serializer = URLSafeSerializer(config.get("secret_key"))
+    if signed_resume_chat_id:
+        try:
+            resume_chat_id = serializer.loads(signed_resume_chat_id, salt="chat")
+        except BadSignature:
+            return web.HTTPForbidden(text="Invalid chat id")
+        chat = await request["db"].scalar(sa.select(Chat).where(Chat.id == resume_chat_id))
+        if not chat:
+            raise web.HTTPNotFound(text="Chat not found")
+        if chat.user_uid != user_uid or (chat.meta or {}).get("widget_code") != widget.code:
+            return web.HTTPForbidden(text="Invalid chat id")
+        resume_meta = dict(chat.meta or {})
+        if user_name:
+            resume_meta["name"] = user_name
+        if user_email:
+            resume_meta["email"] = user_email
+        resume_meta["widget_code"] = widget.code
+        chat.meta = merge_chat_meta(
+            resume_meta,
             request,
             source_page_url=source_page_url,
-        ),
-    )
-    request["db"].add(chat)
-    await request["db"].commit()
+        )
+        await request["db"].commit()
+    else:
+        chat = Chat(
+            title=f"Chat for {user_name or user_uid}",
+            user_uid=user_uid,
+            meta=merge_chat_meta(
+                {"name": user_name, "email": user_email, "widget_code": widget.code},
+                request,
+                source_page_url=source_page_url,
+            ),
+        )
+        request["db"].add(chat)
+        await request["db"].commit()
 
-    serializer = URLSafeSerializer(config.get("secret_key"))
     payload = serializer.dumps([user_uid, chat.id, widget.code], salt="vchat")
     signed_chat_id = serializer.dumps(chat.id, salt="chat")
     support_csrf_token = request.app[SIGNER_KEY].dumps({"chat_id": chat.id})
+    initial_messages = await _initial_messages_for_chat(
+        request["db"],
+        chat=chat,
+        serializer=serializer,
+    )
 
     project = _project_context(request)
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
@@ -3384,7 +3425,7 @@ async def _render_public_chat(request, widget: SimpleNamespace):
         "ai_settings_url": None,
         "support_csrf_token": support_csrf_token,
         "signed_chat_id": signed_chat_id,
-        "initial_messages": [],
+        "initial_messages": initial_messages,
     }
 
 

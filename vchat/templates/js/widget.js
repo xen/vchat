@@ -10,17 +10,94 @@
     return;
   }
 
+  var widgetCode = {{ widget_code | tojson | safe }};
   var userUid = container.getAttribute("data-user-uid");
   var userName = container.getAttribute("data-user-name") || "";
   var userEmail = container.getAttribute("data-user-email") || "";
   var sign = container.getAttribute("data-xsign") || "";
   var sourcePageUrl = container.getAttribute("data-source-page-url") || window.location.href;
   var triggerResolvePath = {{ trigger_resolve_path | tojson | safe }};
+  var chatStorageTtlMs = 30 * 60 * 1000;
   var triggerItems = [];
   var activeTrigger = null;
   var triggerShown = false;
   var hasScrolled = false;
   var showByTimeout = false;
+
+  function storageKey(suffix) {
+    return "vchat:" + widgetCode + ":" + suffix;
+  }
+
+  function readStorageJson(key) {
+    try {
+      var value = window.localStorage.getItem(key);
+      return value ? JSON.parse(value) : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeStorageJson(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {}
+  }
+
+  function removeStorage(key) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (error) {}
+  }
+
+  function getOrCreateUserUid() {
+    var configuredUid = (userUid || "").trim();
+    if (configuredUid) {
+      return configuredUid;
+    }
+    var guestKey = storageKey("guest_uid");
+    var storedGuestUid = "";
+    try {
+      storedGuestUid = window.localStorage.getItem(guestKey) || "";
+    } catch (error) {}
+    if (storedGuestUid) {
+      return storedGuestUid;
+    }
+    var generatedUid = "guest_" + Math.random().toString(16).slice(2, 10);
+    try {
+      window.localStorage.setItem(guestKey, generatedUid);
+    } catch (error) {}
+    return generatedUid;
+  }
+
+  userUid = getOrCreateUserUid();
+
+  function activeChatStorageKey() {
+    return storageKey("active_chat:" + userUid);
+  }
+
+  function readActiveChat() {
+    var key = activeChatStorageKey();
+    var value = readStorageJson(key);
+    if (!value || !value.signed_chat_id || !value.last_message_at) {
+      removeStorage(key);
+      return null;
+    }
+    if (Date.now() - Number(value.last_message_at) > chatStorageTtlMs) {
+      removeStorage(key);
+      return null;
+    }
+    return value;
+  }
+
+  function saveActiveChat(signedChatId) {
+    if (!signedChatId) {
+      return;
+    }
+    writeStorageJson(activeChatStorageKey(), {
+      signed_chat_id: signedChatId,
+      last_message_at: Date.now()
+    });
+  }
 
   // Create Styles
   var style = document.createElement("style");
@@ -254,24 +331,37 @@
     return new URL(src).origin;
   }
 
+  function buildChatUrl() {
+    var chatPath = {{ widget_chat_path | tojson | safe }};
+    var chatUrl = new URL(widgetOrigin() + chatPath);
+    var activeChat = readActiveChat();
+    if (userUid) chatUrl.searchParams.append("user_uid", userUid);
+    if (userName) chatUrl.searchParams.append("user_name", userName);
+    if (userEmail) chatUrl.searchParams.append("user_email", userEmail);
+    if (sign) chatUrl.searchParams.append("sign", sign);
+    if (activeChat) chatUrl.searchParams.append("chat_id", activeChat.signed_chat_id);
+    chatUrl.searchParams.append("source_page_url", sourcePageUrl);
+    return chatUrl.toString();
+  }
+
   function ensureIframe() {
     if (iframeLoaded && iframeEl) {
       return iframeEl;
     }
     iframeEl = document.createElement("iframe");
     iframeEl.id = "vchat-widget-iframe";
-    var chatPath = {{ widget_chat_path | tojson | safe }};
-    var chatUrl = new URL(widgetOrigin() + chatPath);
-    if (userUid) chatUrl.searchParams.append("user_uid", userUid);
-    if (userName) chatUrl.searchParams.append("user_name", userName);
-    if (userEmail) chatUrl.searchParams.append("user_email", userEmail);
-    if (sign) chatUrl.searchParams.append("sign", sign);
-    chatUrl.searchParams.append("source_page_url", sourcePageUrl);
-
-    iframeEl.src = chatUrl.toString();
+    iframeEl.src = buildChatUrl();
     iframeContainer.appendChild(iframeEl);
     iframeLoaded = true;
     return iframeEl;
+  }
+
+  function refreshIframe() {
+    if (!iframeEl) {
+      ensureIframe();
+      return;
+    }
+    iframeEl.src = buildChatUrl();
   }
 
   function openWidget() {
@@ -301,6 +391,32 @@
       return;
     }
     closeWidget();
+  });
+
+  window.addEventListener("message", function (event) {
+    if (event.origin !== widgetOrigin()) {
+      return;
+    }
+    if (!iframeEl || event.source !== iframeEl.contentWindow) {
+      return;
+    }
+    if (!event.data || event.data.type !== "vchat_chat_activity") {
+      return;
+    }
+    saveActiveChat(event.data.signed_chat_id);
+  });
+
+  window.addEventListener("message", function (event) {
+    if (event.origin !== widgetOrigin()) {
+      return;
+    }
+    if (!iframeEl || event.source !== iframeEl.contentWindow) {
+      return;
+    }
+    if (!event.data || event.data.type !== "vchat_refresh_chat") {
+      return;
+    }
+    refreshIframe();
   });
 
   function canShowTrigger() {
