@@ -96,9 +96,9 @@ _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
                     "confidence_threshold": 0.7,
                     "model": "gpt-4.1-mini",
                     "system_prompt_details": (
-                        "You are a customer support assistant. Raise the "
-                        "guardrail if questions aren't focused on customer "
-                        "inquiries, product support, and service-related questions."
+                        "Ты ассистент клиентской поддержки. Срабатывай, если "
+                        "вопросы не относятся к обращениям клиентов, поддержке "
+                        "продукта и вопросам, связанным с сервисом."
                     ),
                     "include_reasoning": False,
                 },

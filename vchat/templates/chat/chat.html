@@ -24,11 +24,9 @@
   hx-headers='{"X-CSRFToken": {{ (support_csrf_token if support_csrf_token is defined else csrf_token())|tojson }}}'>
 
   <!-- Навигация -->
-  <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
+  <header class="vchat-chat-header flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
     <div class="flex-1 gap-2 items-center">
-      <div class="flex flex-col">
-        <span class="font-bold text-sm leading-tight">{{ agent_name if agent_name else ('Виртуальный ассистент') }}</span>
-      </div>
+      <span class="vchat-agent-title leading-tight">{{ agent_name if agent_name else ('Виртуальный ассистент') }}</span>
     </div>
     <div class="flex-none">
       {% if contact_url %}
@@ -44,74 +42,45 @@
     </div>
   </header>
 
-  <!-- Chat area + sidebar side by side -->
-  <div style="flex: 1; display: flex; overflow: hidden; min-height: 0;">
+  <main id="log" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+    {% if pinned_messages %}
+    <section class="space-y-2" aria-label="{{ 'Закрепленные сообщения' }}">
+      {% set pinned_classes = {
+        'neutral': 'bg-base-200 text-base-content border-base-300',
+        'primary': 'bg-primary/10 text-primary border-primary/20',
+        'secondary': 'bg-secondary/10 text-secondary border-secondary/20',
+        'accent': 'bg-accent/10 text-accent border-accent/20',
+        'info': 'bg-info/10 text-info border-info/20',
+        'success': 'bg-success/10 text-success border-success/20',
+        'warning': 'bg-warning/10 text-warning border-warning/20'
+      } %}
+      {% for pinned in pinned_messages[:3] %}
+      {% set pinned_color = pinned.color if pinned.color in pinned_classes else 'neutral' %}
+      <div class="pinned-message-rich rounded border px-3 py-2 text-sm leading-relaxed {{ pinned_classes[pinned_color] }}">
+        {{ pinned.text|safe }}
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+    <!-- Messages will appear here -->
+  </main>
 
-    <!-- Left column: log + footer -->
-    <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
-      <main id="log" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-        {% if pinned_messages %}
-        <section class="space-y-2" aria-label="{{ 'Закрепленные сообщения' }}">
-          {% set pinned_classes = {
-            'neutral': 'bg-base-200 text-base-content border-base-300',
-            'primary': 'bg-primary/10 text-primary border-primary/20',
-            'secondary': 'bg-secondary/10 text-secondary border-secondary/20',
-            'accent': 'bg-accent/10 text-accent border-accent/20',
-            'info': 'bg-info/10 text-info border-info/20',
-            'success': 'bg-success/10 text-success border-success/20',
-            'warning': 'bg-warning/10 text-warning border-warning/20'
-          } %}
-          {% for pinned in pinned_messages[:3] %}
-          {% set pinned_color = pinned.color if pinned.color in pinned_classes else 'neutral' %}
-          <div class="pinned-message-rich rounded border px-3 py-2 text-sm leading-relaxed {{ pinned_classes[pinned_color] }}">
-            {{ pinned.text|safe }}
-          </div>
-          {% endfor %}
-        </section>
-        {% endif %}
-        <!-- Messages will appear here -->
-      </main>
-
-      <!-- Footer Input -->
-      <div class="flex-none bg-base-100 p-4 border-t border-base-200">
-        <form id="composer" class="relative w-full">
-          <textarea id="prompt"
-            class="textarea textarea-bordered textarea-md w-full pr-12 resize-none bg-base-100 focus:outline-none" rows="2"
-            placeholder="{{ 'Введите сообщение…' }}"></textarea>
-          <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm absolute bottom-3 right-3"
-            aria-label="{{ 'Отправить' }}">
-            {{ 'Отправить' }}
-          </button>
-        </form>
-        <div id="status" class="text-xs text-left mt-2 opacity-50">
+  <!-- Footer Input -->
+  <div class="vchat-composer flex-none bg-base-100 p-4 border-t border-base-200">
+    <form id="composer" class="w-full">
+      <textarea id="prompt"
+        class="vchat-prompt textarea textarea-bordered textarea-md w-full resize-none bg-base-100 focus:outline-none" rows="1"
+        placeholder="{{ 'Введите сообщение…' }}"></textarea>
+      <div class="vchat-composer-toolbar">
+        <div id="status" class="vchat-status text-xs text-left">
           <span class="badge badge-xs badge-warning mr-1"></span> {{ 'подключение…' }}
         </div>
-      </div>
-    </div>
-
-    <!-- Resize handle — between left column and sidebar, always accessible -->
-    <div id="sources-sidebar-resizer"
-         style="width: 5px; flex-shrink: 0; cursor: col-resize; background: rgba(0,0,0,0.08); transition: background 0.15s;"
-         onmouseenter="this.style.background='rgba(0,0,0,0.2)'"
-         onmouseleave="this.style.background='rgba(0,0,0,0.08)'"></div>
-
-    <!-- Sources Sidebar (part of layout, not overlay) -->
-    <aside id="sources-sidebar"
-      class="bg-base-100"
-      style="width: 0; min-width: 0; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; user-select: none;">
-      <div style="flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; min-width: 14rem;"
-           class="border-b border-base-200">
-        <span class="font-semibold text-sm">{{ 'Источники' }}</span>
-        <button id="sources-sidebar-close" class="btn btn-ghost btn-xs btn-square">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+        <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm"
+          aria-label="{{ 'Отправить' }}">
+          {{ 'Отправить' }}
         </button>
       </div>
-      <div id="sources-sidebar-list"
-           style="flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.875rem; user-select: text; min-width: 14rem;">
-      </div>
-    </aside>
+    </form>
   </div>
 
   <script type="module">
@@ -120,77 +89,18 @@
     const formEl = document.getElementById('composer');
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
-    const csrfToken = {{ csrf_token() | tojson | safe }};
+    const csrfToken = {{ (support_csrf_token if support_csrf_token is defined else csrf_token()) | tojson | safe }};
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
     const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
 
     let ws;
     let currentBotBubble = null;
-
-    const sidebarEl = document.getElementById('sources-sidebar');
-    const sidebarListEl = document.getElementById('sources-sidebar-list');
-    const sidebarCloseEl = document.getElementById('sources-sidebar-close');
-    const sidebarResizerEl = document.getElementById('sources-sidebar-resizer');
-
-    let sidebarOpen = false;
+    let sourceListIdCounter = 0;
+    const loadingAnswerHtml = '<span class="loading loading-dots loading-sm" aria-label="Ответ загружается"></span>';
 
     function escapeHtml(str) {
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
-
-    function setSidebarContent(sources) {
-      sidebarListEl.innerHTML = sources.map((s) => {
-        const title = escapeHtml(s.title || '{{ "Источник" }}');
-        const href = escapeHtml(s.uri || '#');
-        return `<a href="${href}" target="_blank" rel="noopener" style="color: var(--color-primary, #6366f1); word-break: break-word; line-height: 1.4; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${title}</a>`;
-      }).join('');
-    }
-
-    const SIDEBAR_WIDTH = Math.max(224, Math.round(window.innerWidth * 0.33));
-
-    function openSidebar(sources) {
-      setSidebarContent(sources);
-      if (!sidebarOpen) {
-        sidebarOpen = true;
-        sidebarEl.style.transition = 'none';
-        sidebarEl.style.width = '0';
-        requestAnimationFrame(() => {
-          sidebarEl.style.transition = 'width 0.2s ease-in-out';
-          sidebarEl.style.width = SIDEBAR_WIDTH + 'px';
-        });
-      }
-    }
-
-    function closeSidebar() {
-      sidebarOpen = false;
-      sidebarEl.style.transition = 'width 0.2s ease-in-out';
-      sidebarEl.style.width = '0';
-    }
-
-    sidebarCloseEl.addEventListener('click', closeSidebar);
-
-    // Resize: drag the handle to change sidebar width
-    sidebarResizerEl.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      sidebarEl.style.transition = 'none';
-      const startX = e.clientX;
-      const startW = sidebarEl.getBoundingClientRect().width || SIDEBAR_WIDTH;
-      const vw = window.innerWidth;
-
-      function onMove(e) {
-        const delta = startX - e.clientX;
-        const newW = Math.min(Math.max(startW + delta, 224), vw * 0.6);
-        sidebarEl.style.width = newW + 'px';
-        sidebarOpen = true;
-      }
-      function onUp() {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onUp);
-        if (!sidebarOpen) closeSidebar();
-      }
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
 
     function wsUrl() {
       const payload = '{{ payload }}';
@@ -204,6 +114,18 @@
       if (type === 'error') badgeClass = 'badge-error';
 
       statusEl.innerHTML = `<span class="badge badge-xs ${badgeClass} mr-1"></span> ${text}`;
+    }
+
+    function resizePrompt() {
+      const styles = window.getComputedStyle(promptEl);
+      const lineHeight = parseFloat(styles.lineHeight) || 20;
+      const padding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+      const border = parseFloat(styles.borderTopWidth) + parseFloat(styles.borderBottomWidth);
+      const maxHeight = Math.ceil(lineHeight * 5 + padding + border);
+      promptEl.style.height = 'auto';
+      const nextHeight = Math.min(promptEl.scrollHeight, maxHeight);
+      promptEl.style.height = `${nextHeight}px`;
+      promptEl.style.overflowY = promptEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
     }
 
     function attachStructuredContext(bubble, sources = [], reasonCode = null) {
@@ -259,17 +181,40 @@
           : `${count} {{ "источников" }}`;
 
       const wrapper = document.createElement('div');
+      wrapper.className = 'vchat-source-widget';
       wrapper.setAttribute('data-structured-context', 'true');
+      wrapper.setAttribute('data-open', 'false');
 
       const btn = document.createElement('button');
+      const listId = `vchat-source-list-${sourceListIdCounter++}`;
       btn.type = 'button';
-      btn.style.cssText = 'display: inline-flex; align-items: center; gap: 0.375rem; margin-top: 0.5rem; padding: 0.25rem 0.75rem; font-size: 0.75rem; border-radius: 9999px; border: 1.5px solid rgba(0,0,0,0.3); background: transparent; cursor: pointer; transition: border-color 0.15s, background 0.15s;';
-      btn.onmouseenter = () => { btn.style.background = 'rgba(0,0,0,0.05)'; btn.style.borderColor = 'rgba(0,0,0,0.5)'; };
-      btn.onmouseleave = () => { btn.style.background = 'transparent'; btn.style.borderColor = 'rgba(0,0,0,0.3)'; };
-      btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" style="width:0.875rem;height:0.875rem;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span>${label}</span>`;
-      btn.addEventListener('click', () => openSidebar(unique));
+      btn.className = 'vchat-source-button';
+      btn.setAttribute('aria-expanded', 'false');
+      btn.setAttribute('aria-controls', listId);
+      btn.innerHTML = `<span class="vchat-source-button-label"><svg xmlns="http://www.w3.org/2000/svg" style="width:0.875rem;height:0.875rem;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span>{{ "Источники" }}</span></span><span class="vchat-source-count">${count}</span>`;
+
+      const list = document.createElement('div');
+      list.id = listId;
+      list.className = 'vchat-source-list';
+      list.setAttribute('data-open', 'false');
+      list.innerHTML = unique.map((source, index) => {
+        const fallbackTitle = '{{ "Источник" }}';
+        const title = escapeHtml(source.title || `${fallbackTitle} ${index + 1}`);
+        if (!source.uri) {
+          return `<div class="vchat-source-link" aria-disabled="true">${title}</div>`;
+        }
+        return `<a class="vchat-source-link" href="${escapeHtml(source.uri)}" target="_blank" rel="noopener">${title}</a>`;
+      }).join('');
+
+      btn.addEventListener('click', () => {
+        const isOpen = list.getAttribute('data-open') === 'true';
+        list.setAttribute('data-open', isOpen ? 'false' : 'true');
+        wrapper.setAttribute('data-open', isOpen ? 'false' : 'true');
+        btn.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+      });
 
       wrapper.appendChild(btn);
+      wrapper.appendChild(list);
       bubble.appendChild(wrapper);
     }
 
@@ -288,31 +233,23 @@
       footer.innerHTML = `
         <button class="btn btn-ghost btn-xs btn-square ${vote === true ? 'text-primary' : ''}"
                 aria-label="Upvote"
-                hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
-                data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}"
-                hx-swap="outerHTML"
-                hx-target="#${areaId}">
+                data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === true ? 'none' : 'up'}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10.5a1.5 1.5 0 113 0v6a1.5 1.5 0 01-3 0v-6zM6 10.333v5.43a2 2 0 001.106 1.79l.05.025A4 4 0 008.943 18h5.416a2 2 0 001.962-1.608l1.2-6A2 2 0 0015.56 8H12V4a2 2 0 00-2-2 1 1 0 00-1 1v.667a4 4 0 01-.8 2.4L6.8 7.933a4 4 0 00-.8 2.4z" /></svg>
         </button>
         <button class="btn btn-ghost btn-xs btn-square ${vote === false ? 'text-primary' : ''}"
                 aria-label="Downvote"
-                hx-post="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
-                data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}"
-                hx-swap="outerHTML"
-                hx-target="#${areaId}">
+                data-vote-url="/actions/chat/vote/${signedMsgId}?vote=${vote === false ? 'none' : 'down'}">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M18 9.5a1.5 1.5 0 11-3 0v-6a1.5 1.5 0 013 0v6zM14 9.667v-5.43a2 2 0 00-1.105-1.79l-.05-.025A4 4 0 0011.055 2H5.64a2 2 0 00-1.962 1.608l-1.2 6A2 2 0 004.44 12H8v4a2 2 0 002 2 1 1 0 001-1v-.667a4 4 0 01.8-2.4l1.4-1.866a4 4 0 00.8-2.4z" /></svg>
         </button>
       `;
       chatDiv.appendChild(footer);
-      if (window.htmx && typeof window.htmx.process === 'function') {
-        window.htmx.process(footer);
-      }
     }
 
     function appendMsg(text, type = 'bot', isPartial = false, msgId = null, signedMsgId = null, vote = null, sources = [], reasonCode = null) {
       if (type === 'bot' && isPartial && currentBotBubble) {
         const rawText = (currentBotBubble.dataset.raw || '') + text;
         currentBotBubble.dataset.raw = rawText;
+        delete currentBotBubble.dataset.loading;
         currentBotBubble.querySelector('.markdown-body').innerHTML = marked.parse(rawText);
         logEl.scrollTop = logEl.scrollHeight;
         return;
@@ -361,6 +298,38 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
+    function appendLoadingMsg() {
+      if (currentBotBubble?.dataset.loading === 'true') {
+        return;
+      }
+
+      const chatDiv = document.createElement('div');
+      chatDiv.className = 'chat chat-start';
+
+      const header = document.createElement('div');
+      header.className = 'chat-header text-xs opacity-50 mb-1';
+      header.textContent = '{{ agent_name if agent_name else "Ассистент" }}';
+      chatDiv.appendChild(header);
+
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble chat-bubble-base-200 w-full max-w-sm sm:max-w-md md:max-w-lg';
+      bubble.dataset.raw = '';
+      bubble.dataset.loading = 'true';
+      bubble.innerHTML = `<div class="markdown-body">${loadingAnswerHtml}</div>`;
+      chatDiv.appendChild(bubble);
+
+      currentBotBubble = bubble;
+      logEl.appendChild(chatDiv);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function removeLoadingMsg() {
+      if (currentBotBubble?.dataset.loading === 'true') {
+        currentBotBubble.closest('.chat')?.remove();
+        currentBotBubble = null;
+      }
+    }
+
     function setSending(sending) {
       sendBtn.disabled = sending;
       promptEl.disabled = sending;
@@ -395,9 +364,6 @@
       const nextArea = template.content.firstElementChild;
       if (!nextArea) return;
       currentArea.replaceWith(nextArea);
-      if (window.htmx && typeof window.htmx.process === 'function') {
-        window.htmx.process(nextArea);
-      }
     }
 
     async function reportSession() {
@@ -432,11 +398,13 @@
       ws.onclose = () => {
         updateStatus('{{ "отключено" }}', 'warning');
         setSending(false);
+        removeLoadingMsg();
         currentBotBubble = null;
       };
       ws.onerror = () => {
         updateStatus('{{ "ошибка" }}', 'error');
         setSending(false);
+        removeLoadingMsg();
         currentBotBubble = null;
       };
       ws.onmessage = (ev) => {
@@ -452,10 +420,11 @@
           if (data.type === 'suggested_actions') {
             if (data.actions && data.actions.length > 0) {
               const actionsDiv = document.createElement('div');
-              actionsDiv.className = 'pl-12 flex flex-wrap gap-2 mb-4'; // Added margin-bottom for spacing
+              actionsDiv.className = 'vchat-suggested-actions chat chat-end';
               data.actions.forEach(action => {
                 const btn = document.createElement('button');
-                btn.className = 'btn btn-xs btn-outline bg-base-100';
+                btn.type = 'button';
+                btn.className = 'vchat-suggested-action';
                 btn.textContent = action;
                 btn.onclick = () => {
                   promptEl.value = action;
@@ -473,9 +442,10 @@
                 appendMsg(data.content, 'bot', true);
               }
             } else if (currentBotBubble) {
-              if (data.content) {
-                const rawText = (currentBotBubble.dataset.raw || '') + data.content;
+              if (data.content || currentBotBubble.dataset.loading === 'true') {
+                const rawText = (currentBotBubble.dataset.raw || '') + (data.content || '');
                 currentBotBubble.dataset.raw = rawText;
+                delete currentBotBubble.dataset.loading;
                 currentBotBubble.querySelector('.markdown-body').innerHTML = marked.parse(rawText);
               }
               attachStructuredContext(currentBotBubble, data.sources || [], data.reason_code || null);
@@ -499,11 +469,13 @@
               setSending(false);
             }
           } else {
+            removeLoadingMsg();
             appendMsg(`Ошибка: ${data.error} ${data.status ? '(' + data.status + ')' : ''}\n${typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)}`, 'error');
             setSending(false);
           }
         } catch (e) {
           console.error('WS handler error', e, data);
+          removeLoadingMsg();
           setSending(false);
         }
       };
@@ -517,6 +489,7 @@
 
       appendMsg(text, 'user');
       setSending(true);
+      appendLoadingMsg();
 
       const payload = options.triggerId
         ? JSON.stringify({ type: 'trigger_prompt', page_token: options.pageToken || null, trigger_key: options.triggerId, text })
@@ -530,6 +503,7 @@
       }
       if (providedText === null) {
         promptEl.value = '';
+        resizePrompt();
       }
     };
 
@@ -559,6 +533,7 @@
         submitMessage();
       }
     });
+    promptEl.addEventListener('input', resizePrompt);
 
     window.addEventListener('message', (event) => {
       const data = event.data || {};
@@ -590,6 +565,7 @@
       );
     }
 
+    resizePrompt();
     connect();
     reportSession();
 

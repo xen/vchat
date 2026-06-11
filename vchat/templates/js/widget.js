@@ -25,6 +25,27 @@
   // Create Styles
   var style = document.createElement("style");
   style.innerHTML = `
+        @font-face {
+            font-family: "SB Sans Text";
+            src: url("${widgetOrigin()}/static/chat/SBSansText-Regular.ttf") format("truetype");
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "SB Sans Text";
+            src: url("${widgetOrigin()}/static/chat/SBSansText-SemiBold.ttf") format("truetype");
+            font-weight: 600;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: "SB Sans Display";
+            src: url("${widgetOrigin()}/static/chat/SBSansDisplay-SemiBold.ttf") format("truetype");
+            font-weight: 600;
+            font-style: normal;
+            font-display: swap;
+        }
         #vchat-widget-button {
             position: fixed;
             bottom: 20px;
@@ -32,35 +53,103 @@
             width: 60px;
             height: 60px;
             border-radius: 30px;
-            background-color: #000;
-            color: #fff;
-            border: none;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            background: linear-gradient(135deg, #b2eb38 0%, #6beac7 50%, #31c2a7 100%);
+            color: #1c4f5f;
+            border: 1px solid rgba(255, 255, 255, 0.72);
+            box-shadow: 0 16px 34px rgba(28, 79, 95, 0.2);
             cursor: pointer;
             z-index: 9999;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: transform 0.3s ease;
+            isolation: isolate;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        #vchat-widget-button::before,
+        #vchat-widget-button::after {
+            content: "";
+            position: absolute;
+            inset: -12px;
+            z-index: -1;
+            border: 1px solid rgba(49, 194, 167, 0.22);
+            border-radius: 9999px;
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.72);
+        }
+        #vchat-widget-button::after {
+            inset: -22px;
+            border-color: rgba(178, 235, 56, 0.18);
+            animation-delay: 1.2s;
+        }
+        #vchat-widget-button:not(.vchat-widget-open)::before,
+        #vchat-widget-button:not(.vchat-widget-open)::after {
+            animation: vchat-widget-rings 2.8s ease-out infinite;
+        }
+        #vchat-widget-button:not(.vchat-widget-open)::after {
+            animation-delay: 1.2s;
+        }
+        #vchat-widget-button:not(.vchat-widget-open) {
+            box-shadow:
+                0 16px 34px rgba(28, 79, 95, 0.2),
+                0 0 0 12px rgba(107, 234, 199, 0.08),
+                0 0 0 24px rgba(178, 235, 56, 0.04);
         }
         #vchat-widget-button:hover {
-            transform: scale(1.05);
+            transform: translateY(-2px) scale(1.03);
+        }
+        #vchat-widget-button .vchat-widget-icon {
+            width: 28px;
+            height: 28px;
+            overflow: visible;
+            transition: opacity 0.16s ease, transform 0.16s ease;
+        }
+        #vchat-widget-button .vchat-widget-icon-path {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.15;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vector-effect: non-scaling-stroke;
+            filter: drop-shadow(0 1px 1px rgba(28, 79, 95, 0.16));
+        }
+        #vchat-widget-button .vchat-widget-icon-dot {
+            fill: currentColor;
+            transform-origin: center;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            filter: drop-shadow(0 1px 1px rgba(28, 79, 95, 0.16));
+        }
+        #vchat-widget-button:not(.vchat-widget-open):hover {
+            box-shadow:
+                0 20px 42px rgba(28, 79, 95, 0.26),
+                0 0 0 14px rgba(107, 234, 199, 0.14),
+                0 0 0 28px rgba(178, 235, 56, 0.08);
+        }
+        #vchat-widget-button:not(.vchat-widget-open):hover::before,
+        #vchat-widget-button:not(.vchat-widget-open):hover::after {
+            border-color: rgba(49, 194, 167, 0.36);
+            animation-duration: 2.25s;
+        }
+        #vchat-widget-button:focus-visible,
+        #vchat-widget-trigger:focus-visible {
+            outline: 3px solid rgba(107, 234, 199, 0.45);
+            outline-offset: 3px;
         }
         #vchat-widget-trigger {
             position: fixed;
             bottom: 92px;
             right: 20px;
             max-width: min(320px, calc(100vw - 40px));
-            border: none;
-            border-radius: 10px;
-            background: #fff;
-            color: #111;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+            border: 1px solid rgba(49, 194, 167, 0.22);
+            border-radius: 16px 16px 6px 16px;
+            background: linear-gradient(180deg, #ffffff 0%, #f7fffc 100%);
+            color: #333f48;
+            box-shadow: 0 18px 42px rgba(28, 79, 95, 0.16);
             cursor: pointer;
             z-index: 9998;
             display: none;
-            padding: 12px 14px;
-            font: 500 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            padding: 14px 16px;
+            font: 400 14px/1.35 "SB Sans Text", Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             text-align: left;
             animation: vchat-trigger-in 0.28s ease-out;
         }
@@ -71,9 +160,11 @@
             bottom: -8px;
             width: 16px;
             height: 16px;
-            background: #fff;
+            background: #f7fffc;
             transform: rotate(45deg);
-            box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.06);
+            border-right: 1px solid rgba(49, 194, 167, 0.18);
+            border-bottom: 1px solid rgba(49, 194, 167, 0.18);
+            box-shadow: 4px 4px 10px rgba(28, 79, 95, 0.06);
         }
         #vchat-widget-trigger:hover {
             transform: translateY(-1px);
@@ -81,6 +172,18 @@
         @keyframes vchat-trigger-in {
             from { opacity: 0; transform: translateY(8px) scale(0.98); }
             to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes vchat-widget-rings {
+            0% { opacity: 0; transform: scale(0.72); }
+            18% { opacity: 0.38; }
+            72% { opacity: 0.1; }
+            100% { opacity: 0; transform: scale(1.42); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #vchat-widget-button::before,
+            #vchat-widget-button::after {
+                animation: none !important;
+            }
         }
         #vchat-widget-iframe-container {
             position: fixed;
@@ -90,8 +193,9 @@
             height: 600px;
             max-height: calc(100vh - 110px);
             background: #fff;
-            border-radius: 12px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(49, 194, 167, 0.2);
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(28, 79, 95, 0.22);
             z-index: 9999;
             display: none;
             overflow: hidden;
@@ -116,15 +220,16 @@
                 right: 20px;
             }
         }
-    `;
+  `;
   document.head.appendChild(style);
 
   // Create Button
   var button = document.createElement("button");
   button.id = "vchat-widget-button";
-  button.innerHTML =
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
-  button.title = "Ask AI Support";
+  button.title = "Спросить ассистента";
+  var closedWidgetIconSvg =
+    '<svg class="vchat-widget-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path class="vchat-widget-icon-path" d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+  button.innerHTML = closedWidgetIconSvg;
   document.body.appendChild(button);
 
   var triggerButton = document.createElement("button");
@@ -168,6 +273,7 @@
 
   function openWidget() {
     isOpen = true;
+    button.classList.add("vchat-widget-open");
     iframeContainer.style.display = "flex";
     button.innerHTML =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
@@ -176,9 +282,9 @@
 
   function closeWidget() {
     isOpen = false;
+    button.classList.remove("vchat-widget-open");
     iframeContainer.style.display = "none";
-    button.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+    button.innerHTML = closedWidgetIconSvg;
   }
 
   function canShowTrigger() {

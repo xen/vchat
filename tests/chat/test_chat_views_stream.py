@@ -34,6 +34,7 @@ class _FakeProvider:
 @dataclass
 class _FakeModel:
     id: str = "gpt-4o-mini"
+    max_tokens: int = 16384
 
 
 @dataclass
@@ -368,6 +369,41 @@ def test_extract_total_tokens_variants() -> None:
     assert chat_views.extract_total_tokens("bad") == 0
 
 
+def test_build_generation_context_appends_answer_format_policy_to_custom_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        chat_views,
+        "resolve_ai_settings",
+        lambda provider_id, model_id: (_FakeProvider(provider_id), _FakeModel(model_id)),
+    )
+
+    ctx = chat_views.build_generation_context(
+        None,
+        SimpleNamespace(system_prompt="Custom system prompt"),
+    )
+
+    assert ctx.system_prompt.startswith("Custom system prompt\n\n")
+    assert chat_views.ANSWER_FORMAT_POLICY in ctx.system_prompt
+
+
+def test_build_chat_completion_messages_normalizes_developer_role() -> None:
+    messages = [
+        {"role": "user", "content": "previous"},
+        {"role": "developer", "content": "[policy]\n{}"},
+        {"role": "developer", "content": "[context]\ntext"},
+        {"role": "user", "content": "question"},
+    ]
+
+    outbound = chat_views.build_chat_completion_messages("sys", messages)
+
+    assert outbound == [
+        {"role": "system", "content": "sys\n\n[policy]\n{}\n\n[context]\ntext"},
+        {"role": "user", "content": "previous"},
+        {"role": "user", "content": "question"},
+    ]
+
+
 @pytest.mark.asyncio
 async def test_ai_chat_stream_guardrails_client_mode(
     monkeypatch: pytest.MonkeyPatch,
@@ -419,9 +455,10 @@ async def test_ai_chat_stream_guardrails_client_mode(
 
     class _Completions:
         async def create(self, **kwargs):
-            _ = kwargs
+            captured_request.update(kwargs)
             return _gen()
 
+    captured_request: dict[str, Any] = {}
     guardrails_client = SimpleNamespace(
         chat=SimpleNamespace(completions=_Completions())
     )
@@ -432,7 +469,10 @@ async def test_ai_chat_stream_guardrails_client_mode(
     events = [
         event
         async for event in chat_views.ai_chat_stream(
-            [{"role": "user", "content": "hi"}],
+            [
+                {"role": "developer", "content": "[context]\nctx"},
+                {"role": "user", "content": "hi"},
+            ],
             _FakeCtx(_FakeProvider(), _FakeModel()),
         )
     ]
@@ -455,6 +495,14 @@ async def test_ai_chat_stream_guardrails_client_mode(
     last = events[-1]
     assert last["event"] == "assistant_message"
     assert last["message"]["content"] == "Hello world"
+    assert captured_request["messages"][:2] == [
+        {"role": "system", "content": "sys\n\n[context]\nctx"},
+        {"role": "user", "content": "hi"},
+    ]
+    assert captured_request["max_tokens"] == chat_views.CHAT_RESPONSE_MAX_TOKENS
+    assert all(
+        message["role"] != "developer" for message in captured_request["messages"]
+    )
 
 
 @pytest.mark.asyncio
@@ -532,6 +580,7 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
     class _Session:
         def __init__(self, status=200):
             self.status = status
+            self.posts: list[dict[str, Any]] = []
 
         async def __aenter__(self):
             return self
@@ -541,16 +590,21 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
             return False
 
         def post(self, *args, **kwargs):
-            _ = args, kwargs
+            _ = args
+            self.posts.append(kwargs)
             return _Resp(status=self.status)
 
+    session = _Session(status=200)
     monkeypatch.setattr(
-        chat_views.aiohttp, "ClientSession", lambda: _Session(status=200)
+        chat_views.aiohttp, "ClientSession", lambda: session
     )
     events = [
         event
         async for event in chat_views.ai_chat_stream(
-            [{"role": "user", "content": "x"}],
+            [
+                {"role": "developer", "content": "[context]\nctx"},
+                {"role": "user", "content": "x"},
+            ],
             _FakeCtx(_FakeProvider(), _FakeModel()),
         )
     ]
@@ -558,6 +612,13 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
     assert any(e.get("event") == "tool_call" for e in events)
     assert events[-1]["event"] == "assistant_message"
     assert events[-1]["message"]["content"] == "AB"
+    posted_messages = session.posts[0]["json"]["messages"]
+    assert posted_messages[:2] == [
+        {"role": "system", "content": "sys\n\n[context]\nctx"},
+        {"role": "user", "content": "x"},
+    ]
+    assert session.posts[0]["json"]["max_tokens"] == chat_views.CHAT_RESPONSE_MAX_TOKENS
+    assert all(message["role"] != "developer" for message in posted_messages)
 
     monkeypatch.setattr(
         chat_views.aiohttp, "ClientSession", lambda: _Session(status=500)

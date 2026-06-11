@@ -60,6 +60,14 @@ TRIVIAL_REGEX = re.compile(r"|".join(TRIVIAL_PATTERNS), re.IGNORECASE)
 CACHED_TRIGGER_STREAM_CHARS = 32
 CACHED_TRIGGER_STREAM_DELAY_SECONDS = 0.06
 
+ANSWER_FORMAT_POLICY = """## Формат ответа
+- Отвечай кратко: обычно 2-5 коротких абзацев или короткий список; расширяй ответ только по явной просьбе пользователя.
+- Не возвращай Markdown-таблицы и не оформляй данные таблицами. Если нужно сравнение, используй короткий список.
+- Не вставляй большие фрагменты исходного текста. Пересказывай своими словами и веди пользователя к источникам через inline-цитаты.
+- Не включай блоки кода, псевдокод или Python-примеры, если пользователь прямо не попросил код.
+- Если вопрос требует подробностей, дай сжатый вывод и предложи открыть источники в интерфейсе для деталей.
+"""
+
 
 def is_trivial_query(text: str) -> bool:
     """Check if the query is a simple greeting or test compatible with skipping RAG."""
@@ -126,10 +134,30 @@ def build_generation_context(
     provider_id = config.get("chat_provider")
     model_id = config.get("chat_model")
     provider, model = resolve_ai_settings(provider_id, model_id)
+    custom_prompt = (widget.system_prompt if widget is not None else "") or ""
     system_prompt = (
-        widget.system_prompt if widget is not None else ""
-    ) or SYSTEM_PROMPT
+        "\n\n".join([custom_prompt, ANSWER_FORMAT_POLICY])
+        if custom_prompt
+        else SYSTEM_PROMPT
+    )
     return GenerationContext(provider, model, system_prompt)
+
+
+def build_chat_completion_messages(
+    system_prompt: str,
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    developer_contents = [
+        str(message.get("content") or "")
+        for message in messages
+        if message.get("role") == "developer"
+    ]
+    outbound_messages = [
+        message for message in messages if message.get("role") != "developer"
+    ]
+    if developer_contents:
+        system_prompt = "\n\n".join([system_prompt, *developer_contents])
+    return [{"role": "system", "content": system_prompt}, *outbound_messages]
 
 
 async def generate_suggestions(
@@ -155,20 +183,16 @@ async def generate_suggestions(
     # We only need the last few messages to understand context
     recent_messages = messages[-4:]
 
-    prompt = [
-        {
-            "role": "system",
-            "content": (
-                "You are a helpful assistant. Based on the conversation history, "
-                "suggest 3 short, concise follow-up questions or actions the user might want to take next. "
-                'Return ONLY a raw JSON array of strings, e.g. ["Action 1", "Action 2"]. '
-                "Keep them relevant to the workspace context if clear. "
-                "Do not return markdown formatting."
-            ),
-        },
-    ]
+    suggestion_system_prompt = (
+        "Ты полезный ассистент. По истории диалога предложи 3 коротких "
+        "следующих вопроса или действия, которые могут понадобиться "
+        "пользователю. Сохраняй ясный, спокойный, доброжелательный и "
+        "вдохновляющий тон бренда. Верни ТОЛЬКО сырой JSON-массив строк, "
+        'например ["Действие 1", "Действие 2"]. Если контекст пространства '
+        "понятен, учитывай его. Не возвращай Markdown-разметку."
+    )
+    prompt = build_chat_completion_messages(suggestion_system_prompt, recent_messages)
 
-    prompt.extend(recent_messages)
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -251,6 +275,7 @@ request_logger = logging.getLogger("vchat.chat.requests")
 OPENAI_API_KEY = config.get("openai_api_key")
 OPENAI_BASE_URL = config.get("openai_base_url", "https://api.openai.com/v1")
 OPENAI_MODEL = config.get("openai_model", "gpt-4o-mini")
+CHAT_RESPONSE_MAX_TOKENS = int(config.get("chat_response_max_tokens", 900))
 GIGACHAT_OAUTH_TIMEOUT_SECONDS = float(
     config.get("gigachat_oauth_timeout_seconds", 15.0)
 )
@@ -265,37 +290,40 @@ SECRET_KEY = config.get("secret_key")
 CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "celery")
 
 # System prompt for chat
-SYSTEM_PROMPT = """## Role and Objective
-You are a friendly and helpful AI assistant.
+SYSTEM_PROMPT = f"""## Роль и цель
+Ты дружелюбный и полезный ИИ-ассистент бренда «Вклад в будущее» в экосистеме Сбера.
+Помогай людям находить новые возможности, получать новый опыт и уверенно двигаться к цели.
 
-## Instructions
-- Always reply in the same language as the user's message.
-- Carefully review the entire chat history before responding; ensure replies are fully
-informed by previous context.
-- Deliver complete and accurate information and real code or data—never use placeholders
-or omit factual content.
-- If a response reaches the character limit, stop and wait for the user to prompt with
-"continue"; do not condense or leave information incomplete.
-- Accuracy is paramount—incorrect answers may result in penalties.
-- Never create or infer information not grounded in factual context.
-- If indexed context does not contain the requested answer, say it was not found in
-the indexed sources; do not guess, and do not cite unrelated context.
-- Do not miss or omit any essential or critical context; prioritize contextual relevance
-in every response.
-- Follow all Answering Rules below for every reply.
-- Deliver thoughtful, well-considered responses; reason internally before replying. Do
-not reveal internal reasoning.
-- Use inline citations in the format [[citation:ID]] when referring to context.
-- Use only citation IDs that appear in the provided context snippets; never invent
-citation IDs.
-- Do not list sources at the end; explicit source blocks are handled by the UI.
+## Tone of voice
+- Говори ясно, спокойно и по-человечески.
+- Будь открытым, доброжелательным и вдохновляющим, но не пафосным.
+- Держи экспертный тон без высокомерия: объясняй сложное простыми словами.
+- Показывай технологии как удобный инструмент, который помогает человеку менять взгляд на задачу и пробовать новое.
+- Подсвечивай следующий полезный шаг, когда это уместно.
 
-## Answering Rules (strict order):
-1. Integrate expert-level knowledge and clear, stepwise reasoning to deliver accurate,
-detailed answers with concrete examples and actionable details.
-2. Approach every response as if it could lead to a significant reward—aim for excellence.
-3. Treat every answer as critically important to the user's career or objectives.
-4. Ensure a conversational, natural, and human-like tone for all responses.
+## Инструкции
+- Всегда отвечай на языке сообщения пользователя.
+- Внимательно учитывай всю историю чата перед ответом.
+- Давай полную и точную информацию, реальный код или данные; не используй заглушки и не пропускай факты.
+- Если ответ упирается в лимит длины, остановись и дождись просьбы пользователя продолжить; не сжимай и не обрывай важные детали.
+- Точность важнее всего: не выдумывай и не достраивай факты без опоры на контекст.
+- Если в индексированных источниках нет ответа, прямо скажи, что ответ не найден в источниках; не угадывай и не цитируй нерелевантный контекст.
+- Не упускай критически важный контекст; каждый ответ должен быть релевантен запросу.
+- Обдумывай ответ перед отправкой, но не раскрывай внутренние рассуждения.
+- При ссылке на контекст используй inline-цитаты в формате [[citation:ID]].
+- Используй только ID цитат, которые есть в предоставленных фрагментах контекста; не придумывай ID.
+- Не добавляй список источников в конце: блок источников формирует интерфейс.
+- Use inline citations in the format [[citation:ID]].
+- Use only citation IDs that appear in the provided context snippets; never invent citation IDs.
+- If the indexed context does not contain the requested answer, say that the answer was not found in the indexed sources; do not guess and do not cite unrelated context.
+
+{ANSWER_FORMAT_POLICY}
+
+## Правила ответа
+1. Отвечай точно, структурно и с конкретными примерами или действиями, когда они нужны.
+2. Сохраняй естественный разговорный тон.
+3. Если данных не хватает, задай короткий уточняющий вопрос.
+4. Если можно помочь пользователю продвинуться дальше, предложи следующий шаг.
 """
 
 # Tools configuration - empty for now (tools.py removed)
@@ -343,14 +371,11 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
 
     if guardrails_client is not None:
         stream = await guardrails_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": current_system_prompt},
-                *messages,
-            ],
+            messages=build_chat_completion_messages(current_system_prompt, messages),
             model=model,
             temperature=0.2,
             stream=True,
-            max_tokens=2048,
+            max_tokens=min(CHAT_RESPONSE_MAX_TOKENS, ctx.model.max_tokens),
             stream_options={"include_usage": True},
         )
         async for guarded_chunk in stream:
@@ -444,13 +469,16 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                     },
                     json={
                         "model": model,
-                        "messages": [
-                            {"role": "system", "content": current_system_prompt},
-                            *messages,
-                        ],
+                        "messages": build_chat_completion_messages(
+                            current_system_prompt,
+                            messages,
+                        ),
                         "temperature": 0.2,
                         "stream": True,
-                        "max_tokens": 2048,
+                        "max_tokens": min(
+                            CHAT_RESPONSE_MAX_TOKENS,
+                            ctx.model.max_tokens,
+                        ),
                         "stream_options": {"include_usage": True},
                     },
                     timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),

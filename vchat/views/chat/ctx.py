@@ -565,6 +565,11 @@ def loadrerank():
     return _rerank_model
 
 
+def warmup_models() -> None:
+    _get_embed_model()
+    loadrerank()
+
+
 async def tail_messages(
     db: AsyncSession,
     chat_id: str,

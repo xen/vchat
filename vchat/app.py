@@ -95,6 +95,11 @@ async def create_app() -> Application:
         async with async_session_factory() as session:
             await session.execute(sa.text("SELECT 1"))
 
+    async def warmup_chat_models(app):
+        from vchat.views.chat.ctx import warmup_models
+
+        warmup_models()
+
     async def close_redis(app):
         await app[REDIS_KEY].aclose()
 
@@ -102,6 +107,7 @@ async def create_app() -> Application:
         await engine.dispose()
 
     app.on_startup.append(warmup_db)
+    app.on_startup.append(warmup_chat_models)
     app.on_cleanup.append(close_redis)
     app.on_cleanup.append(dispose_db)
 

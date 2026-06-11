@@ -9,7 +9,7 @@
   <body class="flex flex-col h-[100dvh] bg-base-100 text-base-content antialiased overflow-hidden">
 
     <!-- Navbar -->
-    <header class="flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
+    <header class="vchat-chat-header flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
       <div class="flex-1 gap-2 items-center">
         <div class="avatar placeholder">
             <div class="bg-neutral text-neutral-content w-8 rounded-full">
@@ -17,7 +17,7 @@
             </div>
         </div>
         <div class="flex flex-col">
-            <span class="font-bold text-sm leading-tight">Virtual Assistant</span>
+            <span class="vchat-agent-title font-bold text-sm leading-tight">Virtual Assistant</span>
             <span class="text-xs opacity-60 leading-tight">Project Helper</span>
         </div>
       </div>
@@ -116,7 +116,7 @@ ls -la</code></pre>
     </main>
 
     <!-- Footer Input -->
-    <div class="flex-none w-full bg-base-100 p-4 border-t border-base-200">
+    <div class="vchat-composer flex-none w-full bg-base-100 p-4 border-t border-base-200">
         <form id="composer" class="relative w-full">
             <textarea
                 id="prompt"

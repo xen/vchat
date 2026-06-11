@@ -172,7 +172,13 @@ async def test_fake_streamed_answer_eval(
     )
     assistant_message = events[-1]["message"]
 
-    assert captured_request["messages"] == answer_eval.generation_messages(case)
+    assert captured_request["messages"] == chat_views.build_chat_completion_messages(
+        chat_views.SYSTEM_PROMPT,
+        answer_eval.context_and_user_messages(case),
+    )
+    assert all(
+        message["role"] != "developer" for message in captured_request["messages"]
+    )
     assert content == answer
     assert assistant_message["content"] == answer
     answer_eval.assert_grounded_answer(case, assistant_message["content"])
