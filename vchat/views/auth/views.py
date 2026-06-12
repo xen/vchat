@@ -72,7 +72,9 @@ async def authenticate_ldap(email: str, password: str, config: dict) -> dict | N
     bind_dn = config.get("ldap_bind_dn", "")
     bind_password = config.get("ldap_bind_password", "")
     search_base = config["ldap_search_base"]
-    search_filter = config["ldap_search_filter"].format(email=email)
+    search_filter = config["ldap_search_filter"].format(
+        email=bonsai.escape_filter_exp(email)
+    )
     attr_name = config.get("ldap_attr_name", "displayName")
 
     service_client = bonsai.LDAPClient(server, tls=use_ssl)

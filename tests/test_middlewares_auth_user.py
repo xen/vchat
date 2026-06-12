@@ -264,6 +264,72 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_authenticate_ldap_escapes_search_filter_email(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    class _Entry:
+        dn = "uid=user,ou=people,dc=example,dc=com"
+
+        def get(self, attr, default):
+            assert attr == "displayName"
+            _ = default
+            return ["LDAP User"]
+
+    class _Connection:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def search(self, *, base, scope, filter_exp, attrlist):
+            calls.append(("search_base", base))
+            calls.append(("search_scope", scope))
+            calls.append(("filter_exp", filter_exp))
+            calls.append(("attrlist", attrlist))
+            return [_Entry()]
+
+    class _LDAPClient:
+        def __init__(self, server, tls=False):
+            calls.append(("client", (server, tls)))
+
+        def set_credentials(self, method, *, user, password):
+            calls.append(("credentials", (method, user, password)))
+
+        def connect(self, *, is_async):
+            assert is_async is True
+            return _Connection()
+
+    monkeypatch.setattr(auth_views.bonsai, "LDAPClient", _LDAPClient)
+
+    result = await auth_views.authenticate_ldap(
+        "user*)(mail=*)@example.com",
+        "secret",
+        {
+            "ldap_server": "ldap://ldap.example.com:389",
+            "ldap_use_ssl": False,
+            "ldap_bind_dn": "cn=service,dc=example,dc=com",
+            "ldap_bind_password": "service-secret",
+            "ldap_search_base": "ou=people,dc=example,dc=com",
+            "ldap_search_filter": "(&(mail={email})(memberOf=cn=vchat))",
+            "ldap_attr_name": "displayName",
+        },
+    )
+
+    assert result == {
+        "email": "user*)(mail=*)@example.com",
+        "name": "LDAP User",
+    }
+    assert ("filter_exp", r"(&(mail=user\2A\29\28mail=\2A\29@example.com)(memberOf=cn=vchat))") in calls
+    assert (
+        "credentials",
+        ("SIMPLE", "uid=user,ou=people,dc=example,dc=com", "secret"),
+    ) in calls
+
+
+@pytest.mark.asyncio
 async def test_notify_ws_sends_pending_messages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
