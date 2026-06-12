@@ -27,6 +27,7 @@ from yarl import URL
 
 from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
 from vchat.settings import config
+from vchat.tracing import REQUEST_ID_HEADER, get_request_id
 
 
 class _MsgSpecJSON:
@@ -517,32 +518,36 @@ async def run_task(task: str, queue: str | None = None, **kwargs) -> str:
     ]
     body_json = json.dumps(body_list, ensure_ascii=False).encode("utf-8")
     body_b64 = base64.b64encode(body_json).decode("ascii")
+    task_headers = {
+        "lang": "py",
+        "task": task,
+        "id": task_id,
+        "argsrepr": "()",
+        "kwargsrepr": json.dumps(kwargs, ensure_ascii=False),
+        "origin": os.uname().nodename if hasattr(os, "uname") else "vchat",
+        "ignore_result": False,
+        "retries": 0,
+        "timelimit": [None, None],
+        "root_id": task_id,
+        "parent_id": None,
+        "group": None,
+        "group_index": None,
+        "replaced_task_nesting": 0,
+        "stamped_headers": None,
+        "stamps": {},
+        "eta": None,
+        "expires": None,
+        "shadow": None,
+    }
+    request_id = get_request_id()
+    if request_id:
+        task_headers[REQUEST_ID_HEADER.lower()] = request_id
 
     envelope = {
         "body": body_b64,
         "content-encoding": "utf-8",
         "content-type": "application/json",
-        "headers": {
-            "lang": "py",
-            "task": task,
-            "id": task_id,
-            "argsrepr": "()",
-            "kwargsrepr": json.dumps(kwargs, ensure_ascii=False),
-            "origin": os.uname().nodename if hasattr(os, "uname") else "vchat",
-            "ignore_result": False,
-            "retries": 0,
-            "timelimit": [None, None],
-            "root_id": task_id,
-            "parent_id": None,
-            "group": None,
-            "group_index": None,
-            "replaced_task_nesting": 0,
-            "stamped_headers": None,
-            "stamps": {},
-            "eta": None,
-            "expires": None,
-            "shadow": None,
-        },
+        "headers": task_headers,
         "properties": {
             "correlation_id": task_id,
             "reply_to": str(uuid.uuid4()),

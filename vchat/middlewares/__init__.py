@@ -16,6 +16,12 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from vchat.settings import CONFIG_KEY, REDIS_KEY
 from vchat.db import async_session_factory
 from vchat.models import User
+from vchat.tracing import (
+    REQUEST_ID_HEADER,
+    generate_request_id,
+    normalize_request_id,
+    request_id_ctx,
+)
 from vchat.utils import Meta
 
 from .cors import cors_middleware
@@ -24,6 +30,25 @@ from .https import https_middleware
 logger = logging.getLogger(__name__)
 
 RequestHandler = Callable[[web.Request], Awaitable[web.StreamResponse]]
+
+
+@web.middleware
+async def request_id_middleware(
+    request: web.Request,
+    handler: RequestHandler,
+) -> web.StreamResponse:
+    request_id = normalize_request_id(request.headers.get(REQUEST_ID_HEADER))
+    if request_id is None:
+        request_id = generate_request_id()
+
+    request["request_id"] = request_id
+    token = request_id_ctx.set(request_id)
+    try:
+        response = await handler(request)
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
+    finally:
+        request_id_ctx.reset(token)
 
 
 @web.middleware
@@ -89,13 +114,13 @@ async def debug_access_control_header_middleware(
         "content-type, dnt, origin, user-agent, "
         "x-csrftoken, x-requested-with, "
         "upload-length, upload-metadata, "
-        "upload-offset, location"
+        "upload-offset, location, x-request-id"
     )
     response.headers["Access-Control-Allow-Methods"] = (
         "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD"
     )
     response.headers["Access-Control-Expose-Headers"] = (
-        "upload-length, upload-metadata, upload-offset, location"
+        "upload-length, upload-metadata, upload-offset, location, x-request-id"
     )
     return response
 
@@ -221,7 +246,7 @@ def get_middlewares(config):
             origins=origins,
             # allow_credentials=True,
             allow_methods=CORS_METHODS,
-            expose_headers=CORS_EXPOSE_HEADERS,
+            expose_headers=(*CORS_EXPOSE_HEADERS, "x-request-id"),
             # urls=[re.compile(r"^\/api")],
         )
         if not DEBUG
@@ -231,6 +256,7 @@ def get_middlewares(config):
     middlewares = (
         # Origin Policy
         access_control_middleware,
+        request_id_middleware,
         # First, normalize request path, which may result in redirect
         normalize_path_middleware(append_slash=True, merge_slashes=True),
         # After, enable error middleware to catch all errors from any code below

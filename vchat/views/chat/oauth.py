@@ -10,6 +10,7 @@ from typing import Any
 import aiohttp
 
 from vchat.settings import config
+from vchat.tracing import request_id_headers
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ async def _fetch_new_token(
         raise RuntimeError("Missing GigaChat authorization key (Basic)")
 
     headers = {
+        **request_id_headers(),
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json",
         "RqUID": str(uuid.uuid4()),

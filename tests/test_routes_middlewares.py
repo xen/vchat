@@ -63,6 +63,32 @@ async def test_debug_access_control_header_middleware() -> None:
 
     resp = await mw.debug_access_control_header_middleware(req, _handler)
     assert resp.headers["Access-Control-Allow-Origin"] == "*"
+    assert "x-request-id" in resp.headers["Access-Control-Allow-Headers"]
+
+
+@pytest.mark.asyncio
+async def test_request_id_middleware_reuses_header() -> None:
+    req = make_mocked_request("GET", "/", headers={"X-Request-ID": "req-123"})
+
+    async def _handler(request):
+        assert request["request_id"] == "req-123"
+        return web.Response(text="ok")
+
+    resp = await mw.request_id_middleware(req, _handler)
+    assert resp.headers["X-Request-ID"] == "req-123"
+
+
+@pytest.mark.asyncio
+async def test_request_id_middleware_generates_invalid_missing_header() -> None:
+    req = make_mocked_request("GET", "/", headers={"X-Request-ID": "bad header"})
+
+    async def _handler(request):
+        assert request["request_id"] != "bad header"
+        assert len(request["request_id"]) == 32
+        return web.Response(text="ok")
+
+    resp = await mw.request_id_middleware(req, _handler)
+    assert len(resp.headers["X-Request-ID"]) == 32
 
 
 @pytest.mark.asyncio
@@ -104,7 +130,9 @@ async def test_db_session_middleware(
     ok_resp = await mw.db_session_middleware(req, _ok)
     assert ok_resp.status == 200
     assert session.rollbacks == 1
-    assert "DB transaction left open while rendering GET /a; rolling back" in caplog.text
+    assert (
+        "DB transaction left open while rendering GET /a; rolling back" in caplog.text
+    )
 
     session._in_transaction = True
 

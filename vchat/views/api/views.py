@@ -24,6 +24,7 @@ from jobs.documents.types import guess_document_type
 from vchat.utils import json_response
 from vchat.models import ApiClient, Chunk, Page, Source
 from vchat.models.data import api_client_source
+from vchat.tracing import request_id_headers
 from vchat.views.projects.page_status import PageStatus, PageStatusError
 
 __all__ = [
@@ -257,7 +258,11 @@ async def _fetch_url_content(
 ) -> tuple[str, str | None, bytes | None, dict]:
     timeout = ClientTimeout(total=20)
     async with ClientSession(timeout=timeout) as client:
-        async with client.get(url, allow_redirects=True) as resp:
+        async with client.get(
+            url,
+            allow_redirects=True,
+            headers=request_id_headers(),
+        ) as resp:
             resp.raise_for_status()
             raw_body = await resp.read()
             content_type = resp.headers.get("Content-Type")
@@ -310,13 +315,21 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
     """Return: (status_code, redirect_location, final_status_if_followed)."""
     timeout = ClientTimeout(total=20)
     async with ClientSession(timeout=timeout) as client:
-        async with client.get(url, allow_redirects=False) as resp:
+        async with client.get(
+            url,
+            allow_redirects=False,
+            headers=request_id_headers(),
+        ) as resp:
             status = resp.status
             location = resp.headers.get("Location")
 
         if status in {301, 302, 303, 307, 308} and location:
             redirect_url = urljoin(url, location)
-            async with client.get(redirect_url, allow_redirects=True) as final_resp:
+            async with client.get(
+                redirect_url,
+                allow_redirects=True,
+                headers=request_id_headers(),
+            ) as final_resp:
                 return status, str(final_resp.url), final_resp.status
 
         return status, None, status

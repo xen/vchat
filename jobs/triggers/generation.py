@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 from vchat.views.chat.oauth import _normalize_basic_auth, _parse_expires_at, _Token
 from vchat.models import Page
 from vchat.settings import config
+from vchat.tracing import request_id_headers
 from vchat.views.chat.ai import BaseAIProvider, ModelInfo, resolve_ai_settings
 
 TRIGGER_GENERATION_LIMIT = 10
@@ -127,6 +128,7 @@ def _get_gigachat_access_token_sync(
     resp = requests.post(
         resolved_oauth_url,
         headers={
+            **request_id_headers(),
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
             "RqUID": str(uuid.uuid4()),
@@ -206,6 +208,7 @@ def request_trigger_generation(
     resp = requests.post(
         f"{base_url}/chat/completions",
         headers={
+            **request_id_headers(),
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },

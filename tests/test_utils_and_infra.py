@@ -11,6 +11,7 @@ from aiohttp import web
 from vchat import settings, utils
 from vchat.views import metrics
 from vchat.utils import json_response
+from vchat.tracing import request_id_ctx
 from jobs.documents import types as document_types
 from vchat.views.projects.page_status import PageStatus
 from vchat.views.chat import ai as ai_providers
@@ -19,9 +20,15 @@ from vchat.views.chat import ai as ai_providers
 def test_document_types_guess_and_labels() -> None:
     assert document_types.guess_document_type("https://x/a.md") == "markdown"
     assert document_types.guess_document_type("https://x/a.tar.gz") == "other"
-    assert document_types.guess_document_type(content_type="text/html; charset=utf-8") == "html"
+    assert (
+        document_types.guess_document_type(content_type="text/html; charset=utf-8")
+        == "html"
+    )
     assert document_types.guess_document_type(content_type="audio/mpeg") == "audio"
-    assert document_types.guess_document_type(content_type="application/vnd.custom+json") == "code"
+    assert (
+        document_types.guess_document_type(content_type="application/vnd.custom+json")
+        == "code"
+    )
     assert document_types.get_document_type_label("office") == "Office document"
     assert document_types.get_document_type_label("") == "Other"
     assert document_types.get_document_type_label("custom_type") == "Custom Type"
@@ -58,7 +65,9 @@ def test_ai_providers_and_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
     assert openai.request_meta()["base_url"] == "https://example.test/v1"
     model = openai.get_model(None)
     assert model.id
-    resolved_provider, resolved_model = ai_providers.resolve_ai_settings("openai", model.id)
+    resolved_provider, resolved_model = ai_providers.resolve_ai_settings(
+        "openai", model.id
+    )
     assert resolved_provider.id == "openai"
     assert resolved_model.id == model.id
     assert ai_providers.is_provider_available("openai") is True
@@ -70,7 +79,9 @@ async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> No
     req_counter = metrics.CHAT_REQUESTS_TOTAL.labels(
         provider="openai", model="gpt-4o-mini", status="ok", guardrail="true"
     )
-    tok_counter = metrics.CHAT_TOKENS_TOTAL.labels(provider="openai", model="gpt-4o-mini")
+    tok_counter = metrics.CHAT_TOKENS_TOTAL.labels(
+        provider="openai", model="gpt-4o-mini"
+    )
     grd_counter = metrics.CHAT_GUARDRAIL_EVENTS_TOTAL.labels(
         provider="openai", model="gpt-4o-mini", reason="unknown"
     )
@@ -133,7 +144,9 @@ def test_utils_json_to_str_meta_and_convert() -> None:
 
 
 @pytest.mark.asyncio
-async def test_flash_admin_event_login_required_and_make_url(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_flash_admin_event_login_required_and_make_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeRedis:
         def __init__(self) -> None:
             self.ops: list[tuple] = []
@@ -148,6 +161,7 @@ async def test_flash_admin_event_login_required_and_make_url(monkeypatch: pytest
             self.ops.append(("publish", ch, payload))
 
     redis = FakeRedis()
+
     class Req(dict):
         def __init__(self):
             super().__init__(user=SimpleNamespace(id=7, email="a@b.c"))
@@ -275,13 +289,18 @@ async def test_run_command_and_run_task(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(utils, "redis", fake_redis)
     monkeypatch.setattr(utils, "CELERY_DEFAULT_QUEUE", "q")
 
-    task_id = await utils.run_task("jobs.embedder.tasks.index", msg_id=12)
+    token = request_id_ctx.set("req-queue-1")
+    try:
+        task_id = await utils.run_task("jobs.embedder.tasks.index", msg_id=12)
+    finally:
+        request_id_ctx.reset(token)
     assert isinstance(task_id, str)
     assert fake_redis.items
 
     queue_name, payload = fake_redis.items[0]
     assert queue_name == "q"
     envelope = pyjson.loads(payload)
+    assert envelope["headers"]["x-request-id"] == "req-queue-1"
     body = base64.b64decode(envelope["body"]).decode("utf-8")
     decoded = pyjson.loads(body)
     assert decoded[1]["msg_id"] == 12

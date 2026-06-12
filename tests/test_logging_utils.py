@@ -11,6 +11,7 @@ from vchat.logging import (
     configure_logging,
     log_json,
 )
+from vchat.tracing import request_id_ctx
 
 
 def test_log_json_outputs_expandable_fields() -> None:
@@ -36,6 +37,26 @@ def test_log_json_outputs_expandable_fields() -> None:
     assert payload["url"] == "https://example.test"
     assert payload["http_status"] == 200
     assert payload["field_message"] == "reserved"
+
+
+def test_log_formatter_includes_context_request_id() -> None:
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonLogFormatter())
+
+    logger = logging.getLogger("tests.request_id_logger")
+    logger.handlers = [handler]
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+
+    token = request_id_ctx.set("req-123")
+    try:
+        logger.info("event_name")
+    finally:
+        request_id_ctx.reset(token)
+
+    payload = json.loads(stream.getvalue())
+    assert payload["request_id"] == "req-123"
 
 
 def test_plain_log_formatter_outputs_text_with_extra_fields() -> None:

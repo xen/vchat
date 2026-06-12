@@ -5,9 +5,10 @@ from pathlib import Path
 
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import task_postrun
+from celery.signals import task_postrun, task_prerun
 
 from vchat.settings import config
+from vchat.tracing import REQUEST_ID_HEADER, request_id_ctx
 
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 
@@ -62,6 +63,27 @@ app.conf.beat_schedule = {
         "options": {"queue": app.conf.task_default_queue},
     },
 }
+
+_request_id_tokens = {}
+
+
+@task_prerun.connect
+def bind_request_id(*_, task_id=None, task=None, **__):
+    if task is None:
+        return
+    headers = getattr(getattr(task, "request", None), "headers", None) or {}
+    request_id = headers.get(REQUEST_ID_HEADER) or headers.get(
+        REQUEST_ID_HEADER.lower()
+    )
+    if request_id:
+        _request_id_tokens[task_id] = request_id_ctx.set(str(request_id))
+
+
+@task_postrun.connect
+def unbind_request_id(*_, task_id=None, **__):
+    token = _request_id_tokens.pop(task_id, None)
+    if token is not None:
+        request_id_ctx.reset(token)
 
 
 @task_postrun.connect

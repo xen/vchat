@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from vchat.tracing import get_request_id
+
 
 _RESERVED_LOG_RECORD_ATTRS = frozenset(
     logging.LogRecord(
@@ -43,6 +45,9 @@ class JsonLogFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
+        request_id = get_request_id()
+        if request_id:
+            payload["request_id"] = request_id
 
         for key, value in record.__dict__.items():
             if key not in _RESERVED_LOG_RECORD_ATTRS and not key.startswith("_"):
@@ -59,6 +64,9 @@ class PlainLogFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         extras = []
+        request_id = get_request_id()
+        if request_id:
+            extras.append(f"request_id={request_id!r}")
         for key, value in record.__dict__.items():
             if key not in _RESERVED_LOG_RECORD_ATTRS and not key.startswith("_"):
                 extras.append(f"{key}={value!r}")

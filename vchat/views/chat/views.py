@@ -25,6 +25,13 @@ from vchat.views.chat.ai import (
     resolve_ai_settings,
 )
 from vchat.settings import SIGNER_KEY
+from vchat.tracing import (
+    REQUEST_ID_HEADER,
+    generate_request_id,
+    get_request_id,
+    request_id_ctx,
+    request_id_headers,
+)
 from vchat.views.projects.forms import DEFAULT_SUGGESTIONS_PROMPT
 from vchat.views.chat.meta import merge_chat_meta
 from vchat.db import async_session_factory
@@ -110,6 +117,13 @@ def extract_total_tokens(usage_data: Any) -> int:
     if isinstance(nested, dict):
         return extract_total_tokens(nested)
     return 0
+
+
+def with_request_id(payload: dict[str, Any]) -> dict[str, Any]:
+    request_id = get_request_id()
+    if request_id is None:
+        return payload
+    return {**payload, "request_id": request_id}
 
 
 @dataclass
@@ -203,7 +217,11 @@ def _suggested_actions_schema() -> dict[str, Any]:
 def _suggested_actions_from_payload(payload: Any) -> list[str]:
     if isinstance(payload, list):
         payload = {"actions": payload}
-    elif isinstance(payload, dict) and "actions" not in payload and "follow_ups" in payload:
+    elif (
+        isinstance(payload, dict)
+        and "actions" not in payload
+        and "follow_ups" in payload
+    ):
         payload = {"actions": payload.get("follow_ups")}
     try:
         parsed = SuggestedActionsPayload.model_validate(payload)
@@ -347,6 +365,7 @@ async def generate_suggestions(
             async with session.post(
                 f"{base_url}/chat/completions",
                 headers={
+                    **request_id_headers(),
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
@@ -503,6 +522,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
     pending_tool_calls: dict[int, dict] = {}
 
     if guardrails_client is not None:
+        headers = request_id_headers()
         stream = await guardrails_client.chat.completions.create(
             messages=build_chat_completion_messages(current_system_prompt, messages),
             model=model,
@@ -510,6 +530,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
             stream=True,
             max_tokens=min(CHAT_RESPONSE_MAX_TOKENS, ctx.model.max_tokens),
             stream_options={"include_usage": True},
+            **({"extra_headers": headers} if headers else {}),
         )
         async for guarded_chunk in stream:
             chunk = (
@@ -597,6 +618,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                 async with session.post(
                     f"{base_url}/chat/completions",
                     headers={
+                        **request_id_headers(),
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
                     },
@@ -845,11 +867,13 @@ async def generate_save_and_send_suggestions(
     )
     try:
         await ws.send_json(
-            {
-                "type": "suggested_actions",
-                "actions": suggestions,
-                "msg_id": assistant_msg_id,
-            }
+            with_request_id(
+                {
+                    "type": "suggested_actions",
+                    "actions": suggestions,
+                    "msg_id": assistant_msg_id,
+                }
+            )
         )
     except Exception as exc:
         logger.warning(
@@ -1012,22 +1036,26 @@ async def stream_cached_trigger_response(
 
     signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
     await ws.send_json(
-        {
-            "ok": True,
-            "content": "",
-            "partial": False,
-            "sources": sources,
-            "msg_id": assistant_msg_id,
-            "signed_msg_id": signed_msg_id,
-        }
+        with_request_id(
+            {
+                "ok": True,
+                "content": "",
+                "partial": False,
+                "sources": sources,
+                "msg_id": assistant_msg_id,
+                "signed_msg_id": signed_msg_id,
+            }
+        )
     )
     if suggestions:
         await ws.send_json(
-            {
-                "type": "suggested_actions",
-                "actions": suggestions,
-                "msg_id": assistant_msg_id,
-            }
+            with_request_id(
+                {
+                    "type": "suggested_actions",
+                    "actions": suggestions,
+                    "msg_id": assistant_msg_id,
+                }
+            )
         )
 
     await run_task(
@@ -1050,16 +1078,29 @@ async def stream_cached_response_text(
     for offset in range(0, len(response_text), CACHED_TRIGGER_STREAM_CHARS):
         await asyncio.sleep(CACHED_TRIGGER_STREAM_DELAY_SECONDS)
         await ws.send_json(
-            {
-                "ok": True,
-                "content": response_text[offset : offset + CACHED_TRIGGER_STREAM_CHARS],
-                "partial": True,
-            }
+            with_request_id(
+                {
+                    "ok": True,
+                    "content": response_text[
+                        offset : offset + CACHED_TRIGGER_STREAM_CHARS
+                    ],
+                    "partial": True,
+                }
+            )
         )
 
 
 async def websocket(request):
-    ws = web.WebSocketResponse()
+    try:
+        connection_request_id = request["request_id"]
+    except (AttributeError, KeyError, TypeError):
+        connection_request_id = None
+    if connection_request_id:
+        ws = web.WebSocketResponse(
+            headers={REQUEST_ID_HEADER: str(connection_request_id)}
+        )
+    else:
+        ws = web.WebSocketResponse()
     await ws.prepare(request)
 
     serializer = URLSafeSerializer(SECRET_KEY)
@@ -1238,6 +1279,8 @@ async def websocket(request):
             if not user_text:
                 continue
 
+            request_id = generate_request_id()
+            request_id_token = request_id_ctx.set(request_id)
             request_started_at = time.monotonic()
             stage_durations_ms: dict[str, float] = {}
             first_content_ms: float | None = None
@@ -1294,15 +1337,17 @@ async def websocket(request):
                     signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
                     stage_started_at = time.monotonic()
                     await ws.send_json(
-                        {
-                            "ok": True,
-                            "content": GUARDRAIL_USER_MESSAGE,
-                            "partial": False,
-                            "sources": [],
-                            "msg_id": assistant_msg_id,
-                            "signed_msg_id": signed_msg_id,
-                            "guardrail": True,
-                        }
+                        with_request_id(
+                            {
+                                "ok": True,
+                                "content": GUARDRAIL_USER_MESSAGE,
+                                "partial": False,
+                                "sources": [],
+                                "msg_id": assistant_msg_id,
+                                "signed_msg_id": signed_msg_id,
+                                "guardrail": True,
+                            }
+                        )
                     )
                     finish_stage("send_guardrail_response", stage_started_at)
                     continue
@@ -1384,7 +1429,13 @@ async def websocket(request):
                                     )
                                 total_content += delta
                                 await ws.send_json(
-                                    {"ok": True, "content": delta, "partial": True}
+                                    with_request_id(
+                                        {
+                                            "ok": True,
+                                            "content": delta,
+                                            "partial": True,
+                                        }
+                                    )
                                 )
                                 # Publish assistant partial message
                                 await redis.publish(
@@ -1454,15 +1505,17 @@ async def websocket(request):
                     signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
                     stage_started_at = time.monotonic()
                     await ws.send_json(
-                        {
-                            "ok": True,
-                            "content": GUARDRAIL_USER_MESSAGE,
-                            "partial": False,
-                            "sources": [],
-                            "msg_id": assistant_msg_id,
-                            "signed_msg_id": signed_msg_id,
-                            "guardrail": True,
-                        }
+                        with_request_id(
+                            {
+                                "ok": True,
+                                "content": GUARDRAIL_USER_MESSAGE,
+                                "partial": False,
+                                "sources": [],
+                                "msg_id": assistant_msg_id,
+                                "signed_msg_id": signed_msg_id,
+                                "guardrail": True,
+                            }
+                        )
                     )
                     finish_stage("send_guardrail_response", stage_started_at)
                     continue
@@ -1534,17 +1587,19 @@ async def websocket(request):
 
                 stage_started_at = time.monotonic()
                 await ws.send_json(
-                    {
-                        "ok": True,
-                        "content": "",
-                        "partial": False,
-                        "sources": sources,
-                        "coverage": coverage,
-                        "policy": context_policy,
-                        "reason_code": context_policy.get("reason_code"),
-                        "msg_id": assistant_msg_id,
-                        "signed_msg_id": signed_msg_id,
-                    }
+                    with_request_id(
+                        {
+                            "ok": True,
+                            "content": "",
+                            "partial": False,
+                            "sources": sources,
+                            "coverage": coverage,
+                            "policy": context_policy,
+                            "reason_code": context_policy.get("reason_code"),
+                            "msg_id": assistant_msg_id,
+                            "signed_msg_id": signed_msg_id,
+                        }
+                    )
                 )
                 finish_stage("send_final_response", stage_started_at)
 
@@ -1626,32 +1681,42 @@ async def websocket(request):
                 serializer = URLSafeSerializer(SECRET_KEY)
                 signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
                 await ws.send_json(
-                    {
-                        "ok": True,
-                        "content": GUARDRAIL_USER_MESSAGE,
-                        "partial": False,
-                        "sources": [],
-                        "msg_id": assistant_msg_id,
-                        "signed_msg_id": signed_msg_id,
-                        "guardrail": True,
-                    }
+                    with_request_id(
+                        {
+                            "ok": True,
+                            "content": GUARDRAIL_USER_MESSAGE,
+                            "partial": False,
+                            "sources": [],
+                            "msg_id": assistant_msg_id,
+                            "signed_msg_id": signed_msg_id,
+                            "guardrail": True,
+                        }
+                    )
                 )
             except aiohttp.ClientResponseError as e:
                 request_status = "provider_http_error"
                 if e.status in {400, 403, 422}:
                     guardrail_reasons.add("provider_block")
                 await ws.send_json(
-                    {
-                        "ok": False,
-                        "error": "openai_http_error",
-                        "status": e.status,
-                        "detail": e.message,
-                    }
+                    with_request_id(
+                        {
+                            "ok": False,
+                            "error": "openai_http_error",
+                            "status": e.status,
+                            "detail": e.message,
+                        }
+                    )
                 )
             except Exception as e:
                 request_status = "internal_error"
                 await ws.send_json(
-                    {"ok": False, "error": type(e).__name__, "detail": str(e)}
+                    with_request_id(
+                        {
+                            "ok": False,
+                            "error": type(e).__name__,
+                            "detail": str(e),
+                        }
+                    )
                 )
             finally:
                 guardrail_blocked = _is_guardrail_blocked(guardrail_reasons)
@@ -1701,6 +1766,7 @@ async def websocket(request):
                     )
                 except Exception as metrics_exc:
                     logger.warning("Failed to record chat metrics: %s", metrics_exc)
+                request_id_ctx.reset(request_id_token)
     except Exception as e:
         logger.error(f"Websocket exception: {e}")
     finally:
