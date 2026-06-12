@@ -248,6 +248,35 @@
         >{{ widget.system_prompt or default_system_prompt }}</textarea>
       </label>
 
+      <section class="grid gap-3 rounded border border-base-300 p-4">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 class="text-base font-medium">{{ 'Подсказки после ответа' }}</h2>
+            <p class="mt-1 text-sm text-base-content/60">{{ 'Кнопки с продолжением диалога генерируются после ответа ассистента.' }}</p>
+          </div>
+          <label class="label cursor-pointer justify-start gap-3 md:justify-end">
+            <input
+              type="checkbox"
+              name="suggestions_enabled"
+              value="1"
+              class="toggle toggle-primary"
+              {% if widget.suggestions_enabled %}checked{% endif %}
+            >
+            <span class="label-text">{{ 'Включено' }}</span>
+          </label>
+        </div>
+        <label class="form-control">
+          <span class="label-text mb-1">{{ 'Промпт для подсказок' }}</span>
+          <textarea
+            name="suggestions_prompt"
+            class="textarea textarea-bordered w-full font-mono text-sm"
+            rows="12"
+            maxlength="6000"
+          >{{ widget.suggestions_prompt or default_suggestions_prompt }}</textarea>
+          <span class="mt-1 text-xs text-base-content/60">{{ 'Формат JSON, последний вопрос, финальный ответ и источники добавляются автоматически.' }}</span>
+        </label>
+      </section>
+
       <section class="grid gap-3">
         <div class="flex items-center justify-between gap-3">
           <h2 class="text-base font-medium">{{ 'Закрепленные сообщения' }}</h2>

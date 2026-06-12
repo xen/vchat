@@ -380,7 +380,11 @@ def test_build_generation_context_appends_answer_format_policy_to_custom_prompt(
 
     ctx = chat_views.build_generation_context(
         None,
-        SimpleNamespace(system_prompt="Custom system prompt"),
+        SimpleNamespace(
+            system_prompt="Custom system prompt",
+            suggestions_enabled=True,
+            suggestions_prompt=chat_views.DEFAULT_SUGGESTIONS_PROMPT,
+        ),
     )
 
     assert ctx.system_prompt.startswith("Custom system prompt\n\n")
@@ -402,6 +406,33 @@ def test_build_chat_completion_messages_normalizes_developer_role() -> None:
         {"role": "user", "content": "previous"},
         {"role": "user", "content": "question"},
     ]
+
+
+def test_suggested_actions_schema_is_strict() -> None:
+    response_format = chat_views._suggested_actions_schema()
+    schema = response_format["json_schema"]["schema"]
+
+    assert response_format["type"] == "json_schema"
+    assert response_format["json_schema"]["strict"] is True
+    assert schema["required"] == ["actions"]
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["actions"]["maxItems"] == 3
+
+
+def test_suggestions_prompt_appends_structured_context_block() -> None:
+    rendered = chat_views._render_suggestions_prompt(
+        template=chat_views.DEFAULT_SUGGESTIONS_PROMPT,
+        user_text="Что дальше?",
+        assistant_text="Можно открыть раздел с правилами.",
+        sources=[{"title": "Правила", "uri": "https://example.test/rules"}],
+    )
+
+    assert "Верни только JSON-объект" not in chat_views.DEFAULT_SUGGESTIONS_PROMPT
+    assert "{{user_question}}" not in chat_views.DEFAULT_SUGGESTIONS_PROMPT
+    assert "Верни только JSON-объект" in rendered
+    assert "Что дальше?" in rendered
+    assert "Можно открыть раздел с правилами." in rendered
+    assert "Правила" in rendered
 
 
 @pytest.mark.asyncio

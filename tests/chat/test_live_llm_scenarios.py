@@ -159,21 +159,20 @@ def _live_generation_context() -> chat_views.GenerationContext:
 @pytest.mark.asyncio
 async def test_live_recommendations_are_relevant_to_document_context() -> None:
     ctx = _live_generation_context()
-    messages = [
-        {
-            "role": "user",
-            "content": "Где в Employee Handbook описан перенос отпуска?",
-        },
-        {
-            "role": "assistant",
-            "content": (
-                "Правила описаны в документе Employee Handbook: Paid Time Off, "
-                "раздел 'Перенос отпуска'."
-            ),
-        },
-    ]
-
-    suggestions = await chat_views.generate_suggestions(messages, ctx)
+    suggestions = await chat_views.generate_suggestions(
+        user_text="Где в Employee Handbook описан перенос отпуска?",
+        assistant_text=(
+            "Правила описаны в документе Employee Handbook: Paid Time Off, "
+            "раздел 'Перенос отпуска'."
+        ),
+        sources=[
+            {
+                "title": "Employee Handbook: Paid Time Off",
+                "uri": "https://example.test/handbook/pto",
+            }
+        ],
+        ctx=ctx,
+    )
 
     assert len(suggestions) >= 2
     assert len({s.strip().lower() for s in suggestions}) == len(suggestions)

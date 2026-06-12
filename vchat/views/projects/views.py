@@ -354,6 +354,8 @@ async def _widget_integration_list_context(db_session) -> dict[str, Any]:
             agent_name=widget.agent_name,
             welcome_message=widget.welcome_message,
             system_prompt=widget.system_prompt,
+            suggestions_enabled=widget.suggestions_enabled,
+            suggestions_prompt=widget.suggestions_prompt,
             pinned_messages=_safe_pinned_messages(widget.pinned_messages),
         )
         for widget in rows
@@ -362,6 +364,7 @@ async def _widget_integration_list_context(db_session) -> dict[str, Any]:
     return {
         "widgets": widgets,
         "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
+        "default_suggestions_prompt": forms.DEFAULT_SUGGESTIONS_PROMPT,
         "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
     }
 
@@ -375,6 +378,8 @@ def _widget_integration_snapshot(widget: WidgetIntegration) -> SimpleNamespace:
         agent_name=widget.agent_name,
         welcome_message=widget.welcome_message,
         system_prompt=widget.system_prompt,
+        suggestions_enabled=widget.suggestions_enabled,
+        suggestions_prompt=widget.suggestions_prompt,
         pinned_messages=_safe_pinned_messages(widget.pinned_messages),
     )
 
@@ -830,6 +835,37 @@ def _message_sources(row: ChatMsg) -> list[dict[str, Any]]:
     return sources
 
 
+def _message_suggested_actions(row: ChatMsg) -> list[str]:
+    if row.role != "assistant" or not row.full_context:
+        return []
+    try:
+        payload = json.loads(row.full_context)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    actions = payload.get("suggested_actions")
+    if not isinstance(actions, list):
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_action in actions:
+        if not isinstance(raw_action, str):
+            continue
+        action = raw_action.strip()
+        if not action:
+            continue
+        key = action.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(action)
+        if len(normalized) >= 3:
+            break
+    return normalized
+
+
 async def _initial_messages_for_chat(
     db,
     *,
@@ -860,6 +896,7 @@ async def _initial_messages_for_chat(
                 "signed_msg_id": signed_msg_id,
                 "vote": row.vote,
                 "sources": _message_sources(row),
+                "suggested_actions": _message_suggested_actions(row),
             }
         )
 
@@ -2259,6 +2296,11 @@ async def project_action(request):
             system_prompt=(
                 (data.get("system_prompt") or "").strip() or forms.DEFAULT_SYSTEM_PROMPT
             ),
+            suggestions_enabled=True,
+            suggestions_prompt=(
+                (data.get("suggestions_prompt") or "").strip()
+                or forms.DEFAULT_SUGGESTIONS_PROMPT
+            ),
             pinned_messages=[],
         )
         await _assign_new_widget_code(db_session, widget)
@@ -2294,6 +2336,10 @@ async def project_action(request):
         widget.system_prompt = (
             data.get("system_prompt") or ""
         ).strip() or forms.DEFAULT_SYSTEM_PROMPT
+        widget.suggestions_enabled = data.get("suggestions_enabled") == "1"
+        widget.suggestions_prompt = (
+            data.get("suggestions_prompt") or ""
+        ).strip() or forms.DEFAULT_SUGGESTIONS_PROMPT
         widget.pinned_messages = _pinned_messages_from_form(data)
         widget.updated_at = datetime.now(timezone.utc)
 
@@ -3325,6 +3371,7 @@ async def project_widget_edit(request):
         "project": _project_context(request),
         "widget": snapshot,
         "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
+        "default_suggestions_prompt": forms.DEFAULT_SUGGESTIONS_PROMPT,
         "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
     }
 

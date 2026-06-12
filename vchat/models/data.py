@@ -152,6 +152,13 @@ class WidgetIntegration(Base, Created, Updated):
     agent_name: Mapped[str] = mapped_column(sa.String(100), nullable=False, default="")
     welcome_message: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     system_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    suggestions_enabled: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=True,
+        server_default=sa.text("true"),
+    )
+    suggestions_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     pinned_messages: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list
     )

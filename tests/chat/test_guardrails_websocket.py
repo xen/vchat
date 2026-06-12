@@ -488,8 +488,10 @@ async def test_websocket_returns_document_recommendations_and_sources(
             },
         }
 
-    async def _suggestions(messages: list[dict[str, Any]], ctx: Any) -> list[str]:
-        _ = messages, ctx
+    async def _suggestions(**kwargs: Any) -> list[str]:
+        assert kwargs["user_text"] == "Покажи раздел про отпуск из employee-handbook"
+        assert kwargs["assistant_text"] == "Раздел по отпуску найден в handbook."
+        assert kwargs["sources"][0]["title"] == "Employee Handbook: Paid Time Off"
         return [
             "Открыть Employee Handbook: Paid Time Off",
             "Показать правила переноса отпуска",
@@ -509,6 +511,7 @@ async def test_websocket_returns_document_recommendations_and_sources(
         item for item in ws.sent_json if item.get("type") == "suggested_actions"
     )
     assert suggestions_payload["actions"]
+    assert suggestions_payload["msg_id"]
     assert "Employee Handbook: Paid Time Off" in suggestions_payload["actions"][0]
 
     final_payload = next(
@@ -516,6 +519,7 @@ async def test_websocket_returns_document_recommendations_and_sources(
         for item in ws.sent_json
         if item.get("partial") is False and "sources" in item
     )
+    assert ws.sent_json.index(final_payload) < ws.sent_json.index(suggestions_payload)
     assert final_payload["sources"] == [
         {
             "uri": "https://docs.example.local/employee-handbook/pto",
