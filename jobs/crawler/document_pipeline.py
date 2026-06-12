@@ -13,6 +13,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 from bs4 import BeautifulSoup
 from docx import Document as load_docx_document
 from docx.document import Document as DocxDocument
+from pptx import Presentation as load_pptx_presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pptx.presentation import Presentation as PptxPresentation
 from pypdf import PdfReader
 
 from jobs.documents.types import guess_document_type
@@ -73,6 +76,10 @@ DOCX_DOCUMENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 }
 LEGACY_DOC_DOCUMENT_TYPES = {"application/msword"}
+PPTX_DOCUMENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+LEGACY_PPT_DOCUMENT_TYPES = {"application/vnd.ms-powerpoint"}
 BROAD_BINARY_DOCUMENT_TYPES = {
     "",
     "application/octet-stream",
@@ -517,6 +524,71 @@ def _extract_docx_text(document: DocxDocument) -> tuple[str, dict[str, Any]]:
     }
 
 
+def _extract_pptx_metadata_title(presentation: PptxPresentation) -> str | None:
+    return normalize_file_metadata_title_candidate(presentation.core_properties.title)
+
+
+def _shape_text_blocks(shape: Any) -> list[str]:
+    blocks: list[str] = []
+    if getattr(shape, "shape_type", None) == MSO_SHAPE_TYPE.GROUP:
+        for child in shape.shapes:
+            blocks.extend(_shape_text_blocks(child))
+        return blocks
+
+    if getattr(shape, "has_text_frame", False):
+        paragraphs: list[str] = []
+        for paragraph in shape.text_frame.paragraphs:
+            runs = [run.text for run in paragraph.runs if run.text]
+            text = "".join(runs).strip()
+            if not text:
+                text = (paragraph.text or "").strip()
+            if text:
+                paragraphs.append(text)
+        if paragraphs:
+            blocks.append("\n".join(paragraphs))
+
+    if getattr(shape, "has_table", False):
+        rows: list[list[str]] = []
+        for row in shape.table.rows:
+            cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+            if any(cells):
+                rows.append(cells)
+        if rows:
+            width = max(len(row) for row in rows)
+            normalized_rows = [row + [""] * (width - len(row)) for row in rows]
+            header = normalized_rows[0]
+            table_lines = [
+                f"| {' | '.join(header)} |",
+                f"| {' | '.join(['---'] * width)} |",
+            ]
+            table_lines.extend(
+                f"| {' | '.join(row)} |" for row in normalized_rows[1:]
+            )
+            blocks.append("\n".join(table_lines))
+
+    return blocks
+
+
+def _extract_pptx_text(presentation: PptxPresentation) -> tuple[str, dict[str, Any]]:
+    slides: list[str] = []
+    shape_count = 0
+    table_count = 0
+    for index, slide in enumerate(presentation.slides, start=1):
+        blocks: list[str] = []
+        for shape in slide.shapes:
+            shape_count += 1
+            if getattr(shape, "has_table", False):
+                table_count += 1
+            blocks.extend(_shape_text_blocks(shape))
+        if blocks:
+            slides.append(f"## Slide {index}\n\n" + "\n\n".join(blocks))
+    return "\n\n".join(slides), {
+        "slide_count": len(presentation.slides),
+        "shape_count": shape_count,
+        "table_count": table_count,
+    }
+
+
 def _normalized_content_type(content_type: str | None) -> str:
     return (content_type or "").split(";", 1)[0].strip().lower()
 
@@ -531,6 +603,8 @@ def _sniff_binary_document_kind(raw_body: bytes) -> str | None:
             names = set(archive.namelist())
         if "[Content_Types].xml" in names and "word/document.xml" in names:
             return "docx"
+        if "[Content_Types].xml" in names and "ppt/presentation.xml" in names:
+            return "pptx"
     return None
 
 
@@ -545,6 +619,11 @@ def detect_binary_document_kind(
         return "docx"
     if normalized_content_type in LEGACY_DOC_DOCUMENT_TYPES:
         return "legacy_doc"
+    if normalized_content_type in PPTX_DOCUMENT_TYPES:
+        return "pptx"
+    if normalized_content_type in LEGACY_PPT_DOCUMENT_TYPES:
+        sniffed_kind = _sniff_binary_document_kind(raw_body)
+        return "pptx" if sniffed_kind == "pptx" else "legacy_ppt"
     if normalized_content_type in BROAD_BINARY_DOCUMENT_TYPES:
         return _sniff_binary_document_kind(raw_body)
     return None
@@ -571,8 +650,16 @@ def extract_binary_url_document(
         content, file_meta = _extract_docx_text(document)
         extractor = "python-docx"
         fallback_used = False
+    elif document_kind == "pptx":
+        presentation = load_pptx_presentation(BytesIO(raw_body))
+        title = _extract_pptx_metadata_title(presentation) or title
+        content, file_meta = _extract_pptx_text(presentation)
+        extractor = "python-pptx"
+        fallback_used = False
     elif document_kind == "legacy_doc":
         raise ValueError("Legacy .doc files are not supported by the current extractor")
+    elif document_kind == "legacy_ppt":
+        raise ValueError("Legacy .ppt files are not supported by the current extractor")
     else:
         raise ValueError(
             f"Unsupported downloadable document type: {content_type or source_url}"

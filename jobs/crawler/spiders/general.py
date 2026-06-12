@@ -28,6 +28,7 @@ DOWNLOADABLE_DOCUMENT_EXTENSIONS = {
     "doc",
     "docx",
     "pdf",
+    "pptx",
 }
 
 

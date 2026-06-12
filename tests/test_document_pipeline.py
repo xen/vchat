@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from io import BytesIO
 
+import pytest
 from docx import Document
+from pptx import Presentation
 from pypdf import PdfWriter
 from scrapy.linkextractors import IGNORED_EXTENSIONS
 
@@ -134,6 +136,81 @@ def test_extract_binary_url_document_sniffs_docx_for_broad_binary_mime() -> None
     assert meta["extraction"]["extractor"] == "python-docx"
 
 
+def _sample_pptx_bytes() -> bytes:
+    presentation = Presentation()
+    presentation.core_properties.title = "Metadata Slide Deck"
+
+    title_slide = presentation.slides.add_slide(presentation.slide_layouts[0])
+    title_slide.shapes.title.text = "Презентация поддержки"
+    title_slide.placeholders[1].text = "PowerPoint документы должны индексироваться."
+
+    table_slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    table_slide.shapes.title.text = "Матрица ответственности"
+    table = table_slide.shapes.add_table(2, 2, 0, 0, 4_000_000, 1_200_000).table
+    table.cell(0, 0).text = "Раздел"
+    table.cell(0, 1).text = "Ответственный"
+    table.cell(1, 0).text = "Презентации"
+    table.cell(1, 1).text = "Команда поиска"
+
+    buffer = BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
+def test_extract_binary_url_document_extracts_pptx_slides_and_tables() -> None:
+    content, title, meta = extract_binary_url_document(
+        "https://example.com/files/support-deck.pptx",
+        _sample_pptx_bytes(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        ),
+    )
+
+    assert title == "Metadata Slide Deck"
+    assert "## Slide 1" in content
+    assert "Презентация поддержки" in content
+    assert "PowerPoint документы должны индексироваться." in content
+    assert "| Раздел | Ответственный |" in content
+    assert "| Презентации | Команда поиска |" in content
+    assert meta["doc_type"] == "office"
+    assert meta["extraction"]["extractor"] == "python-pptx"
+    assert meta["file"]["slide_count"] == 2
+    assert meta["file"]["table_count"] == 1
+
+
+def test_extract_binary_url_document_sniffs_pptx_for_broad_binary_mime() -> None:
+    content, title, meta = extract_binary_url_document(
+        "https://example.com/public/api/file?filename=deck.bin",
+        _sample_pptx_bytes(),
+        content_type="application/octet-stream",
+    )
+
+    assert title == "Metadata Slide Deck"
+    assert "PowerPoint документы должны индексироваться." in content
+    assert meta["extraction"]["extractor"] == "python-pptx"
+
+
+def test_extract_binary_url_document_accepts_pptx_with_legacy_powerpoint_mime() -> None:
+    content, title, meta = extract_binary_url_document(
+        "https://example.com/files/support-deck.pptx",
+        _sample_pptx_bytes(),
+        content_type="application/vnd.ms-powerpoint",
+    )
+
+    assert title == "Metadata Slide Deck"
+    assert "PowerPoint документы должны индексироваться." in content
+    assert meta["extraction"]["extractor"] == "python-pptx"
+
+
+def test_extract_binary_url_document_rejects_legacy_ppt() -> None:
+    with pytest.raises(ValueError, match=r"Legacy \.ppt files are not supported"):
+        extract_binary_url_document(
+            "https://example.com/files/legacy-deck.ppt",
+            b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1legacy ppt bytes",
+            content_type="application/vnd.ms-powerpoint",
+        )
+
+
 def test_extract_binary_url_document_returns_empty_content_for_image_only_pdf() -> None:
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)
@@ -166,12 +243,14 @@ def test_detect_binary_document_kind_uses_mime_before_url_path() -> None:
     )
 
 
-def test_general_spider_allows_word_and_pdf_links() -> None:
+def test_general_spider_allows_word_pdf_and_pptx_links() -> None:
     spider = GeneralSpider(url="https://example.com", source_id=1, config={})
     try:
-        assert {"pdf", "doc", "docx"}.issubset(IGNORED_EXTENSIONS)
+        assert {"pdf", "doc", "docx", "ppt", "pptx"}.issubset(IGNORED_EXTENSIONS)
         assert "pdf" not in spider._link_extractor.deny_extensions
         assert "doc" not in spider._link_extractor.deny_extensions
         assert "docx" not in spider._link_extractor.deny_extensions
+        assert ".ppt" in spider._link_extractor.deny_extensions
+        assert "pptx" not in spider._link_extractor.deny_extensions
     finally:
         spider.closed("test")
