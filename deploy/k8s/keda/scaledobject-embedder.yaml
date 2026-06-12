@@ -1,0 +1,18 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vchat-embedder
+spec:
+  scaleTargetRef:
+    name: vchat-embedder
+  minReplicaCount: 1
+  maxReplicaCount: 4
+  pollingInterval: 30
+  cooldownPeriod: 600
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.vchat.svc.cluster.local:6379
+        databaseIndex: "31"
+        listName: embeddings
+        listLength: "5"

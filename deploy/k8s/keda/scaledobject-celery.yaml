@@ -1,0 +1,18 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vchat-celery
+spec:
+  scaleTargetRef:
+    name: vchat-celery
+  minReplicaCount: 1
+  maxReplicaCount: 8
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.vchat.svc.cluster.local:6379
+        databaseIndex: "31"
+        listName: celery
+        listLength: "20"

@@ -6,6 +6,7 @@ from yarl import URL
 
 from vchat.views.metrics import metrics_handler
 from .views import frontend
+from .views import health
 from .views.admin import views as admin
 from .views.api import views as api
 from .views.auth import views as auth
@@ -24,6 +25,8 @@ def setup_routes(app: web.Application) -> None:
 
     # observability
     add("GET", "/metrics", metrics_handler, name="metrics")
+    add("GET", "/health/live", health.live, name="health_live")
+    add("GET", "/health/ready", health.ready, name="health_ready")
 
     # frontend
     add("GET", "/check", frontend.healthcheck)

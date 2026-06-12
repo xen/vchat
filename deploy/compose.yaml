@@ -1,0 +1,136 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: vchat
+      POSTGRES_USER: vchat
+      POSTGRES_PASSWORD: vchat
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vchat -d vchat"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ""
+      GIGACHAT_API_KEY: ""
+    configs:
+      - source: local_yaml
+        target: /app/local.yaml
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ""
+      GIGACHAT_API_KEY: ""
+    configs:
+      - source: local_yaml
+        target: /app/local.yaml
+    ports:
+      - "127.0.0.1:9080:9080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9080/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  celery:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ""
+      GIGACHAT_API_KEY: ""
+    configs:
+      - source: local_yaml
+        target: /app/local.yaml
+    command: ["celery", "-A", "jobs.celery", "worker", "--loglevel=INFO", "-Q", "celery"]
+
+  celery-beat:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ""
+      GIGACHAT_API_KEY: ""
+    configs:
+      - source: local_yaml
+        target: /app/local.yaml
+    command: ["celery", "-A", "jobs.celery", "beat", "--loglevel=INFO"]
+
+  embedder:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        DOWNLOAD_MODELS: ${DOWNLOAD_MODELS:-false}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: ""
+      GIGACHAT_API_KEY: ""
+      EMBEDDER_INSTANCES: ${EMBEDDER_INSTANCES:-1}
+    configs:
+      - source: local_yaml
+        target: /app/local.yaml
+    command: ["python", "-m", "jobs.embedder.launcher"]
+
+configs:
+  local_yaml:
+    content: |
+      mode: production
+      public_url: "http://localhost:9080"
+      public_cdn: "http://localhost:9080"
+      allowed_origins:
+        - "http://localhost:9080"
+      cookie_domain: "localhost"
+      cookie_secure: false
+      enable_https_middleware: false
+      redis_uri: "redis://redis:6379/30"
+      database_uri: "postgresql+asyncpg://vchat:vchat@postgres:5432/vchat"
+      celery_redis_uri: "redis://redis:6379/"
+      celery_broker_db: 31
+      celery_backend_db: 32
+      log_format: "json"
+      openai_api_key: ""
+      gigachat_api_key: ""

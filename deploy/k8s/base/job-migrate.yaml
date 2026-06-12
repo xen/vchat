@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vchat-migrate
+  labels:
+    app.kubernetes.io/name: vchat
+    app.kubernetes.io/component: migrate
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vchat
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: vchat
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: vchat
+          imagePullPolicy: IfNotPresent
+          command: ["alembic"]
+          args: ["upgrade", "head"]
+          envFrom:
+            - secretRef:
+                name: vchat-secret
+          volumeMounts:
+            - name: config
+              mountPath: /app/local.yaml
+              subPath: local.yaml
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: vchat-config
+        - name: tmp
+          emptyDir: {}

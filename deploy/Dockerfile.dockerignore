@@ -1,0 +1,17 @@
+.git
+.pytest_cache
+.tox
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
+venv
+__pycache__
+*.pyc
+node_modules
+frontend/node_modules
+frontend_chat/node_modules
+frontend/dist
+frontend_chat/dist
+local.yaml
+docs

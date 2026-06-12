@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vchat-celery
+  labels:
+    app.kubernetes.io/name: vchat
+    app.kubernetes.io/component: celery
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vchat
+      app.kubernetes.io/component: celery
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vchat
+        app.kubernetes.io/component: celery
+    spec:
+      serviceAccountName: vchat
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: celery
+          image: vchat
+          imagePullPolicy: IfNotPresent
+          command: ["celery"]
+          args: ["-A", "jobs.celery", "worker", "--loglevel=INFO", "-Q", "celery"]
+          envFrom:
+            - secretRef:
+                name: vchat-secret
+          env:
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: /tmp
+          volumeMounts:
+            - name: config
+              mountPath: /app/local.yaml
+              subPath: local.yaml
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: vchat-config
+        - name: tmp
+          emptyDir: {}

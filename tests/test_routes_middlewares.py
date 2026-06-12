@@ -11,6 +11,7 @@ from aiohttp.test_utils import make_mocked_request
 from vchat.settings import CONFIG_KEY, REDIS_KEY
 import vchat.middlewares as mw
 from vchat.routes import setup_routes, to_path
+from vchat.views import health
 
 
 @pytest.mark.asyncio
@@ -230,12 +231,15 @@ def test_get_middlewares_and_routes() -> None:
         "cookie_domain": ".example.com",
         "cookie_secure": False,
         "enable_https_middleware": False,
+        "session_max_age_seconds": 30 * 24 * 60 * 60,
     }
     mws = mw.get_middlewares(cfg)
     assert mws
 
     app = web.Application()
     setup_routes(app)
+    assert app.router["health_live"].url_for().human_repr() == "/health/live"
+    assert app.router["health_ready"].url_for().human_repr() == "/health/ready"
     assert app.router["login"].url_for().human_repr() == "/login/"
     assert app.router["logout"].url_for().human_repr() == "/logout/"
     assert (
@@ -245,6 +249,38 @@ def test_get_middlewares_and_routes() -> None:
 
     assert to_path(app.router["login"].url_for()) == "/login/"
     assert to_path(app.router["users"].url_for(), has_trailing_slash=False) == "/users"
+
+
+@pytest.mark.asyncio
+async def test_health_handlers() -> None:
+    live_response = await health.live(None)  # type: ignore[arg-type]
+    assert live_response.status == 200
+
+    class DB:
+        def __init__(self) -> None:
+            self.executed = False
+
+        async def execute(self, _query) -> None:
+            self.executed = True
+
+    class Redis:
+        def __init__(self) -> None:
+            self.pinged = False
+
+        async def ping(self) -> None:
+            self.pinged = True
+
+    class Request(dict):
+        def __init__(self, redis: Redis, db: DB) -> None:
+            super().__init__(db=db)
+            self.app = {REDIS_KEY: redis}
+
+    db = DB()
+    redis = Redis()
+    ready_response = await health.ready(Request(redis, db))  # type: ignore[arg-type]
+    assert ready_response.status == 200
+    assert db.executed is True
+    assert redis.pinged is True
 
 
 def test_error_base_template_defines_home_link() -> None:
