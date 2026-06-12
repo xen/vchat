@@ -49,25 +49,25 @@
 
 {% macro pinned_message_color_class(value) -%}
   {% if value == 'primary' -%}
-    bg-primary/10 text-primary border-primary/20
+    bg-primary/10 text-primary
   {%- elif value == 'secondary' -%}
-    bg-secondary/10 text-secondary border-secondary/20
+    bg-secondary/10 text-secondary
   {%- elif value == 'accent' -%}
-    bg-accent/10 text-accent border-accent/20
+    bg-accent/10 text-accent
   {%- elif value == 'info' -%}
-    bg-info/10 text-info border-info/20
+    bg-info/10 text-info
   {%- elif value == 'success' -%}
-    bg-success/10 text-success border-success/20
+    bg-success/10 text-success
   {%- elif value == 'warning' -%}
-    bg-warning/10 text-warning border-warning/20
+    bg-warning/10 text-warning
   {%- else -%}
-    bg-base-200 text-base-content border-base-300
+    bg-base-200 text-base-content
   {%- endif %}
 {%- endmacro %}
 
 {% macro pinned_message_row(item=None) %}
   {% set current_color = item.color|default('neutral') if item else 'neutral' %}
-  <tr class="align-top border {{ pinned_message_color_class(current_color) }}" data-pinned-message>
+  <tr class="align-top {{ pinned_message_color_class(current_color) }}" data-pinned-message>
     <td class="w-8 p-1">
       <button
         type="button"
@@ -79,7 +79,7 @@
         <iconify-icon icon="lucide:grip-vertical" class="size-3.5"></iconify-icon>
       </button>
     </td>
-    <td class="min-w-0">
+    <td class="min-w-0 p-0 pr-2">
       <input
         type="hidden"
         name="pinned_text[]"
@@ -110,8 +110,55 @@
         </select>
       </div>
     </td>
-    <td class="w-10 p-1 text-right">
+    <td class="w-10 p-1 text-right align-middle">
       <button type="button" class="btn btn-square btn-sm btn-ghost text-error" data-remove-pinned-message title="{{ 'Удалить' }}" aria-label="{{ 'Удалить' }}">
+        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+      </button>
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro welcome_message_row(text='') %}
+  <tr class="align-top" data-welcome-message>
+    <td class="min-w-0 p-0 pr-2">
+      <input
+        type="hidden"
+        name="welcome_text[]"
+        value="{{ text }}"
+        data-welcome-html-input
+      >
+      <div
+        class="textarea textarea-bordered min-h-24 h-auto w-full max-w-full resize-y overflow-y-auto whitespace-pre-wrap break-words bg-transparent leading-relaxed"
+        contenteditable="true"
+        role="textbox"
+        data-pinned-editor
+        data-welcome-editor
+        data-placeholder="{{ 'Приветственное сообщение' }}"
+        data-max-length="2000"
+      >{{ text|safe }}</div>
+    </td>
+    <td class="w-10 p-1 text-right align-middle">
+      <button type="button" class="btn btn-square btn-sm btn-ghost text-error" data-remove-welcome-message title="{{ 'Удалить' }}" aria-label="{{ 'Удалить' }}">
+        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+      </button>
+    </td>
+  </tr>
+{% endmacro %}
+
+{% macro waiting_message_row(text='') %}
+  <tr class="align-top" data-waiting-message>
+    <td class="min-w-0 p-0 pr-2">
+      <input
+        type="text"
+        name="waiting_text[]"
+        class="input input-bordered w-full"
+        value="{{ text }}"
+        maxlength="120"
+        placeholder="{{ 'Текст ожидания' }}"
+      >
+    </td>
+    <td class="w-10 p-1 text-right align-middle">
+      <button type="button" class="btn btn-square btn-sm btn-ghost text-error" data-remove-waiting-message title="{{ 'Удалить' }}" aria-label="{{ 'Удалить' }}">
         <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
       </button>
     </td>
@@ -189,130 +236,237 @@
       hx-post="{{ url('actions', action='widget_update', item_id=widget.id) }}"
       hx-swap="none"
       hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
-      class="card-body grid gap-5"
+      class="card-body grid gap-10"
     >
-      <label class="form-control">
-        <span class="label-text mb-1">{{ 'Название' }}</span>
-        <input
-          type="text"
-          name="name"
-          value="{{ widget.name }}"
-          class="input input-bordered w-full"
-          maxlength="128"
-          required
-        >
-        <span class="mt-1 text-xs text-base-content/60">{{ 'Внутреннее название, нужно только для удобства в админке.' }}</span>
-      </label>
-
-      <label class="form-control">
-        <span class="label-text mb-1">{{ 'Контакты' }}</span>
-        <input
-          type="url"
-          name="contact_url"
-          value="{{ widget.contact_url }}"
-          class="input input-bordered w-full"
-          placeholder="https://example.com/contacts"
-        >
-      </label>
-
-      <label class="form-control">
-        <span class="label-text mb-1">{{ 'Название чата' }}</span>
-        <input
-          type="text"
-          name="agent_name"
-          value="{{ widget.agent_name }}"
-          class="input input-bordered w-full"
-          maxlength="100"
-          placeholder="{{ 'Виртуальный ассистент' }}"
-        >
-        <span class="mt-1 text-xs text-base-content/60">{{ 'Показывается пользователю в окне чата.' }}</span>
-      </label>
-
-      <label class="form-control">
-        <span class="label-text mb-1">{{ 'Приветственное сообщение' }}</span>
-        <textarea
-          name="welcome_message"
-          class="textarea textarea-bordered w-full"
-          rows="3"
-          maxlength="2000"
-        >{{ widget.welcome_message or default_welcome_message }}</textarea>
-      </label>
-
-      <label class="form-control">
-        <span class="label-text mb-1">{{ 'Системный промпт' }}</span>
-        <textarea
-          name="system_prompt"
-          class="textarea textarea-bordered w-full font-mono text-sm"
-          rows="10"
-          maxlength="4000"
-        >{{ widget.system_prompt or default_system_prompt }}</textarea>
-      </label>
-
-      <section class="grid gap-3 rounded border border-base-300 p-4">
-        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 class="text-base font-medium">{{ 'Подсказки после ответа' }}</h2>
-            <p class="mt-1 text-sm text-base-content/60">{{ 'Кнопки с продолжением диалога генерируются после ответа ассистента.' }}</p>
-          </div>
-          <label class="label cursor-pointer justify-start gap-3 md:justify-end">
-            <input
-              type="checkbox"
-              name="suggestions_enabled"
-              value="1"
-              class="toggle toggle-primary"
-              {% if widget.suggestions_enabled %}checked{% endif %}
-            >
-            <span class="label-text">{{ 'Включено' }}</span>
-          </label>
+      <section class="grid gap-3">
+        <div>
+          <h2 class="text-base font-medium">{{ 'Внутренние настройки' }}</h2>
+          <p class="mt-1 text-sm text-base-content/60">{{ 'Эти данные видны только в админке и помогают отличать один код виджета от другого.' }}</p>
         </div>
-        <label class="form-control">
-          <span class="label-text mb-1">{{ 'Промпт для подсказок' }}</span>
-          <textarea
-            name="suggestions_prompt"
-            class="textarea textarea-bordered w-full font-mono text-sm"
-            rows="12"
-            maxlength="6000"
-          >{{ widget.suggestions_prompt or default_suggestions_prompt }}</textarea>
-          <span class="mt-1 text-xs text-base-content/60">{{ 'Формат JSON, последний вопрос, финальный ответ и источники добавляются автоматически.' }}</span>
-        </label>
+        <div class="grid gap-10">
+          <section class="grid gap-3">
+            <div>
+              <h3 class="text-sm font-medium">{{ 'Название виджета' }}</h3>
+              <p class="mt-1 text-sm text-base-content/60">{{ 'Внутреннее название видно только в админке. Используйте его, чтобы быстро отличать этот виджет от других кодов вставки.' }}</p>
+            </div>
+            <input
+              type="text"
+              name="name"
+              aria-label="{{ 'Название виджета' }}"
+              value="{{ widget.name }}"
+              class="input input-bordered w-full"
+              maxlength="128"
+              required
+            >
+          </section>
+        </div>
       </section>
 
       <section class="grid gap-3">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-base font-medium">{{ 'Закрепленные сообщения' }}</h2>
+        <div>
+          <h2 class="text-base font-medium">{{ 'Элементы чата' }}</h2>
+          <p class="mt-1 text-sm text-base-content/60">{{ 'Настройки ниже идут в том же порядке, в котором пользователь видит элементы в окне чата.' }}</p>
         </div>
-        <div id="pinned-messages-container" class="overflow-x-auto">
-          {% if widget.pinned_messages %}
-          <table class="table table-zebra w-full table-fixed">
-            <thead>
-              <tr>
-                <th class="w-8"></th>
-                <th>{{ 'Сообщение' }}</th>
-                <th class="w-60">{{ 'Цвет подложки' }}</th>
-                <th class="w-10"></th>
-              </tr>
-            </thead>
-            <tbody id="pinned-messages">
-              {% for item in widget.pinned_messages %}
-              {{ pinned_message_row(item) }}
-              {% endfor %}
-            </tbody>
-          </table>
-          {% endif %}
+        <div class="grid gap-10">
+
+        <section class="grid gap-4">
+          <div>
+            <h3 class="text-sm font-medium">{{ 'Заголовок чата' }}</h3>
+            <p class="mt-1 text-sm text-base-content/60">{{ 'Показывается в верхней панели виджета. Обычно это короткое название сервиса или роли ассистента.' }}</p>
+          </div>
+          <input
+            id="widget-agent-name"
+            type="text"
+            name="agent_name"
+            aria-label="{{ 'Заголовок чата' }}"
+            value="{{ widget.agent_name }}"
+            class="input input-bordered w-full"
+            maxlength="100"
+            placeholder="{{ 'Чат поддержки' }}"
+          >
+        </section>
+
+        <section class="grid gap-4">
+          <div>
+            <h3 class="text-sm font-medium">{{ 'Приветственные сообщения' }}</h3>
+            <p class="mt-1 text-sm text-base-content/60">{{ 'Добавьте варианты первого сообщения. В новом диалоге виджет случайно выберет одно из них; последнее сообщение удалить нельзя.' }}</p>
+          </div>
+          <div id="welcome-messages-container" class="overflow-x-auto">
+            <table class="table widget-rich-table w-full table-fixed">
+              <thead>
+                <tr>
+                  <th>{{ 'Сообщение' }}</th>
+                  <th class="w-10"></th>
+                </tr>
+              </thead>
+              <tbody id="welcome-messages">
+                {% set welcome_messages = widget.welcome_messages or [default_welcome_message] %}
+                {% for text in welcome_messages %}
+                {{ welcome_message_row(text) }}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            class="btn btn-outline btn-primary btn-sm mt-1 w-fit"
+            data-add-welcome-message
+          >
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            {{ 'Добавить сообщение' }}
+          </button>
+        </section>
+
+        <section class="grid gap-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-medium">{{ 'Закрепленные сообщения' }}</h3>
+              <p class="mt-1 text-sm text-base-content/60">{{ 'Показываются над историей сообщений. Используйте их для важных правил, ссылок и предупреждений; порядок можно менять перетаскиванием.' }}</p>
+            </div>
+          </div>
+          <div id="pinned-messages-container" class="overflow-x-auto">
+            {% if widget.pinned_messages %}
+            <table class="table widget-rich-table w-full table-fixed">
+              <thead>
+                <tr>
+                  <th class="w-8"></th>
+                  <th>{{ 'Сообщение' }}</th>
+                  <th class="w-60">{{ 'Цвет подложки' }}</th>
+                  <th class="w-10"></th>
+                </tr>
+              </thead>
+              <tbody id="pinned-messages">
+                {% for item in widget.pinned_messages %}
+                {{ pinned_message_row(item) }}
+                {% endfor %}
+              </tbody>
+            </table>
+            {% endif %}
+          </div>
+          <button
+            type="button"
+            class="btn btn-outline btn-primary btn-sm mt-1 w-fit"
+            data-add-pinned-message
+          >
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            {{ 'Добавить сообщение' }}
+          </button>
+        </section>
+
+        <section class="grid gap-4">
+          <div>
+            <h3 class="text-sm font-medium">{{ 'Подсказки после ответа' }}</h3>
+            <p class="mt-1 text-sm text-base-content/60">{{ 'Если включено, после ответа ассистента виджет покажет короткие кнопки для продолжения диалога.' }}</p>
+          </div>
+          <div>
+            <label class="label cursor-pointer justify-start gap-3 p-0">
+              <input
+                type="checkbox"
+                name="suggestions_enabled"
+                value="1"
+                class="toggle toggle-primary"
+                data-suggestions-toggle
+                {% if widget.suggestions_enabled %}checked{% endif %}
+              >
+              <span class="label-text">{{ 'Включено' }}</span>
+            </label>
+          </div>
+          <div class="grid gap-3 {% if not widget.suggestions_enabled %}hidden{% endif %}" data-suggestions-prompt-panel>
+            <div>
+              <h4 class="text-sm font-medium">{{ 'Промпт для подсказок' }}</h4>
+              <p class="mt-1 text-sm text-base-content/60">{{ 'Опишите, какие продолжения диалога предлагать пользователю. Формат JSON, последний вопрос, финальный ответ и связанные страницы добавляются автоматически.' }}</p>
+            </div>
+            <textarea
+              name="suggestions_prompt"
+              aria-label="{{ 'Промпт для подсказок' }}"
+              class="textarea textarea-bordered w-full font-mono text-sm"
+              rows="8"
+              maxlength="6000"
+            >{{ widget.suggestions_prompt or default_suggestions_prompt }}</textarea>
+          </div>
+        </section>
+
+        <section class="grid gap-4">
+          <div>
+            <h3 class="text-sm font-medium">{{ 'Тексты ожидания' }}</h3>
+            <p class="mt-1 text-sm text-base-content/60">{{ 'Показываются по одному, пока пользователь ждёт ответ ассистента. Текст меняется случайно каждые 5 секунд.' }}</p>
+          </div>
+          <div id="waiting-messages-container" class="overflow-x-auto">
+            <table class="table widget-rich-table w-full table-fixed">
+              <thead>
+                <tr>
+                  <th>{{ 'Текст' }}</th>
+                  <th class="w-10"></th>
+                </tr>
+              </thead>
+              <tbody id="waiting-messages">
+                {% set waiting_messages = widget.waiting_messages or [default_waiting_message] %}
+                {% for text in waiting_messages %}
+                {{ waiting_message_row(text) }}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            class="btn btn-outline btn-primary btn-sm mt-1 w-fit"
+            data-add-waiting-message
+          >
+            <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
+            {{ 'Добавить текст' }}
+          </button>
+        </section>
+
+        <section class="grid gap-4">
+          <div>
+            <h3 class="text-sm font-medium">{{ 'Текст подвала' }}</h3>
+            <p class="mt-1 text-sm text-base-content/60">{{ 'Небольшой текст под полем ввода. Выделите текст, чтобы сделать его жирным или добавить ссылку.' }}</p>
+          </div>
+          <input
+            type="hidden"
+            name="footer_text"
+            value="{{ widget.footer_text or default_widget_footer_text }}"
+            data-footer-html-input
+          >
+          <div
+            class="textarea textarea-bordered min-h-20 h-auto w-full max-w-full resize-y overflow-y-auto whitespace-pre-wrap break-words bg-transparent leading-relaxed"
+            contenteditable="true"
+            role="textbox"
+            data-pinned-editor
+            data-footer-editor
+            data-placeholder="{{ 'Текст подвала' }}"
+            data-max-length="600"
+          >{{ (widget.footer_text or default_widget_footer_text)|safe }}</div>
+        </section>
         </div>
-        <button
-          type="button"
-          class="btn btn-outline btn-primary btn-sm w-fit"
-          data-add-pinned-message
-        >
-          <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
-          {{ 'Добавить сообщение' }}
-        </button>
       </section>
 
-      <div class="flex justify-end gap-2">
-        <a href="{{ url('project_integration') }}" class="btn btn-ghost btn-sm">{{ 'Отмена' }}</a>
+      <section class="grid gap-3">
+        <div>
+          <h2 class="text-base font-medium">{{ 'Системные настройки' }}</h2>
+          <p class="mt-1 text-sm text-base-content/60">{{ 'Технические инструкции, которые управляют поведением ассистента.' }}</p>
+        </div>
+        <div class="grid gap-10">
+          <section class="grid gap-3">
+            <div>
+              <h3 class="text-sm font-medium">{{ 'Системный промпт' }}</h3>
+              <p class="mt-1 text-sm text-base-content/60">{{ 'Инструкция для ассистента: тон, роль, ограничения и поведение при недостатке данных. Меняйте только если нужно скорректировать поведение всего чата.' }}</p>
+            </div>
+            <textarea
+              id="widget-system-prompt"
+              name="system_prompt"
+              aria-label="{{ 'Системный промпт' }}"
+              class="textarea textarea-bordered w-full font-mono text-sm"
+              rows="10"
+              maxlength="4000"
+            >{{ widget.system_prompt or default_system_prompt }}</textarea>
+          </section>
+        </div>
+      </section>
+
+      <div class="flex justify-start gap-2 pt-2">
         <button type="submit" class="btn btn-primary btn-sm">{{ 'Сохранить' }}</button>
+        <a href="{{ url('project_integration') }}" class="btn btn-ghost btn-sm">{{ 'Отмена' }}</a>
       </div>
     </form>
   </div>
@@ -324,24 +478,32 @@
         <p class="mt-1 text-sm text-base-content/60">{{ 'Сброс кода отключит старый код вставки. Удаление полностью отключит виджет на всех сайтах, где он установлен.' }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button
-          class="btn btn-warning btn-outline btn-sm"
+        <form
+          method="POST"
+          action="{{ url('actions', action='widget_reset_code', item_id=widget.id) }}"
           hx-post="{{ url('actions', action='widget_reset_code', item_id=widget.id) }}"
           hx-swap="none"
           hx-confirm="{{ 'Сбросить код виджета? Старый код вставки перестанет работать.' }}"
+          hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
         >
-          <iconify-icon icon="lucide:rotate-ccw" class="size-4"></iconify-icon>
-          {{ 'Сбросить код виджета' }}
-        </button>
-        <button
-          class="btn btn-error btn-outline btn-sm"
+          <button type="submit" class="btn btn-outline btn-warning btn-sm">
+            <iconify-icon icon="lucide:rotate-ccw" class="size-4"></iconify-icon>
+            {{ 'Сбросить код виджета' }}
+          </button>
+        </form>
+        <form
+          method="POST"
+          action="{{ url('actions', action='widget_delete', item_id=widget.id) }}"
           hx-post="{{ url('actions', action='widget_delete', item_id=widget.id) }}"
           hx-swap="none"
-          hx-confirm="{{ 'Удалить код виджета?' }}"
+          hx-confirm="{{ 'Удалить виджет полностью?' }}"
+          hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
         >
-          <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
-          {{ 'Удалить виджет' }}
-        </button>
+          <button type="submit" class="btn btn-outline btn-error btn-sm">
+            <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
+            {{ 'Удалить виджет' }}
+          </button>
+        </form>
       </div>
     </div>
   </div>
@@ -349,6 +511,14 @@
 
 <template id="pinned-message-template">
   {{ pinned_message_row() }}
+</template>
+
+<template id="welcome-message-template">
+  {{ welcome_message_row() }}
+</template>
+
+<template id="waiting-message-template">
+  {{ waiting_message_row() }}
 </template>
 
 <div
@@ -384,10 +554,27 @@
     pointer-events: none;
   }
 
+  [data-pinned-editor] {
+    border-left-color: var(--color-info);
+    border-left-width: 2px;
+    padding-left: 0.75rem;
+  }
+
+  .widget-rich-table th:first-child,
+  .widget-rich-table td:first-child {
+    padding-left: 0;
+  }
+
   [data-pinned-editor] a {
     color: var(--color-primary);
+    font-weight: 600;
     text-decoration-line: underline;
     text-underline-offset: 2px;
+  }
+
+  [data-pinned-editor] b,
+  [data-pinned-editor] strong {
+    font-weight: 700;
   }
 </style>
 
@@ -408,19 +595,25 @@
     warning: 'bg-warning',
   };
   const pinnedMessageColorClasses = {
-    neutral: 'bg-base-200 text-base-content border-base-300',
-    primary: 'bg-primary/10 text-primary border-primary/20',
-    secondary: 'bg-secondary/10 text-secondary border-secondary/20',
-    accent: 'bg-accent/10 text-accent border-accent/20',
-    info: 'bg-info/10 text-info border-info/20',
-    success: 'bg-success/10 text-success border-success/20',
-    warning: 'bg-warning/10 text-warning border-warning/20',
+    neutral: 'bg-base-200 text-base-content',
+    primary: 'bg-primary/10 text-primary',
+    secondary: 'bg-secondary/10 text-secondary',
+    accent: 'bg-accent/10 text-accent',
+    info: 'bg-info/10 text-info',
+    success: 'bg-success/10 text-success',
+    warning: 'bg-warning/10 text-warning',
   };
   const swatchClassList = Object.values(colorPreviewClasses);
   const pinnedMessageClassList = Object.values(pinnedMessageColorClasses).flatMap((classes) => classes.split(' '));
   const pinnedContainer = document.getElementById('pinned-messages-container');
   const pinnedTemplate = document.getElementById('pinned-message-template');
   const addPinnedButton = document.querySelector('[data-add-pinned-message]');
+  const welcomeContainer = document.getElementById('welcome-messages');
+  const welcomeTemplate = document.getElementById('welcome-message-template');
+  const waitingContainer = document.getElementById('waiting-messages');
+  const waitingTemplate = document.getElementById('waiting-message-template');
+  const suggestionsToggle = document.querySelector('[data-suggestions-toggle]');
+  const suggestionsPromptPanel = document.querySelector('[data-suggestions-prompt-panel]');
   let draggedPinnedMessage = null;
   let isPinnedMessageDragging = false;
 
@@ -428,7 +621,7 @@
     let tbody = document.getElementById('pinned-messages');
     if (tbody) return tbody;
     pinnedContainer.innerHTML = `
-      <table class="table table-zebra w-full table-fixed">
+      <table class="table widget-rich-table w-full table-fixed">
         <thead>
           <tr>
             <th class="w-8"></th>
@@ -470,6 +663,17 @@
   };
 
   const syncPinnedEditorInput = (editor) => {
+    if (editor.matches('[data-footer-editor]')) {
+      const input = document.querySelector('[data-footer-html-input]');
+      if (input) input.value = editor.innerHTML.trim();
+      return;
+    }
+    if (editor.matches('[data-welcome-editor]')) {
+      const row = editor.closest('[data-welcome-message]');
+      const input = row?.querySelector('[data-welcome-html-input]');
+      if (input) input.value = editor.innerHTML.trim();
+      return;
+    }
     const row = editor.closest('[data-pinned-message]');
     const input = row?.querySelector('[data-pinned-html-input]');
     if (input) input.value = editor.innerHTML.trim();
@@ -477,6 +681,18 @@
 
   const syncAllPinnedEditors = () => {
     document.querySelectorAll('[data-pinned-editor]').forEach(syncPinnedEditorInput);
+  };
+
+  const syncWelcomeRemoveButtons = () => {
+    const rows = welcomeContainer.querySelectorAll('[data-welcome-message]');
+    rows.forEach((row) => {
+      const button = row.querySelector('[data-remove-welcome-message]');
+      if (button) button.disabled = rows.length <= 1;
+    });
+  };
+
+  const syncSuggestionsPromptVisibility = () => {
+    suggestionsPromptPanel?.classList.toggle('hidden', !suggestionsToggle?.checked);
   };
 
   const insertPlainTextAtSelection = (text) => {
@@ -524,6 +740,24 @@
       : anchor?.parentElement?.closest('[data-pinned-editor]');
     return editor || null;
   };
+
+  const pinnedEditorForSelectionNode = (node) => {
+    if (!node) return null;
+    const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return element?.closest?.('[data-pinned-editor]') || null;
+  };
+
+  document.addEventListener('copy', (event) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return;
+
+    const anchorEditor = pinnedEditorForSelectionNode(selection.anchorNode);
+    const focusEditor = pinnedEditorForSelectionNode(selection.focusNode);
+    if (!anchorEditor || anchorEditor !== focusEditor) return;
+
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', selection.toString());
+  });
 
   const hidePinnedLinkPanel = () => {
     pinnedRichLinkPanel.classList.add('hidden');
@@ -669,6 +903,35 @@
       syncPinnedButton();
     }
 
+    if (event.target.closest('[data-add-welcome-message]')) {
+      welcomeContainer.append(welcomeTemplate.content.cloneNode(true));
+      const editor = welcomeContainer.querySelector('[data-welcome-message]:last-child [data-welcome-editor]');
+      if (editor) {
+        syncPinnedEditorInput(editor);
+        editor.focus();
+      }
+      syncWelcomeRemoveButtons();
+    }
+
+    if (event.target.closest('[data-add-waiting-message]')) {
+      waitingContainer.append(waitingTemplate.content.cloneNode(true));
+      waitingContainer.querySelector('[data-waiting-message]:last-child input')?.focus();
+    }
+
+    const removeWelcome = event.target.closest('[data-remove-welcome-message]');
+    if (removeWelcome) {
+      if (welcomeContainer.querySelectorAll('[data-welcome-message]').length <= 1) {
+        return;
+      }
+      removeWelcome.closest('[data-welcome-message]').remove();
+      syncWelcomeRemoveButtons();
+    }
+
+    const removeWaiting = event.target.closest('[data-remove-waiting-message]');
+    if (removeWaiting) {
+      removeWaiting.closest('[data-waiting-message]').remove();
+    }
+
     const remove = event.target.closest('[data-remove-pinned-message]');
     if (remove) {
       remove.closest('[data-pinned-message]').remove();
@@ -679,6 +942,7 @@
   document.addEventListener('change', (event) => {
     const select = event.target.closest('[data-pinned-color]');
     if (select) updateColorPreview(select);
+    if (event.target.closest('[data-suggestions-toggle]')) syncSuggestionsPromptVisibility();
   });
 
   document.addEventListener('input', (event) => {
@@ -759,6 +1023,8 @@
   document.querySelector('form[hx-post*="widget_update"]').addEventListener('submit', syncAllPinnedEditors);
   document.querySelectorAll('[data-pinned-color]').forEach(updateColorPreview);
   document.querySelectorAll('[data-pinned-editor]').forEach(syncPinnedEditorInput);
+  syncWelcomeRemoveButtons();
+  syncSuggestionsPromptVisibility();
   syncPinnedButton();
 </script>
 {% endblock %}

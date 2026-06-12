@@ -120,7 +120,8 @@ from . import forms
 logger = logging.getLogger(__name__)
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
 DOCUMENT_CONTENT_PREVIEW_CHARS = 500
-DEFAULT_WIDGET_WELCOME_MESSAGE = "Здравствуйте! Чем могу помочь?"
+DEFAULT_WIDGET_WELCOME_MESSAGE = "Здравствуйте! Напишите ваш вопрос."
+DEFAULT_WIDGET_WAITING_MESSAGE = "Готовлю ответ"
 PINNED_MESSAGE_MAX_CHARS = 400
 
 __all__ = [
@@ -233,17 +234,27 @@ async def _assign_new_widget_code(db_session, widget: WidgetIntegration) -> None
 
 
 class _PinnedMessageHTMLSanitizer(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, max_chars: int = PINNED_MESSAGE_MAX_CHARS) -> None:
         super().__init__(convert_charrefs=True)
+        self.max_chars = max_chars
         self.parts: list[str] = []
         self.visible_chars = 0
         self.open_tags: list[str] = []
+        self.skip_depth = 0
 
     def _remaining_chars(self) -> int:
-        return PINNED_MESSAGE_MAX_CHARS - self.visible_chars
+        return self.max_chars - self.visible_chars
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self.skip_depth += 1
+            return
+        if self.skip_depth:
+            return
         if self._remaining_chars() <= 0:
+            return
+        if tag == "br":
+            self.parts.append("<br>")
             return
         if tag in {"strong", "b"}:
             self.parts.append(f"<{tag}>")
@@ -266,6 +277,11 @@ class _PinnedMessageHTMLSanitizer(HTMLParser):
         self.open_tags.append(tag)
 
     def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self.skip_depth:
+            self.skip_depth -= 1
+            return
+        if self.skip_depth:
+            return
         if tag not in {"strong", "b", "a"}:
             return
         if tag not in self.open_tags:
@@ -277,6 +293,8 @@ class _PinnedMessageHTMLSanitizer(HTMLParser):
                 break
 
     def handle_data(self, data: str) -> None:
+        if self.skip_depth:
+            return
         remaining = self._remaining_chars()
         if remaining <= 0:
             return
@@ -290,8 +308,12 @@ class _PinnedMessageHTMLSanitizer(HTMLParser):
         return "".join(self.parts).strip()
 
 
-def _sanitize_pinned_message_html(raw_html: str) -> str:
-    parser = _PinnedMessageHTMLSanitizer()
+def _sanitize_pinned_message_html(
+    raw_html: str,
+    *,
+    max_chars: int = PINNED_MESSAGE_MAX_CHARS,
+) -> str:
+    parser = _PinnedMessageHTMLSanitizer(max_chars=max_chars)
     parser.feed(raw_html or "")
     parser.close()
     return parser.sanitized()
@@ -310,9 +332,99 @@ def _safe_pinned_messages(
     return safe_messages
 
 
+def _form_getall(data, key: str) -> list[str]:
+    if hasattr(data, "getall"):
+        return list(data.getall(key, []))
+    value = data.get(key, []) if hasattr(data, "get") else []
+    if isinstance(value, list | tuple):
+        return [str(item) for item in value]
+    return [str(value)] if value else []
+
+
+def _safe_welcome_messages(welcome_messages: list[str] | None) -> list[str]:
+    safe_messages: list[str] = []
+    for raw_text in welcome_messages or []:
+        text = _sanitize_pinned_message_html(str(raw_text or ""), max_chars=2000)
+        if text:
+            safe_messages.append(text)
+    return safe_messages
+
+
+def _welcome_messages_from_form(data) -> list[str]:
+    messages: list[str] = []
+    for raw_text in _form_getall(data, "welcome_text[]"):
+        text = _sanitize_pinned_message_html(raw_text or "", max_chars=2000)
+        if text:
+            messages.append(text)
+    return messages or [DEFAULT_WIDGET_WELCOME_MESSAGE]
+
+
+def _random_welcome_message(welcome_messages: list[str] | None) -> str:
+    safe_messages = _safe_welcome_messages(welcome_messages)
+    if not safe_messages:
+        return DEFAULT_WIDGET_WELCOME_MESSAGE
+    return secrets.choice(safe_messages)
+
+
+class _PlainTextHTMLSanitizer(HTMLParser):
+    def __init__(self, *, max_chars: int) -> None:
+        super().__init__(convert_charrefs=True)
+        self.max_chars = max_chars
+        self.parts: list[str] = []
+        self.visible_chars = 0
+        self.skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        _ = attrs
+        if tag in {"script", "style"}:
+            self.skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self.skip_depth:
+            self.skip_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth:
+            return
+        remaining = self.max_chars - self.visible_chars
+        if remaining <= 0:
+            return
+        text = data[:remaining]
+        self.parts.append(text)
+        self.visible_chars += len(text)
+
+    def sanitized(self) -> str:
+        return " ".join("".join(self.parts).split())
+
+
+def _sanitize_waiting_message_text(raw_text: str, *, max_chars: int = 120) -> str:
+    parser = _PlainTextHTMLSanitizer(max_chars=max_chars)
+    parser.feed(raw_text or "")
+    parser.close()
+    return parser.sanitized()
+
+
+def _safe_waiting_messages(waiting_messages: list[str] | None) -> list[str]:
+    safe_messages: list[str] = []
+    for raw_text in waiting_messages or []:
+        text = _sanitize_waiting_message_text(str(raw_text or ""))
+        if text:
+            safe_messages.append(text)
+    return safe_messages
+
+
+def _waiting_messages_from_form(data) -> list[str]:
+    messages: list[str] = []
+    for raw_text in _form_getall(data, "waiting_text[]"):
+        text = _sanitize_waiting_message_text(raw_text or "")
+        if text:
+            messages.append(text)
+    return messages or [DEFAULT_WIDGET_WAITING_MESSAGE]
+
+
 def _pinned_messages_from_form(data) -> list[dict[str, str]]:
-    texts = data.getall("pinned_text[]", [])
-    colors = data.getall("pinned_color[]", [])
+    texts = _form_getall(data, "pinned_text[]")
+    colors = _form_getall(data, "pinned_color[]")
     messages: list[dict[str, str]] = []
     allowed_colors = {
         "neutral",
@@ -334,6 +446,14 @@ def _pinned_messages_from_form(data) -> list[dict[str, str]]:
     return messages
 
 
+def _widget_footer_text_from_form(data) -> str:
+    footer_text = _sanitize_pinned_message_html(
+        data.get("footer_text") or "",
+        max_chars=600,
+    )
+    return footer_text or forms.DEFAULT_WIDGET_FOOTER_TEXT
+
+
 async def _widget_integration_list_context(db_session) -> dict[str, Any]:
     rows = (
         (
@@ -350,9 +470,10 @@ async def _widget_integration_list_context(db_session) -> dict[str, Any]:
             name=widget.name,
             code=widget.code,
             public_url=_public_widget_url(widget.code),
-            contact_url=widget.contact_url,
             agent_name=widget.agent_name,
-            welcome_message=widget.welcome_message,
+            welcome_messages=_safe_welcome_messages(widget.welcome_messages),
+            waiting_messages=_safe_waiting_messages(widget.waiting_messages),
+            footer_text=widget.footer_text,
             system_prompt=widget.system_prompt,
             suggestions_enabled=widget.suggestions_enabled,
             suggestions_prompt=widget.suggestions_prompt,
@@ -366,6 +487,8 @@ async def _widget_integration_list_context(db_session) -> dict[str, Any]:
         "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
         "default_suggestions_prompt": forms.DEFAULT_SUGGESTIONS_PROMPT,
         "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
+        "default_waiting_message": DEFAULT_WIDGET_WAITING_MESSAGE,
+        "default_widget_footer_text": forms.DEFAULT_WIDGET_FOOTER_TEXT,
     }
 
 
@@ -374,9 +497,10 @@ def _widget_integration_snapshot(widget: WidgetIntegration) -> SimpleNamespace:
         id=widget.id,
         name=widget.name,
         code=widget.code,
-        contact_url=widget.contact_url,
         agent_name=widget.agent_name,
-        welcome_message=widget.welcome_message,
+        welcome_messages=_safe_welcome_messages(widget.welcome_messages),
+        waiting_messages=_safe_waiting_messages(widget.waiting_messages),
+        footer_text=widget.footer_text,
         system_prompt=widget.system_prompt,
         suggestions_enabled=widget.suggestions_enabled,
         suggestions_prompt=widget.suggestions_prompt,
@@ -2287,12 +2411,12 @@ async def project_action(request):
         widget = WidgetIntegration(
             name=name[:128],
             code="",
-            contact_url=(data.get("contact_url") or "").strip(),
-            agent_name=(data.get("agent_name") or "").strip()[:100],
-            welcome_message=(
-                (data.get("welcome_message") or "").strip()
-                or DEFAULT_WIDGET_WELCOME_MESSAGE
-            ),
+            agent_name=((data.get("agent_name") or "").strip() or "Чат поддержки")[
+                :100
+            ],
+            welcome_messages=_welcome_messages_from_form(data),
+            waiting_messages=_waiting_messages_from_form(data),
+            footer_text=_widget_footer_text_from_form(data),
             system_prompt=(
                 (data.get("system_prompt") or "").strip() or forms.DEFAULT_SYSTEM_PROMPT
             ),
@@ -2328,11 +2452,10 @@ async def project_action(request):
             return web.Response(text="Название обязательно", status=400)
 
         widget.name = name[:128]
-        widget.contact_url = (data.get("contact_url") or "").strip()
         widget.agent_name = (data.get("agent_name") or "").strip()[:100]
-        widget.welcome_message = (
-            data.get("welcome_message") or ""
-        ).strip() or DEFAULT_WIDGET_WELCOME_MESSAGE
+        widget.welcome_messages = _welcome_messages_from_form(data)
+        widget.waiting_messages = _waiting_messages_from_form(data)
+        widget.footer_text = _widget_footer_text_from_form(data)
         widget.system_prompt = (
             data.get("system_prompt") or ""
         ).strip() or forms.DEFAULT_SYSTEM_PROMPT
@@ -3322,7 +3445,8 @@ async def project_chat(request):
         "payload": payload,
         "agent_name": "",
         "welcome_message": "",
-        "contact_url": "",
+        "footer_text": forms.DEFAULT_WIDGET_FOOTER_TEXT,
+        "default_widget_footer_text": forms.DEFAULT_WIDGET_FOOTER_TEXT,
         "pinned_messages": [],
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,
@@ -3373,6 +3497,8 @@ async def project_widget_edit(request):
         "default_system_prompt": forms.DEFAULT_SYSTEM_PROMPT,
         "default_suggestions_prompt": forms.DEFAULT_SUGGESTIONS_PROMPT,
         "default_welcome_message": DEFAULT_WIDGET_WELCOME_MESSAGE,
+        "default_waiting_message": DEFAULT_WIDGET_WAITING_MESSAGE,
+        "default_widget_footer_text": forms.DEFAULT_WIDGET_FOOTER_TEXT,
     }
 
 
@@ -3460,8 +3586,11 @@ async def _render_public_chat(request, widget: SimpleNamespace):
         "chat": chat,
         "payload": payload,
         "agent_name": widget.agent_name,
-        "welcome_message": widget.welcome_message,
-        "contact_url": widget.contact_url,
+        "welcome_message": _random_welcome_message(widget.welcome_messages),
+        "waiting_messages": _safe_waiting_messages(widget.waiting_messages),
+        "default_waiting_message": DEFAULT_WIDGET_WAITING_MESSAGE,
+        "footer_text": widget.footer_text or forms.DEFAULT_WIDGET_FOOTER_TEXT,
+        "default_widget_footer_text": forms.DEFAULT_WIDGET_FOOTER_TEXT,
         "pinned_messages": _safe_pinned_messages(widget.pinned_messages),
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,

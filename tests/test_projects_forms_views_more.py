@@ -135,6 +135,127 @@ def test_pinned_messages_from_form_sanitizes_rich_text_and_limits_length() -> No
     assert len(html.unescape(re.sub("<[^>]+>", "", messages[0]["text"]))) == 400
 
 
+def test_widget_footer_text_from_form_sanitizes_rich_text() -> None:
+    data = {
+        "footer_text": (
+            '<strong>Правила</strong> '
+            '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>'
+            "<br><b>Важно</b>"
+            '<script>alert(1)</script>'
+        )
+    }
+
+    footer_text = project_views._widget_footer_text_from_form(data)
+
+    assert "<strong>Правила</strong>" in footer_text
+    assert '<a href="https://vbudushee.ru/faq/"' in footer_text
+    assert "<br>" in footer_text
+    assert "<b>Важно</b>" in footer_text
+    assert "script" not in footer_text
+    assert "alert" not in footer_text
+
+
+def test_widget_text_defaults_match_creation_contract() -> None:
+    assert (
+        project_views.forms.DEFAULT_WIDGET_FOOTER_TEXT
+        == "Отправить Enter, новая строка Shift+Enter"
+    )
+    assert project_views.forms.DEFAULT_SYSTEM_PROMPT == (
+        "Ты дружелюбный ИИ-ассистент. Тон общения: дружелюбный, открытый, "
+        "спокойный, вдохновляющий и экспертный без высокомерия. Объясняй ясно и по "
+        "делу, подсвечивай полезные следующие шаги, показывай технологию как "
+        "удобный инструмент для человека. Если данных не хватает, задай короткий "
+        "уточняющий вопрос."
+    )
+
+
+def test_welcome_messages_from_form_sanitizes_many_rich_text_items() -> None:
+    data = SimpleNamespace(
+        getall=lambda key, default=None: (
+            [
+                '<strong>Первое</strong><script>x</script>',
+                "",
+                '<a href="https://vbudushee.ru/faq/">Второе</a>',
+                '<b>Третье</b>' + ("x" * 2500),
+            ]
+            if key == "welcome_text[]"
+            else []
+        )
+    )
+
+    messages = project_views._welcome_messages_from_form(data)
+
+    assert len(messages) == 3
+    assert "<strong>Первое</strong>" in messages[0]
+    assert "script" not in messages[0]
+    assert "x" not in messages[0]
+    assert '<a href="https://vbudushee.ru/faq/"' in messages[1]
+    assert "<b>Третье</b>" in messages[2]
+    assert len(html.unescape(re.sub("<[^>]+>", "", messages[2]))) == 2000
+
+
+def test_welcome_messages_from_form_falls_back_to_default() -> None:
+    data = SimpleNamespace(getall=lambda key, default=None: [""] if key else [])
+
+    assert project_views._welcome_messages_from_form(data) == [
+        project_views.DEFAULT_WIDGET_WELCOME_MESSAGE
+    ]
+
+
+def test_waiting_messages_from_form_sanitizes_plain_text_items() -> None:
+    data = SimpleNamespace(
+        getall=lambda key, default=None: (
+            [
+                "Готовлю ответ",
+                "",
+                "<strong>Проверяю источники</strong>",
+                "<script>alert(1)</script>Подбираю материалы",
+                "x" * 160,
+            ]
+            if key == "waiting_text[]"
+            else []
+        )
+    )
+
+    messages = project_views._waiting_messages_from_form(data)
+
+    assert messages[:3] == [
+        "Готовлю ответ",
+        "Проверяю источники",
+        "Подбираю материалы",
+    ]
+    assert "<" not in "".join(messages)
+    assert "alert" not in "".join(messages)
+    assert len(messages[3]) == 120
+
+
+def test_waiting_messages_from_form_falls_back_to_default() -> None:
+    data = SimpleNamespace(getall=lambda key, default=None: [""] if key else [])
+
+    assert project_views._waiting_messages_from_form(data) == [
+        project_views.DEFAULT_WIDGET_WAITING_MESSAGE
+    ]
+
+
+def test_random_welcome_message_uses_sanitized_message_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_messages = []
+
+    def _choice(messages):
+        seen_messages.append(messages)
+        return messages[0]
+
+    monkeypatch.setattr(project_views.secrets, "choice", _choice)
+
+    message = project_views._random_welcome_message(
+        ["<script>x</script>", "<strong>Второе</strong>"]
+    )
+
+    assert seen_messages == [["<strong>Второе</strong>"]]
+    assert message == "<strong>Второе</strong>"
+
+
 @pytest.mark.asyncio
 async def test_project_source_settings_not_found() -> None:
     req = _Req(method="GET")

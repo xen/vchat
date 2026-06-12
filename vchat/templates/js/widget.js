@@ -306,7 +306,11 @@
   // Create Button
   var button = document.createElement("button");
   button.id = "vchat-widget-button";
+  button.type = "button";
   button.title = "Спросить ассистента";
+  button.setAttribute("aria-label", "Открыть чат с ассистентом");
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", "vchat-widget-iframe-container");
   var closedWidgetIconSvg =
     '<svg class="vchat-widget-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true"><path class="vchat-widget-icon-path" d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
   button.innerHTML = closedWidgetIconSvg;
@@ -315,11 +319,15 @@
   var triggerButton = document.createElement("button");
   triggerButton.id = "vchat-widget-trigger";
   triggerButton.type = "button";
+  triggerButton.setAttribute("aria-label", "Открыть предложенный вопрос в чате");
   document.body.appendChild(triggerButton);
 
   // Create Iframe Container
   var iframeContainer = document.createElement("div");
   iframeContainer.id = "vchat-widget-iframe-container";
+  iframeContainer.setAttribute("role", "dialog");
+  iframeContainer.setAttribute("aria-label", "Чат с ассистентом");
+  iframeContainer.setAttribute("aria-hidden", "true");
   document.body.appendChild(iframeContainer);
 
   // Toggle Logic
@@ -350,6 +358,7 @@
     }
     iframeEl = document.createElement("iframe");
     iframeEl.id = "vchat-widget-iframe";
+    iframeEl.title = "Чат с ассистентом";
     iframeEl.src = buildChatUrl();
     iframeContainer.appendChild(iframeEl);
     iframeLoaded = true;
@@ -367,17 +376,29 @@
   function openWidget() {
     isOpen = true;
     button.classList.add("vchat-widget-open");
+    button.setAttribute("aria-label", "Закрыть чат с ассистентом");
+    button.setAttribute("aria-expanded", "true");
     iframeContainer.style.display = "flex";
+    iframeContainer.setAttribute("aria-hidden", "false");
     button.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-    ensureIframe();
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+    var frame = ensureIframe();
+    window.setTimeout(function () {
+      try {
+        frame.focus();
+      } catch (error) {}
+    }, 0);
   }
 
   function closeWidget() {
     isOpen = false;
     button.classList.remove("vchat-widget-open");
+    button.setAttribute("aria-label", "Открыть чат с ассистентом");
+    button.setAttribute("aria-expanded", "false");
     iframeContainer.style.display = "none";
+    iframeContainer.setAttribute("aria-hidden", "true");
     button.innerHTML = closedWidgetIconSvg;
+    button.focus();
   }
 
   window.addEventListener("message", function (event) {
@@ -463,6 +484,12 @@
       triggerButton.style.display = "none";
       openWidget();
     } else {
+      closeWidget();
+    }
+  });
+
+  window.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && isOpen) {
       closeWidget();
     }
   });

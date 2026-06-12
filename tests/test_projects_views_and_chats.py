@@ -389,20 +389,243 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
             name="Widget",
             code="abc",
             public_url="https://example.com/widget.js",
-            contact_url="https://example.com/contact",
             agent_name="Agent",
-            welcome_message="Hello",
+            welcome_messages=["Hello", "<strong>Second</strong>"],
+            waiting_messages=["Готовлю ответ", "Проверяю источники"],
+            footer_text='Footer <a href="https://vbudushee.ru/faq/">link</a>',
             system_prompt="Prompt",
             pinned_messages=[SimpleNamespace(text="Pinned", color="primary")],
+            suggestions_enabled=True,
+            suggestions_prompt="Suggestions",
         ),
-        default_welcome_message="Hello",
+        default_welcome_message=project_views.DEFAULT_WIDGET_WELCOME_MESSAGE,
+        default_waiting_message=project_views.DEFAULT_WIDGET_WAITING_MESSAGE,
+        default_widget_footer_text="Footer",
         default_system_prompt="Prompt",
+        default_suggestions_prompt="Suggestions",
     )
 
     assert '<option value="neutral"' in rendered
     assert '<option value="primary"' in rendered
     assert '<option value="warning"' in rendered
     assert 'value="primary"' in rendered and "selected" in rendered
+    assert 'name="contact_url"' not in rendered
+    assert 'Название виджета' in rendered
+    assert 'Название чата' not in rendered
+    assert 'Элементы чата' in rendered
+    assert 'Заголовок чата' in rendered
+    assert 'Системные настройки' in rendered
+    chat_order = [
+        'Заголовок чата',
+        'Приветственные сообщения',
+        'Закрепленные сообщения',
+        'Подсказки после ответа',
+        'Тексты ожидания',
+        'Текст подвала',
+    ]
+    assert [rendered.index(label) for label in chat_order] == sorted(
+        rendered.index(label) for label in chat_order
+    )
+    assert 'Текст подвала' in rendered
+    assert 'data-footer-editor' in rendered
+    assert 'name="footer_text"' in rendered
+    assert 'Приветственные сообщения' in rendered
+    assert 'Тексты ожидания' in rendered
+    assert 'id="waiting-messages"' in rendered
+    assert 'name="waiting_text[]"' in rendered
+    assert 'type="text"\n        name="waiting_text[]"' in rendered
+    assert "<textarea\n        name=\"waiting_text[]\"" not in rendered
+    assert "Проверяю источники" in rendered
+    assert 'data-add-waiting-message' in rendered
+    assert 'data-remove-waiting-message' in rendered
+    assert 'id="welcome-messages-container"' in rendered
+    assert 'id="welcome-messages"' in rendered
+    assert 'table widget-rich-table w-full table-fixed' in rendered
+    assert 'table table-zebra widget-rich-table' not in rendered
+    assert 'data-welcome-editor' in rendered
+    assert 'data-welcome-message' in rendered
+    assert 'name="welcome_text[]"' in rendered
+    assert "<strong>Second</strong>" in rendered
+    assert 'data-add-welcome-message' in rendered
+    assert 'data-remove-welcome-message' in rendered
+    assert rendered.count('class="w-10 p-1 text-right align-middle"') >= 2
+    assert 'class="min-w-0 p-0 pr-2"' in rendered
+    assert 'data-suggestions-toggle' in rendered
+    assert 'data-suggestions-prompt-panel' in rendered
+    assert "syncSuggestionsPromptVisibility" in rendered
+    assert (
+        'Формат JSON, последний вопрос, финальный ответ и связанные страницы добавляются автоматически.'
+        in rendered
+    )
+    assert "border-left-color: var(--color-info);" in rendered
+    assert "border-left-width: 2px;" in rendered
+    assert ".widget-rich-table td:first-child" in rendered
+    assert "padding-left: 0;" in rendered
+    assert 'Добавить сообщение' in rendered
+    assert 'border-t border-base-300/60' not in rendered
+    assert 'bg-base-200/40' not in rendered
+    assert 'class="sr-only"' not in rendered
+    assert 'grid gap-2 rounded border border-base-300 bg-base-100 p-3' not in rendered
+    assert 'data-pinned-drag-handle' in rendered
+    assert 'data-pinned-color' in rendered
+    assert 'data-welcome-drag-handle' not in rendered
+    assert 'data-welcome-color' not in rendered
+    assert 'name="welcome_message"' not in rendered
+    assert 'Footer <a href="https://vbudushee.ru/faq/">link</a>' in rendered
+    assert 'data-rich-command="bold"' in rendered
+    assert 'data-rich-command="link"' in rendered
+    assert "[data-pinned-editor] b," in rendered
+    assert "document.addEventListener('copy'" in rendered
+    assert "selection.anchorNode" in rendered
+    assert "selection.focusNode" in rendered
+    assert "event.clipboardData.setData('text/plain', selection.toString())" in rendered
+    assert "syncWelcomeRemoveButtons" in rendered
+    assert "rows.length <= 1" in rendered
+    assert rendered.index(">Сохранить</button>") < rendered.index(">Отмена</a>")
+
+
+def test_widget_integration_create_form_uses_default_welcome_message() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader({"admin.html": "{% block content %}{% endblock %}"}),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: URL(
+            f"/actions/{kwargs['action']}/{kwargs['item_id']}"
+            if name == "actions"
+            else "/integration"
+        ),
+        csrf_token=lambda: "token",
+    )
+
+    rendered = env.get_template("projects/integration.html").render(
+        widgets=[],
+        default_welcome_message=project_views.DEFAULT_WIDGET_WELCOME_MESSAGE,
+        default_waiting_message=project_views.DEFAULT_WIDGET_WAITING_MESSAGE,
+        default_widget_footer_text="Footer",
+        default_system_prompt="Prompt",
+    )
+
+    assert 'name="name"' in rendered
+    assert 'name="agent_name"' in rendered
+    assert 'value="Чат поддержки"' in rendered
+    assert 'name="welcome_text[]"' not in rendered
+    assert 'name="waiting_text[]"' not in rendered
+    assert 'name="footer_text"' not in rendered
+    assert 'name="system_prompt"' not in rendered
+
+
+def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(templates_dir)),
+        autoescape=True,
+    )
+    env.globals.update(csrf_token=lambda: "token")
+
+    rendered = env.get_template("chat/chat.html").render(
+        project=SimpleNamespace(title="Demo"),
+        agent_name="Demo chat",
+        pinned_messages=[],
+        support_csrf_token="token",
+        initial_messages=[],
+        signed_chat_id=None,
+        payload="signed-payload",
+        welcome_message="Hello",
+        waiting_messages=["Готовлю ответ", "Проверяю источники"],
+        default_waiting_message="Готовлю ответ",
+        footer_text='<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>.<br>Отправить Enter, новая строка Shift+Enter',
+        default_widget_footer_text="Footer",
+    )
+
+    assert 'id="log"' in rendered
+    assert 'role="log"' in rendered
+    assert 'aria-label="История сообщений"' in rendered
+    assert 'aria-live="polite"' in rendered
+    assert 'aria-relevant="additions text"' in rendered
+    assert 'aria-label="Форма отправки сообщения"' in rendered
+    assert 'id="prompt-label"' in rendered
+    assert 'aria-labelledby="prompt-label"' in rendered
+    assert 'aria-describedby="composer-footer"' in rendered
+    assert 'id="composer-footer"' in rendered
+    assert 'id="status"' not in rendered
+    assert 'aria-atomic="true"' not in rendered
+    assert "Контакты" not in rendered
+    assert 'https://vbudushee.ru/faq/' in rendered
+    assert 'Пользовательское соглашение' in rendered
+    assert "const waitingMessages = (" in rendered
+    assert "\\u0413\\u043e\\u0442\\u043e\\u0432\\u043b\\u044e" in rendered
+    assert "\\u041f\\u0440\\u043e\\u0432\\u0435\\u0440\\u044f\\u044e" in rendered
+    assert "setInterval(() =>" in rendered
+    assert "}, 5000);" in rendered
+    assert "vchat-waiting-text" in rendered
+    assert "function renderBotMarkdown(bubble, rawText)" in rendered
+    assert "body.classList.remove('vchat-waiting-text');" in rendered
+    assert "body.removeAttribute('role');" in rendered
+    assert "body.removeAttribute('aria-live');" in rendered
+    assert "body.removeAttribute('data-waiting-text');" in rendered
+    assert "loading-dots" not in rendered
+    assert 'Отправить Enter, новая строка Shift+Enter' in rendered
+    assert "setAttribute('role', 'article')" in rendered
+    assert 'Сообщение ассистента' in rendered
+    assert 'Ваше сообщение' in rendered
+    assert "setAttribute('role', 'group')" in rendered
+    assert 'Предложенные действия' in rendered
+    assert "setAttribute('role', 'list')" in rendered
+    assert "Связанные страницы" in rendered
+    assert "Связанные страницы ответа" in rendered
+    assert '>{{ "Источники" }}</span>' not in rendered
+    assert "Источники ответа" not in rendered
+    assert 'aria-hidden="true"' in rendered
+    assert 'Ответ полезен' in rendered
+    assert 'Ответ не полезен' in rendered
+    assert 'aria-label="Upvote"' not in rendered
+    assert 'aria-label="Downvote"' not in rendered
+    assert "bubble.textContent = text;" in rendered
+    assert "escapeHtml(source.uri)" in rendered
+
+
+def test_widget_loader_template_exposes_dialog_and_iframe_accessibility() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(templates_dir)),
+        autoescape=True,
+    )
+
+    rendered = env.get_template("js/widget.js").render(
+        widget_code="widget-code",
+        widget_chat_path="/chat/widget/widget-code",
+        trigger_resolve_path="/widget/widget-code/triggers",
+    )
+
+    assert 'button.type = "button";' in rendered
+    assert 'button.setAttribute("aria-label", "Открыть чат с ассистентом");' in rendered
+    assert 'button.setAttribute("aria-expanded", "false");' in rendered
+    assert 'button.setAttribute("aria-controls", "vchat-widget-iframe-container");' in rendered
+    assert 'triggerButton.setAttribute("aria-label", "Открыть предложенный вопрос в чате");' in rendered
+    assert 'iframeContainer.setAttribute("role", "dialog");' in rendered
+    assert 'iframeContainer.setAttribute("aria-label", "Чат с ассистентом");' in rendered
+    assert 'iframeContainer.setAttribute("aria-hidden", "true");' in rendered
+    assert 'iframeEl.title = "Чат с ассистентом";' in rendered
+    assert 'button.setAttribute("aria-expanded", "true");' in rendered
+    assert 'iframeContainer.setAttribute("aria-hidden", "false");' in rendered
+    assert 'event.key === "Escape"' in rendered
+
+
+def test_frontend_chat_citation_buttons_are_accessible() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "frontend_chat" / "src" / "chat.js"
+    ).read_text()
+
+    assert 'type="button"' in source
+    assert 'aria-label="Открыть источник ${citationNumber}"' in source
+    assert "const citationNumber = parseInt(token.id, 10) + 1;" in source
 
 
 def test_document_pipeline_steps_returns_error_description() -> None:

@@ -17,6 +17,11 @@
       text-decoration-line: underline;
       text-underline-offset: 2px;
     }
+
+    .vchat-waiting-text {
+      color: color-mix(in oklab, var(--color-base-content) 56%, transparent);
+      font-weight: 400;
+    }
   </style>
 </head>
 
@@ -29,16 +34,6 @@
       <span class="vchat-agent-title leading-tight">{{ agent_name if agent_name else ('Виртуальный ассистент') }}</span>
     </div>
     <div class="flex-none">
-      {% if contact_url %}
-      <a
-        href="{{ contact_url }}"
-        target="_blank"
-        rel="noopener"
-        class="btn btn-outline btn-sm"
-      >
-        {{ 'Контакты' }}
-      </a>
-      {% endif %}
       <button id="vchat-mobile-close" type="button" class="vchat-mobile-close btn btn-ghost btn-sm btn-square"
         aria-label="{{ 'Закрыть чат' }}">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
@@ -81,12 +76,9 @@
       <textarea id="prompt"
         class="vchat-prompt textarea textarea-bordered textarea-md w-full resize-none bg-base-100 focus:outline-none" rows="1"
         placeholder="{{ 'Введите сообщение…' }}" aria-labelledby="prompt-label"
-        aria-describedby="prompt-help status" autocomplete="off"></textarea>
-      <p id="prompt-help" class="vchat-sr-only">{{ 'Нажмите Enter, чтобы отправить сообщение. Нажмите Shift+Enter для новой строки.' }}</p>
+        aria-describedby="composer-footer" autocomplete="off"></textarea>
       <div class="vchat-composer-toolbar">
-        <div id="status" class="vchat-status text-xs text-left" role="status" aria-live="polite" aria-atomic="true">
-          <span class="badge badge-xs badge-warning mr-1"></span> {{ 'подключение…' }}
-        </div>
+        <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ (footer_text or default_widget_footer_text)|safe }}</div>
         <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm"
           aria-label="{{ 'Отправить' }}">
           {{ 'Отправить' }}
@@ -104,6 +96,8 @@
     const mobileCloseBtn = document.getElementById('vchat-mobile-close');
     const csrfToken = {{ (support_csrf_token if support_csrf_token is defined else csrf_token()) | tojson | safe }};
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
+    const waitingMessages = ({{ waiting_messages|default([])|tojson|safe }} || []).filter((message) => String(message || '').trim());
+    const defaultWaitingMessage = {{ default_waiting_message|default('Готовлю ответ')|tojson }};
     const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
 
     let ws;
@@ -111,8 +105,11 @@
     let sourceListIdCounter = 0;
     let reconnectTimer = null;
     let reconnectAttempt = 0;
+    let loadingMessageTimer = null;
     const pendingPayloads = [];
-    const loadingAnswerHtml = '<span class="loading loading-dots loading-sm" role="status" aria-live="polite" aria-label="Ответ загружается"></span>';
+    if (waitingMessages.length === 0) {
+      waitingMessages.push(defaultWaitingMessage);
+    }
 
     if (window.parent && window.parent !== window) {
       document.documentElement.classList.add('vchat-embedded');
@@ -139,11 +136,14 @@
     }
 
     function updateStatus(text, type) {
+      if (!statusEl) {
+        return;
+      }
       let badgeClass = 'badge-warning';
       if (type === 'подключено') badgeClass = 'badge-success';
       if (type === 'error') badgeClass = 'badge-error';
 
-      statusEl.innerHTML = `<span class="badge badge-xs ${badgeClass} mr-1" aria-hidden="true"></span> ${text}`;
+      statusEl.dataset.state = type;
     }
 
     function resizePrompt() {
@@ -206,10 +206,10 @@
 
       const count = unique.length;
       const label = count === 1
-        ? '{{ "1 источник" }}'
+        ? '{{ "1 связанная страница" }}'
         : count < 5
-          ? `${count} {{ "источника" }}`
-          : `${count} {{ "источников" }}`;
+          ? `${count} {{ "связанные страницы" }}`
+          : `${count} {{ "связанных страниц" }}`;
 
       const wrapper = document.createElement('div');
       wrapper.className = 'vchat-source-widget';
@@ -223,18 +223,18 @@
       btn.setAttribute('aria-label', label);
       btn.setAttribute('aria-expanded', 'false');
       btn.setAttribute('aria-controls', listId);
-      btn.innerHTML = `<span class="vchat-source-button-label"><svg xmlns="http://www.w3.org/2000/svg" style="width:0.875rem;height:0.875rem;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span>{{ "Источники" }}</span></span><span class="vchat-source-count" aria-hidden="true">${count}</span>`;
+      btn.innerHTML = `<span class="vchat-source-button-label"><svg xmlns="http://www.w3.org/2000/svg" style="width:0.875rem;height:0.875rem;flex-shrink:0;" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span>{{ "Связанные страницы" }}</span></span><span class="vchat-source-count" aria-hidden="true">${count}</span>`;
 
       const list = document.createElement('div');
       list.id = listId;
       list.className = 'vchat-source-list';
       list.setAttribute('data-open', 'false');
       list.setAttribute('role', 'list');
-      list.setAttribute('aria-label', '{{ "Источники ответа" }}');
+      list.setAttribute('aria-label', '{{ "Связанные страницы ответа" }}');
       list.setAttribute('aria-hidden', 'true');
       list.hidden = true;
       list.innerHTML = unique.map((source, index) => {
-        const fallbackTitle = '{{ "Источник" }}';
+        const fallbackTitle = '{{ "Страница" }}';
         const title = escapeHtml(source.title || `${fallbackTitle} ${index + 1}`);
         if (!source.uri) {
           return `<div class="vchat-source-link" role="listitem" aria-disabled="true">${title}</div>`;
@@ -324,12 +324,23 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
+    function renderBotMarkdown(bubble, rawText) {
+      const body = bubble.querySelector('.markdown-body');
+      if (!body) return;
+      body.classList.remove('vchat-waiting-text');
+      body.removeAttribute('role');
+      body.removeAttribute('aria-live');
+      body.removeAttribute('data-waiting-text');
+      body.innerHTML = marked.parse(rawText);
+    }
+
     function appendMsg(text, type = 'bot', isPartial = false, msgId = null, signedMsgId = null, vote = null, sources = [], reasonCode = null) {
       if (type === 'bot' && isPartial && currentBotBubble) {
         const rawText = (currentBotBubble.dataset.raw || '') + text;
         currentBotBubble.dataset.raw = rawText;
         delete currentBotBubble.dataset.loading;
-        currentBotBubble.querySelector('.markdown-body').innerHTML = marked.parse(rawText);
+        stopLoadingMessageRotation();
+        renderBotMarkdown(currentBotBubble, rawText);
         logEl.scrollTop = logEl.scrollHeight;
         return;
       } else {
@@ -339,13 +350,6 @@
         chatDiv.setAttribute('aria-label', type === 'bot' ? '{{ "Сообщение ассистента" }}' : '{{ "Ваше сообщение" }}');
         if (msgId !== null && msgId !== undefined) {
           chatDiv.dataset.chatMsgId = String(msgId);
-        }
-
-        if (type === 'bot') {
-          const header = document.createElement('div');
-          header.className = 'chat-header text-xs opacity-50 mb-1';
-          header.textContent = '{{ agent_name if agent_name else "Ассистент" }}';
-          chatDiv.appendChild(header);
         }
 
         const bubble = document.createElement('div');
@@ -382,6 +386,37 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
+    function randomWaitingMessage(currentText = '') {
+      if (waitingMessages.length === 1) return waitingMessages[0];
+      const variants = waitingMessages.filter((message) => message !== currentText);
+      return variants[Math.floor(Math.random() * variants.length)] || waitingMessages[0];
+    }
+
+    function setLoadingMessage(bubble) {
+      const textEl = bubble?.querySelector('[data-waiting-text]');
+      if (!textEl) return;
+      textEl.textContent = randomWaitingMessage(textEl.textContent);
+    }
+
+    function stopLoadingMessageRotation() {
+      if (loadingMessageTimer) {
+        clearInterval(loadingMessageTimer);
+        loadingMessageTimer = null;
+      }
+    }
+
+    function startLoadingMessageRotation(bubble) {
+      stopLoadingMessageRotation();
+      setLoadingMessage(bubble);
+      loadingMessageTimer = setInterval(() => {
+        if (bubble.dataset.loading !== 'true') {
+          stopLoadingMessageRotation();
+          return;
+        }
+        setLoadingMessage(bubble);
+      }, 5000);
+    }
+
     function appendLoadingMsg() {
       if (currentBotBubble?.dataset.loading === 'true') {
         return;
@@ -392,25 +427,22 @@
       chatDiv.setAttribute('role', 'article');
       chatDiv.setAttribute('aria-label', '{{ "Сообщение ассистента загружается" }}');
 
-      const header = document.createElement('div');
-      header.className = 'chat-header text-xs opacity-50 mb-1';
-      header.textContent = '{{ agent_name if agent_name else "Ассистент" }}';
-      chatDiv.appendChild(header);
-
       const bubble = document.createElement('div');
       bubble.className = 'chat-bubble chat-bubble-base-200 w-full max-w-sm sm:max-w-md md:max-w-lg';
       bubble.dataset.raw = '';
       bubble.dataset.loading = 'true';
-      bubble.innerHTML = `<div class="markdown-body">${loadingAnswerHtml}</div>`;
+      bubble.innerHTML = '<div class="markdown-body vchat-waiting-text" role="status" aria-live="polite" data-waiting-text></div>';
       chatDiv.appendChild(bubble);
 
       currentBotBubble = bubble;
       logEl.appendChild(chatDiv);
+      startLoadingMessageRotation(bubble);
       logEl.scrollTop = logEl.scrollHeight;
     }
 
     function removeLoadingMsg() {
       if (currentBotBubble?.dataset.loading === 'true') {
+        stopLoadingMessageRotation();
         currentBotBubble.closest('.chat')?.remove();
         currentBotBubble = null;
       }
@@ -575,7 +607,8 @@
                 const rawText = (currentBotBubble.dataset.raw || '') + (data.content || '');
                 currentBotBubble.dataset.raw = rawText;
                 delete currentBotBubble.dataset.loading;
-                currentBotBubble.querySelector('.markdown-body').innerHTML = marked.parse(rawText);
+                stopLoadingMessageRotation();
+                renderBotMarkdown(currentBotBubble, rawText);
               }
               attachStructuredContext(currentBotBubble, data.sources || [], data.reason_code || null);
               const chatDiv = currentBotBubble.closest('.chat');

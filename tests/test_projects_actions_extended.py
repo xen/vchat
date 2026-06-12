@@ -101,6 +101,9 @@ class _DB:
     def add(self, obj):
         self.added.append(obj)
 
+    async def flush(self):
+        pass
+
     async def commit(self):
         self.commits += 1
 
@@ -293,6 +296,119 @@ async def test_project_action_widget_create_requires_signed_header() -> None:
 
     with pytest.raises(web.HTTPForbidden):
         await _raw_project_action()(req)
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_create_uses_default_welcome_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = _Request(
+        action="widget_create",
+        item_id="global",
+        post_data=MultiDict({"name": "Widget"}),
+    )
+    db = _DB()
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    async def _assign_code(_db_session, widget):
+        widget.id = 7
+        widget.code = "new-code"
+
+    monkeypatch.setattr(project_views, "_assign_new_widget_code", _assign_code)
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 204
+    assert resp.headers["HX-Redirect"] == "/integration/widgets/7"
+    assert db.added[0].agent_name == "Чат поддержки"
+    assert db.added[0].welcome_messages == [
+        "Здравствуйте! Напишите ваш вопрос."
+    ]
+    assert db.added[0].waiting_messages == ["Готовлю ответ"]
+    assert db.added[0].footer_text == "Отправить Enter, новая строка Shift+Enter"
+    assert db.added[0].system_prompt == project_views.forms.DEFAULT_SYSTEM_PROMPT
+    assert db.commits == 1
+    assert events == ["widget_create"]
+    assert flashes == [("Код виджета создан", "success")]
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_update_saves_footer_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    widget = SimpleNamespace(
+        id=7,
+        name="Old",
+        agent_name="",
+        welcome_messages=[],
+        waiting_messages=[],
+        footer_text="",
+        system_prompt="",
+        suggestions_enabled=False,
+        suggestions_prompt="",
+        pinned_messages=[],
+        updated_at=None,
+    )
+    req = _Request(
+        action="widget_update",
+        item_id="7",
+        post_data=MultiDict(
+            [
+                ("name", "Widget"),
+                ("agent_name", "Agent"),
+                ("welcome_text[]", "Hello"),
+                ("welcome_text[]", "<strong>Second</strong>"),
+                ("waiting_text[]", "Готовлю ответ"),
+                ("waiting_text[]", "<script>x</script>Проверяю источники"),
+                (
+                    "footer_text",
+                    '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a><script>x</script>',
+                ),
+                ("system_prompt", "Prompt"),
+                ("suggestions_enabled", "1"),
+                ("suggestions_prompt", "Suggestions"),
+            ]
+        ),
+    )
+    db = _DB(scalar_values=[widget])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 204
+    assert resp.headers["HX-Redirect"] == "/integration/widgets/7"
+    assert widget.name == "Widget"
+    assert widget.welcome_messages == ["Hello", "<strong>Second</strong>"]
+    assert widget.waiting_messages == ["Готовлю ответ", "Проверяю источники"]
+    assert widget.footer_text.startswith('<a href="https://vbudushee.ru/faq/"')
+    assert "script" not in widget.footer_text
+    assert not hasattr(widget, "contact_url")
+    assert db.commits == 1
+    assert events == ["widget_update"]
+    assert flashes == [("Код виджета обновлен", "success")]
 
 
 @pytest.mark.asyncio

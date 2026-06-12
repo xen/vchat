@@ -2,543 +2,600 @@
 @plugin "daisyui";
 
 @font-face {
-    font-family: "SB Sans Text";
-    src: url("./fonts/SBSansText-Regular.ttf") format("truetype");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
+  font-family: "SB Sans Text";
+  src: url("./fonts/SBSansText-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
-    font-family: "SB Sans Text";
-    src: url("./fonts/SBSansText-SemiBold.ttf") format("truetype");
-    font-weight: 600;
-    font-style: normal;
-    font-display: swap;
+  font-family: "SB Sans Text";
+  src: url("./fonts/SBSansText-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
-    font-family: "SB Sans Text";
-    src: url("./fonts/SBSansText-Bold.ttf") format("truetype");
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
+  font-family: "SB Sans Text";
+  src: url("./fonts/SBSansText-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
-    font-family: "SB Sans Display";
-    src: url("./fonts/SBSansDisplay-SemiBold.ttf") format("truetype");
-    font-weight: 600;
-    font-style: normal;
-    font-display: swap;
+  font-family: "SB Sans Display";
+  src: url("./fonts/SBSansDisplay-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
 }
 
 :root,
 [data-theme="light"] {
-    --font-sans: "SB Sans Text", Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    --font-display: "SB Sans Display", "SB Sans Text", Verdana, system-ui, sans-serif;
-    --vchat-white: #ffffff;
-    --vchat-black: #000000;
-    --vchat-graphite: #333f48;
-    --vchat-graphite-deep: #1c4f5f;
-    --vchat-spring: #b2eb38;
-    --vchat-arctic: #6beac7;
-    --vchat-emerald: #31c2a7;
-    --vchat-sber-green: #1da137;
-    --vchat-mint-50: #e6fffa;
-    --vchat-mint-100: #ccfff6;
-    --vchat-spring-50: #f7ffe6;
-    --vchat-blue-100: #cfe0e6;
-    --vchat-shadow: 0 18px 44px rgb(28 79 95 / 13%);
-    --vchat-soft-shadow: 0 8px 22px rgb(28 79 95 / 10%);
-    --vchat-gradient: linear-gradient(135deg, var(--vchat-spring) 0%, var(--vchat-arctic) 48%, var(--vchat-emerald) 100%);
+  --font-sans: "SB Sans Text", Verdana, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "SB Sans Display", "SB Sans Text", Verdana, system-ui, sans-serif;
+  --vchat-white: #ffffff;
+  --vchat-black: #000000;
+  --vchat-graphite: #333f48;
+  --vchat-graphite-deep: #1c4f5f;
+  --vchat-spring: #b2eb38;
+  --vchat-arctic: #6beac7;
+  --vchat-emerald: #31c2a7;
+  --vchat-sber-green: #1da137;
+  --vchat-mint-50: #e6fffa;
+  --vchat-mint-100: #ccfff6;
+  --vchat-spring-50: #f7ffe6;
+  --vchat-blue-100: #cfe0e6;
+  --vchat-shadow: 0 18px 44px rgb(28 79 95 / 13%);
+  --vchat-soft-shadow: 0 8px 22px rgb(28 79 95 / 10%);
+  --vchat-gradient: linear-gradient(135deg, var(--vchat-spring) 0%, var(--vchat-arctic) 48%, var(--vchat-emerald) 100%);
 
-    --color-base-100: var(--vchat-white);
-    --color-base-200: #f4fbf8;
-    --color-base-300: #d8eee8;
-    --color-base-content: var(--vchat-graphite);
-    --color-primary: var(--vchat-emerald);
-    --color-primary-content: var(--vchat-white);
-    --color-secondary: var(--vchat-graphite-deep);
-    --color-secondary-content: var(--vchat-white);
-    --color-accent: var(--vchat-spring);
-    --color-accent-content: #2c4000;
-    --color-neutral: var(--vchat-graphite);
-    --color-neutral-content: var(--vchat-white);
-    --color-success: var(--vchat-sber-green);
-    --color-info: #1164c0;
-    --color-warning: #b38500;
-    --color-error: #c23a4b;
-    --radius-selector: 0.375rem;
-    --radius-field: 0.5rem;
-    --radius-box: 0.75rem;
-    --border: 1px;
+  --color-base-100: var(--vchat-white);
+  --color-base-200: #f4fbf8;
+  --color-base-300: #d8eee8;
+  --color-base-content: var(--vchat-graphite);
+  --color-primary: var(--vchat-emerald);
+  --color-primary-content: var(--vchat-white);
+  --color-secondary: var(--vchat-graphite-deep);
+  --color-secondary-content: var(--vchat-white);
+  --color-accent: var(--vchat-spring);
+  --color-accent-content: #2c4000;
+  --color-neutral: var(--vchat-graphite);
+  --color-neutral-content: var(--vchat-white);
+  --color-success: var(--vchat-sber-green);
+  --color-info: #1164c0;
+  --color-warning: #b38500;
+  --color-error: #c23a4b;
+  --radius-selector: 0.375rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --border: 1px;
 }
 
 html,
 body {
-    font-family: var(--font-sans);
+  font-family: var(--font-sans);
+}
+
+.vchat-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 body {
-    background:
-        radial-gradient(circle at 0 0, rgb(178 235 56 / 24%), transparent 34rem),
-        linear-gradient(180deg, var(--vchat-white) 0%, #f7fffc 58%, var(--vchat-mint-50) 100%);
-    color: var(--vchat-graphite);
+  background:
+    radial-gradient(circle at 0 0, rgb(178 235 56 / 24%), transparent 34rem),
+    linear-gradient(180deg, var(--vchat-white) 0%, #f7fffc 58%, var(--vchat-mint-50) 100%);
+  color: var(--vchat-graphite);
 }
 
 .vchat-chat-header {
-    min-height: 4.25rem;
-    border-color: rgb(49 194 167 / 20%);
-    background:
-        linear-gradient(var(--vchat-white), var(--vchat-white)) padding-box,
-        var(--vchat-gradient) border-box;
-    border-bottom: 1px solid transparent;
-    box-shadow: 0 8px 24px rgb(28 79 95 / 8%);
+  min-height: 4.25rem;
+  border-color: rgb(49 194 167 / 20%);
+  background:
+    linear-gradient(var(--vchat-white), var(--vchat-white)) padding-box,
+    var(--vchat-gradient) border-box;
+  border-bottom: 1px solid transparent;
+  box-shadow: 0 8px 24px rgb(28 79 95 / 8%);
 }
 
 .avatar .bg-neutral {
-    position: relative;
-    isolation: isolate;
-    background: var(--vchat-gradient);
-    color: var(--vchat-graphite);
-    box-shadow: 0 8px 20px rgb(49 194 167 / 22%);
+  position: relative;
+  isolation: isolate;
+  background: var(--vchat-gradient);
+  color: var(--vchat-graphite);
+  box-shadow: 0 8px 20px rgb(49 194 167 / 22%);
 }
 
 .avatar .bg-neutral::after {
-    content: "";
-    position: absolute;
-    inset: 0.42rem 0.36rem 0.34rem 0.38rem;
-    z-index: -1;
-    border: 2px solid rgb(255 255 255 / 80%);
-    border-top-color: transparent;
-    border-left-color: transparent;
-    border-radius: 9999px;
-    transform: rotate(-28deg);
+  content: "";
+  position: absolute;
+  inset: 0.42rem 0.36rem 0.34rem 0.38rem;
+  z-index: -1;
+  border: 2px solid rgb(255 255 255 / 80%);
+  border-top-color: transparent;
+  border-left-color: transparent;
+  border-radius: 9999px;
+  transform: rotate(-28deg);
 }
 
 .vchat-agent-title {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--vchat-graphite-deep);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vchat-graphite-deep);
 }
 
 .vchat-mobile-close {
-    display: none;
+  display: none;
 }
 
 @media (max-width: 640px) {
-    .vchat-embedded .vchat-mobile-close {
-        display: inline-flex;
-    }
+  .vchat-embedded .vchat-mobile-close {
+    display: inline-flex;
+  }
 }
 
 #log {
-    scrollbar-color: rgb(49 194 167 / 45%) transparent;
+  scrollbar-color: rgb(49 194 167 / 45%) transparent;
 }
 
 #log::-webkit-scrollbar {
-    width: 0.55rem;
+  width: 0.55rem;
 }
 
 #log::-webkit-scrollbar-thumb {
-    border-radius: 9999px;
-    background: rgb(49 194 167 / 36%);
+  border-radius: 9999px;
+  background: rgb(49 194 167 / 36%);
 }
 
 .chat-header {
-    color: rgb(51 63 72 / 64%);
-    font-weight: 600;
-    opacity: 1;
+  color: rgb(51 63 72 / 64%);
+  font-weight: 600;
+  opacity: 1;
 }
 
 .chat-bubble {
-    border-radius: 1rem;
-    font-size: 0.9375rem;
-    line-height: 1.45;
-    box-shadow: var(--vchat-soft-shadow);
+  border-radius: 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  box-shadow: var(--vchat-soft-shadow);
 }
 
 .chat-start .chat-bubble {
-    border-bottom-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .chat-end .chat-bubble {
-    border-bottom-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .chat-bubble-base-200 {
-    border: 1px solid rgb(49 194 167 / 15%);
-    background: rgb(255 255 255 / 90%);
-    color: var(--vchat-graphite);
+  border: 1px solid rgb(49 194 167 / 15%);
+  background: rgb(255 255 255 / 90%);
+  color: var(--vchat-graphite);
 }
 
 .chat-bubble-primary {
-    background: rgb(33 186 114);
-    color: rgb(255 255 255);
-    font-family: "SB Sans Text", sans-serif;
+  background: rgb(33 186 114);
+  color: rgb(255 255 255);
+  font-family: "SB Sans Text", sans-serif;
 }
 
 .vchat-suggested-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-    padding-left: 2.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-left: 2.5rem;
 }
 
 .vchat-suggested-action {
-    max-width: min(18rem, 100%);
-    padding: 0.5rem 0.75rem;
-    border: 1px solid rgb(33 186 114 / 34%);
-    border-radius: 0.9rem 0.9rem 0.35rem 0.9rem;
-    background: rgb(33 186 114 / 8%);
-    color: var(--vchat-graphite-deep);
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 400;
-    line-height: 1.3;
-    text-align: left;
-    white-space: normal;
-    word-break: normal;
-    overflow-wrap: anywhere;
-    box-shadow: 0 6px 16px rgb(28 79 95 / 7%);
-    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  max-width: min(18rem, 100%);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgb(33 186 114 / 34%);
+  border-radius: 0.9rem 0.9rem 0.35rem 0.9rem;
+  background: rgb(33 186 114 / 8%);
+  color: var(--vchat-graphite-deep);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.3;
+  text-align: left;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  box-shadow: 0 6px 16px rgb(28 79 95 / 7%);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .vchat-suggested-action:hover {
-    border-color: rgb(33 186 114 / 58%);
-    background: rgb(33 186 114 / 13%);
-    transform: translateY(-1px);
+  border-color: rgb(33 186 114 / 58%);
+  background: rgb(33 186 114 / 13%);
+  transform: translateY(-1px);
+}
+
+.vchat-suggested-action:focus-visible,
+.vchat-source-button:focus-visible,
+.vchat-source-link:focus-visible,
+.citation-btn:focus-visible,
+.citation-link:focus-visible {
+  outline: 3px solid rgb(107 234 199 / 42%);
+  outline-offset: 2px;
 }
 
 .chat-bubble-error {
-    border: 1px solid rgb(194 58 75 / 18%);
-    background: #fff3f5;
-    color: #8b1e31;
+  border: 1px solid rgb(194 58 75 / 18%);
+  background: #fff3f5;
+  color: #8b1e31;
 }
 
 .vchat-composer {
-    border-color: rgb(49 194 167 / 18%);
-    background: rgb(255 255 255 / 92%);
-    box-shadow: 0 -10px 28px rgb(28 79 95 / 7%);
+  border-color: rgb(49 194 167 / 18%);
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 -10px 28px rgb(28 79 95 / 7%);
 }
 
 .vchat-composer-toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin-top: 0.625rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+  margin-top: 0.5rem;
 }
 
 .vchat-status {
-    min-width: 0;
-    color: rgb(51 63 72 / 50%);
+  min-width: 0;
+  color: rgb(51 63 72 / 50%);
 }
 
 .vchat-status .badge {
-    width: 0.55rem;
-    min-width: 0;
-    height: 0.55rem;
-    min-height: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 9999px;
-    vertical-align: -0.05em;
+  width: 0.55rem;
+  min-width: 0;
+  height: 0.55rem;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  vertical-align: -0.05em;
 }
 
 .vchat-status .badge-success {
-    background: rgb(49 194 167 / 42%);
+  background: rgb(49 194 167 / 42%);
 }
 
 .vchat-status .badge-warning,
 .vchat-status .badge-error {
-    background: rgb(194 58 75 / 62%);
+  background: rgb(194 58 75 / 62%);
+}
+
+.vchat-footer-text {
+  grid-column: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  color: rgb(51 63 72 / 58%);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  text-align: left;
+}
+
+#send {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.vchat-footer-text a,
+.vchat-footer-text a.link,
+.vchat-footer-text a.link-hover {
+  color: var(--vchat-sber-green);
+  text-decoration-line: underline;
+}
+
+.vchat-footer-text a:hover,
+.vchat-footer-text a.link:hover,
+.vchat-footer-text a.link-hover:hover {
+  color: var(--vchat-emerald);
+}
+
+.vchat-footer-text b,
+.vchat-footer-text strong {
+  color: var(--vchat-graphite-deep);
 }
 
 .textarea {
-    border-color: rgb(49 194 167 / 24%);
-    border-radius: 0.875rem;
-    background: var(--vchat-white);
-    color: var(--vchat-graphite);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 90%);
+  border-color: rgb(49 194 167 / 24%);
+  border-radius: 0.875rem;
+  background: var(--vchat-white);
+  color: var(--vchat-graphite);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 90%);
 }
 
 .vchat-prompt {
-    min-height: 2.75rem;
-    max-height: 9.5rem;
-    padding-right: 1rem;
-    overflow-y: hidden;
-    line-height: 1.45;
+  min-height: 2.75rem;
+  max-height: 9.5rem;
+  padding-right: 1rem;
+  overflow-y: hidden;
+  line-height: 1.45;
 }
 
 .textarea:focus,
 .textarea:focus-within {
-    border-color: var(--vchat-emerald);
-    box-shadow: 0 0 0 3px rgb(107 234 199 / 22%);
+  border-color: var(--vchat-emerald);
+  box-shadow: 0 0 0 3px rgb(107 234 199 / 22%);
 }
 
 .btn-primary,
 .btn-soft.btn-primary {
-    border: 0;
-    background: linear-gradient(135deg, var(--vchat-sber-green), var(--vchat-emerald));
-    color: var(--vchat-white);
-    box-shadow: 0 8px 18px rgb(29 161 55 / 22%);
+  border: 0;
+  background: linear-gradient(135deg, var(--vchat-sber-green), var(--vchat-emerald));
+  color: var(--vchat-white);
+  box-shadow: 0 8px 18px rgb(29 161 55 / 22%);
 }
 
 .btn-primary:hover,
 .btn-soft.btn-primary:hover {
-    background: linear-gradient(135deg, #168a2e, #22a88f);
-    color: var(--vchat-white);
+  background: linear-gradient(135deg, #168a2e, #22a88f);
+  color: var(--vchat-white);
 }
 
 .btn-outline {
-    border-color: rgb(49 194 167 / 38%);
-    color: var(--vchat-graphite-deep);
+  border-color: rgb(49 194 167 / 38%);
+  color: var(--vchat-graphite-deep);
 }
 
 .btn-outline:hover {
-    border-color: transparent;
-    background: var(--vchat-mint-100);
-    color: var(--vchat-graphite-deep);
+  border-color: transparent;
+  background: var(--vchat-mint-100);
+  color: var(--vchat-graphite-deep);
 }
 
 .btn-ghost {
-    color: var(--vchat-graphite-deep);
+  color: var(--vchat-graphite-deep);
 }
 
 .btn-ghost:hover {
-    background: rgb(107 234 199 / 16%);
+  background: rgb(107 234 199 / 16%);
 }
 
 .badge-success {
-    background: var(--vchat-sber-green);
+  background: var(--vchat-sber-green);
 }
 
 .badge-warning {
-    background: var(--vchat-spring);
+  background: var(--vchat-spring);
 }
 
 .link-primary,
 .text-primary {
-    color: var(--vchat-emerald);
+  color: var(--vchat-emerald);
 }
 
 .divider::before,
 .divider::after {
-    background: rgb(49 194 167 / 18%);
+  background: rgb(49 194 167 / 18%);
 }
 
 .pinned-message-rich {
-    position: relative;
-    display: block;
-    overflow: hidden;
-    padding: 0.75rem 0.875rem 0.75rem 1rem;
-    border: 1px solid rgb(49 194 167 / 22%);
-    border-radius: 0.875rem;
-    background:
-        linear-gradient(90deg, rgb(49 194 167 / 26%) 0 0.25rem, transparent 0.25rem),
-        linear-gradient(135deg, rgb(255 255 255 / 92%), rgb(230 255 248 / 72%));
-    color: var(--vchat-graphite);
-    box-shadow: var(--vchat-soft-shadow);
-    line-height: 1.42;
+  position: relative;
+  display: block;
+  overflow: hidden;
+  padding: 0.75rem 0.875rem 0.75rem 1rem;
+  border: 1px solid rgb(49 194 167 / 22%);
+  border-radius: 0.875rem;
+  background:
+    linear-gradient(90deg, rgb(49 194 167 / 26%) 0 0.25rem, transparent 0.25rem),
+    linear-gradient(135deg, rgb(255 255 255 / 92%), rgb(230 255 248 / 72%));
+  color: var(--vchat-graphite);
+  box-shadow: var(--vchat-soft-shadow);
+  line-height: 1.42;
 }
 
 .pinned-message-rich b,
 .pinned-message-rich strong {
-    font-weight: 600;
-    color: var(--vchat-graphite-deep);
+  font-weight: 600;
+  color: var(--vchat-graphite-deep);
 }
 
 .pinned-message-rich a {
-    color: var(--vchat-sber-green);
-    font-weight: 600;
-    text-decoration-line: underline;
-    text-decoration-thickness: 1.5px;
-    text-underline-offset: 0.18em;
+  color: var(--vchat-sber-green);
+  font-weight: 600;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.18em;
 }
 
 .pinned-message-rich a:hover {
-    color: var(--vchat-emerald);
+  color: var(--vchat-emerald);
 }
 
 .pinned-message-rich.bg-warning\/10,
 .pinned-message-rich.text-warning {
-    border-color: rgb(178 235 56 / 52%);
-    background:
-        linear-gradient(90deg, var(--vchat-spring) 0 0.25rem, transparent 0.25rem),
-        linear-gradient(135deg, #ffffff, var(--vchat-spring-50));
+  border-color: rgb(178 235 56 / 52%);
+  background:
+    linear-gradient(90deg, var(--vchat-spring) 0 0.25rem, transparent 0.25rem),
+    linear-gradient(135deg, #ffffff, var(--vchat-spring-50));
 }
 
 .pinned-message-rich.bg-primary\/10,
 .pinned-message-rich.text-primary {
-    border-color: rgb(49 194 167 / 36%);
-    background:
-        linear-gradient(90deg, var(--vchat-emerald) 0 0.25rem, transparent 0.25rem),
-        linear-gradient(135deg, #ffffff, var(--vchat-mint-50));
+  border-color: rgb(49 194 167 / 36%);
+  background:
+    linear-gradient(90deg, var(--vchat-emerald) 0 0.25rem, transparent 0.25rem),
+    linear-gradient(135deg, #ffffff, var(--vchat-mint-50));
 }
 
 .pinned-message-rich.bg-secondary\/10,
 .pinned-message-rich.text-secondary {
-    border-color: rgb(28 79 95 / 26%);
-    background:
-        linear-gradient(90deg, var(--vchat-graphite-deep) 0 0.25rem, transparent 0.25rem),
-        linear-gradient(135deg, #ffffff, var(--vchat-blue-100));
+  border-color: rgb(28 79 95 / 26%);
+  background:
+    linear-gradient(90deg, var(--vchat-graphite-deep) 0 0.25rem, transparent 0.25rem),
+    linear-gradient(135deg, #ffffff, var(--vchat-blue-100));
 }
 
 .pinned-message-rich.bg-success\/10,
 .pinned-message-rich.text-success {
-    border-color: rgb(29 161 55 / 28%);
-    background:
-        linear-gradient(90deg, var(--vchat-sber-green) 0 0.25rem, transparent 0.25rem),
-        linear-gradient(135deg, #ffffff, #efffcc);
+  border-color: rgb(29 161 55 / 28%);
+  background:
+    linear-gradient(90deg, var(--vchat-sber-green) 0 0.25rem, transparent 0.25rem),
+    linear-gradient(135deg, #ffffff, #efffcc);
 }
 
 .vchat-source-widget {
-    display: inline-flex;
-    max-width: min(26rem, 100%);
-    flex-direction: column;
-    align-items: stretch;
-    margin-top: 0.5rem;
-    overflow: hidden;
-    border: 1px solid rgb(49 194 167 / 34%);
-    border-radius: 9999px;
-    background: rgb(230 255 248 / 65%);
-    color: var(--vchat-graphite-deep);
-    transition: border-color 0.15s ease, background 0.15s ease, border-radius 0.15s ease, box-shadow 0.15s ease;
+  display: inline-flex;
+  max-width: min(26rem, 100%);
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 0.5rem;
+  overflow: hidden;
+  border: 1px solid rgb(49 194 167 / 34%);
+  border-radius: 9999px;
+  background: rgb(230 255 248 / 65%);
+  color: var(--vchat-graphite-deep);
+  transition: border-color 0.15s ease, background 0.15s ease, border-radius 0.15s ease, box-shadow 0.15s ease;
 }
 
 .vchat-source-widget:hover,
 .vchat-source-widget[data-open="true"] {
-    border-color: rgb(49 194 167 / 62%);
-    background: var(--vchat-mint-100);
+  border-color: rgb(49 194 167 / 62%);
+  background: var(--vchat-mint-100);
 }
 
 .vchat-source-widget[data-open="true"] {
-    border-radius: 0.875rem;
-    box-shadow: 0 8px 20px rgb(28 79 95 / 8%);
+  border-radius: 0.875rem;
+  box-shadow: 0 8px 20px rgb(28 79 95 / 8%);
 }
 
 .vchat-source-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    width: 100%;
-    padding: 0.35rem 0.75rem;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-    font-size: 0.75rem;
-    font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .vchat-source-button:hover {
-    background: transparent;
+  background: transparent;
 }
 
 .vchat-source-button-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
 }
 
 .vchat-source-count {
-    min-width: 1.35rem;
-    padding: 0.05rem 0.35rem;
-    border-radius: 9999px;
-    background: rgb(255 255 255 / 70%);
-    color: var(--vchat-emerald);
-    font-size: 0.7rem;
-    line-height: 1.3;
-    text-align: center;
+  min-width: 1.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 70%);
+  color: var(--vchat-emerald);
+  font-size: 0.7rem;
+  line-height: 1.3;
+  text-align: center;
 }
 
 .vchat-source-list {
-    display: none;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0 0.5rem 0.55rem;
+  display: none;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0 0.5rem 0.55rem;
 }
 
 .vchat-source-list[data-open="true"] {
-    display: flex;
+  display: flex;
 }
 
 .vchat-source-link {
-    display: block;
-    padding: 0.4rem 0.5rem;
-    border-radius: 0.5rem;
-    color: var(--vchat-graphite-deep);
-    font-size: 0.875rem;
-    font-weight: 500;
-    line-height: 1.35;
-    text-decoration-color: rgb(49 194 167 / 46%);
-    text-decoration-line: underline;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 0.16em;
+  display: block;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.5rem;
+  color: var(--vchat-graphite-deep);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-decoration-color: rgb(49 194 167 / 46%);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
 }
 
 .vchat-source-link:hover {
-    background: var(--vchat-mint-50);
-    color: #163f4c;
-    text-decoration-color: rgb(28 79 95 / 62%);
+  background: var(--vchat-mint-50);
+  color: #163f4c;
+  text-decoration-color: rgb(28 79 95 / 62%);
 }
 
 .vchat-source-link[aria-disabled="true"] {
-    color: rgb(51 63 72 / 72%);
+  color: rgb(51 63 72 / 72%);
 }
 
 /* Minimal overrides for Markdown content inside chat bubbles */
 .markdown-body {
-    font-size: 0.95em;
+  font-size: 0.95em;
 }
 
 .markdown-body p {
-    margin-bottom: 0.5em;
+  margin-bottom: 0.5em;
 }
 
 .markdown-body ul,
 .markdown-body ol {
-    margin-bottom: 0.5em;
-    padding-left: 1.5em;
+  margin-bottom: 0.5em;
+  padding-left: 1.5em;
 }
 
 .markdown-body ul {
-    list-style-type: disc;
+  list-style-type: disc;
 }
 
 .markdown-body ol {
-    list-style-type: decimal;
+  list-style-type: decimal;
 }
 
 .markdown-body pre {
-    background-color: rgb(28 79 95 / 7%);
-    padding: 0.75em;
-    border-radius: 0.5rem;
-    overflow-x: auto;
-    margin: 0.5em 0;
+  background-color: rgb(28 79 95 / 7%);
+  padding: 0.75em;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0.5em 0;
 }
 
 .markdown-body code {
-    font-family: "SB Sans Text", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    background-color: rgb(28 79 95 / 7%);
-    padding: 0.2em 0.4em;
-    border-radius: 0.25rem;
-    font-size: 0.9em;
+  font-family: "SB Sans Text", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background-color: rgb(28 79 95 / 7%);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
 }
 
 .markdown-body pre code {
-    background-color: transparent;
-    padding: 0;
-    color: inherit;
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
 }
 
 .markdown-body a {
-    text-decoration: underline;
-    opacity: 0.9;
+  text-decoration: underline;
+  opacity: 0.9;
 }

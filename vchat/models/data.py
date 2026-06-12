@@ -148,9 +148,14 @@ class WidgetIntegration(Base, Created, Updated):
     code: Mapped[str] = mapped_column(
         sa.String(64), nullable=False, unique=True, index=True
     )
-    contact_url: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     agent_name: Mapped[str] = mapped_column(sa.String(100), nullable=False, default="")
-    welcome_message: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    welcome_messages: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    waiting_messages: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    footer_text: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     system_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     suggestions_enabled: Mapped[bool] = mapped_column(
         sa.Boolean,

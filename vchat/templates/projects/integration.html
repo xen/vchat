@@ -28,33 +28,14 @@
       type="text"
       name="agent_name"
       class="input input-bordered w-full"
+      value="{{ 'Чат поддержки' }}"
       maxlength="100"
-      placeholder="{{ 'Виртуальный ассистент' }}"
+      placeholder="{{ 'Чат поддержки' }}"
     >
     <span class="mt-1 text-xs text-base-content/60">{{ 'Показывается пользователю в окне чата.' }}</span>
   </label>
 
-  <label class="form-control">
-    <span class="label-text mb-1">{{ 'Приветственное сообщение' }}</span>
-    <textarea
-      name="welcome_message"
-      class="textarea textarea-bordered w-full"
-      rows="3"
-      maxlength="2000"
-    >{{ default_welcome_message }}</textarea>
-  </label>
-
-  <label class="form-control">
-    <span class="label-text mb-1">{{ 'Системный промпт' }}</span>
-    <textarea
-      name="system_prompt"
-      class="textarea textarea-bordered w-full font-mono text-sm"
-      rows="8"
-      maxlength="4000"
-    >{{ default_system_prompt }}</textarea>
-  </label>
-
-  <div class="flex justify-end gap-2">
+  <div class="flex justify-start gap-2">
     <button type="submit" class="btn btn-primary btn-sm">{{ 'Создать' }}</button>
   </div>
 </form>

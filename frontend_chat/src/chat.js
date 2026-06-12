@@ -24,7 +24,8 @@ const citationExtension = {
         };
     },
     renderer(token) {
-        return `<button class="inline-flex items-center justify-center w-4 h-4 ml-0.5 text-[0.6rem] font-bold text-primary bg-primary/10 rounded-full align-top cursor-pointer hover:bg-primary hover:text-primary-content transition-colors citation-btn" data-id="${token.id}">${parseInt(token.id, 10) + 1}</button>`;
+        const citationNumber = parseInt(token.id, 10) + 1;
+        return `<button type="button" class="inline-flex items-center justify-center w-4 h-4 ml-0.5 text-[0.6rem] font-bold text-primary bg-primary/10 rounded-full align-top cursor-pointer hover:bg-primary hover:text-primary-content transition-colors citation-btn" data-id="${token.id}" aria-label="Открыть источник ${citationNumber}">${citationNumber}</button>`;
     },
 };
 
