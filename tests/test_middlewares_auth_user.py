@@ -322,11 +322,128 @@ async def test_authenticate_ldap_escapes_search_filter_email(
         "email": "user*)(mail=*)@example.com",
         "name": "LDAP User",
     }
-    assert ("filter_exp", r"(&(mail=user\2A\29\28mail=\2A\29@example.com)(memberOf=cn=vchat))") in calls
+    escaped_filter = r"(&(mail=user\2A\29\28mail=\2A\29@example.com)(memberOf=cn=vchat))"
+    assert ("filter_exp", escaped_filter) in calls
     assert (
         "credentials",
         ("SIMPLE", "uid=user,ou=people,dc=example,dc=com", "secret"),
     ) in calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("member_of", "expected"),
+    [
+        (["CN=VChat Users, OU=Groups, DC=example, DC=com"], True),
+        (["CN=Other,OU=Groups,DC=example,DC=com"], False),
+    ],
+)
+async def test_authenticate_ldap_requires_configured_group(
+    monkeypatch: pytest.MonkeyPatch,
+    member_of: list[str],
+    expected: bool,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    class _Entry:
+        dn = "uid=user,ou=people,dc=example,dc=com"
+
+        def get(self, attr, default):
+            attrs = {
+                "displayName": ["LDAP User"],
+                "memberOf": member_of,
+            }
+            return attrs.get(attr, default)
+
+    class _Connection:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def search(self, *, base, scope, filter_exp, attrlist):
+            _ = base, scope, filter_exp
+            calls.append(("attrlist", attrlist))
+            return [_Entry()]
+
+    class _LDAPClient:
+        def __init__(self, server, tls=False):
+            _ = server, tls
+
+        def set_credentials(self, method, *, user, password):
+            calls.append(("credentials", (method, user, password)))
+
+        def connect(self, *, is_async):
+            assert is_async is True
+            return _Connection()
+
+    monkeypatch.setattr(auth_views.bonsai, "LDAPClient", _LDAPClient)
+
+    result = await auth_views.authenticate_ldap(
+        "user@example.com",
+        "user-secret",
+        {
+            "ldap_server": "ldap://ldap.example.com:389",
+            "ldap_use_ssl": False,
+            "ldap_bind_dn": "cn=service,dc=example,dc=com",
+            "ldap_bind_password": "service-secret",
+            "ldap_search_base": "ou=people,dc=example,dc=com",
+            "ldap_search_filter": "(mail={email})",
+            "ldap_attr_name": "displayName",
+            "ldap_required_group_dn": "cn=vchat users,ou=groups,dc=example,dc=com",
+            "ldap_member_of_attr": "memberOf",
+        },
+    )
+
+    assert ("attrlist", ["displayName", "memberOf"]) in calls
+    if expected:
+        assert result == {"email": "user@example.com", "name": "LDAP User"}
+        assert (
+            "credentials",
+            ("SIMPLE", "uid=user,ou=people,dc=example,dc=com", "user-secret"),
+        ) in calls
+    else:
+        assert result is None
+        assert not any(call[1][-1] == "user-secret" for call in calls)
+
+
+def test_get_middlewares_uses_configured_session_max_age(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _Storage:
+        def __init__(self, *args, **kwargs):
+            _ = args
+            captured.update(kwargs)
+
+    def _session_middleware(storage):
+        captured["storage"] = storage
+
+        async def _middleware(request, handler):
+            return await handler(request)
+
+        return _middleware
+
+    monkeypatch.setattr(mdw, "EncryptedCookieStorage", _Storage)
+    monkeypatch.setattr(mdw, "session_middleware", _session_middleware)
+
+    middlewares = mdw.get_middlewares(
+        {
+            "allowed_origins": ["https://local.vchat.com"],
+            "public_url": "https://local.vchat.com",
+            "cookie_key": "cookie-key",
+            "cookie_name": "USER",
+            "cookie_domain": ".vchat.com",
+            "cookie_secure": True,
+            "session_max_age_seconds": 7200,
+            "enable_https_middleware": False,
+        }
+    )
+
+    assert middlewares
+    assert captured["max_age"] == 7200
 
 
 @pytest.mark.asyncio

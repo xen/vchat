@@ -268,7 +268,7 @@ def get_middlewares(config):
                 cookie_name=config["cookie_name"],
                 domain=config["cookie_domain"],
                 secure=config["cookie_secure"],
-                max_age=30 * 24 * 60 * 60,
+                max_age=int(config["session_max_age_seconds"]),
                 path="/",
             )
         ),

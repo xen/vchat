@@ -15,6 +15,8 @@ cookie_name: USER
 cookie_domain: ".vchat.com"
 # Should be set to true at production
 cookie_secure: true
+# Auth session cookie lifetime. Default is 30 days.
+session_max_age_seconds: 2592000
 
 # Storages
 redis_uri: redis://localhost:6379/30
@@ -102,6 +104,9 @@ ldap_bind_password: ""
 ldap_search_base: ""
 ldap_search_filter: "(mail={email})"
 ldap_attr_name: "displayName"
+# Optional LDAP/AD group gate. Leave empty to allow any matched LDAP user.
+ldap_required_group_dn: ""
+ldap_member_of_attr: "memberOf"
 
 # vchat project integration keys
 vchat_chat: "yMlHl1BjbY"

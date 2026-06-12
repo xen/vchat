@@ -36,6 +36,19 @@ LOGIN_CHECK_LOCK_TTL_SECONDS = LOGIN_FAILURE_DELAY_SECONDS
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
 
 
+def _ldap_attr_values(entry: Any, attr_name: str) -> list[str]:
+    raw_values = entry.get(attr_name, [])
+    if raw_values is None:
+        return []
+    if isinstance(raw_values, str):
+        return [raw_values]
+    return [str(value) for value in raw_values]
+
+
+def _normalize_ldap_dn(value: str) -> str:
+    return ",".join(part.strip().casefold() for part in value.split(","))
+
+
 class LoginForm(Form):
     class Meta:
         csrf = True
@@ -76,6 +89,11 @@ async def authenticate_ldap(email: str, password: str, config: dict) -> dict | N
         email=bonsai.escape_filter_exp(email)
     )
     attr_name = config.get("ldap_attr_name", "displayName")
+    required_group_dn = (config.get("ldap_required_group_dn") or "").strip()
+    member_of_attr = config.get("ldap_member_of_attr", "memberOf")
+    attrlist = [attr_name]
+    if required_group_dn and member_of_attr not in attrlist:
+        attrlist.append(member_of_attr)
 
     service_client = bonsai.LDAPClient(server, tls=use_ssl)
     if bind_dn:
@@ -87,7 +105,7 @@ async def authenticate_ldap(email: str, password: str, config: dict) -> dict | N
                 base=search_base,
                 scope=bonsai.LDAPSearchScope.SUB,
                 filter_exp=search_filter,
-                attrlist=[attr_name],
+                attrlist=attrlist,
             )
     except bonsai.LDAPError:
         logger.exception("LDAP service bind or search failed for %s", email)
@@ -98,7 +116,16 @@ async def authenticate_ldap(email: str, password: str, config: dict) -> dict | N
 
     user_entry = results[0]
     user_dn = str(user_entry.dn)
-    name_values = user_entry.get(attr_name, [])
+    if required_group_dn:
+        required_group = _normalize_ldap_dn(required_group_dn)
+        user_groups = {
+            _normalize_ldap_dn(group_dn)
+            for group_dn in _ldap_attr_values(user_entry, member_of_attr)
+        }
+        if required_group not in user_groups:
+            return None
+
+    name_values = _ldap_attr_values(user_entry, attr_name)
     name = name_values[0] if name_values else email
 
     user_client = bonsai.LDAPClient(server, tls=use_ssl)
