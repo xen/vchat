@@ -427,6 +427,7 @@ OPENAI_API_KEY = config.get("openai_api_key")
 OPENAI_BASE_URL = config.get("openai_base_url", "https://api.openai.com/v1")
 OPENAI_MODEL = config.get("openai_model", "gpt-4o-mini")
 CHAT_RESPONSE_MAX_TOKENS = int(config.get("chat_response_max_tokens", 900))
+USER_CHAT_MESSAGE_MAX_CHARS = 4000
 GIGACHAT_OAUTH_TIMEOUT_SECONDS = float(
     config.get("gigachat_oauth_timeout_seconds", 15.0)
 )
@@ -1277,6 +1278,20 @@ async def websocket(request):
                     user_text = raw_user_text
 
             if not user_text:
+                continue
+
+            if len(user_text) > USER_CHAT_MESSAGE_MAX_CHARS:
+                await ws.send_json(
+                    {
+                        "ok": False,
+                        "error": "message_too_long",
+                        "detail": (
+                            "Сообщение слишком длинное. Сократите его до "
+                            f"{USER_CHAT_MESSAGE_MAX_CHARS} символов."
+                        ),
+                        "limit": USER_CHAT_MESSAGE_MAX_CHARS,
+                    }
+                )
                 continue
 
             request_id = generate_request_id()

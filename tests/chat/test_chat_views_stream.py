@@ -885,3 +885,57 @@ async def test_websocket_sends_internal_error_json(
         for item in ws.sent_json
     )
     assert metrics_calls and metrics_calls[0]["status"] == "internal_error"
+
+
+@pytest.mark.asyncio
+async def test_websocket_rejects_overlong_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws = _FakeWs(
+        [
+            _WsMessage(
+                type=aiohttp.WSMsgType.TEXT,
+                data="x" * (chat_views.USER_CHAT_MESSAGE_MAX_CHARS + 1),
+            ),
+            _WsMessage(type=aiohttp.WSMsgType.ERROR, data=None),
+        ]
+    )
+    monkeypatch.setattr(chat_views.web, "WebSocketResponse", lambda: ws)
+    monkeypatch.setattr(chat_views, "redis", _FakeRedis())
+    monkeypatch.setattr(
+        chat_views, "async_session_factory", _FakeSessionFactory(chat_exists="chat-1")
+    )
+
+    class _Serializer:
+        def __init__(self, secret):
+            _ = secret
+
+        def loads(self, payload, salt=None, max_age=None):
+            _ = payload, salt, max_age
+            return 1, "chat-1"
+
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _Serializer)
+    monkeypatch.setattr(
+        chat_views,
+        "build_generation_context",
+        lambda app, widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
+    )
+
+    async def _unexpected_guardrail(*, text: str, provider: Any) -> GuardrailDecision:
+        _ = text, provider
+        raise AssertionError("guardrails should not run for overlong messages")
+
+    monkeypatch.setattr(chat_views, "check_input_guardrails", _unexpected_guardrail)
+
+    request = SimpleNamespace(match_info={"payload": "ok"}, app={})
+    result_ws = await chat_views.websocket(request)
+
+    assert result_ws is ws
+    assert ws.sent_json == [
+        {
+            "ok": False,
+            "error": "message_too_long",
+            "detail": "Сообщение слишком длинное. Сократите его до 4000 символов.",
+            "limit": chat_views.USER_CHAT_MESSAGE_MAX_CHARS,
+        }
+    ]

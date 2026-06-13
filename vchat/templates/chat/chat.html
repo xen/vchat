@@ -22,6 +22,40 @@
       color: color-mix(in oklab, var(--color-base-content) 56%, transparent);
       font-weight: 400;
     }
+
+    .vchat-prompt-limit-wrap {
+      position: relative;
+    }
+
+    .vchat-prompt-highlight {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      white-space: pre-wrap;
+      overflow: hidden;
+      word-break: break-word;
+      color: transparent;
+      font: inherit;
+      line-height: inherit;
+      padding: var(--vchat-prompt-padding, 0.5rem 0.75rem);
+      border: 1px solid transparent;
+      border-radius: var(--rounded-btn, 0.5rem);
+    }
+
+    .vchat-prompt-highlight-overflow {
+      background: color-mix(in oklab, var(--color-error) 28%, transparent);
+      border-radius: 0.1875rem;
+    }
+
+    .vchat-prompt-limit-wrap .vchat-prompt {
+      position: relative;
+      z-index: 1;
+      background-color: transparent;
+    }
+
+    .vchat-limit-error {
+      color: var(--color-error);
+    }
   </style>
 </head>
 
@@ -73,12 +107,18 @@
   <div class="vchat-composer flex-none bg-base-100 p-4 border-t border-base-200">
     <form id="composer" class="w-full" aria-label="{{ 'Форма отправки сообщения' }}">
       <label id="prompt-label" class="vchat-sr-only" for="prompt">{{ 'Сообщение' }}</label>
-      <textarea id="prompt"
-        class="vchat-prompt textarea textarea-bordered textarea-md w-full resize-none bg-base-100 focus:outline-none" rows="1"
-        placeholder="{{ 'Введите сообщение…' }}" aria-labelledby="prompt-label"
-        aria-describedby="composer-footer" autocomplete="off"></textarea>
+      <div class="vchat-prompt-limit-wrap">
+        <div id="prompt-highlight" class="vchat-prompt-highlight" aria-hidden="true"></div>
+        <textarea id="prompt"
+          class="vchat-prompt textarea textarea-bordered textarea-md w-full resize-none focus:outline-none" rows="1"
+          placeholder="{{ 'Введите сообщение…' }}" aria-labelledby="prompt-label"
+          aria-describedby="composer-footer composer-limit" autocomplete="off"></textarea>
+      </div>
       <div class="vchat-composer-toolbar">
-        <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ (footer_text or default_widget_footer_text)|safe }}</div>
+        <div class="min-w-0">
+          <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ (footer_text or default_widget_footer_text)|safe }}</div>
+          <div id="composer-limit" class="text-xs leading-snug text-base-content/60" aria-live="polite"></div>
+        </div>
         <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm"
           aria-label="{{ 'Отправить' }}">
           {{ 'Отправить' }}
@@ -92,6 +132,8 @@
     const logEl = document.getElementById('log');
     const formEl = document.getElementById('composer');
     const promptEl = document.getElementById('prompt');
+    const promptHighlightEl = document.getElementById('prompt-highlight');
+    const composerLimitEl = document.getElementById('composer-limit');
     const sendBtn = document.getElementById('send');
     const mobileCloseBtn = document.getElementById('vchat-mobile-close');
     const csrfToken = {{ (support_csrf_token if support_csrf_token is defined else csrf_token()) | tojson | safe }};
@@ -106,6 +148,10 @@
     let reconnectTimer = null;
     let reconnectAttempt = 0;
     let loadingMessageTimer = null;
+    let isSending = false;
+    let composerOverLimit = false;
+    const userMessageMaxChars = 4000;
+    const userMessageTrimChars = 4050;
     const pendingPayloads = [];
     if (waitingMessages.length === 0) {
       waitingMessages.push(defaultWaitingMessage);
@@ -127,6 +173,10 @@
 
     function escapeHtml(str) {
       return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function splitChars(str) {
+      return Array.from(String(str));
     }
 
     function wsUrl() {
@@ -156,6 +206,49 @@
       const nextHeight = Math.min(promptEl.scrollHeight, maxHeight);
       promptEl.style.height = `${nextHeight}px`;
       promptEl.style.overflowY = promptEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
+      if (promptHighlightEl) {
+        promptHighlightEl.style.height = `${nextHeight}px`;
+        promptHighlightEl.style.overflowY = promptEl.scrollHeight > maxHeight ? 'auto' : 'hidden';
+      }
+    }
+
+    function syncPromptHighlightScroll() {
+      if (!promptHighlightEl) return;
+      promptHighlightEl.scrollTop = promptEl.scrollTop;
+      promptHighlightEl.scrollLeft = promptEl.scrollLeft;
+    }
+
+    function renderPromptHighlight(chars) {
+      if (!promptHighlightEl) return;
+      const allowed = chars.slice(0, userMessageMaxChars).join('');
+      const overflow = chars.slice(userMessageMaxChars).join('');
+      promptHighlightEl.innerHTML = overflow
+        ? `${escapeHtml(allowed)}<span class="vchat-prompt-highlight-overflow">${escapeHtml(overflow)}</span>`
+        : escapeHtml(allowed || '');
+      syncPromptHighlightScroll();
+    }
+
+    function updateSendButtonState() {
+      sendBtn.disabled = isSending || composerOverLimit;
+    }
+
+    function updateComposerLimitState() {
+      const chars = splitChars(promptEl.value);
+      if (chars.length > userMessageTrimChars) {
+        promptEl.value = chars.slice(0, userMessageTrimChars).join('');
+        chars.length = userMessageTrimChars;
+      }
+
+      composerOverLimit = chars.length > userMessageMaxChars;
+      renderPromptHighlight(chars);
+      if (composerLimitEl) {
+        const extra = Math.max(0, chars.length - userMessageMaxChars);
+        composerLimitEl.classList.toggle('vchat-limit-error', composerOverLimit);
+        composerLimitEl.textContent = composerOverLimit
+          ? `Превышен лимит на ${extra} символов. Сократите сообщение до ${userMessageMaxChars}.`
+          : `${chars.length}/${userMessageMaxChars}`;
+      }
+      updateSendButtonState();
     }
 
     function attachStructuredContext(bubble, sources = [], reasonCode = null) {
@@ -449,10 +542,12 @@
     }
 
     function setSending(sending) {
-      sendBtn.disabled = sending;
+      isSending = sending;
+      updateSendButtonState();
       promptEl.disabled = sending;
       if (!sending) {
         promptEl.focus();
+        updateComposerLimitState();
       }
     }
 
@@ -653,6 +748,13 @@
       const providedText = typeof options.text === 'string' ? options.text : null;
       const text = (providedText !== null ? providedText : promptEl.value).trim();
       if (!text) return;
+      if (splitChars(text).length > userMessageMaxChars) {
+        appendMsg(`Сообщение слишком длинное. Сократите его до ${userMessageMaxChars} символов.`, 'error');
+        if (providedText === null) {
+          updateComposerLimitState();
+        }
+        return;
+      }
 
       appendMsg(text, 'user');
       setSending(true);
@@ -667,6 +769,7 @@
       if (providedText === null) {
         promptEl.value = '';
         resizePrompt();
+        updateComposerLimitState();
       }
     };
 
@@ -696,7 +799,11 @@
         submitMessage();
       }
     });
-    promptEl.addEventListener('input', resizePrompt);
+    promptEl.addEventListener('input', () => {
+      updateComposerLimitState();
+      resizePrompt();
+    });
+    promptEl.addEventListener('scroll', syncPromptHighlightScroll);
     mobileCloseBtn?.addEventListener('click', () => {
       window.parent?.postMessage({ type: 'vchat_close' }, '*');
     });
@@ -733,6 +840,7 @@
     }
 
     resizePrompt();
+    updateComposerLimitState();
     connect();
     reportSession();
 
