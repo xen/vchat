@@ -313,8 +313,9 @@ def login_required():
     return decorator
 
 
-def validate_signed_user_csrf(request) -> None:
-    token = request.headers.get("X-CSRFToken")
+def validate_signed_user_csrf(request, token: str | None = None) -> None:
+    if token is None:
+        token = request.headers.get("X-CSRFToken")
     if not token:
         raise web.HTTPForbidden(text="Missing CSRF Token")
 

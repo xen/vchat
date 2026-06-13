@@ -3,12 +3,14 @@
 # fernet_key = fernet.Fernet.generate_key()
 secret_key: !!binary "68cXXW8soAmL3Uxioe54oHnUHg_UD8w_LpzKOW4Pa-0="
 cookie_key: hAEX-ELluUXIZAwpOfZOvsi6E39qq6RmBP6gyQxkvzM=
-mode: production
+mode: stage
 crawler_user_agent: "Dzen-AI/1.0"
 
 # Application settings
-max_upload_size: 5242880 # 5 MB
-raw_content_max_bytes: 10485760 # 10 MB
+max_upload_size: 5242880 # 5 MiB for browser/file uploads.
+# Maximum raw fetched document size, in bytes.
+# 10485760 = 10 * 1024 * 1024 (10 MiB).
+raw_content_max_bytes: 10485760
 enable_https_middleware: true # Enable HTTPS middleware on production
 cookie_name: USER
 # Should be overridden in local.yaml at production
@@ -17,6 +19,9 @@ cookie_domain: ".vchat.com"
 cookie_secure: true
 # Auth session cookie lifetime. Default is 30 days.
 session_max_age_seconds: 2592000
+# Optional application-side session TTL from successful login time.
+# Set to 0 to disable. When enabled, sessions without login timestamp expire.
+auth_session_time: 0
 
 # Storages
 redis_uri: redis://localhost:6379/30

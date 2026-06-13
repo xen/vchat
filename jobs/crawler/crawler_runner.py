@@ -63,6 +63,10 @@ download_timeout = config.get(
     "crawler_download_timeout", DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT
 )
 settings.set("DOWNLOAD_TIMEOUT", max(1, int(float(download_timeout))))
+settings.set(
+    "DOWNLOAD_MAXSIZE",
+    max(1, int(project_config.get("raw_content_max_bytes", 10 * 1024 * 1024) or 1)),
+)
 settings.set("ROBOTSTXT_OBEY", not bool(config.get("ignore_robots_txt", False)))
 
 process = CrawlerProcess(settings)

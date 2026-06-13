@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 import traceback
 from collections.abc import Awaitable, Callable
 from collections import namedtuple
@@ -164,9 +165,16 @@ async def auth_middleware(
 
     user_id = request["auth_session"].get("user_id")
     if user_id is not None:
+        config = request.app.get(CONFIG_KEY, {})
+        auth_session_time = int(config.get("auth_session_time", 0) or 0)
+        if _auth_session_expired(request["auth_session"], auth_session_time):
+            request["auth_session"].invalidate()
+            return await handler(request)
+
         result = await request["db"].execute(
             sa.select(User.id, User.email, User.name, User.is_active).where(
-                User.id == user_id
+                User.id == user_id,
+                User.is_active.is_(True),
             )
         )
         row = result.first()
@@ -191,6 +199,15 @@ UserInfo = namedtuple(
     defaults=("", "", True),
 )
 Msg = namedtuple("Msg", ["status", "message"])
+
+
+def _auth_session_expired(auth_session: dict[str, Any], ttl_seconds: int) -> bool:
+    if ttl_seconds <= 0:
+        return False
+    login_at = auth_session.get("login_at")
+    if not isinstance(login_at, int):
+        return True
+    return int(time.time()) - login_at >= ttl_seconds
 
 
 @web.middleware

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 import json as pyjson
+import os
+import subprocess
+import sys
 
 import pytest
 from aiohttp import web
@@ -212,6 +215,112 @@ def test_settings_yaml_load_and_validation() -> None:
     )
     assert loaded["flag"] is True
     assert loaded["raw"] == "x"
+
+
+def test_settings_env_overrides_use_lowercase_internal_keys() -> None:
+    script = """
+import json
+from vchat.settings import config
+print(json.dumps({
+    "database_uri": config["database_uri"],
+    "cookie_secure": config["cookie_secure"],
+    "mode": config["mode"],
+    "secret_key": config["secret_key"],
+    "cookie_key": config["cookie_key"],
+    "vchat_secret": config["vchat_secret"],
+}))
+"""
+    env = {
+        **os.environ,
+        "DATABASE_URI": "postgresql+asyncpg://env/db",
+        "COOKIE_SECURE": "false",
+        "MODE": "production",
+        "SECRET_KEY": "env-secret-key",
+        "COOKIE_KEY": "env-cookie-key",
+        "VCHAT_SECRET": "env-project-secret",
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    loaded = pyjson.loads(result.stdout)
+    assert loaded == {
+        "database_uri": "postgresql+asyncpg://env/db",
+        "cookie_secure": False,
+        "mode": "production",
+        "secret_key": "env-secret-key",
+        "cookie_key": "env-cookie-key",
+        "vchat_secret": "env-project-secret",
+    }
+
+
+def test_settings_production_rejects_default_security_keys() -> None:
+    env = {**os.environ, "MODE": "production"}
+    for key in ("SECRET_KEY", "COOKIE_KEY", "VCHAT_SECRET"):
+        env.pop(key, None)
+
+    result = subprocess.run(
+        [sys.executable, "-c", "import vchat.settings"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "secret_key" in result.stderr
+    assert "cookie_key" in result.stderr
+    assert "vchat_secret" in result.stderr
+
+
+def test_settings_production_rejects_placeholder_security_keys() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import vchat.settings"],
+        env={
+            **os.environ,
+            "MODE": "production",
+            "SECRET_KEY": "changed-secret",
+            "COOKIE_KEY": "change-me",
+            "VCHAT_SECRET": "changed-project",
+        },
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "cookie_key" in result.stderr
+
+
+def test_settings_stage_allows_default_security_keys() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import vchat.settings"],
+        env={**os.environ, "MODE": "stage"},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+
+
+def test_settings_production_accepts_overridden_security_keys() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import vchat.settings"],
+        env={
+            **os.environ,
+            "MODE": "production",
+            "SECRET_KEY": "changed-secret",
+            "COOKIE_KEY": "changed-cookie",
+            "VCHAT_SECRET": "changed-project",
+        },
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
 
 
 def test_metrics_helpers() -> None:

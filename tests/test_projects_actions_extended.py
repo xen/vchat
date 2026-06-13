@@ -46,6 +46,8 @@ class _App(dict):
         self.router = {
             "users": _Route("/users/"),
             "actions": _Route("/actions/{action}/{item_id}"),
+            "project_files": _Route("/files"),
+            "file_document": _Route("/file/{document_id}"),
             "project_integration": _Route("/integration"),
             "project_triggers": _Route("/triggers"),
             "project_widget_edit": _Route("/integration/widgets/{widget_id}"),
@@ -116,6 +118,12 @@ def _raw_project_triggers():
     return project_views.project_triggers.__wrapped__.__wrapped__
 
 
+def _raw(func):
+    while hasattr(func, "__wrapped__"):
+        func = func.__wrapped__
+    return func
+
+
 @pytest.mark.asyncio
 async def test_project_action_rejects_missing_csrf() -> None:
     req = _Request(action="delete_source", headers={})
@@ -123,6 +131,84 @@ async def test_project_action_rejects_missing_csrf() -> None:
     req["user"] = SimpleNamespace(id=1)
     with pytest.raises(web.HTTPForbidden):
         await _raw_project_action()(req)
+
+
+@pytest.mark.asyncio
+async def test_project_files_create_rejects_missing_csrf() -> None:
+    req = _Request(action="", post_data={}, headers={})
+    req["db"] = _DB()
+    req["user"] = SimpleNamespace(id=1, name="Alice", email="alice@example.test")
+
+    with pytest.raises(web.HTTPForbidden):
+        await _raw(project_views.project_files)(req)
+
+
+@pytest.mark.asyncio
+async def test_project_files_create_accepts_form_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    req = _Request(action="", post_data={"csrf_token": "ok"})
+    req["db"] = _DB()
+    req["user"] = SimpleNamespace(id=1, name="Alice", email="alice@example.test")
+    events = []
+
+    async def _admin(event, request):
+        _ = request
+        events.append(event)
+
+    async def _update_shingles(*args, **kwargs):
+        _ = args, kwargs
+
+    monkeypatch.setattr(project_views, "admin_event", _admin)
+    monkeypatch.setattr(project_views, "async_update_page_shingles", _update_shingles)
+
+    with pytest.raises(web.HTTPFound) as exc:
+        await _raw(project_views.project_files)(req)
+
+    assert str(exc.value.location).startswith("/file/")
+    assert req["db"].commits == 1
+    assert events == ["file_create"]
+
+
+@pytest.mark.asyncio
+async def test_file_document_save_rejects_missing_csrf() -> None:
+    document = SimpleNamespace(id=7, source_id=None, uri=None)
+    req = _Request(action="", post_data={"content": "changed"}, headers={})
+    req.match_info = {"document_id": "7"}
+    req.path = "/file/7"
+    req["db"] = _DB(scalar_values=[document])
+    req["user"] = SimpleNamespace(id=1)
+
+    with pytest.raises(web.HTTPForbidden):
+        await _raw(project_views.file_document)(req)
+
+
+@pytest.mark.asyncio
+async def test_file_document_delete_accepts_form_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = SimpleNamespace(id=7, source_id=None, uri=None)
+    db = _DB(scalar_values=[document])
+    req = _Request(action="", post_data={"csrf_token": "ok", "action": "delete"})
+    req.match_info = {"document_id": "7"}
+    req.path = "/file/7"
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+
+    async def _admin(event, request):
+        _ = request
+        events.append(event)
+
+    monkeypatch.setattr(project_views, "admin_event", _admin)
+
+    with pytest.raises(web.HTTPFound) as exc:
+        await _raw(project_views.file_document)(req)
+
+    assert str(exc.value.location) == "/files"
+    assert db.deleted == [document]
+    assert db.commits == 1
+    assert events == ["file_delete"]
 
 
 @pytest.mark.asyncio

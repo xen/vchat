@@ -31,9 +31,10 @@ class _ExecuteResult:
 class _DB:
     def __init__(self, results=None):
         self._results = list(results or [])
+        self.calls = []
 
     async def execute(self, stmt, params=None):
-        _ = stmt, params
+        self.calls.append((stmt, params or {}))
         rows = self._results.pop(0) if self._results else []
         return _ExecuteResult(rows)
 
@@ -96,6 +97,42 @@ def test_token_count_and_trim_messages(monkeypatch: pytest.MonkeyPatch) -> None:
     messages = [Msg(role="user", content="123"), Msg(role="assistant", content="4567")]
     trimmed = ctx_mod.trim_messages(messages, max_tokens=4)
     assert trimmed == [messages[1]]
+
+
+@pytest.mark.asyncio
+async def test_context_supplies_apply_allowed_source_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = _DB(results=[[], [], []])
+    monkeypatch.setattr(
+        ctx_mod,
+        "queryprofile",
+        lambda text: {
+            "lexical_query": text,
+            "table_mode": False,
+        },
+    )
+
+    await ctx_mod.vector_supply(
+        db,
+        chat_id="chat-1",
+        query_vec=[0.1, 0.2],
+        top_k=4,
+        allowed_source_ids=[],
+    )
+    await ctx_mod.fulltext_supply(
+        db,
+        prompt_text="policy",
+        top_m=4,
+        allowed_source_ids=[7, 8],
+    )
+
+    vector_kb_params = db.calls[1][1]
+    fulltext_params = db.calls[2][1]
+    assert vector_kb_params["source_filter_disabled"] is False
+    assert vector_kb_params["source_ids"] == []
+    assert fulltext_params["source_filter_disabled"] is False
+    assert fulltext_params["source_ids"] == [7, 8]
 
 
 def test_embed_query_and_vec_literal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -299,8 +336,9 @@ async def test_get_context_sources_match_visible_context_snippets(
         _ = prompt
         return [0.1, 0.2]
 
-    async def _vec(db, chat_id, query_vec, top_k):
+    async def _vec(db, chat_id, query_vec, top_k, allowed_source_ids=None):
         _ = db, chat_id, query_vec, top_k
+        assert allowed_source_ids is None
         return [
             ctx_mod.Snippet(
                 id=1,
@@ -331,8 +369,9 @@ async def test_get_context_sources_match_visible_context_snippets(
             ),
         ]
 
-    async def _ft(db, prompt_text, top_m):
+    async def _ft(db, prompt_text, top_m, allowed_source_ids=None):
         _ = db, prompt_text, top_m
+        assert allowed_source_ids is None
         return []
 
     def _rerank(query, snippets):
@@ -381,6 +420,8 @@ async def test_get_context_sources_match_visible_context_snippets(
 
 @pytest.mark.asyncio
 async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen_source_scopes = []
+
     async def _tail(db, chat_id, limit=5):
         _ = db, chat_id, limit
         return [Msg(role="assistant", content="tail")]
@@ -389,8 +430,9 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
         assert "policy" in prompt
         return [0.1, 0.2]
 
-    async def _vec(db, chat_id, query_vec, top_k=10):
+    async def _vec(db, chat_id, query_vec, top_k=10, allowed_source_ids=None):
         _ = db, chat_id, query_vec, top_k
+        seen_source_scopes.append(("vector", allowed_source_ids))
         return [
             ctx_mod.Snippet(
                 id=1,
@@ -414,8 +456,9 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
             ),
         ]
 
-    async def _ft(db, prompt_text, top_m=10):
+    async def _ft(db, prompt_text, top_m=10, allowed_source_ids=None):
         _ = db, prompt_text, top_m
+        seen_source_scopes.append(("fulltext", allowed_source_ids))
         return [
             ctx_mod.Snippet(
                 id=3,
@@ -455,9 +498,11 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
         tail_limit=5,
         vector_top_k=5,
         ft_top_m=5,
+        allowed_source_ids=[],
     )
     assert result.messages[0].content == "tail"
     assert result.messages[-1].role == "user"
     assert result.messages[-1].content == "policy rules"
     assert len(result.used_chunks) >= 2
     assert result.used_chunks[0]["citation_id"] == 0
+    assert seen_source_scopes == [("vector", []), ("fulltext", [])]

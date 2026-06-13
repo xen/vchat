@@ -77,7 +77,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const div = document.createElement('div');
         div.className = `alert ${alertClass} cursor-pointer`;
         div.dataset.mid = mid;
-        div.innerHTML = `<span>${data.body}</span>`;
+        const body = document.createElement('span');
+        body.textContent = data.body || '';
+        div.appendChild(body);
         div.onclick = function () {
             div.remove();
             dismissChannel.postMessage({ type: 'dismiss', mid });
@@ -145,25 +147,31 @@ document.addEventListener('DOMContentLoaded', function () {
                 return 'Только что';
             }
 
-            // Create item HTML
-            const itemHtml = `
-            <div class="hover:bg-base-200/20 relative flex items-start gap-3 p-4 transition-all border-b border-base-200 border-dashed last:border-0">
-              <div class="grow">
-                <p class="text-sm leading-tight">${data.body}</p>
-                 <p class="text-base-content/60 text-xs">${timeAgo(data.created_at)}</p>
-              </div>
-            </div>`;
+            const item = document.createElement('div');
+            item.className = 'hover:bg-base-200/20 relative flex items-start gap-3 p-4 transition-all border-b border-base-200 border-dashed last:border-0';
+
+            const content = document.createElement('div');
+            content.className = 'grow';
+
+            const body = document.createElement('p');
+            body.className = 'text-sm leading-tight';
+            body.textContent = data.body || '';
+
+            const createdAt = document.createElement('p');
+            createdAt.className = 'text-base-content/60 text-xs';
+            createdAt.textContent = timeAgo(data.created_at);
+
+            content.appendChild(body);
+            content.appendChild(createdAt);
+            item.appendChild(content);
 
             // Insert after header (which is index 0)
             if (itemsContainer) {
-                // If container has header (first child), insert after it. 
-                // Wait, original code said "Insert after header (which is index 0)". 
-                // Let's verify structure. Assuming firstElementChild is header.
                 const header = itemsContainer.firstElementChild;
                 if (header) {
-                    header.insertAdjacentHTML('afterend', itemHtml);
+                    header.after(item);
                 } else {
-                    itemsContainer.insertAdjacentHTML('afterbegin', itemHtml);
+                    itemsContainer.prepend(item);
                 }
             }
         };

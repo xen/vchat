@@ -160,10 +160,6 @@ server {
         alias $DEPLOY_PATH/media/;
     }
 
-    location /data/ {
-        alias $DEPLOY_PATH/data/;
-    }
-
 }
 EOF
 

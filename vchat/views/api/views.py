@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from aiohttp import ClientSession, ClientTimeout, web
 from cryptography.fernet import Fernet
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY, config
 from jobs.crawler.tasks import async_update_page_shingles, schedule_index_document
 from jobs.crawler.document_pipeline import extract_url_document
 from jobs.indexing.documents import (
@@ -35,6 +35,7 @@ MAX_URL_LENGTH = 2048
 MAX_CLIENT_ID_LENGTH = 64
 SIGNATURE_LENGTH = 64
 MAX_NONCE_LENGTH = 128
+DEFAULT_RAW_CONTENT_MAX_BYTES = 10 * 1024 * 1024
 
 
 def _error(message: str, status: int = 400) -> web.Response:
@@ -241,6 +242,26 @@ def _is_host_allowed(host: str, source_hosts: set[str]) -> bool:
     return any(host.endswith(f".{allowed}") for allowed in source_hosts)
 
 
+def _hosts_within_same_domain(left: str, right: str) -> bool:
+    left = _normalize_host(left)
+    right = _normalize_host(right)
+    return (
+        left == right
+        or left.endswith(f".{right}")
+        or right.endswith(f".{left}")
+    )
+
+
+def _redirect_target_allowed(current_url: str, target_url: str) -> bool:
+    current = urlparse(current_url)
+    target = urlparse(target_url)
+    if target.scheme not in {"http", "https"} or not target.hostname:
+        return False
+    if current.scheme not in {"http", "https"} or not current.hostname:
+        return False
+    return _hosts_within_same_domain(current.hostname, target.hostname)
+
+
 def _pick_source_for_host(host: str, source_rows: list[tuple[int, str]]) -> int | None:
     host = _normalize_host(host)
     # Prefer exact host match, then parent-domain match.
@@ -255,20 +276,66 @@ def _pick_source_for_host(host: str, source_rows: list[tuple[int, str]]) -> int 
 
 async def _fetch_url_content(
     url: str,
+    *,
+    max_bytes: int | None = None,
 ) -> tuple[str, str | None, bytes | None, dict]:
+    if max_bytes is None:
+        max_bytes = int(
+            config.get("raw_content_max_bytes", DEFAULT_RAW_CONTENT_MAX_BYTES)
+            or DEFAULT_RAW_CONTENT_MAX_BYTES
+        )
     timeout = ClientTimeout(total=20)
     async with ClientSession(timeout=timeout) as client:
-        async with client.get(
-            url,
-            allow_redirects=True,
-            headers=request_id_headers(),
-        ) as resp:
-            resp.raise_for_status()
-            raw_body = await resp.read()
-            content_type = resp.headers.get("Content-Type")
-            charset = resp.charset or "utf-8"
-            body = raw_body.decode(charset, errors="replace")
-            return body, content_type, raw_body, dict(resp.headers)
+        current_url = url
+        for _ in range(5):
+            async with client.get(
+                current_url,
+                allow_redirects=False,
+                headers=request_id_headers(),
+            ) as resp:
+                if resp.status in {301, 302, 303, 307, 308}:
+                    location = resp.headers.get("Location")
+                    if not location:
+                        break
+                    redirect_url = urljoin(str(resp.url), location)
+                    if not _redirect_target_allowed(str(resp.url), redirect_url):
+                        raise web.HTTPForbidden(
+                            text="Redirect target domain is not allowed"
+                        )
+                    current_url = redirect_url
+                    continue
+
+                resp.raise_for_status()
+                content_length = resp.headers.get("Content-Length")
+                if content_length is not None:
+                    try:
+                        actual_size = int(content_length)
+                    except ValueError:
+                        actual_size = None
+                    if actual_size is not None and actual_size > max_bytes:
+                        raise web.HTTPRequestEntityTooLarge(
+                            max_size=max_bytes,
+                            actual_size=actual_size,
+                            text="Document is too large",
+                        )
+
+                chunks: list[bytes] = []
+                raw_body_size = 0
+                async for chunk in resp.content.iter_chunked(64 * 1024):
+                    raw_body_size += len(chunk)
+                    if raw_body_size > max_bytes:
+                        raise web.HTTPRequestEntityTooLarge(
+                            max_size=max_bytes,
+                            actual_size=raw_body_size,
+                            text="Document is too large",
+                        )
+                    chunks.append(chunk)
+                raw_body = b"".join(chunks)
+                content_type = resp.headers.get("Content-Type")
+                charset = resp.charset or "utf-8"
+                body = raw_body.decode(charset, errors="replace")
+                return body, content_type, raw_body, dict(resp.headers)
+        raise web.HTTPBadGateway(text="Too many redirects")
 
 
 async def _extract_content(
@@ -315,8 +382,9 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
     """Return: (status_code, redirect_location, final_status_if_followed)."""
     timeout = ClientTimeout(total=20)
     async with ClientSession(timeout=timeout) as client:
+        current_url = url
         async with client.get(
-            url,
+            current_url,
             allow_redirects=False,
             headers=request_id_headers(),
         ) as resp:
@@ -324,13 +392,29 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
             location = resp.headers.get("Location")
 
         if status in {301, 302, 303, 307, 308} and location:
-            redirect_url = urljoin(url, location)
-            async with client.get(
-                redirect_url,
-                allow_redirects=True,
-                headers=request_id_headers(),
-            ) as final_resp:
-                return status, str(final_resp.url), final_resp.status
+            first_redirect_url = urljoin(current_url, location)
+            if not _redirect_target_allowed(current_url, first_redirect_url):
+                raise web.HTTPForbidden(text="Redirect target domain is not allowed")
+
+            current_url = first_redirect_url
+            for _ in range(5):
+                async with client.get(
+                    current_url,
+                    allow_redirects=False,
+                    headers=request_id_headers(),
+                ) as final_resp:
+                    if final_resp.status not in {301, 302, 303, 307, 308}:
+                        return status, str(final_resp.url), final_resp.status
+                    location = final_resp.headers.get("Location")
+                    if not location:
+                        return status, str(final_resp.url), final_resp.status
+                    redirect_url = urljoin(str(final_resp.url), location)
+                    if not _redirect_target_allowed(str(final_resp.url), redirect_url):
+                        raise web.HTTPForbidden(
+                            text="Redirect target domain is not allowed"
+                        )
+                    current_url = redirect_url
+            raise web.HTTPBadGateway(text="Too many redirects")
 
         return status, None, status
 

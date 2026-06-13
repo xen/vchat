@@ -557,6 +557,209 @@ async def test_update_document_redirect_forbidden_target(
     assert resp.status == 403
 
 
+def test_redirect_target_policy_stays_within_current_domain() -> None:
+    assert api_views._redirect_target_allowed(
+        "https://allowed.com/a",
+        "https://allowed.com/b",
+    )
+    assert api_views._redirect_target_allowed(
+        "https://allowed.com/a",
+        "https://www.allowed.com/b",
+    )
+    assert api_views._redirect_target_allowed(
+        "https://docs.allowed.com/a",
+        "https://allowed.com/b",
+    )
+    assert not api_views._redirect_target_allowed(
+        "https://allowed.com/a",
+        "https://evil.com/b",
+    )
+    assert not api_views._redirect_target_allowed(
+        "https://allowed.com/a",
+        "javascript:alert(1)",
+    )
+
+
+class _FakeFetchContent:
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = chunks
+
+    async def iter_chunked(self, _size: int):
+        for chunk in self._chunks:
+            yield chunk
+
+
+class _FakeFetchResponse:
+    def __init__(
+        self,
+        *,
+        url: str,
+        status: int,
+        headers: dict[str, str] | None = None,
+        body: bytes = b"",
+        chunks: list[bytes] | None = None,
+    ) -> None:
+        self.url = url
+        self.status = status
+        self.headers = headers or {}
+        self.charset = "utf-8"
+        self.content = _FakeFetchContent(chunks if chunks is not None else [body])
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        _ = exc_type, exc, tb
+        return False
+
+    def raise_for_status(self):
+        if self.status >= 400:
+            raise AssertionError(f"unexpected status {self.status}")
+
+
+class _FakeFetchClient:
+    def __init__(self, responses: dict[str, _FakeFetchResponse]) -> None:
+        self.responses = responses
+        self.requests: list[tuple[str, bool]] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        _ = exc_type, exc, tb
+        return False
+
+    def get(self, url, *, allow_redirects, headers):
+        _ = headers
+        self.requests.append((url, allow_redirects))
+        return self.responses[url]
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_content_follows_same_domain_redirects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeFetchClient(
+        {
+            "https://allowed.com/a": _FakeFetchResponse(
+                url="https://allowed.com/a",
+                status=302,
+                headers={"Location": "/b"},
+            ),
+            "https://allowed.com/b": _FakeFetchResponse(
+                url="https://allowed.com/b",
+                status=200,
+                headers={"Content-Type": "text/html"},
+                body=b"<html>ok</html>",
+            ),
+        }
+    )
+    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+
+    body, content_type, raw_body, _headers = await api_views._fetch_url_content(
+        "https://allowed.com/a"
+    )
+
+    assert body == "<html>ok</html>"
+    assert content_type == "text/html"
+    assert raw_body == b"<html>ok</html>"
+    assert client.requests == [
+        ("https://allowed.com/a", False),
+        ("https://allowed.com/b", False),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_content_blocks_cross_domain_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeFetchClient(
+        {
+            "https://allowed.com/a": _FakeFetchResponse(
+                url="https://allowed.com/a",
+                status=302,
+                headers={"Location": "https://evil.com/private"},
+            ),
+            "https://evil.com/private": _FakeFetchResponse(
+                url="https://evil.com/private",
+                status=200,
+                body=b"secret",
+            ),
+        }
+    )
+    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+
+    with pytest.raises(web.HTTPForbidden):
+        await api_views._fetch_url_content("https://allowed.com/a")
+
+    assert client.requests == [("https://allowed.com/a", False)]
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_content_rejects_oversized_content_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeFetchClient(
+        {
+            "https://allowed.com/a": _FakeFetchResponse(
+                url="https://allowed.com/a",
+                status=200,
+                headers={"Content-Length": "6"},
+                body=b"ok",
+            ),
+        }
+    )
+    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+
+    with pytest.raises(web.HTTPRequestEntityTooLarge):
+        await api_views._fetch_url_content("https://allowed.com/a", max_bytes=5)
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_content_rejects_chunked_body_over_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeFetchClient(
+        {
+            "https://allowed.com/a": _FakeFetchResponse(
+                url="https://allowed.com/a",
+                status=200,
+                chunks=[b"123", b"456"],
+            ),
+        }
+    )
+    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+
+    with pytest.raises(web.HTTPRequestEntityTooLarge):
+        await api_views._fetch_url_content("https://allowed.com/a", max_bytes=5)
+
+
+@pytest.mark.asyncio
+async def test_resolve_url_state_blocks_cross_domain_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeFetchClient(
+        {
+            "https://allowed.com/a": _FakeFetchResponse(
+                url="https://allowed.com/a",
+                status=302,
+                headers={"Location": "https://evil.com/private"},
+            ),
+            "https://evil.com/private": _FakeFetchResponse(
+                url="https://evil.com/private",
+                status=200,
+                body=b"secret",
+            ),
+        }
+    )
+    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+
+    with pytest.raises(web.HTTPForbidden):
+        await api_views._resolve_url_state("https://allowed.com/a")
+
+    assert client.requests == [("https://allowed.com/a", False)]
+
+
 @pytest.mark.asyncio
 async def test_update_document_redirect_replace(
     monkeypatch: pytest.MonkeyPatch,

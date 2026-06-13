@@ -15,6 +15,7 @@
 <div class="card bg-base-100 shadow">
     <div class="card-body">
         <form id="file-editor-form" method="post" action="{{ url('file_document', document_id=current_document.id) }}" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
             <input type="hidden" id="content" name="content" value="{{ current_document.content or '' }}" />
             <textarea
                 id="content-fallback"
@@ -86,6 +87,7 @@
 <div class="flex items-center justify-between gap-3 mb-6">
     <h1 class="text-lg font-medium">Файлы</h1>
     <form method="post" action="{{ url('project_files') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
         <button type="submit" class="btn btn-primary btn-sm max-sm:btn-square">
             <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
             <span class="hidden sm:inline">Добавить файл</span>

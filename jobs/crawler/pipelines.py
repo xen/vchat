@@ -141,9 +141,7 @@ def sync_page_links(
     if source_page.id is None or not source_page.uri:
         return
 
-    source_rows = [
-        (row.id, row.uri) for row in session.execute(select(Source.id, Source.uri)).all()
-    ]
+    source_rows = session.execute(select(Source.id, Source.uri)).all()
     source_id_by_host = build_source_id_by_host(source_rows)
 
     unique_links: list[str] = []

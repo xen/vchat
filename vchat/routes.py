@@ -17,7 +17,6 @@ from .views.user import views as user
 
 
 STATIC_PATH = Path(__file__).parent.parent / "static"
-DATA_PATH = Path(__file__).parent.parent / "data"
 
 
 def setup_routes(app: web.Application) -> None:
@@ -184,12 +183,6 @@ def setup_routes(app: web.Application) -> None:
         "/static/",
         path=STATIC_PATH.absolute(),
         name="static",
-        follow_symlinks=True,
-    )
-    app.router.add_static(
-        "/data/",
-        path=DATA_PATH.absolute(),
-        name="data",
         follow_symlinks=True,
     )
 

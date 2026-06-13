@@ -1,35 +1,9 @@
 import "./chat.css";
 import "htmx.org/dist/htmx.min.js";
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
-import { marked } from "marked";
+import { renderSafeAssistantMarkdown } from "./safe-markdown.js";
 
-window.marked = marked;
-
-const citationExtension = {
-    name: "citation",
-    level: "inline",
-    start(src) {
-        return src.match(/\[\[citation:/)?.index;
-    },
-    tokenizer(src) {
-        const rule = /^\[\[citation:(\d+)\]\]/;
-        const match = rule.exec(src);
-        if (!match) {
-            return;
-        }
-        return {
-            type: "citation",
-            raw: match[0],
-            id: match[1],
-        };
-    },
-    renderer(token) {
-        const citationNumber = parseInt(token.id, 10) + 1;
-        return `<button type="button" class="inline-flex items-center justify-center w-4 h-4 ml-0.5 text-[0.6rem] font-bold text-primary bg-primary/10 rounded-full align-top cursor-pointer hover:bg-primary hover:text-primary-content transition-colors citation-btn" data-id="${token.id}" aria-label="Открыть источник ${citationNumber}">${citationNumber}</button>`;
-    },
-};
-
-marked.use({ extensions: [citationExtension] });
+window.vchatRenderAssistantMarkdown = renderSafeAssistantMarkdown;
 
 let fingerprintAgentPromise = null;
 

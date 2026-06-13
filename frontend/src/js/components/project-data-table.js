@@ -38,6 +38,19 @@ const escapeHtml = (value) => {
     .replace(/'/g, '&#39;')
 }
 
+const safeExternalHref = (value) => {
+  if (!value) {
+    return ''
+  }
+
+  try {
+    const url = new URL(String(value), window.location.origin)
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : ''
+  } catch {
+    return ''
+  }
+}
+
 const formatBytes = (value) => {
   const bytes = Number(value)
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -212,17 +225,24 @@ window.useProjectDataTable = () => {
         const rawTitle = info.getValue()
         const title = escapeHtml((rawTitle || '').trim() || '[Без названия]')
         const docId = escapeHtml(info.row.original.id)
-        const uri = escapeHtml(info.row.original.uri || '')
+        const rawUri = info.row.original.uri || ''
+        const uri = escapeHtml(rawUri)
+        const href = safeExternalHref(rawUri)
         const group = info.row.original.group || 'processing'
         const groupInfo = GROUP_DISPLAY[group] || GROUP_DISPLAY['processing']
         const badgeHtml = `<span class="${groupInfo.cls}">${escapeHtml(groupInfo.label)}</span>`
+        const uriHtml = href
+          ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="truncate min-w-0 hover:text-base-content/70 transition-colors">${uri}</a>`
+          : uri
+            ? `<span class="truncate min-w-0">${uri}</span>`
+            : ''
 
         return `
           <div class="overflow-hidden">
             <a class="font-medium text-sm link link-hover block truncate"
               href="/page/${docId}" title="${title}">${title}</a>
             <div class="flex items-center gap-1.5 text-xs text-base-content/40 mt-0.5">
-              ${uri ? `<a href="${uri}" target="_blank" rel="noopener" class="truncate min-w-0 hover:text-base-content/70 transition-colors">${uri}</a>` : ''}
+              ${uriHtml}
               <span class="shrink-0 flex items-center gap-1.5 ml-auto pl-2">
                 ${badgeHtml}
               </span>

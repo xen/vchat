@@ -1,0 +1,1353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>vchat Codex Security Scan</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fff;
+      --bg-elev: #fafafa;
+      --bg-muted: #f5f5f7;
+      --fg: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --accent: #2563eb;
+      --code: #f3f4f6;
+      --shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f14;
+        --bg-elev: #0f141b;
+        --bg-muted: #121923;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --border: #243040;
+        --accent: #60a5fa;
+        --code: #111827;
+        --shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    body.sidebar-collapsed .layout { grid-template-columns: 44px minmax(0, 1fr); }
+
+    .sidebar {
+      min-height: 100vh;
+      border-right: 1px solid var(--border);
+      background: var(--bg-muted);
+    }
+
+    .toc-inner {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 10px 8px;
+    }
+
+    .nav-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+    }
+
+    .nav-toggle {
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg);
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5px;
+    }
+
+    .nav-toggle:hover { box-shadow: var(--shadow); }
+    .nav-meta { color: var(--muted); font-size: 12px; margin: 0 0 12px; padding: 0 4px; }
+
+    body.sidebar-collapsed .toc-inner {
+      display: flex;
+      align-items: center;
+      padding: 8px 6px;
+    }
+
+    body.sidebar-collapsed .nav-title span,
+    body.sidebar-collapsed .nav-meta,
+    body.sidebar-collapsed .toc { display: none; }
+
+    main { max-width: 1040px; padding: 32px 44px 80px; }
+    h1, h2, h3 { line-height: 1.2; margin-top: 1.7em; }
+    h1:first-child { margin-top: 0; }
+    h2 { border-top: 1px solid var(--border); padding-top: 1em; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { background: var(--code); border-radius: 4px; padding: 0.1em 0.3em; }
+    pre { background: var(--code); border: 1px solid var(--border); border-radius: 8px; overflow: auto; padding: 16px; }
+    pre code { background: transparent; padding: 0; }
+    table { border-collapse: collapse; width: 100%; margin: 18px 0; }
+    th, td { border: 1px solid var(--border); padding: 8px 10px; vertical-align: top; }
+    th { text-align: left; background: var(--code); }
+
+    main h3[id^="0-"] + table,
+    main h3[id^="1-"] + table,
+    main h3[id^="2-"] + table,
+    main h3[id^="3-"] + table,
+    main h3[id^="4-"] + table,
+    main h3[id^="5-"] + table,
+    main h3[id^="6-"] + table,
+    main h3[id^="7-"] + table,
+    main h3[id^="8-"] + table,
+    main h3[id^="9-"] + table {
+      margin: 10px 0 24px;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      background: var(--bg-elev);
+      box-shadow: var(--shadow);
+    }
+
+    main h3[id^="0-"] + table th,
+    main h3[id^="1-"] + table th,
+    main h3[id^="2-"] + table th,
+    main h3[id^="3-"] + table th,
+    main h3[id^="4-"] + table th,
+    main h3[id^="5-"] + table th,
+    main h3[id^="6-"] + table th,
+    main h3[id^="7-"] + table th,
+    main h3[id^="8-"] + table th,
+    main h3[id^="9-"] + table th { display: none; }
+
+    main h3[id^="0-"] + table td:first-child,
+    main h3[id^="1-"] + table td:first-child,
+    main h3[id^="2-"] + table td:first-child,
+    main h3[id^="3-"] + table td:first-child,
+    main h3[id^="4-"] + table td:first-child,
+    main h3[id^="5-"] + table td:first-child,
+    main h3[id^="6-"] + table td:first-child,
+    main h3[id^="7-"] + table td:first-child,
+    main h3[id^="8-"] + table td:first-child,
+    main h3[id^="9-"] + table td:first-child {
+      width: 170px;
+      color: var(--muted);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    main h3[id^="0-"] + table td,
+    main h3[id^="1-"] + table td,
+    main h3[id^="2-"] + table td,
+    main h3[id^="3-"] + table td,
+    main h3[id^="4-"] + table td,
+    main h3[id^="5-"] + table td,
+    main h3[id^="6-"] + table td,
+    main h3[id^="7-"] + table td,
+    main h3[id^="8-"] + table td,
+    main h3[id^="9-"] + table td { border-left: 0; border-right: 0; }
+
+    .toc { list-style: none; padding: 0; margin: 0; }
+    .toc a {
+      display: block;
+      border-radius: 6px;
+      color: var(--fg);
+      font-size: 13px;
+      line-height: 1.3;
+      padding: 4px 6px;
+      position: relative;
+      transition: background 160ms ease, color 160ms ease, padding-left 160ms ease;
+    }
+
+    .toc a:hover { background: var(--bg-elev); text-decoration: none; }
+    .toc-item { list-style: none; margin: 1px 0; }
+    .toc-item.depth-1 > a { font-weight: 700; }
+    .toc-item.depth-2 { padding-left: 14px; }
+    .toc-item.depth-3 { padding-left: 28px; }
+
+    .toc-item.active > a {
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      font-weight: 700;
+      padding-left: 10px;
+    }
+
+    .toc-item.active > a::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 4px;
+      bottom: 4px;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--accent);
+    }
+
+    @media (max-width: 900px) {
+      .layout { display: block; }
+      .sidebar { min-height: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+      .toc-inner { position: static; height: auto; max-height: 45vh; }
+      main { padding: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar" aria-label="Table of contents">
+      <div class="toc-inner">
+        <div class="nav-title">
+          <span>Outline</span>
+          <button id="navToggle" class="nav-toggle" aria-pressed="false" aria-label="Collapse sidebar" title="Collapse sidebar">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path id="navToggleIcon" d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div class="nav-meta">vchat Codex Security Scan</div>
+        <ul class="toc">
+          <li class="toc-item depth-1"><a href="#security-review-vchat">Security Review: vchat</a></li>
+<li class="toc-item depth-2"><a href="#scope">Scope</a></li>
+<li class="toc-item depth-3"><a href="#scan-summary">Scan Summary</a></li>
+<li class="toc-item depth-2"><a href="#threat-model">Threat Model</a></li>
+<li class="toc-item depth-1"><a href="#overview">Overview</a></li>
+<li class="toc-item depth-1"><a href="#threat-model-trust-boundaries-and-assumptions">Threat Model, Trust Boundaries, and Assumptions</a></li>
+<li class="toc-item depth-1"><a href="#attack-surface-mitigations-and-attacker-stories">Attack Surface, Mitigations, and Attacker Stories</a></li>
+<li class="toc-item depth-1"><a href="#severity-calibration-critical-high-medium-low">Severity Calibration (Critical, High, Medium, Low)</a></li>
+<li class="toc-item depth-2"><a href="#findings">Findings</a></li>
+<li class="toc-item depth-3"><a href="#confidence-scale">Confidence Scale</a></li>
+<li class="toc-item depth-3"><a href="#1-assistant-markdown-renders-unsanitized-html-into-same-origin-chat-dom">[1] Assistant Markdown renders unsanitized HTML into same-origin chat DOM</a></li>
+<li class="toc-item depth-3"><a href="#2-disabled-users-retain-access-through-existing-sessions">[2] Disabled users retain access through existing sessions</a></li>
+<li class="toc-item depth-3"><a href="#3-signed-update-api-can-refetch-an-allowed-url-and-follow-a-changed-redirect-to-internal-hosts">[3] Signed update API can refetch an allowed URL and follow a changed redirect to internal hosts</a></li>
+<li class="toc-item depth-3"><a href="#4-committed-default-signing-and-cookie-keys-can-become-live-credentials-outside-kubernetes">[4] Committed default signing and cookie keys can become live credentials outside Kubernetes</a></li>
+<li class="toc-item depth-3"><a href="#5-crawler-and-sitemap-sync-parse-large-remote-bodies-before-project-limits-apply">[5] Crawler and sitemap sync parse large remote bodies before project limits apply</a></li>
+<li class="toc-item depth-3"><a href="#6-crawler-source-origins-can-target-private-or-loopback-addresses">[6] Crawler source origins can target private or loopback addresses</a></li>
+<li class="toc-item depth-3"><a href="#7-document-csv-export-does-not-neutralize-spreadsheet-formulas">[7] Document CSV export does not neutralize spreadsheet formulas</a></li>
+<li class="toc-item depth-3"><a href="#8-file-editor-post-routes-lack-csrf-protection">[8] File editor POST routes lack CSRF protection</a></li>
+<li class="toc-item depth-3"><a href="#9-ldap-login-reuses-local-users-without-enforcing-inactive-or-ldap-only-account-state">[9] LDAP login reuses local users without enforcing inactive or LDAP-only account state</a></li>
+<li class="toc-item depth-3"><a href="#10-public-widget-chats-retrieve-from-the-global-knowledge-base-without-widget-source-scoping">[10] Public widget chats retrieve from the global knowledge base without widget/source scoping</a></li>
+<li class="toc-item depth-3"><a href="#11-sitemap-urlset-entries-can-persist-off-host-page-urls-under-the-current-source">[11] Sitemap urlset entries can persist off-host page URLs under the current source</a></li>
+<li class="toc-item depth-3"><a href="#12-update-api-reads-remote-response-bodies-into-memory-before-size-limits-apply">[12] Update API reads remote response bodies into memory before size limits apply</a></li>
+<li class="toc-item depth-3"><a href="#13-public-data-static-mount-can-expose-repository-data-artifacts-and-symlinks">[13] Public /data static mount can expose repository data artifacts and symlinks</a></li>
+<li class="toc-item depth-2"><a href="#reviewed-surfaces">Reviewed Surfaces</a></li>
+<li class="toc-item depth-2"><a href="#open-questions-and-follow-up">Open Questions And Follow Up</a></li>
+<li class="toc-item depth-2"><a href="#artifact-index">Artifact Index</a></li>
+        </ul>
+      </div>
+    </aside>
+    <main>
+      <h1 id="security-review-vchat">Security Review: vchat</h1>
+
+<h2 id="scope">Scope</h2>
+
+<ul><li>Scan mode: repository-wide Codex Security scan for <code>/Users/xen/Dev/sber/vchat</code>.</li><li>In scope: production/runtime code under <code>vchat/</code>, <code>jobs/</code>, <code>migrations/</code>, browser templates/assets, deployment manifests, Docker/compose assets, and dependency manifests.</li><li>Explicitly excluded from primary production review: <code>venv/</code>, <code>htmlcov/</code>, <code>docs/</code>, generated coverage output, and test-only fixtures except where tests clarified expected controls.</li><li>Threat model: generated during this scan from repository code and project KB; no remote server access was used.</li><li>Validation mode: static source-to-sink tracing plus local dependency/config checks. Runtime web/database services were not started because the request was for vulnerability analysis, not fixes or live deployment testing.</li></ul>
+
+<h3 id="scan-summary">Scan Summary</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Reportable findings</td>
+<td>13</td>
+</tr>
+<tr>
+<td>Severity mix</td>
+<td>high: 3, medium: 9, low: 1</td>
+</tr>
+<tr>
+<td>Confidence mix</td>
+<td>high: 5, low: 1, medium: 7</td>
+</tr>
+<tr>
+<td>Coverage</td>
+<td>466 production/runtime files prioritized from rank input; 13 candidate ledgers; 10 reviewed surface groups</td>
+</tr>
+<tr>
+<td>Artifacts</td>
+<td><code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z</code></td>
+</tr>
+<tr>
+<td>Markdown report</td>
+<td><code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/report.md</code></td>
+</tr>
+<tr>
+<td>HTML report</td>
+<td><code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/report.html</code></td>
+</tr>
+</tbody></table>
+
+<h2 id="threat-model">Threat Model</h2>
+
+<h1 id="overview">Overview</h1>
+
+<p><code>vchat</code> is an aiohttp-based web application for a single-project chat/RAG system. It exposes authenticated administrative pages, public widget chat pages and websockets, a public HMAC-signed document update API, metrics and health endpoints, static/data file serving, and background Celery jobs for crawling, document extraction, indexing, embeddings, and trigger generation. Persistent assets include PostgreSQL records for users, chats, messages, sources, pages, chunks, API clients, widget integrations, triggers, crawl state, and admin events; Redis stores sessions, queues, rate-limit state, nonce state, active chat state, and Pub/Sub messages.</p>
+
+<p>Primary runtime code lives under <code>vchat/</code> and <code>jobs/</code>. <code>migrations/</code> defines schema state and data-moving SQL. <code>frontend/</code>, <code>frontend_chat/</code>, <code>static/</code>, and <code>vchat/templates/</code> contain browser-delivered assets and templates. <code>tests/</code>, <code>htmlcov/</code>, <code>docs/</code>, and local tooling are not primary production surfaces unless deployed or exposed by configuration.</p>
+
+<h1 id="threat-model-trust-boundaries-and-assumptions">Threat Model, Trust Boundaries, and Assumptions</h1>
+
+<p>Important assets and privileges:</p>
+
+<ul><li>Authenticated admin access to users, sources, API clients, widgets, triggers, crawl/index actions, chat histories, documents, uploaded files, and project settings.</li><li>API client secrets used to authenticate <code>/api/update</code> requests.</li><li>Session cookies signed/encrypted with configured keys.</li><li>LLM provider credentials, GigaChat/OpenAI/Yandex API keys, OAuth tokens, prompts, retrieved context, and generated answers.</li><li>Indexed source documents, raw fetched content, chunks, embeddings, chat messages, and possible PII in RAG context.</li><li>Redis and Celery queues that can trigger crawler, indexing, embedding, and trigger generation jobs.</li><li>PostgreSQL integrity for source/page/chunk ownership and API-client-to-source authorization.</li></ul>
+
+<p>Main trust boundaries:</p>
+
+<ul><li>Browser to aiohttp application: authenticated admin requests, CSRF-protected forms/actions, websocket chat messages, public widget chat payloads, and static/data file requests.</li><li>External integrations to <code>/api/update</code>: unauthenticated network callers become trusted only after client id, HMAC signature, timestamp, nonce, source authorization, and rate-limit checks.</li><li>Application to Redis/PostgreSQL/Celery: application code assumes local infrastructure is trusted and available; failures should surface loudly.</li><li>Crawler/jobs to remote websites: source URLs, discovered links, downloaded HTML/documents, content types, redirects, and document bytes are attacker-controlled when the source website is attacker-controlled or compromised.</li><li>Application/RAG to LLM providers: user chat text, retrieved snippets, widget prompts, source content, and provider responses cross a third-party model boundary.</li><li>Admin/operator configuration to runtime: <code>vchat/config.yaml</code>, <code>local.yaml</code>, source settings, crawler rules, trigger rules, and widget settings are operator-controlled but can become high-impact if exposed to lower-privileged users.</li></ul>
+
+<p>Attacker-controlled inputs include login credentials, query strings, websocket/chat messages, widget codes, public API form bodies, HMAC request metadata, uploaded/file-related fields where exposed, source URLs, crawler-discovered URLs, remote response bodies, sitemaps, documents, LLM responses, browser Origin headers, and selected path parameters. Operator-controlled inputs include config files, environment-specific secrets, local deployment settings, project settings, source rules, and API client creation. Developer-controlled inputs include migrations, tests, build assets, and local scripts.</p>
+
+<p>Assumptions:</p>
+
+<ul><li>The production app is intended to sit behind HTTPS with secure cookies and a configured cookie domain.</li><li>PostgreSQL, Redis, and Celery broker are trusted internal services, not directly reachable by arbitrary users.</li><li>Authenticated admin pages are sensitive and should require a valid user session plus CSRF for state changes.</li><li>Public widget chat is intentionally reachable without a normal admin session, but should be constrained to widget/source access and not leak admin-only documents or cross-widget chat history.</li><li>Public <code>/api/update</code> is intentionally reachable by integration clients, but only signed clients should be able to trigger network fetches and indexing.</li></ul>
+
+<h1 id="attack-surface-mitigations-and-attacker-stories">Attack Surface, Mitigations, and Attacker Stories</h1>
+
+<p>Authentication and session management matter because admin routes control crawls, API clients, source settings, widgets, triggers, and user records. Relevant code includes <code>vchat/views/auth/views.py</code>, <code>vchat/middlewares/*</code>, <code>vchat/utils.py</code>, and templates/forms under <code>vchat/views/projects/</code>. Existing mitigations include WTForms CSRF for forms, signed CSRF helpers for action endpoints, session fixation avoidance via <code>new_session()</code>, password hashing with passlib, LDAP escaping, login delay/lock Redis keys, and secure-cookie configuration knobs.</p>
+
+<p>Authorization and object scoping are high-impact for project/admin data. Since the app appears single-project, many endpoints rely on authenticated admin status rather than tenant isolation. Public widget and API endpoints must still avoid reaching arbitrary <code>Page</code>, <code>Chat</code>, <code>Source</code>, <code>WidgetIntegration</code>, or <code>TriggerResponseCache</code> rows across trust boundaries.</p>
+
+<p>The public HMAC API in <code>vchat/views/api/views.py</code> is a critical surface. Existing mitigations include required form content type, timestamp TTL, nonce replay protection, per-client rate limits, encrypted stored client secrets, HMAC comparison, source host allow-listing, URL length limits, and raw-content size limits. Security review should focus on canonicalization gaps, redirect/SSRF behavior, host matching, client-source joins, replay/rate-limit keying, and content extraction side effects.</p>
+
+<p>Crawler and document processing are broad untrusted-input surfaces. <code>jobs/crawler/*</code>, <code>jobs/documents/*</code>, and <code>jobs/indexing/*</code> ingest remote URLs, HTML, sitemaps, file content, MIME/content-type metadata, and discovered links. Relevant risks include SSRF, internal network reachability, unbounded redirects or downloads, path/file handling mistakes, parser denial of service, unsafe document extraction, URL normalization bypasses, and poisoned RAG content.</p>
+
+<p>Chat, websocket, RAG, and LLM integrations in <code>vchat/views/chat/*</code> handle public/user text, JSON payloads, retrieved snippets, provider responses, trigger keys, and Redis Pub/Sub. Existing mitigations include structured payload parsing, snippet sanitization helpers, guardrail checks, signed trigger page IDs, chat/action scoping checks, request IDs, and token/response limits. Review should focus on prompt/data exfiltration, cross-chat authorization, unsafe rendering of model output, websocket CSRF/origin assumptions, and provider error/secret leakage.</p>
+
+<p>Template rendering and static/data serving can create XSS or data exposure risks. Jinja autoescaping, explicit <code>html</code> escaping in some paths, and sanitization helpers reduce risk, but routes serving <code>/data/</code> with <code>follow_symlinks=True</code> and any templates rendering rich document/chat/model content deserve review.</p>
+
+<p>Database/query safety matters where raw SQL appears in retrieval, migrations, and admin actions. SQLAlchemy parameterization is generally expected, while <code>sa.text()</code> and dynamically built SQL should be checked for attacker-controlled interpolation.</p>
+
+<p>Observability surfaces <code>/metrics</code>, <code>/health/live</code>, <code>/health/ready</code>, logging, and admin event pages may expose operational details. Metrics collectors intentionally catch Redis errors for observability robustness; security relevance depends on whether metrics are public in deployment.</p>
+
+<h1 id="severity-calibration-critical-high-medium-low">Severity Calibration (Critical, High, Medium, Low)</h1>
+
+<p>Critical findings would allow unauthenticated remote code execution, arbitrary local file read through deployed static/data routes, extraction of configured API/LLM/session secrets, unauthenticated admin takeover, compromise of Redis/PostgreSQL through application inputs, or public API/widget access to arbitrary internal network resources with sensitive response exfiltration.</p>
+
+<p>High findings would include authentication or CSRF bypass for admin state-changing actions, public API HMAC canonicalization bypass, API client source authorization bypass, websocket/chat cross-session data access, SSRF that reaches meaningful internal metadata or admin services, stored XSS in admin pages or public widgets, or crawler/document parser paths that allow persistent data poisoning with sensitive context leakage.</p>
+
+<p>Medium findings would include limited reflected XSS in authenticated-only views, missing rate limits on costly public chat/API paths, weak origin checks on websockets where impact is constrained by signed payloads or session checks, leakage of operational metadata through metrics, oversized payload/parser denial of service within configured upload limits, or unsafe redirects that do not directly expose credentials.</p>
+
+<p>Low findings would include hardening gaps in local/developer tooling, minor security header omissions, low-impact information disclosure in health/error messages, stale generated frontend/demo assets not deployed as sensitive surfaces, or issues requiring trusted operator control of <code>local.yaml</code>/config without a path from lower-privileged users.</p>
+
+
+<h2 id="findings">Findings</h2>
+
+<table>
+<thead><tr>
+<th>Finding</th>
+<th>Severity</th>
+<th>Confidence</th>
+<th>Category</th>
+<th>Candidate</th>
+</tr></thead>
+<tbody>
+<tr>
+<td><a href="#1-assistant-markdown-renders-unsanitized-html-into-same-origin-chat-dom">Assistant Markdown renders unsanitized HTML into same-origin chat DOM</a></td>
+<td>High</td>
+<td>High</td>
+<td>Cross-site scripting</td>
+<td><code>VCHAT-CHAT-MARKED-XSS-001</code></td>
+</tr>
+<tr>
+<td><a href="#2-disabled-users-retain-access-through-existing-sessions">Disabled users retain access through existing sessions</a></td>
+<td>High</td>
+<td>High</td>
+<td>Authentication state bypass</td>
+<td><code>AUTH-SESSION-INACTIVE-001</code></td>
+</tr>
+<tr>
+<td><a href="#3-signed-update-api-can-refetch-an-allowed-url-and-follow-a-changed-redirect-to-internal-hosts">Signed update API can refetch an allowed URL and follow a changed redirect to internal hosts</a></td>
+<td>High</td>
+<td>Medium</td>
+<td>Server-side request forgery</td>
+<td><code>VCHAT-API-UPDATE-SSRF-REDIRECT-TOCTOU</code></td>
+</tr>
+<tr>
+<td><a href="#4-committed-default-signing-and-cookie-keys-can-become-live-credentials-outside-kubernetes">Committed default signing and cookie keys can become live credentials outside Kubernetes</a></td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Hardcoded default secrets</td>
+<td><code>VCHAT-CONFIG-DEFAULT-SECRETS-001</code></td>
+</tr>
+<tr>
+<td><a href="#5-crawler-and-sitemap-sync-parse-large-remote-bodies-before-project-limits-apply">Crawler and sitemap sync parse large remote bodies before project limits apply</a></td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Uncontrolled resource consumption</td>
+<td><code>VCHAT-CRAWLER-UNBOUNDED-DOWNLOAD-DOS-003</code></td>
+</tr>
+<tr>
+<td><a href="#6-crawler-source-origins-can-target-private-or-loopback-addresses">Crawler source origins can target private or loopback addresses</a></td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Server-side request forgery</td>
+<td><code>VCHAT-CRAWLER-SOURCE-SSRF-001</code></td>
+</tr>
+<tr>
+<td><a href="#7-document-csv-export-does-not-neutralize-spreadsheet-formulas">Document CSV export does not neutralize spreadsheet formulas</a></td>
+<td>Medium</td>
+<td>High</td>
+<td>CSV formula injection</td>
+<td><code>VCHAT-PROJ-002</code></td>
+</tr>
+<tr>
+<td><a href="#8-file-editor-post-routes-lack-csrf-protection">File editor POST routes lack CSRF protection</a></td>
+<td>Medium</td>
+<td>High</td>
+<td>Cross-site request forgery</td>
+<td><code>VCHAT-PROJ-001</code></td>
+</tr>
+<tr>
+<td><a href="#9-ldap-login-reuses-local-users-without-enforcing-inactive-or-ldap-only-account-state">LDAP login reuses local users without enforcing inactive or LDAP-only account state</a></td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Authentication state bypass</td>
+<td><code>AUTH-LDAP-LOCAL-STATE-002</code></td>
+</tr>
+<tr>
+<td><a href="#10-public-widget-chats-retrieve-from-the-global-knowledge-base-without-widget-source-scoping">Public widget chats retrieve from the global knowledge base without widget/source scoping</a></td>
+<td>Medium</td>
+<td>Medium</td>
+<td>Authorization bypass / data exposure</td>
+<td><code>VCHAT-PUB-RAG-GLOBAL-KB-001</code></td>
+</tr>
+<tr>
+<td><a href="#11-sitemap-urlset-entries-can-persist-off-host-page-urls-under-the-current-source">Sitemap urlset entries can persist off-host page URLs under the current source</a></td>
+<td>Medium</td>
+<td>Low</td>
+<td>Server-side request forgery</td>
+<td><code>VCHAT-CRAWLER-SITEMAP-OFFHOST-SSRF-002</code></td>
+</tr>
+<tr>
+<td><a href="#12-update-api-reads-remote-response-bodies-into-memory-before-size-limits-apply">Update API reads remote response bodies into memory before size limits apply</a></td>
+<td>Medium</td>
+<td>High</td>
+<td>Uncontrolled resource consumption</td>
+<td><code>VCHAT-API-UPDATE-UNBOUNDED-READ-DOS</code></td>
+</tr>
+<tr>
+<td><a href="#13-public-data-static-mount-can-expose-repository-data-artifacts-and-symlinks">Public /data static mount can expose repository data artifacts and symlinks</a></td>
+<td>Low</td>
+<td>Medium</td>
+<td>Sensitive file exposure</td>
+<td><code>VCHAT-DATA-STATIC-EXPOSURE-001</code></td>
+</tr>
+</tbody></table>
+
+<h3 id="confidence-scale">Confidence Scale</h3>
+
+<table>
+<thead><tr>
+<th>Label</th>
+<th>Meaning</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>high</td>
+<td>Direct source, configuration, or runtime evidence supports the finding, with no material unresolved reachability or exploitability blocker.</td>
+</tr>
+<tr>
+<td>medium</td>
+<td>Source evidence supports a plausible issue, but runtime behavior, deployment configuration, role reachability, type constraints, or exploit reliability still need proof.</td>
+</tr>
+<tr>
+<td>low</td>
+<td>Weak or incomplete evidence; included here because the user requested a broad vulnerability analysis and the item has a concrete follow-up path.</td>
+</tr>
+</tbody></table>
+
+<h3 id="1-assistant-markdown-renders-unsanitized-html-into-same-origin-chat-dom">[1] Assistant Markdown renders unsanitized HTML into same-origin chat DOM</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Static source-to-sink trace plus dependency check show model output reaches marked.parse and innerHTML with no sanitizer.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Cross-site scripting</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-79: Improper Neutralization of Input During Web Page Generation</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/templates/chat/chat.html:420-427; vchat/templates/chat/chat.html:453-455; vchat/templates/chat/chat.html:827-839; vchat/views/chat/views.py:1433-1454; vchat/views/chat/views.py:1563-1595</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>Assistant output is streamed, stored, replayed, parsed as Markdown, and assigned to innerHTML. Marked does not sanitize raw HTML, so prompt-influenced or RAG-poisoned assistant content can execute JavaScript in the vchat origin.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by static sink review and local dependency behavior: marked.parse preserves raw HTML such as image event handlers. No DOMPurify, bleach, nh3, or CSP enforcement was found on this chat rendering path.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>public or authenticated prompt / indexed content -&gt; ai_chat_stream delta in vchat/views/chat/views.py -&gt; total_content persisted in ChatMsg -&gt; initialMessages replay or live websocket append -&gt; marked.parse -&gt; innerHTML.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Unauthenticated widget users can influence assistant output; authenticated admins also open same-origin chat pages. A successful payload can run in the browser context that views the chat and can use same-origin fetches and DOM CSRF material visible in the page.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>High because this is same-origin XSS in a privileged application surface with stored replay and public-widget influence. Severity would decrease if a strict CSP blocked script/event execution or if all assistant HTML were sanitized before rendering.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Sanitize marked output with a proven HTML sanitizer before assigning innerHTML, or configure the renderer to escape raw HTML. Add regression tests for streamed and replayed assistant messages containing HTML event handlers, script tags, javascript URLs, and SVG payloads.</p>
+
+<h3 id="2-disabled-users-retain-access-through-existing-sessions">[2] Disabled users retain access through existing sessions</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Direct middleware and decorator trace shows inactive users are loaded into request state and login_required only checks presence.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Authentication state bypass</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-287: Improper Authentication</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/middlewares/__init__.py:165-179; vchat/utils.py:297-309; vchat/views/auth/views.py:184-194</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>Password login blocks inactive users, but existing encrypted sessions remain valid after a user is disabled. The auth middleware constructs UserInfo with is_active=False and login_required still lets the request continue.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by source trace. The only invalidation condition is a missing user row; is_active is read but not enforced in middleware or the common login_required decorator.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>existing session cookie user_id -&gt; auth_middleware select User.is_active -&gt; request user set even when false -&gt; login_required sees request user is not None -&gt; protected admin view executes.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>A formerly valid user or stolen still-valid cookie can keep accessing admin routes until session expiry. In this project session_max_age defaults to 30 days.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>High because account deactivation is a core access-control action and the bypass preserves admin access after revocation. Severity would decrease if sessions were very short-lived or every protected handler separately enforced is_active.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Invalidate the session or reject the request when User.is_active is false in auth_middleware or login_required. Add tests for deactivating a logged-in user and then accessing representative admin routes.</p>
+
+<h3 id="3-signed-update-api-can-refetch-an-allowed-url-and-follow-a-changed-redirect-to-internal-hosts">[3] Signed update API can refetch an allowed URL and follow a changed redirect to internal hosts</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>The allowlist precheck and the actual content fetch are separate network requests; runtime redirect race behavior was not exercised against a live service.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Server-side request forgery</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-918: Server-Side Request Forgery</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/views/api/views.py:533-538; vchat/views/api/views.py:552-555; vchat/views/api/views.py:256-271; vchat/views/api/views.py:573-601</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>The signed /api/update endpoint validates the original host and an initial redirect chain, then later calls a second fetch that follows redirects and does not verify the final consumed URL. An authorized API client controlling an allowed origin can change the second response to redirect to internal infrastructure.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by code trace. _resolve_url_state performs one request and host checks that result, while _fetch_url_content later performs client.get with allow_redirects=True and reads the final response without checking the final host.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>signed POST url -&gt; update_document host allowlist -&gt; _resolve_url_state redirect check -&gt; _upsert_document -&gt; _extract_content -&gt; _fetch_url_content allow_redirects=True -&gt; internal/forbidden response stored and indexed.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Requires a valid API client secret and a Source host assigned to that client. The attacker needs control over the allowed host response or redirect behavior. The API route is public, HMAC-authenticated, and intended to be called externally.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>High because it bypasses the endpoint SSRF control and can make the server fetch internal or cloud-local HTTP resources. Severity would drop if deployment egress policy blocks private/link-local destinations.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Use one fetch for validation and consumption, or validate resp.url after redirects immediately before reading/storing. Disable redirects in the content fetch unless each hop is checked. Add tests with an allowed URL that redirects to loopback/private addresses on the consumed request.</p>
+
+<h3 id="4-committed-default-signing-and-cookie-keys-can-become-live-credentials-outside-kubernetes">[4] Committed default signing and cookie keys can become live credentials outside Kubernetes</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Defaults and consumers are clear; live exploitability depends on deployment overriding local.yaml or environment secrets.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Hardcoded default secrets</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-798: Use of Hard-coded Credentials</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/config.yaml:4-5; vchat/config.yaml:111-113; vchat/settings.py:96-105; vchat/middlewares/__init__.py:265-273; vchat/utils.py:231-232; vchat/app.py:58</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>The repository ships concrete values for secret_key, cookie_key, and vchat_secret in the default production config. If a runtime misses local.yaml overrides, those committed values protect sessions, CSRF/chat/API tokens, and widget signatures.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by config loading trace: config.yaml is always loaded first and local.yaml only overrides when present. Kubernetes base overrides key values from Secret env; compose content shown in the repo does not include all secrets.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>vchat/config.yaml defaults -&gt; settings._load_config merge -&gt; session middleware encrypted cookie storage / itsdangerous serializers / project integration signatures.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>An attacker with repository access or leaked image contents can know defaults; exploitation requires a deployment using defaults or incomplete overrides.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because the impact could be session/token forgery if defaults are live, but Kubernetes manifests show intended Secret overrides. Severity would rise if a deployed environment is confirmed to use these defaults.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Remove real-looking defaults from committed config, require secrets from environment/local.yaml at startup, and fail fast if production mode uses default or missing key material. Add a startup check and deployment tests.</p>
+
+<h3 id="5-crawler-and-sitemap-sync-parse-large-remote-bodies-before-project-limits-apply">[5] Crawler and sitemap sync parse large remote bodies before project limits apply</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Source trace shows unbounded requests content and BeautifulSoup parse before the configured raw-content cap is effective.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Uncontrolled resource consumption</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-400: Uncontrolled Resource Consumption</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>jobs/crawler/tasks.py:1959-1966; jobs/crawler/tasks.py:2026-2033; jobs/crawler/tasks.py:2374-2375; jobs/crawler/document_pipeline.py:807-815; vchat/config.yaml:11</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>Crawler sitemap fetches use requests.content and HTML extraction feeds full bodies into BeautifulSoup. Project raw-content limits protect later storage/parser paths, not network download and initial parse costs.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by code review and project settings. The shard also checked that Scrapy DOWNLOAD_MAXSIZE is not reduced from the large default in project settings.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>configured source/sitemap -&gt; requests.get or Scrapy response -&gt; full content/body in memory -&gt; XML parsing or BeautifulSoup -&gt; later size classification/storage cap.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Requires a crawled source or sitemap controlled by an authenticated source manager, or compromise of an existing source. The result is worker memory/CPU pressure.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because it can degrade crawler workers but requires source control and does not directly expose data. Severity would rise if public APIs can add crawl sources or if crawler workers share capacity with web serving.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Set strict download max sizes/timeouts for Scrapy and requests, stream sitemap reads with byte caps, and reject oversized HTML before BeautifulSoup. Add tests around oversized sitemap and HTML responses.</p>
+
+<h3 id="6-crawler-source-origins-can-target-private-or-loopback-addresses">[6] Crawler source origins can target private or loopback addresses</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Static trace shows no private-address rejection; exploitability depends on who can create or edit crawler Sources.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Server-side request forgery</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-918: Server-Side Request Forgery</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>jobs/crawler/source_blocking.py:83-88; jobs/crawler/source_blocking.py:124-135; jobs/crawler/source_blocking.py:99-104; jobs/crawler/spiders/general.py:80-95</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>Crawler source validation resolves hostnames and fetches robots.txt/root pages, but it does not reject loopback, RFC1918, link-local, or metadata IPs. A source pointed at internal HTTP services can be fetched by the server network.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by source review of source blocking, source normalization, Scrapy seed setup, and pipeline persistence. No network PoC was run because remote/internal server access was out of scope.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>authenticated source URI -&gt; check_source_blocking DNS/robots/root fetch -&gt; crawler start URL/tracked host -&gt; Scrapy requests -&gt; document extraction/persistence.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Requires an authenticated user with source-management privileges. The impact is server-side access to internal network resources and possible indexing of their responses.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because the attacker already needs admin/source privileges, but the issue crosses from application configuration into server-network reachability. Severity would rise if less-privileged users can create sources or if cloud metadata/internal admin services are reachable.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Reject private, loopback, link-local, multicast, and metadata destinations after DNS resolution and after redirects. Re-resolve before every outbound request or enforce egress ACLs at the network layer. Add tests for localhost, 127.0.0.1, ::1, 169.254.169.254, RFC1918, and DNS rebinding-like redirects.</p>
+
+<h3 id="7-document-csv-export-does-not-neutralize-spreadsheet-formulas">[7] Document CSV export does not neutralize spreadsheet formulas</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>CSV writer receives attacker-influenced title, URI, and source strings directly; spreadsheet execution depends on the user opening the export.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>CSV formula injection</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-1236: Improper Neutralization of Formula Elements in a CSV File</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/views/projects/views.py:2910-2917; vchat/views/projects/views.py:2940-2977</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>The document export writes titles, URIs, and source labels directly to CSV. Values beginning with formula metacharacters can execute spreadsheet formulas when an admin opens the export in Excel/LibreOffice/Sheets.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by source review of selected fields and csv.DictWriter usage. The attacker influence is through crawled/integration source metadata and page titles/URIs.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>remote page/source metadata -&gt; Page.title/Page.uri/Source.title/Source.uri -&gt; project_documents_csv row -&gt; csv.DictWriter.writerows -&gt; spreadsheet application.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Requires the attacker to influence indexed document metadata and the admin to export/open the CSV. The impact depends on spreadsheet security settings and user interaction.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because this is a known data-export injection class with admin-targeted interaction, but it is not direct server compromise.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Prefix formula-leading cells with a single quote or tab according to the chosen CSV policy, and include =, +, -, @, tab, and carriage return cases in tests.</p>
+
+<h3 id="8-file-editor-post-routes-lack-csrf-protection">[8] File editor POST routes lack CSRF protection</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Routes and handlers accept browser form POSTs under login_required, and the reviewed forms do not include a CSRF token.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Cross-site request forgery</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-352: Cross-Site Request Forgery</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/routes.py:74-82; vchat/views/projects/views.py:3616-3664; vchat/views/projects/views.py:3676-3729</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>The file editor supports create, save, delete, chunk deletion, and indexing-trigger side effects through normal form POSTs. Unlike most project action routes, these handlers are not HTMX-signed or WTForms-CSRF protected.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by source review of route registration, handlers, and templates. Nearby project mutations were checked and rejected when CSRF controls were present.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>cross-site form POST from authenticated browser -&gt; /files or /file/{document_id} -&gt; request.post -&gt; create/update/delete Page -&gt; delete Chunk -&gt; schedule indexing.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>A malicious site can submit forms from a logged-in admin browser if cookies are sent. The affected actions can alter or delete indexed file documents.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because the victim must already be authenticated and the affected surface is file content/indexing rather than credentials or user permissions. Severity would rise if these file documents feed public widget answers broadly.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Add CSRF tokens to file forms and verify them on POST, or route mutations through the existing signed HTMX/WTForms CSRF pattern. Add tests for missing, invalid, and valid CSRF on create/save/delete actions.</p>
+
+<h3 id="9-ldap-login-reuses-local-users-without-enforcing-inactive-or-ldap-only-account-state">[9] LDAP login reuses local users without enforcing inactive or LDAP-only account state</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Source trace is clear, but reachability depends on auth_ldap_enabled and LDAP identity mapping policy.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Authentication state bypass</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-287: Improper Authentication</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/views/auth/views.py:276-300</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>After external LDAP authentication succeeds, the handler finds a local user by email and creates a session without checking is_active or is_ldap. This bypasses state checks that are enforced in the basic login path.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by comparing basic login checks with LDAP login flow. The precondition is LDAP auth enabled and a matching LDAP identity email.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>LDAP credentials/email -&gt; authenticate_ldap success -&gt; select User by normalized email -&gt; existing User reused regardless of flags -&gt; new_session -&gt; session user_id set.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>A user who can authenticate to LDAP with a matching email can log into a locally inactive or non-LDAP account when LDAP mode is enabled.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because it can bypass local account disablement or login-mode policy, but it requires successful LDAP authentication and deployment configuration.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Before creating the session, enforce that an existing matched user is active and allowed for LDAP login, or define and implement explicit account-linking rules. Add tests for inactive existing users and non-LDAP local users through the LDAP login route.</p>
+
+<h3 id="10-public-widget-chats-retrieve-from-the-global-knowledge-base-without-widget-source-scoping">[10] Public widget chats retrieve from the global knowledge base without widget/source scoping</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Source trace proves no widget/source filter in retrieval; product intent for single-project widgets remains an assumption.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Authorization bypass / data exposure</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-862: Missing Authorization</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/views/projects/views.py:3505-3579; vchat/views/chat/views.py:1197-1229; vchat/views/chat/views.py:1411-1424; vchat/views/chat/ctx.py:619-638; vchat/views/chat/ctx.py:667-706</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>Public widget sessions are bound to a widget code, but RAG retrieval queries all global chunks. If widgets are intended to expose only selected sources, clients, or domains, any public widget can ask about all indexed documents.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by tracing public widget creation, signed websocket payload validation, get_context invocation, and vector/fulltext SQL. The WidgetIntegration model evidence did not show source-scoping controls.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>GET /widget/{code} -&gt; signed websocket payload with widget code -&gt; ws_chat validates widget exists -&gt; get_context -&gt; vector and full-text queries over all c.chat_id IS NULL page chunks.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Unauthenticated users can open public widgets. The issue matters when not every indexed source is intended to be public through every widget.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because it is a plausible cross-boundary data exposure, but the current repository is a single-project chatbot and may intentionally expose the whole KB to widgets. Severity would rise if different widgets map to different customers or source sets.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Add explicit widget-to-source or widget-to-collection authorization and pass that scope into get_context. Filter vector and full-text retrieval by allowed source/page IDs, and test that two widgets cannot retrieve each other’s sources.</p>
+
+<h3 id="11-sitemap-urlset-entries-can-persist-off-host-page-urls-under-the-current-source">[11] Sitemap urlset entries can persist off-host page URLs under the current source</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Static persistence path exists, but automatic off-host fetching depends on Scrapy middleware/runtime behavior that was not reproduced.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Server-side request forgery</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-918: Server-Side Request Forgery</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>jobs/crawler/tasks.py:2321-2337; jobs/crawler/tasks.py:2374-2385</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>Sitemap files are checked against the source host, but URL entries inside a valid sitemap can name off-host pages. The shard found a fallback path that can associate those URLs with the current source.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated as plausible by static review. The main proof gap is whether normal queued offsite requests are filtered in every runtime path; direct page refresh remains a stronger follow-up path.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>valid source sitemap -&gt; _fetch_sitemap -&gt; _parse_sitemap_document -&gt; urlset loc entries -&gt; upsert/prioritize page URLs under source -&gt; possible later crawl/refresh.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Requires control over a sitemap for an allowed source. If the offsite URL is later fetched, the crawler can reach attacker-selected hosts from the server network.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium/low confidence because the persistence problem is clear but automatic fetch reachability needs runtime confirmation. Severity would rise with a demonstrated queued fetch to a private address.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Validate every urlset loc against the owning source host before persisting or prioritizing. Add tests for off-host, localhost, private IP, and redirecting sitemap entries.</p>
+
+<h3 id="12-update-api-reads-remote-response-bodies-into-memory-before-size-limits-apply">[12] Update API reads remote response bodies into memory before size limits apply</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>Source trace directly shows await resp.read before downstream raw-content limits; no runtime memory measurement was needed for reportability.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Uncontrolled resource consumption</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-400: Uncontrolled Resource Consumption</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/views/api/views.py:256-271; vchat/views/api/views.py:597-601; vchat/config.yaml:11</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>The HMAC-signed update API fetches remote page content using await resp.read, then decodes and stores/processes it. The configured raw_content_max_bytes cap is applied downstream after the full response has already been loaded.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by static trace from update_document to _fetch_url_content. No streaming limit, Content-Length guard, or incremental read cap is present in the fetch helper.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>signed /api/update URL -&gt; _upsert_document -&gt; _extract_content -&gt; _fetch_url_content -&gt; await resp.read loads full body -&gt; downstream content handling.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Requires an authorized API client and an allowed host that can serve a very large or slow response. The consequence is application worker memory/CPU exhaustion.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Medium because exploitation requires API-client access and an allowed origin, but it can degrade service availability. Severity would increase if API clients are broadly distributed or worker memory is tight.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Enforce Content-Length and streamed read caps inside _fetch_url_content before decoding. Abort when the limit is exceeded and add tests with oversized and chunked responses.</p>
+
+<h3 id="13-public-data-static-mount-can-expose-repository-data-artifacts-and-symlinks">[13] Public /data static mount can expose repository data artifacts and symlinks</h3>
+
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Severity</td>
+<td>Low</td>
+</tr>
+<tr>
+<td>Confidence</td>
+<td>Medium</td>
+</tr>
+<tr>
+<td>Confidence rationale</td>
+<td>The route and image copy behavior are direct evidence; current sampled data artifacts appear low sensitivity.</td>
+</tr>
+<tr>
+<td>Category</td>
+<td>Sensitive file exposure</td>
+</tr>
+<tr>
+<td>CWE</td>
+<td>CWE-200: Exposure of Sensitive Information to an Unauthorized Actor</td>
+</tr>
+<tr>
+<td>Affected lines</td>
+<td>vchat/routes.py:189-193; deploy/Dockerfile:43-45; deploy/Dockerfile.dockerignore:1-17</td>
+</tr>
+</tbody></table>
+
+<h4 id="summary">Summary</h4>
+
+<p>The app serves repository-level data/ at /data/ with follow_symlinks=True. The Docker build copies the whole context and the Docker ignore excludes local.yaml/docs/venv but not data/.</p>
+
+<h4 id="validation">Validation</h4>
+
+<p>Validated by route/deploy review and local data directory sampling. No sensitive secret file was confirmed in data/ during this scan.</p>
+
+<h4 id="dataflow">Dataflow</h4>
+
+<p>Docker COPY . . includes data/ -&gt; aiohttp add_static /data/ follow_symlinks=True -&gt; unauthenticated HTTP request can read files under data or symlink targets.</p>
+
+<h4 id="reachability">Reachability</h4>
+
+<p>Any web client can request /data paths if deployed. Impact depends on what artifacts are present in data/ or reachable through symlinks.</p>
+
+<h4 id="severity">Severity</h4>
+
+<p>Low because current evidence shows reports/sitemap/loadtest artifacts rather than secrets, but follow_symlinks and deployment copy behavior make future sensitive exposure plausible.</p>
+
+<h4 id="remediation">Remediation</h4>
+
+<p>Do not mount repository data/ publicly by default. Remove follow_symlinks unless needed, exclude data/ from Docker build context, and serve only an explicit allowlisted media/export directory.</p>
+
+<h2 id="reviewed-surfaces">Reviewed Surfaces</h2>
+
+<table>
+<thead><tr>
+<th>Surface</th>
+<th>Risk Area</th>
+<th>Outcome</th>
+<th>Notes</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Public chat and widget rendering</td>
+<td>XSS / RAG data scope</td>
+<td>Reported</td>
+<td>Unsanitized assistant Markdown and global KB retrieval survived validation.</td>
+</tr>
+<tr>
+<td>Signed update API</td>
+<td>SSRF / resource exhaustion</td>
+<td>Reported</td>
+<td>Redirect TOCTOU SSRF and unbounded body reads survived validation.</td>
+</tr>
+<tr>
+<td>Authentication and sessions</td>
+<td>Revocation / LDAP account state</td>
+<td>Reported</td>
+<td>Inactive-session and LDAP local-state bypasses survived validation.</td>
+</tr>
+<tr>
+<td>Crawler and sitemap jobs</td>
+<td>SSRF / DoS</td>
+<td>Reported</td>
+<td>Private-origin crawler SSRF, sitemap off-host SSRF follow-up, and large-body DoS survived with calibrated confidence.</td>
+</tr>
+<tr>
+<td>Project file editor and CSV export</td>
+<td>CSRF / CSV injection</td>
+<td>Reported</td>
+<td>File editor POSTs lack CSRF; CSV export writes formula-capable cells.</td>
+</tr>
+<tr>
+<td>Configuration and deploy assets</td>
+<td>Default secrets / static data exposure</td>
+<td>Reported</td>
+<td>Default key material and /data static serving are precondition-dependent findings.</td>
+</tr>
+<tr>
+<td>Project action routes</td>
+<td>CSRF</td>
+<td>Rejected</td>
+<td>HTMX signed CSRF, WTForms CSRF, or explicit signed-CSRF checks were found on reviewed mutation routes outside file editor.</td>
+</tr>
+<tr>
+<td>Metrics exposure</td>
+<td>Information disclosure</td>
+<td>Rejected</td>
+<td>Kubernetes ingress blackholes /metrics while ServiceMonitor uses internal ClusterIP.</td>
+</tr>
+<tr>
+<td>Dependency and container hardening</td>
+<td>Supply chain / container escape</td>
+<td>Rejected</td>
+<td>Compiled lock files are hash-pinned; runtime runs non-root with read-only filesystem, dropped caps, seccomp, and no service-account token automount.</td>
+</tr>
+<tr>
+<td>SQL query construction</td>
+<td>SQL injection</td>
+<td>No issue found</td>
+<td>Reviewed high-risk raw sa.text queries used bound parameters for attacker-controlled data in inspected paths.</td>
+</tr>
+</tbody></table>
+
+<h2 id="open-questions-and-follow-up">Open Questions And Follow Up</h2>
+
+<ul><li>Confirm whether public widgets are intended to access the whole global KB. If not, run a focused fix review around <code>vchat/views/chat/ctx.py</code> and <code>WidgetIntegration</code> source scoping.</li><li>Reproduce <code>VCHAT-CRAWLER-SITEMAP-OFFHOST-SSRF-002</code> with a local disposable Scrapy run to decide whether it should be raised from low-confidence medium to high-confidence medium/high.</li><li>Check the live deployment config for default <code>secret_key</code>, <code>cookie_key</code>, and <code>vchat_secret</code> usage before prioritizing key rotation. This scan did not access remote servers by policy.</li><li>Run a dependency advisory scan with <code>pip-audit</code> or the project-approved equivalent after installing it in the project virtualenv. The tool was not installed during this scan.</li></ul>
+
+<h2 id="artifact-index">Artifact Index</h2>
+
+<ul><li>Threat model: <code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/artifacts/01_context/threat_model.md</code></li><li>Raw candidates: <code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/artifacts/02_discovery/raw_candidates.jsonl</code></li><li>Work ledger: <code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/artifacts/02_discovery/work_ledger.jsonl</code></li><li>Reviewed surfaces: <code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/artifacts/03_coverage/reviewed_surfaces.md</code></li><li>Validation summary: <code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/artifacts/04_reconciliation/validation_summary.md</code></li><li>Attack-path summary: <code>/tmp/codex-security-scans/vchat/d409f5e_20260613T095105Z/artifacts/04_reconciliation/attack_path_report.md</code></li></ul>
+    </main>
+  </div>
+  <script>
+    const toggle = document.getElementById('navToggle');
+    const icon = document.getElementById('navToggleIcon');
+    const collapsedKey = 'codex-security-report:sidebar-collapsed';
+
+    function setCollapsed(collapsed) {
+      document.body.classList.toggle('sidebar-collapsed', collapsed);
+      if (toggle) {
+        toggle.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+        toggle.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+        toggle.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      }
+      if (icon) icon.setAttribute('d', collapsed ? 'M9 6l6 6-6 6' : 'M15 6l-6 6 6 6');
+      try { localStorage.setItem(collapsedKey, collapsed ? '1' : '0'); } catch {}
+    }
+
+    try { setCollapsed(localStorage.getItem(collapsedKey) === '1'); } catch {}
+    if (toggle) toggle.addEventListener('click', () => setCollapsed(!document.body.classList.contains('sidebar-collapsed')));
+
+    const tocLinks = Array.from(document.querySelectorAll('.toc a'));
+    const sections = tocLinks.map((link) => {
+      const id = decodeURIComponent(link.getAttribute('href').slice(1));
+      return [link, document.getElementById(id)];
+    }).filter((pair) => pair[1]);
+
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (!visible) return;
+      tocLinks.forEach((link) => link.parentElement.classList.remove('active'));
+      const active = tocLinks.find((link) => link.getAttribute('href') === '#' + visible.target.id);
+      if (active) active.parentElement.classList.add('active');
+    }, { rootMargin: '-10% 0px -75% 0px', threshold: [0, 1] });
+
+    sections.forEach(([, section]) => observer.observe(section));
+  </script>
+</body>
+</html>

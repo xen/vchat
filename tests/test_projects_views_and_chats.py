@@ -552,7 +552,7 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert 'aria-label="Форма отправки сообщения"' in rendered
     assert 'id="prompt-label"' in rendered
     assert 'aria-labelledby="prompt-label"' in rendered
-    assert 'aria-describedby="composer-footer"' in rendered
+    assert 'aria-describedby="composer-footer composer-limit"' in rendered
     assert 'id="composer-footer"' in rendered
     assert 'id="status"' not in rendered
     assert 'aria-atomic="true"' not in rendered
@@ -588,6 +588,9 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert 'aria-label="Upvote"' not in rendered
     assert 'aria-label="Downvote"' not in rendered
     assert "bubble.textContent = text;" in rendered
+    assert "window.vchatRenderAssistantMarkdown(rawText)" in rendered
+    assert "window.vchatRenderAssistantMarkdown(text)" in rendered
+    assert "marked.parse" not in rendered
     assert "escapeHtml(source.uri)" in rendered
 
 
@@ -620,12 +623,57 @@ def test_widget_loader_template_exposes_dialog_and_iframe_accessibility() -> Non
 
 def test_frontend_chat_citation_buttons_are_accessible() -> None:
     source = (
-        Path(__file__).resolve().parents[1] / "frontend_chat" / "src" / "chat.js"
+        Path(__file__).resolve().parents[1]
+        / "frontend_chat"
+        / "src"
+        / "safe-markdown.js"
     ).read_text()
 
     assert 'type="button"' in source
     assert 'aria-label="Открыть источник ${citationNumber}"' in source
-    assert "const citationNumber = parseInt(token.id, 10) + 1;" in source
+    assert "const citationNumber = Number.parseInt(id, 10) + 1;" in source
+
+
+def test_history_detail_template_escapes_stored_chat_html() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader(
+                    {"admin.html": "{% block content %}{% endblock %}"}
+                ),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: URL(
+            f"/history/{kwargs['chat_id']}"
+            if name == "project_history_detail"
+            else "/history"
+        ),
+    )
+    now = datetime(2026, 5, 31, 15, 30, 43, tzinfo=timezone.utc)
+    rendered = env.get_template("projects/history_detail.html").render(
+        chat=SimpleNamespace(id="chat-1", title="Demo", user_uid="u", created_at=now),
+        chat_meta={},
+        messages=[
+            SimpleNamespace(
+                role="assistant",
+                created_at=now,
+                has_masked_pii=False,
+                text_display="<script>alert('I am evil')</script>",
+                text="<script>alert('I am evil')</script>",
+                guardrail_hit=False,
+                context_sources=[],
+                vote=None,
+            )
+        ],
+    )
+
+    assert "<script>alert" not in rendered
+    assert "&lt;script&gt;alert(&#39;I am evil&#39;)&lt;/script&gt;" in rendered
 
 
 def test_document_pipeline_steps_returns_error_description() -> None:

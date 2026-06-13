@@ -22,5 +22,6 @@ data:
     log_format: "json"
     openai_api_key: !env "$OPENAI_API_KEY"
     gigachat_api_key: !env "$GIGACHAT_API_KEY"
-    secret_key: !env "$VCHAT_SECRET_KEY"
-    cookie_key: !env "$VCHAT_COOKIE_KEY"
+    secret_key: !env "$SECRET_KEY"
+    cookie_key: !env "$COOKIE_KEY"
+    vchat_secret: !env "$VCHAT_SECRET"

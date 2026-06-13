@@ -591,6 +591,7 @@ async def vector_supply(
     query_vec: list[float],
     *,
     top_k: int = VECTOR_TOP_K,
+    allowed_source_ids: list[int] | None = None,
 ) -> list[Snippet]:
     if top_k <= 0:
         return []
@@ -632,6 +633,7 @@ async def vector_supply(
           AND c.embedding IS NOT NULL
           AND c.embedding <=> :qvec <= :max_dist
           AND (d.content_value IS NULL OR d.content_value > 0.1)
+          AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
         ORDER BY c.embedding <=> :qvec
         LIMIT :k_kb
         """
@@ -643,6 +645,8 @@ async def vector_supply(
         "k_chat": k_chat,
         "k_kb": k_kb,
         "max_dist": VECTOR_MAX_DIST,
+        "source_filter_disabled": allowed_source_ids is None,
+        "source_ids": allowed_source_ids or [],
     }
     chat_rows = (await db.execute(chat_sql, params)).mappings().all()
     kb_rows = (await db.execute(kb_sql, params)).mappings().all()
@@ -656,6 +660,7 @@ async def fulltext_supply(
     prompt_text: str,
     *,
     top_m: int = FT_TOP_M,
+    allowed_source_ids: list[int] | None = None,
 ) -> list[Snippet]:
     if not prompt_text or top_m <= 0:
         return []
@@ -680,6 +685,7 @@ async def fulltext_supply(
         )
           AND c.is_duplicate = false
           AND (d.content_value IS NULL OR d.content_value > 0.1)
+          AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
         ORDER BY
             CASE
                 WHEN :table_mode = true AND c.kind IN ('table', 'table_rows') THEN 3
@@ -698,6 +704,10 @@ async def fulltext_supply(
         (
             await db.execute(
                 sql, {"q": query_text, "m": top_m, "table_mode": profile["table_mode"]}
+                | {
+                    "source_filter_disabled": allowed_source_ids is None,
+                    "source_ids": allowed_source_ids or [],
+                }
             )
         )
         .mappings()
@@ -1088,6 +1098,7 @@ async def get_context(
     tail_limit: int = TAIL_MSG_LIMIT,
     vector_top_k: int = VECTOR_TOP_K,
     ft_top_m: int = FT_TOP_M,
+    allowed_source_ids: list[int] | None = None,
 ) -> ContextResult:
     profile = queryprofile(prompt)
     query_vec = embed_query(prompt)
@@ -1096,11 +1107,20 @@ async def get_context(
     async with asyncio.TaskGroup() as task_group:
         vector_task = task_group.create_task(
             vector_supply(
-                db=db, chat_id=chat_id, query_vec=query_vec, top_k=vector_top_k
+                db=db,
+                chat_id=chat_id,
+                query_vec=query_vec,
+                top_k=vector_top_k,
+                allowed_source_ids=allowed_source_ids,
             )
         )
         ft_task = task_group.create_task(
-            fulltext_supply(db=db, prompt_text=prompt, top_m=ft_top_m)
+            fulltext_supply(
+                db=db,
+                prompt_text=prompt,
+                top_m=ft_top_m,
+                allowed_source_ids=allowed_source_ids,
+            )
         )
 
     vector_snippets = vector_task.result()

@@ -3619,7 +3619,8 @@ async def public_widget_chat(request):
 async def project_files(request):
     db_session = request["db"]
     if request.method == "POST":
-        await request.post()
+        data = await request.post()
+        validate_signed_user_csrf(request, data.get("csrf_token") or None)
         user = request["user"]
         author_name = user.name.strip()
         author_email = user.email.strip()
@@ -3692,6 +3693,7 @@ async def file_document(request):
 
     if request.method == "POST":
         data = await request.post()
+        validate_signed_user_csrf(request, data.get("csrf_token") or None)
         action = str(data.get("action") or "save")
         if action == "delete":
             await db_session.delete(document)

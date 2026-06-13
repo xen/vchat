@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import runpy
+import sys
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -32,6 +34,33 @@ def make_source(
     source.blocked_reason = None
     source.blocked_message = None
     return source
+
+
+class _FakeCrawlerResponse:
+    def __init__(
+        self,
+        *,
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+        chunks: list[bytes] | None = None,
+        encoding: str = "utf-8",
+    ):
+        self.status_code = status_code
+        self.headers = headers or {}
+        self._chunks = chunks if chunks is not None else [b""]
+        self.encoding = encoding
+        self.raw = self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        _ = exc_type, exc, tb
+        return False
+
+    def read(self, size: int, decode_content: bool = False):
+        _ = decode_content
+        return b"".join(self._chunks)[:size]
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +228,40 @@ class TestCrawlSourceTaskPayload:
             "https://example.com",
             "https://grant.vbudushee.ru",
         }
+
+    def test_crawler_runner_sets_scrapy_download_maxsize(self, monkeypatch):
+        import scrapy.crawler
+        from vchat import settings as project_settings
+
+        captured = {}
+
+        class FakeCrawlerProcess:
+            def __init__(self, settings):
+                captured["settings"] = settings
+
+            def crawl(self, *args, **kwargs):
+                captured["crawl"] = (args, kwargs)
+
+            def start(self):
+                captured["started"] = True
+
+        monkeypatch.setitem(project_settings.config, "raw_content_max_bytes", 1234)
+        monkeypatch.setattr(scrapy.crawler, "CrawlerProcess", FakeCrawlerProcess)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "crawler_runner.py",
+                "https://example.com",
+                "42",
+                "{}",
+            ],
+        )
+
+        runpy.run_module("jobs.crawler.crawler_runner", run_name="__main__")
+
+        assert captured["settings"].getint("DOWNLOAD_MAXSIZE") == 1234
+        assert captured["started"] is True
 
     def test_commits_discovery_updates_before_run_finishes(self):
         source = make_source(source_id=42, uri="https://test.com")
@@ -501,6 +564,91 @@ class TestRefreshSourceDiscovery:
         params = update_stmt.compile().params
         assert params["status"] == "ready"
         assert params["status_error"] == PageStatusError.excluded_robots
+        parser_mock.parse.assert_called_once_with(
+            ["User-agent: *", "Disallow: /private/"]
+        )
+        parser_mock.read.assert_not_called()
+
+
+class TestSitemapLimits:
+    def test_sitemap_standard_entry_limit_is_50000(self):
+        from jobs.crawler import tasks as crawler_tasks
+
+        assert crawler_tasks._SITEMAP_MAX_ENTRIES == 50_000
+
+    def test_fetch_sitemap_rejects_oversized_content_length(self, monkeypatch):
+        from jobs.crawler import tasks as crawler_tasks
+
+        monkeypatch.setattr(crawler_tasks, "_CRAWLER_DOWNLOAD_MAX_BYTES", 5)
+        fake_response = _FakeCrawlerResponse(headers={"Content-Length": "6"})
+
+        def fake_get(*args, **kwargs):
+            assert kwargs["stream"] is True
+            assert kwargs["allow_redirects"] is False
+            return fake_response
+
+        monkeypatch.setattr(crawler_tasks.requests, "get", fake_get)
+
+        status_code, body, _etag, _location = crawler_tasks._fetch_sitemap(
+            "https://example.com/sitemap.xml",
+            None,
+        )
+
+        assert status_code == 413
+        assert body is None
+
+    def test_fetch_sitemap_rejects_chunked_body_over_limit(self, monkeypatch):
+        from jobs.crawler import tasks as crawler_tasks
+
+        monkeypatch.setattr(crawler_tasks, "_CRAWLER_DOWNLOAD_MAX_BYTES", 5)
+        fake_response = _FakeCrawlerResponse(chunks=[b"123", b"456"])
+        monkeypatch.setattr(
+            crawler_tasks.requests,
+            "get",
+            lambda *args, **kwargs: fake_response,
+        )
+
+        status_code, body, _etag, _location = crawler_tasks._fetch_sitemap(
+            "https://example.com/sitemap.xml",
+            None,
+        )
+
+        assert status_code == 413
+        assert body is None
+
+    def test_parse_sitemap_rejects_more_than_max_entries(self, monkeypatch):
+        from jobs.crawler import tasks as crawler_tasks
+
+        monkeypatch.setattr(crawler_tasks, "_SITEMAP_MAX_ENTRIES", 2)
+        body = b"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/1</loc></url>
+  <url><loc>https://example.com/2</loc></url>
+  <url><loc>https://example.com/3</loc></url>
+</urlset>
+"""
+
+        with pytest.raises(ValueError, match="more than 2 entries"):
+            crawler_tasks._parse_sitemap_document(body)
+
+    def test_parse_sitemap_accepts_max_entries(self, monkeypatch):
+        from jobs.crawler import tasks as crawler_tasks
+
+        monkeypatch.setattr(crawler_tasks, "_SITEMAP_MAX_ENTRIES", 2)
+        body = b"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://example.com/1</loc></url>
+  <url><loc>https://example.com/2</loc></url>
+</urlset>
+"""
+
+        document_kind, entries = crawler_tasks._parse_sitemap_document(body)
+
+        assert document_kind == "urlset"
+        assert entries == [
+            ("https://example.com/1", None),
+            ("https://example.com/2", None),
+        ]
 
 
 class TestReapplySourceRulesTask:

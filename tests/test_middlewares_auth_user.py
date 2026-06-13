@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+import sqlalchemy as sa
 from aiohttp import web
 from yarl import URL
 
@@ -135,6 +136,8 @@ async def test_flash_and_force_https_middlewares() -> None:
 
 @pytest.mark.asyncio
 async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    statements = []
+
     class _ExecuteResult:
         def first(self):
             return SimpleNamespace(
@@ -146,7 +149,7 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
 
     class _DB:
         async def execute(self, stmt):
-            _ = stmt
+            statements.append(stmt)
             return _ExecuteResult()
 
         def in_transaction(self):
@@ -157,9 +160,10 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
             self["invalidated"] = True
 
     async def _get_session(_request):
-        return _Session(user_id=7)
+        return _Session(user_id=7, login_at=100)
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
+    monkeypatch.setattr(mdw.time, "time", lambda: 120)
 
     request = _Request(path="/dashboard")
     db = _DB()
@@ -170,6 +174,123 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
 
     resp = await mdw.auth_middleware(request, _handler)
     assert resp.text == "u@example.com"
+    compiled = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "users.is_active IS true" in compiled
+
+
+@pytest.mark.asyncio
+async def test_auth_middleware_invalidates_expired_auth_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            raise AssertionError("expired sessions must not query users")
+
+    class _Session(dict):
+        def invalidate(self):
+            self["invalidated"] = True
+
+    session = _Session(user_id=7, login_at=100)
+
+    async def _get_session(_request):
+        return session
+
+    monkeypatch.setattr(mdw, "get_session", _get_session)
+    monkeypatch.setattr(mdw.time, "time", lambda: 161)
+
+    request = _Request(
+        path="/dashboard",
+        app=_App({CONFIG_KEY: {"auth_session_time": 60}}),
+    )
+    request["db"] = _DB()
+
+    async def _handler(req):
+        assert req["user"] is None
+        return web.Response(text="anonymous")
+
+    resp = await mdw.auth_middleware(request, _handler)
+    assert resp.text == "anonymous"
+    assert session["invalidated"] is True
+
+
+@pytest.mark.asyncio
+async def test_auth_middleware_invalidates_missing_login_timestamp_when_ttl_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            raise AssertionError("expired sessions must not query users")
+
+    class _Session(dict):
+        def invalidate(self):
+            self["invalidated"] = True
+
+    session = _Session(user_id=7)
+
+    async def _get_session(_request):
+        return session
+
+    monkeypatch.setattr(mdw, "get_session", _get_session)
+
+    request = _Request(
+        path="/dashboard",
+        app=_App({CONFIG_KEY: {"auth_session_time": 60}}),
+    )
+    request["db"] = _DB()
+
+    async def _handler(req):
+        assert req["user"] is None
+        return web.Response(text="anonymous")
+
+    resp = await mdw.auth_middleware(request, _handler)
+    assert resp.text == "anonymous"
+    assert session["invalidated"] is True
+
+
+@pytest.mark.asyncio
+async def test_auth_middleware_invalidates_inactive_user_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    statements = []
+
+    class _ExecuteResult:
+        def first(self):
+            return None
+
+    class _DB:
+        async def execute(self, stmt):
+            statements.append(stmt)
+            return _ExecuteResult()
+
+        def in_transaction(self):
+            return False
+
+    class _Session(dict):
+        def invalidate(self):
+            self["invalidated"] = True
+
+    session = _Session(user_id=7, login_at=100)
+
+    async def _get_session(_request):
+        return session
+
+    monkeypatch.setattr(mdw, "get_session", _get_session)
+    monkeypatch.setattr(mdw.time, "time", lambda: 120)
+
+    request = _Request(path="/dashboard")
+    request["db"] = _DB()
+
+    async def _handler(req):
+        assert req["user"] is None
+        return web.Response(text="anonymous")
+
+    resp = await mdw.auth_middleware(request, _handler)
+    assert resp.text == "anonymous"
+    assert session["invalidated"] is True
+    compiled = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "users.is_active IS true" in compiled
 
 
 @pytest.mark.asyncio
@@ -226,8 +347,10 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _get_session(_request):
         return {}
 
+    created_session = {}
+
     async def _new_session(_request):
-        return {}
+        return created_session
 
     async def _admin_event(name, req):
         _ = name, req
@@ -244,6 +367,8 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
         await login_fn(request)
     assert str(exc.value.location) == "/"
     assert request["user"].id == 5
+    assert created_session["user_id"] == 5
+    assert isinstance(created_session["login_at"], int)
 
     class _LogoutSession(dict):
         def invalidate(self):
@@ -261,6 +386,153 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(web.HTTPFound) as exc:
         await logout_fn(request2)
     assert str(exc.value.location) == "/login/"
+
+
+@pytest.mark.asyncio
+async def test_login_ldap_rejects_inactive_existing_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Field:
+        def __init__(self, data):
+            self.data = data
+            self.errors = []
+
+    class _Form:
+        def __init__(self, data, meta):
+            _ = meta
+            self.email = _Field(data.get("email", "ldap@example.com"))
+            self.password = _Field(data.get("password", "pass"))
+
+        def validate(self):
+            return True
+
+    class _Record:
+        def scalar(self):
+            return SimpleNamespace(
+                id=7,
+                email="ldap@example.com",
+                name="LDAP User",
+                is_active=False,
+                is_ldap=True,
+            )
+
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            return _Record()
+
+    class _Redis:
+        async def exists(self, _key):
+            return 0
+
+        async def set(self, *args, **kwargs):
+            _ = args, kwargs
+            return True
+
+    async def _get_session(_request):
+        return {}
+
+    async def _authenticate(email, password, config):
+        _ = email, password, config
+        return {"email": "ldap@example.com", "name": "LDAP User"}
+
+    async def _new_session(_request):
+        raise AssertionError("inactive LDAP user must not receive a session")
+
+    request = _Request(
+        method="POST",
+        app=_App(
+            {CONFIG_KEY: {"auth_ldap_enabled": True}, REDIS_KEY: _Redis()},
+            router={"login": _Route("/login/")},
+        ),
+        post_data={"email": "ldap@example.com", "password": "pass"},
+    )
+    request["db"] = _DB()
+
+    monkeypatch.setattr(auth_views, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views, "authenticate_ldap", _authenticate)
+    monkeypatch.setattr(auth_views, "new_session", _new_session)
+
+    payload = await auth_views.login_ldap.__wrapped__.__wrapped__(request)
+
+    assert isinstance(payload, dict)
+    assert "Пользователь заблокирован" in payload["form"].email.errors
+
+
+@pytest.mark.asyncio
+async def test_login_ldap_rejects_existing_local_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Field:
+        def __init__(self, data):
+            self.data = data
+            self.errors = []
+
+    class _Form:
+        def __init__(self, data, meta):
+            _ = meta
+            self.email = _Field(data.get("email", "local@example.com"))
+            self.password = _Field(data.get("password", "pass"))
+
+        def validate(self):
+            return True
+
+    class _Record:
+        def scalar(self):
+            return SimpleNamespace(
+                id=8,
+                email="local@example.com",
+                name="Local User",
+                is_active=True,
+                is_ldap=False,
+            )
+
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            return _Record()
+
+    class _Redis:
+        async def exists(self, _key):
+            return 0
+
+        async def set(self, *args, **kwargs):
+            _ = args, kwargs
+            return True
+
+    async def _get_session(_request):
+        return {}
+
+    async def _authenticate(email, password, config):
+        _ = email, password, config
+        return {"email": "local@example.com", "name": "LDAP User"}
+
+    async def _new_session(_request):
+        raise AssertionError("local user must not receive an LDAP session")
+
+    request = _Request(
+        method="POST",
+        app=_App(
+            {CONFIG_KEY: {"auth_ldap_enabled": True}, REDIS_KEY: _Redis()},
+            router={"login": _Route("/login/")},
+        ),
+        post_data={"email": "local@example.com", "password": "pass"},
+    )
+    request["db"] = _DB()
+
+    monkeypatch.setattr(auth_views, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views, "authenticate_ldap", _authenticate)
+    monkeypatch.setattr(auth_views, "new_session", _new_session)
+
+    payload = await auth_views.login_ldap.__wrapped__.__wrapped__(request)
+
+    assert isinstance(payload, dict)
+    assert (
+        "Для этой учётной записи используется локальная аутентификация"
+        in payload["form"].email.errors
+    )
 
 
 @pytest.mark.asyncio

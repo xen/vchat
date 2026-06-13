@@ -118,7 +118,7 @@ services:
 configs:
   local_yaml:
     content: |
-      mode: production
+      mode: stage
       public_url: "http://localhost:9080"
       public_cdn: "http://localhost:9080"
       allowed_origins:

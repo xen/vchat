@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any
 
 import aiohttp_jinja2
@@ -217,6 +218,7 @@ async def login(request):
         # to guard against Session Fixation attacks!
         session = await new_session(request)
         session["user_id"] = user.id
+        session["login_at"] = int(time.time())
         request["user"] = UserInfo(
             id=user.id,
             email=user.email,
@@ -287,11 +289,29 @@ async def login_ldap(request):
             )
             request["db"].add(user)
             await request["db"].flush()
+        elif user.is_active is False:
+            email_field: Any = form.email
+            email_field.errors = [*form.email.errors, "Пользователь заблокирован"]
+            return {
+                "form": form,
+                "basic_enabled": config.get("auth_basic_enabled", True),
+            }
+        elif not user.is_ldap:
+            email_field: Any = form.email
+            email_field.errors = [
+                *form.email.errors,
+                "Для этой учётной записи используется локальная аутентификация",
+            ]
+            return {
+                "form": form,
+                "basic_enabled": config.get("auth_basic_enabled", True),
+            }
 
         # Warning: always use new_session() instead of get_session() in login views
         # to guard against Session Fixation attacks!
         session = await new_session(request)
         session["user_id"] = user.id
+        session["login_at"] = int(time.time())
         request["user"] = UserInfo(
             id=user.id,
             email=user.email,

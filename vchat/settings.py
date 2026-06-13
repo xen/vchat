@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+import io
 import os
 from typing import Any, Dict
 import yaml
@@ -97,6 +98,10 @@ def _load_config():
     default_file = Path(__file__).parent / "config.yaml"
     with default_file.open() as f:
         default_config = yaml_load(f)
+    default_security_values = {
+        key: str(default_config.get(key) or "").strip()
+        for key in ("secret_key", "cookie_key", "vchat_secret")
+    }
 
     local_config = {}
     local_path = Path(__file__).parent.parent / "local.yaml"
@@ -117,15 +122,27 @@ def _load_config():
         return result
 
     merged_config = merge(default_config, local_config)
-    if not merged_config.get("openai_api_key"):
-        merged_config["openai_api_key"] = os.getenv("OPENAI_API_KEY")
+    for env_key, env_value in os.environ.items():
+        key = env_key.lower()
+        if key not in merged_config:
+            continue
+        merged_config[key] = yaml_load(io.StringIO(env_value))
 
-    if not merged_config.get("gigachat_api_key"):
-        merged_config["gigachat_api_key"] = (
-            os.getenv("GIGACHAT_API_KEY")
-            or os.getenv("GIGACHAT_AUTH_KEY")
-            or os.getenv("GIGACHAT_BASIC_AUTH")
-        )
+    if merged_config.get("mode") == "production":
+        unsafe_keys = [
+            key
+            for key, default_value in default_security_values.items()
+            if str(merged_config.get(key) or "").strip() in {default_value, ""}
+            or str(merged_config.get(key) or "").strip().lower()
+            in {"change-me", "changeme"}
+        ]
+
+        if unsafe_keys:
+            keys = ", ".join(unsafe_keys)
+            raise ValidationError(
+                "Production config must override security keys: "
+                f"{keys}. Set them in local.yaml or environment variables."
+            )
     return merged_config
 
 

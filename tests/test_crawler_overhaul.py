@@ -1147,6 +1147,7 @@ class TestSitemapDiscovery:
         prioritized = _upsert_sitemap_pages(
             session,
             source_id=1,
+            source_uri="https://example.com",
             parsed_entries=[("https://example.com/page", None)],
             sitemap_url="https://example.com/sitemap.xml",
             source_rules=[],
@@ -1174,6 +1175,7 @@ class TestSitemapDiscovery:
         prioritized = _upsert_sitemap_pages(
             session,
             source_id=1,
+            source_uri="https://example.com",
             parsed_entries=[("https://example.com/blog/post#frag", None)],
             source_rules=[{"type": "regex", "value": r"^https://example.com/course/"}],
         )
@@ -1193,13 +1195,14 @@ class TestSitemapDiscovery:
         prioritized = _upsert_sitemap_pages(
             session,
             source_id=1,
+            source_uri="https://example.com",
             parsed_entries=[("https://example.com/page", "2026-06-01")],
             source_rules=[],
         )
 
         assert prioritized == {"https://example.com/page"}
 
-    def test_upsert_sitemap_pages_routes_cross_host_url_to_matching_source(self):
+    def test_upsert_sitemap_pages_skips_cross_host_urlset_entries(self):
         from jobs.crawler.tasks import _upsert_sitemap_pages
 
         session = MagicMock()
@@ -1211,6 +1214,7 @@ class TestSitemapDiscovery:
         _upsert_sitemap_pages(
             session,
             source_id=1,
+            source_uri="https://vbudushee.ru",
             parsed_entries=[
                 ("https://grant.vbudushee.ru/public/application/cards", None)
             ],
@@ -1224,7 +1228,7 @@ class TestSitemapDiscovery:
         created_pages = [
             obj for obj in added_objects if obj.__class__.__name__ == "Page"
         ]
-        assert created_pages[0].source_id == 2
+        assert created_pages == []
 
     def test_parse_sitemap_document_detects_sitemap_index(self):
         from jobs.crawler.tasks import _parse_sitemap_document

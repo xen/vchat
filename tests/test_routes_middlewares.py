@@ -178,14 +178,16 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
         def invalidate(self):
             self.invalidated = True
 
-    session = FakeAuthSession(user_id=10)
+    session = FakeAuthSession(user_id=10, login_at=100)
 
     async def _get_session(_request):
         return session
 
     monkeypatch.setattr(mw, "get_session", _get_session)
+    monkeypatch.setattr(mw.time, "time", lambda: 120)
 
     req = make_mocked_request("GET", "/x")
+    req.app.get.return_value = {"auth_session_time": 0}
     req["db"] = FakeDB()
 
     async def _handler(request):
@@ -242,6 +244,8 @@ def test_get_middlewares_and_routes() -> None:
     assert app.router["health_ready"].url_for().human_repr() == "/health/ready"
     assert app.router["login"].url_for().human_repr() == "/login/"
     assert app.router["logout"].url_for().human_repr() == "/logout/"
+    with pytest.raises(KeyError):
+        app.router["data"]
     assert (
         app.router["actions"].url_for(action="x", item_id="1").human_repr()
         == "/actions/x/1"

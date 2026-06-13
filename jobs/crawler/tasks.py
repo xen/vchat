@@ -1942,6 +1942,11 @@ def reapply_source_rules_task(source_id: int) -> int:
 # ---------------------------------------------------------------------------
 
 _CRAWLER_USER_AGENT = config.get("crawler_user_agent", "Dzen-AI/1.0")
+_SITEMAP_MAX_ENTRIES = 50_000
+_SITEMAP_BODY_TOO_LARGE_STATUS = 413
+_CRAWLER_DOWNLOAD_MAX_BYTES = int(
+    config.get("raw_content_max_bytes", 10 * 1024 * 1024) or 10 * 1024 * 1024
+)
 
 
 def _fetch_sitemap(
@@ -1956,15 +1961,32 @@ def _fetch_sitemap(
     if last_etag:
         headers["If-None-Match"] = last_etag
 
-    resp = requests.get(url, headers=headers, timeout=30, allow_redirects=False)
-
-    etag = resp.headers.get("ETag")
-    location = resp.headers.get("Location")
-    if resp.status_code == 304:
-        return 304, None, etag, location
-    if resp.status_code == 200:
-        return 200, resp.content, etag, location
-    return resp.status_code, None, etag, location
+    with requests.get(
+        url,
+        headers=headers,
+        timeout=30,
+        allow_redirects=False,
+        stream=True,
+    ) as resp:
+        etag = resp.headers.get("ETag")
+        location = resp.headers.get("Location")
+        if resp.status_code == 304:
+            return 304, None, etag, location
+        if resp.status_code == 200:
+            content_length = resp.headers.get("Content-Length") or ""
+            if (
+                content_length.isdigit()
+                and int(content_length) > _CRAWLER_DOWNLOAD_MAX_BYTES
+            ):
+                return _SITEMAP_BODY_TOO_LARGE_STATUS, None, etag, location
+            body = resp.raw.read(
+                _CRAWLER_DOWNLOAD_MAX_BYTES + 1,
+                decode_content=True,
+            )
+            if len(body) > _CRAWLER_DOWNLOAD_MAX_BYTES:
+                return _SITEMAP_BODY_TOO_LARGE_STATUS, None, etag, location
+            return 200, body, etag, location
+        return resp.status_code, None, etag, location
 
 
 def _is_valid_sitemap_address(source_uri: str, sitemap_url: str) -> bool:
@@ -2007,13 +2029,35 @@ def _discover_sitemaps_from_robots(
 ) -> tuple[list[str], int | None, str | None]:
     robots_url = urljoin(source_uri.rstrip("/") + "/", "robots.txt")
     headers = {"User-Agent": _CRAWLER_USER_AGENT}
-    resp = requests.get(robots_url, headers=headers, timeout=15, allow_redirects=True)
+    with requests.get(
+        robots_url,
+        headers=headers,
+        timeout=15,
+        allow_redirects=True,
+        stream=True,
+    ) as resp:
+        if resp.status_code != 200:
+            print(f"robots.txt unavailable ({resp.status_code}): {robots_url}")
+            return [], None, None
 
-    if resp.status_code != 200:
-        print(f"robots.txt unavailable ({resp.status_code}): {robots_url}")
-        return [], None, None
+        content_length = resp.headers.get("Content-Length") or ""
+        if (
+            content_length.isdigit()
+            and int(content_length) > _CRAWLER_DOWNLOAD_MAX_BYTES
+        ):
+            print(f"robots.txt too large: {robots_url}")
+            return [], None, None
 
-    body = resp.text
+        raw_body = resp.raw.read(
+            _CRAWLER_DOWNLOAD_MAX_BYTES + 1,
+            decode_content=True,
+        )
+        if len(raw_body) > _CRAWLER_DOWNLOAD_MAX_BYTES:
+            print(f"robots.txt too large: {robots_url}")
+            return [], None, None
+
+        encoding = resp.encoding or "utf-8"
+        body = raw_body.decode(encoding, errors="replace")
     sitemap_urls, crawl_delay = _parse_robots_txt(body)
     return sitemap_urls, crawl_delay, body
 
@@ -2023,14 +2067,32 @@ def _probe_common_sitemaps(source_uri: str) -> list[str]:
     headers = {"User-Agent": _CRAWLER_USER_AGENT}
     for path in ("/sitemap.xml", "/sitemap_index.xml"):
         url = urljoin(source_uri.rstrip("/") + "/", path.lstrip("/"))
-        resp = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-        if resp.status_code != 200:
-            continue
-        content_type = (resp.headers.get("Content-Type") or "").lower()
+        with requests.get(
+            url,
+            headers=headers,
+            timeout=15,
+            allow_redirects=True,
+            stream=True,
+        ) as resp:
+            if resp.status_code != 200:
+                continue
+            content_length = resp.headers.get("Content-Length") or ""
+            if (
+                content_length.isdigit()
+                and int(content_length) > _CRAWLER_DOWNLOAD_MAX_BYTES
+            ):
+                continue
+            body = resp.raw.read(
+                _CRAWLER_DOWNLOAD_MAX_BYTES + 1,
+                decode_content=True,
+            )
+            if len(body) > _CRAWLER_DOWNLOAD_MAX_BYTES:
+                continue
+            content_type = (resp.headers.get("Content-Type") or "").lower()
         if (
             "xml" in content_type
-            or b"<urlset" in resp.content[:256]
-            or b"<sitemapindex" in resp.content[:256]
+            or b"<urlset" in body[:256]
+            or b"<sitemapindex" in body[:256]
         ):
             discovered.append(url)
     return discovered
@@ -2164,7 +2226,7 @@ def _refresh_source_discovery(
     if robots_body_text:
         parser = RobotFileParser()
         parser.set_url(urljoin(source.uri.rstrip("/") + "/", "robots.txt"))
-        parser.read()
+        parser.parse(robots_body_text.splitlines())
         queued_pages = session.execute(
             select(Page.id, Page.uri).where(
                 Page.source_id == source.id,
@@ -2194,6 +2256,7 @@ def _upsert_sitemap_pages(
     session: Session,
     *,
     source_id: int,
+    source_uri: str,
     parsed_entries: list[tuple[str, str | None]],
     sitemap_url: str | None = None,
     source_rules: list[dict] | None = None,
@@ -2203,6 +2266,8 @@ def _upsert_sitemap_pages(
     for raw_page_url, lastmod_str in parsed_entries:
         page_url = normalize_url_for_queue(raw_page_url, source_rules)
         if not page_url or not url_allowed_by_rules(page_url, source_rules):
+            continue
+        if not _is_valid_sitemap_address(source_uri, page_url):
             continue
         page_source_id = resolve_source_id_for_url(
             page_url,
@@ -2284,9 +2349,7 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
         print(f"Source {source_id} is not eligible for sitemap sync, skipping")
         return
     source_rules = [rule.to_dict() for rule in source.config.rules]
-    source_rows = [
-        (row.id, row.uri) for row in session.execute(select(Source.id, Source.uri)).all()
-    ]
+    source_rows = session.execute(select(Source.id, Source.uri)).all()
     source_id_by_host = build_source_id_by_host(source_rows)
 
     sitemaps = (
@@ -2349,6 +2412,12 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
             print(f"Sitemap ignored (redirect to {location}): {sm.url}")
             continue
 
+        if status_code == _SITEMAP_BODY_TOO_LARGE_STATUS:
+            sm.is_excluded = True
+            sm.ignore_reason = "too_large"
+            print(f"Sitemap ignored (too large): {sm.url}")
+            continue
+
         if status_code != 200 or body is None:
             sm.is_excluded = True
             sm.ignore_reason = f"http_error_{status_code}"
@@ -2371,7 +2440,13 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
                 sm.last_etag = etag
             print(f"Sitemap hash unchanged, rehydrating pages: {sm.url}")
 
-        document_kind, parsed_entries = _parse_sitemap_document(body)
+        try:
+            document_kind, parsed_entries = _parse_sitemap_document(body)
+        except ValueError as exc:
+            sm.is_excluded = True
+            sm.ignore_reason = "too_many_entries"
+            print(f"Sitemap ignored ({exc}): {sm.url}")
+            continue
         if document_kind == "sitemapindex":
             discovered_urls = _upsert_child_sitemaps(
                 session,
@@ -2398,6 +2473,7 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
                 _upsert_sitemap_pages(
                     session,
                     source_id=source_id,
+                    source_uri=source.uri,
                     parsed_entries=parsed_entries,
                     sitemap_url=sm.url,
                     source_rules=source_rules,
@@ -2445,12 +2521,17 @@ def _parse_sitemap_document(body: bytes) -> tuple[str, list[tuple[str, str | Non
     tag_loc = f"{{{sitemap_ns}}}loc"
     tag_lastmod = f"{{{sitemap_ns}}}lastmod"
     tag_sitemap = f"{{{sitemap_ns}}}sitemap"
+    entry_tags = {tag_url, tag_sitemap}
 
     for child in root:
-        if child.tag in (tag_url, tag_sitemap):
+        if child.tag in entry_tags:
             loc_el = child.find(tag_loc)
             lastmod_el = child.find(tag_lastmod)
             if loc_el is not None and loc_el.text:
+                if len(results) >= _SITEMAP_MAX_ENTRIES:
+                    raise ValueError(
+                        f"sitemap has more than {_SITEMAP_MAX_ENTRIES} entries"
+                    )
                 results.append(
                     (
                         loc_el.text.strip(),

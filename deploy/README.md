@@ -27,7 +27,8 @@ docker compose -f deploy/compose.yaml up --build
 
 Compose uses ephemeral Postgres and Redis containers and writes `local.yaml` into
 the app containers through a Compose config. It does not mount `media/` or
-`data/models/`.
+`data/models/`. The compose smoke test runs with `mode: stage`; production
+deployments must set real security keys.
 
 ## Kubernetes settings
 
@@ -37,6 +38,9 @@ Kubernetes settings are passed as `/app/local.yaml`:
 - secret values live in a Kubernetes `Secret`;
 - `local.yaml` uses the existing project `!env "$NAME"` syntax for sensitive
   values, so the same config file can reference `envFrom.secretRef`.
+- environment variables are also applied as direct overrides after `local.yaml`
+  is loaded; production mode fails fast if security keys are default,
+  empty, or `change-me`.
 
 Create a real secret from `secret.example.yaml` before applying to a cluster:
 
@@ -45,8 +49,9 @@ kubectl -n vchat create secret generic vchat-secret \
   --from-literal=DATABASE_URI='postgresql+asyncpg://...' \
   --from-literal=OPENAI_API_KEY='...' \
   --from-literal=GIGACHAT_API_KEY='...' \
-  --from-literal=VCHAT_SECRET_KEY='...' \
-  --from-literal=VCHAT_COOKIE_KEY='...'
+  --from-literal=SECRET_KEY='...' \
+  --from-literal=COOKIE_KEY='...' \
+  --from-literal=VCHAT_SECRET='...'
 ```
 
 Then set the production image in `deploy/k8s/base/kustomization.yaml` or through
