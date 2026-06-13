@@ -14,9 +14,30 @@
 ## Configuration
 
 - Prefer the existing config system and `vchat/config.yaml` defaults.
+- Config keys are flat lowercase internally. Environment overrides may arrive
+  in any case, but must normalize to the same lowercase key name; do not add
+  aliases for the same setting.
+- In production mode, fail fast if `secret_key`, `cookie_key`, or
+  `vchat_secret` remain empty, placeholders, or unchanged from defaults.
 - Do not add code-level dependency fallbacks for missing declared packages.
 - Keep environment-specific runtime differences documented in KB or AGENTS
   policy, not hidden in application branches.
+
+## Crawler and remote input
+
+- Enforce remote body limits while streaming and before handing data to
+  parsers. Do not download an entire response and then check its size; the limit
+  must stop memory growth and parser work at the boundary. New crawler-style
+  downloads should use the shared configured byte limit rather than local magic
+  numbers.
+
+## RAG and widgets
+
+- Public widgets are untrusted external entry points, so RAG retrieval must be
+  scoped by explicit widget/source configuration. A missing binding is a
+  configuration problem, not permission to search the whole project knowledge
+  base. Future widget features should keep this default-deny posture for any
+  project data they expose.
 
 ## Failure policy
 

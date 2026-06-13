@@ -24,6 +24,13 @@ These rules should be enforced by hooks, checks, or review whenever practical.
 - Default to fail-fast behavior.
 - Do not preserve legacy call paths or compatibility shims without explicit user
   approval.
+- User-provided or model-provided text must not be inserted with `innerHTML`
+  unless it first passes through a project allowlist renderer such as
+  `renderSafeAssistantMarkdown`, or is escaped.
+- Browser form POST mutations must include signed CSRF tokens. HTML forms carry
+  `csrf_token`; fetch/HTMX requests use `X-CSRFToken`.
+- Public widgets must never query the global knowledge base without explicit
+  source scoping.
 
 ## Knowledge base
 
