@@ -14,6 +14,8 @@ agent operating knowledge.
 - `kb/workflow.md` - task rituals, when to read KB, when to update it.
 - `kb/design.md` - UI taste, layout decisions, repeated visual patterns.
 - `kb/frontend.md` - frontend structure, local browser verification, build flow.
+- `kb/forms.md` - page forms, WTForms naming, validation and template contracts.
+- `kb/actions.md` - small page actions, HTMX action commands, response contracts.
 - `kb/backend.md` - backend layout, migrations, jobs, config, fail-fast rules.
 - `kb/ops.md` - server access, local database, Redis and deploy boundaries.
 - `kb/review.md` - end-of-task review ritual and review output style.

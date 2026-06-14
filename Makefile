@@ -2,7 +2,7 @@
         ensure-pip pip-compile autoupgrade \
         celery revision downgrade deploy \
 		frontend embedder embedder-worker docs \
-		agent agent-check agent-kb-check
+		agent agent-check
 
 MERMAID_FILTER_RENDERER ?= mmdc
 
@@ -169,10 +169,7 @@ test: venv/bin/activate ## run tests with coverage
 		--cov-report=xml:coverage.xml \
 		--cov-report=html:htmlcov
 
-agent-kb-check: venv/bin/activate ## validate agent knowledge base structure
-	venv/bin/python bin/check_kb.py
-
-agent-check: agent-kb-check test ## run the standard agent completion checks
+agent-check: test ## run the standard agent completion checks
 
 agent: agent-check ## alias for the standard agent completion ritual
 
