@@ -11,7 +11,6 @@ import argparse
 import hashlib
 import html
 import json
-import re
 import subprocess
 import sys
 from collections import Counter
@@ -87,10 +86,6 @@ def parse_proof(path: Path) -> dict[str, str]:
 
 def esc(value: Any) -> str:
     return html.escape(str(value))
-
-
-def normalize_package_name(name: str) -> str:
-    return re.sub(r"[-_.]+", "-", name).lower().strip()
 
 
 def find_python_executable(project_root: Path) -> Path:

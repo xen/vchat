@@ -4,7 +4,6 @@ import html
 import logging
 import re
 import zipfile
-from collections import Counter
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -843,7 +842,3 @@ def extract_url_document(
         doc_type=doc_type,
     )
 
-
-def summarize_structure(structure: list[dict[str, Any]]) -> dict[str, int]:
-    counts = Counter(block.get("type", "unknown") for block in structure)
-    return dict(counts)

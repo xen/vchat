@@ -134,10 +134,6 @@ def configure_logging(
         handler.setFormatter(formatter)
 
 
-def configure_json_logging(level: int | str | None = None) -> None:
-    configure_logging(level, log_format="json")
-
-
 def log_json(
     logger: logging.Logger,
     event: str,

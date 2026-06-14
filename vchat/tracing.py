@@ -32,14 +32,6 @@ def get_request_id(default: str | None = None) -> str | None:
     return request_id_ctx.get(default)
 
 
-def ensure_request_id() -> str:
-    request_id = request_id_ctx.get()
-    if request_id is None:
-        request_id = generate_request_id()
-        request_id_ctx.set(request_id)
-    return request_id
-
-
 def request_id_headers() -> dict[str, str]:
     request_id = request_id_ctx.get()
     return {REQUEST_ID_HEADER: request_id} if request_id else {}
