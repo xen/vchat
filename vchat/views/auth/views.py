@@ -154,7 +154,7 @@ async def login(request):
     form = LoginForm(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
-        normalized_email = (form.email.data or "").strip().lower()
+        normalized_email = form.email.data.strip().lower()
         lock_key = f"auth:login_check_lock:{normalized_email}"
 
         if await request.app[REDIS_KEY].exists(lock_key):
@@ -247,7 +247,7 @@ async def login_ldap(request):
     form = LoginForm(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
-        normalized_email = (form.email.data or "").strip().lower()
+        normalized_email = form.email.data.strip().lower()
         lock_key = f"auth:login_check_lock:{normalized_email}"
 
         if await request.app[REDIS_KEY].exists(lock_key):
