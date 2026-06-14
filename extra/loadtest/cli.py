@@ -14,7 +14,7 @@ from .reporters import render_report_text, write_json_report
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="python -m vchat.loadtest.cli")
+    parser = argparse.ArgumentParser(prog="python -m extra.loadtest.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     idle = subparsers.add_parser(
