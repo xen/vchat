@@ -1,45 +1,6 @@
 {% extends "admin.html" %}
+{% from "macros.html" import render_field with context %}
 {% set page_title = "Код виджета" %}
-
-{% macro widget_create_form(action) %}
-<form
-  method="POST"
-  action="{{ action }}"
-  hx-post="{{ action }}"
-  hx-swap="none"
-  hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
-  class="grid gap-4"
->
-  <label class="form-control">
-    <span class="label-text mb-1">{{ 'Название' }}</span>
-    <input
-      type="text"
-      name="name"
-      class="input input-bordered w-full"
-      maxlength="128"
-      required
-    >
-    <span class="mt-1 text-xs text-base-content/60">{{ 'Внутреннее название, нужно только для удобства в админке.' }}</span>
-  </label>
-
-  <label class="form-control">
-    <span class="label-text mb-1">{{ 'Название чата' }}</span>
-    <input
-      type="text"
-      name="agent_name"
-      class="input input-bordered w-full"
-      value="{{ 'Чат поддержки' }}"
-      maxlength="100"
-      placeholder="{{ 'Чат поддержки' }}"
-    >
-    <span class="mt-1 text-xs text-base-content/60">{{ 'Показывается пользователю в окне чата.' }}</span>
-  </label>
-
-  <div class="flex justify-start gap-2">
-    <button type="submit" class="btn btn-primary btn-sm">{{ 'Создать' }}</button>
-  </div>
-</form>
-{% endmacro %}
 
 {% block content %}
 <div id="widget-integrations-page" class="space-y-6">
@@ -94,7 +55,19 @@
   <dialog id="add_widget_modal" class="modal">
     <div class="modal-box max-w-2xl">
       <h2 class="card-title mb-3 text-base">{{ 'Добавить код виджета' }}</h2>
-      {{ widget_create_form(url('actions', action='widget_create', item_id='global')) }}
+      <form
+        method="POST"
+        action="{{ url('project_integration') }}"
+        class="grid gap-4"
+      >
+        {{ create_form.csrf_token }}
+        {{ render_field(create_form.name) }}
+        {{ render_field(create_form.agent_name) }}
+
+        <div class="flex justify-start gap-2">
+          <button type="submit" class="btn btn-primary btn-sm">{{ 'Создать' }}</button>
+        </div>
+      </form>
     </div>
     <form method="dialog" class="modal-backdrop">
       <button>{{ 'Закрыть' }}</button>

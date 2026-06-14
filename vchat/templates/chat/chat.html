@@ -116,7 +116,7 @@
       </div>
       <div class="vchat-composer-toolbar">
         <div class="min-w-0">
-          <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ (footer_text or default_widget_footer_text)|safe }}</div>
+          <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ footer_text|safe }}</div>
           <div id="composer-limit" class="text-xs leading-snug text-base-content/60" aria-live="polite"></div>
         </div>
         <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm"
@@ -139,7 +139,7 @@
     const csrfToken = {{ (support_csrf_token if support_csrf_token is defined else csrf_token()) | tojson | safe }};
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
     const waitingMessages = ({{ waiting_messages|default([])|tojson|safe }} || []).filter((message) => String(message || '').trim());
-    const defaultWaitingMessage = {{ default_waiting_message|default('Готовлю ответ')|tojson }};
+    const defaultWaitingMessage = waitingMessages[0] || 'Готовлю ответ';
     const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
 
     let ws;

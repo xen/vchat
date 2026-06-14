@@ -153,9 +153,9 @@ def setup_routes(app: web.Application) -> None:
         projects.public_widget_chat,
         name="public_widget_chat",
     )
-    add("GET", "/integration", projects.project_integration, name="project_integration")
+    add("*", "/integration", projects.project_integration, name="project_integration")
     add(
-        "GET",
+        "*",
         r"/integration/{widget_id:[0-9]+}",
         projects.project_widget_edit,
         name="project_widget_edit",
