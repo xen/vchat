@@ -64,7 +64,7 @@ class _MsgSpecJSON:
 json = _MsgSpecJSON()
 
 
-class SafeHTML(HTMLParser):
+class SafeHTMLParser(HTMLParser):
     def __init__(self, *, max_text_length: int) -> None:
         super().__init__(convert_charrefs=True)
         self.max_text_length = max_text_length
@@ -72,13 +72,6 @@ class SafeHTML(HTMLParser):
         self.open_tags: list[str] = []
         self.skip_depth = 0
         self.text_length = 0
-
-    @classmethod
-    def clean(cls, value: str, *, max_text_length: int) -> str:
-        parser = cls(max_text_length=max_text_length)
-        parser.feed(value)
-        parser.close()
-        return parser.sanitized()
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in {"script", "style"}:
@@ -137,6 +130,17 @@ class SafeHTML(HTMLParser):
         while self.open_tags:
             self.parts.append(f"</{self.open_tags.pop()}>")
         return "".join(self.parts).strip()
+
+
+class SafeHTML:
+    def __init__(self, *, max_text_length: int) -> None:
+        self.max_text_length = max_text_length
+
+    def __call__(self, _form, field) -> None:
+        parser = SafeHTMLParser(max_text_length=self.max_text_length)
+        parser.feed(field.data.strip())
+        parser.close()
+        field.data = parser.sanitized()
 
 
 def encode_json(obj) -> bytes:
