@@ -1,13 +1,15 @@
 import asyncio
 import base64
+import html
 import logging
 import os
 import uuid
 from math import ceil
 from datetime import datetime
 from functools import wraps
+from html.parser import HTMLParser
 from typing import Callable, Optional, Tuple
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import markdown
 import msgspec
@@ -23,6 +25,7 @@ from itsdangerous import (
     URLSafeTimedSerializer,
 )
 from multidict import CIMultiDict, CIMultiDictProxy, istr
+from wtforms import validators
 from yarl import URL
 
 from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
@@ -59,6 +62,81 @@ class _MsgSpecJSON:
 
 # Create a single namespace object
 json = _MsgSpecJSON()
+
+
+class SafeHTML(HTMLParser):
+    def __init__(self, *, max_text_length: int) -> None:
+        super().__init__(convert_charrefs=True)
+        self.max_text_length = max_text_length
+        self.parts: list[str] = []
+        self.open_tags: list[str] = []
+        self.skip_depth = 0
+        self.text_length = 0
+
+    @classmethod
+    def clean(cls, value: str, *, max_text_length: int) -> str:
+        parser = cls(max_text_length=max_text_length)
+        parser.feed(value)
+        parser.close()
+        return parser.sanitized()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self.skip_depth += 1
+            return
+        if self.skip_depth:
+            return
+        if tag == "br":
+            self.parts.append("<br>")
+            return
+        if tag in {"strong", "b"}:
+            self.parts.append(f"<{tag}>")
+            self.open_tags.append(tag)
+            return
+        if tag != "a":
+            return
+        href = ""
+        for name, value in attrs:
+            if name == "href" and value:
+                href = value.strip()
+                break
+        parsed = urlparse(href)
+        if parsed.scheme not in {"http", "https", "mailto"}:
+            return
+        escaped_href = html.escape(href, quote=True)
+        self.parts.append(
+            f'<a href="{escaped_href}" target="_blank" rel="noopener noreferrer" class="link link-hover">'
+        )
+        self.open_tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self.skip_depth:
+            self.skip_depth -= 1
+            return
+        if self.skip_depth or tag not in {"strong", "b", "a"}:
+            return
+        if tag not in self.open_tags:
+            return
+        while self.open_tags:
+            open_tag = self.open_tags.pop()
+            self.parts.append(f"</{open_tag}>")
+            if open_tag == tag:
+                break
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth:
+            return
+        self.text_length += len(data)
+        if self.text_length > self.max_text_length:
+            raise validators.ValidationError(
+                f"Длина текста до {self.max_text_length} символов"
+            )
+        self.parts.append(html.escape(data))
+
+    def sanitized(self) -> str:
+        while self.open_tags:
+            self.parts.append(f"</{self.open_tags.pop()}>")
+        return "".join(self.parts).strip()
 
 
 def encode_json(obj) -> bytes:
