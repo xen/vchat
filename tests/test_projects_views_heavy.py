@@ -500,13 +500,11 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
     )
 
     req = _Req(db=db, app={})
-    monkeypatch.setattr(
-        project_views, "_project_context", lambda request: SimpleNamespace(id="global")
-    )
 
     raw = project_views.project_stats.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(req)
 
+    assert "project" not in payload
     assert payload["total_users"] == 3
     assert payload["pending_embeddings"] == 4
     assert payload["total_docs"] == 8
@@ -596,21 +594,19 @@ async def test_project_edit_sources_keeps_active_sources_first(
             return []
 
     req = _Req(db=db, app={REDIS_KEY: _Redis()})
-    monkeypatch.setattr(
-        project_views, "_project_context", lambda request: SimpleNamespace(id="global")
-    )
 
     async def _get_session(_request):
         return {}
 
     monkeypatch.setattr(project_views, "get_session", _get_session)
     monkeypatch.setattr(
-        project_views.forms, "SourceForm", lambda *args, **kwargs: SimpleNamespace()
+        project_views.forms, "SourceAdd", lambda *args, **kwargs: SimpleNamespace()
     )
 
     raw = project_views.project_edit_sources.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(req)
 
+    assert "project" not in payload
     assert [source["title"] for source in payload["sources"]] == [
         "Active source",
         "Paused source",

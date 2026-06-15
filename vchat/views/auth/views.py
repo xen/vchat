@@ -50,7 +50,7 @@ def _normalize_ldap_dn(value: str) -> str:
     return ",".join(part.strip().casefold() for part in value.split(","))
 
 
-class LoginForm(Form):
+class Login(Form):
     class Meta:
         csrf = True
         csrf_secret = config["secret_key"]
@@ -151,7 +151,7 @@ async def login(request):
 
     session = await get_session(request)
     data = await request.post()
-    form = LoginForm(data, meta={"csrf_context": session})
+    form = Login(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
         normalized_email = form.email.data.strip().lower()
@@ -244,7 +244,7 @@ async def login_ldap(request):
 
     session = await get_session(request)
     data = await request.post()
-    form = LoginForm(data, meta={"csrf_context": session})
+    form = Login(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
         normalized_email = form.email.data.strip().lower()

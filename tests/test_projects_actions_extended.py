@@ -385,20 +385,17 @@ async def test_project_integration_create_requires_form_csrf(
     req["db"] = _DB()
     req["user"] = SimpleNamespace(id=1)
 
-    def _render_template(*args, **kwargs):
-        _ = args
-        return web.Response(text="form error", status=kwargs["status"])
-
     async def _session(request):
         _ = request
         return {}
 
     monkeypatch.setattr(project_views, "get_session", _session)
-    monkeypatch.setattr(project_views.aiohttp_jinja2, "render_template", _render_template)
 
-    response = await _raw(project_views.project_integration)(req)
+    context = await _raw(project_views.project_integration)(req)
 
-    assert response.status == 400
+    assert "project" not in context
+    assert set(context) == {"project_secret", "form", "widgets"}
+    assert context["form"].errors
 
 
 @pytest.mark.asyncio

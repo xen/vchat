@@ -6,27 +6,27 @@
             <h1 class="text-lg font-medium break-words flex items-center gap-2 flex-wrap">
                 <a href="{{ url('project_edit_sources') }}" class="text-base-content/50 transition-colors hover:text-base-content">Источники</a>
                 <span class="mx-2 text-base-content/40">&gt;</span>
-                <span class="text-base-content">{{ source.title or source.uri }}</span>
-                {% if source.blocked_reason %}
+                <span class="text-base-content">{{ item.title or item.uri }}</span>
+                {% if item.blocked_reason %}
                 <span class="badge badge-error badge-outline gap-1"
-                      title="{{ source.blocked_message or '' }}">
+                      title="{{ item.blocked_message or '' }}">
                     <iconify-icon icon="lucide:shield-x" class="size-3"></iconify-icon>
                     Заблокирован
                 </span>
                 {% endif %}
             </h1>
-            {% if source.title %}
-            <a href="{{ source.uri }}"
+            {% if item.title %}
+            <a href="{{ item.uri }}"
                target="_blank"
                rel="noopener noreferrer"
                class="text-sm text-base-content/70 break-all link link-hover">
-                {{ source.uri }}
+                {{ item.uri }}
             </a>
             {% endif %}
         </div>
         <div class="flex items-center gap-2 shrink-0">
-            {% if source.is_paused %}
-            <button hx-post="{{ url('actions', action='resume_source', item_id=source.id) }}"
+            {% if item.is_paused %}
+            <button hx-post="{{ url('actions', action='resume_source', item_id=item.id) }}"
                     hx-swap="none"
                     hx-on::after-request="if(event.detail.successful) window.location.reload()"
                     class="btn btn-sm btn-outline"
@@ -35,14 +35,14 @@
                 <span class="hidden sm:inline">Возобновить</span>
             </button>
             {% else %}
-            <button hx-post="{{ url('actions', action='crawl_source', item_id=source.id) }}"
+            <button hx-post="{{ url('actions', action='crawl_source', item_id=item.id) }}"
                     hx-swap="none"
                     class="btn btn-sm btn-outline"
                     title="Обход">
                 <iconify-icon icon="lucide:refresh-cw" class="text-success size-4"></iconify-icon>
                 <span class="hidden sm:inline">Обойти</span>
             </button>
-            <button hx-post="{{ url('actions', action='pause_source', item_id=source.id) }}"
+            <button hx-post="{{ url('actions', action='pause_source', item_id=item.id) }}"
                     hx-swap="none"
                     hx-on::after-request="if(event.detail.successful) window.location.reload()"
                     class="btn btn-sm btn-outline"
@@ -52,7 +52,7 @@
             </button>
             {% endif %}
 <button class="btn btn-sm btn-error btn-outline"
-                    hx-post="{{ url('actions', action='delete_source', item_id=source.id) }}"
+                    hx-post="{{ url('actions', action='delete_source', item_id=item.id) }}"
                     hx-confirm="Вы уверены, что хотите удалить этот источник?"
                     hx-swap="none"
                     hx-on::after-request="if(event.detail.successful) window.location='{{ url('project_edit_sources') }}'"
@@ -63,12 +63,12 @@
         </div>
     </div>
 
-    {% if source.blocked_reason %}
+    {% if item.blocked_reason %}
     <div class="alert alert-error mb-6">
         <iconify-icon icon="lucide:shield-x" class="size-5 shrink-0"></iconify-icon>
         <div>
-            <div class="font-medium">{{ source_blocked_label or source.blocked_reason }}</div>
-            <div class="text-sm">{{ source.blocked_message or 'Источник заблокирован для обхода и индексации.' }}</div>
+            <div class="font-medium">{{ source_blocked_label or item.blocked_reason }}</div>
+            <div class="text-sm">{{ item.blocked_message or 'Источник заблокирован для обхода и индексации.' }}</div>
         </div>
     </div>
     {% endif %}
@@ -79,15 +79,15 @@
             <div class="card-body p-4">
                 <div class="text-xs text-base-content/60 mb-1">Дата обхода</div>
                 <div class="text-sm font-medium">
-                    {% if source.last_reindexed_at %}
-                        {{ source.last_reindexed_at.astimezone().strftime('%d.%m.%Y %H:%M') }}
+                    {% if item.last_reindexed_at %}
+                        {{ item.last_reindexed_at.astimezone().strftime('%d.%m.%Y %H:%M') }}
                     {% else %}
                         <span class="text-base-content/40">Не было</span>
                     {% endif %}
                 </div>
             </div>
         </div>
-        <a href="{{ url('project_view') }}?source={{ (source.title or source.uri)|urlencode }}" class="card bg-base-100 shadow hover:bg-base-200/60 transition-colors">
+        <a href="{{ url('project_view') }}?source={{ (item.title or item.uri)|urlencode }}" class="card bg-base-100 shadow hover:bg-base-200/60 transition-colors">
             <div class="card-body p-4">
                 <div class="text-xs text-base-content/60 mb-1">Найдено страниц</div>
                 <div class="text-sm font-medium link link-hover">{{ doc_count }}</div>
@@ -184,7 +184,7 @@
                         </div>
                     </div>
                     <div id="index_rules_container" class="overflow-x-auto">
-                        {% if source.config.rules %}
+                        {% if item.config.rules %}
                             <table class="table table-zebra table-fixed w-full">
                                 <colgroup>
                                     <col class="w-56">
@@ -199,7 +199,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for rule in source.config.rules %}
+                                    {% for rule in item.config.rules %}
                                     <tr class="rule-row align-top">
                                         <td class="whitespace-normal break-words">
                                             <input type="hidden" name="rule_type[]" value="{{ rule.type }}">
@@ -219,7 +219,7 @@
                                         <td class="text-right">
                                             <button
                                                 type="button"
-                                                hx-post="{{ url('actions', action='delete_source_rule', item_id=source.id) }}"
+                                                hx-post="{{ url('actions', action='delete_source_rule', item_id=item.id) }}"
                                                 hx-vals='{"rule_index": {{ loop.index0 }}}'
                                                 hx-target="closest tr"
                                                 hx-swap="delete"
@@ -323,7 +323,7 @@
     <div class="card-body">
         <h2 class="card-title text-base mb-3">Sitemap-файлы</h2>
         <div
-            hx-get="{{ url('source_sitemaps', source_id=source.id) }}"
+            hx-get="{{ url('source_sitemaps', source_id=item.id) }}"
             hx-trigger="load"
             hx-swap="innerHTML"
         >

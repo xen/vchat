@@ -13,7 +13,7 @@ from aiohttp import web
 from yarl import URL
 
 from vchat.models.source_config import SourceConfig
-from vchat.views.projects.forms import SourceSettingsForm
+from vchat.views.projects.forms import SourceSettingsEdit
 from vchat.views.projects import views as project_views
 
 
@@ -176,7 +176,7 @@ class TestNextReindexAt:
 
 # ---------------------------------------------------------------------------
 # project_source_settings GET — 500 regression test
-# The bug: view returned only {project, source, form}, missing stats vars
+# The bug: view returned only {item, form}, missing stats vars
 # Template needs doc_count, doc_size_bytes, chunk_count, chunk_size_bytes, next_reindex
 # ---------------------------------------------------------------------------
 
@@ -193,7 +193,7 @@ class TestSourceSettingsView:
         field_names = set(
             re.findall(r"\bform\.([A-Za-z_][A-Za-z0-9_]*)\b", template_path.read_text())
         )
-        form = SourceSettingsForm(meta={"csrf_context": {}})
+        form = SourceSettingsEdit(meta={"csrf_context": {}})
 
         missing = sorted(name for name in field_names if name not in form._fields)
         assert missing == []
@@ -209,18 +209,13 @@ class TestSourceSettingsView:
         req["db"] = db
         req["user"] = SimpleNamespace(id=1)
 
-        monkeypatch.setattr(
-            project_views,
-            "_project_context",
-            lambda request: SimpleNamespace(id="global"),
-        )
-
         with patch("vchat.views.projects.views.get_session") as mock_session:
             mock_session.return_value = {}
             raw = _raw(project_views.project_source_settings)
             result = await raw(req)
 
         assert isinstance(result, dict)
+        assert "project" not in result
         assert "doc_count" in result, "doc_count must be in template context"
         assert "doc_size_bytes" in result, "doc_size_bytes must be in template context"
         assert "chunk_count" in result, "chunk_count must be in template context"
@@ -238,12 +233,6 @@ class TestSourceSettingsView:
         req["db"] = db
         req["user"] = SimpleNamespace(id=1)
 
-        monkeypatch.setattr(
-            project_views,
-            "_project_context",
-            lambda request: SimpleNamespace(id="global"),
-        )
-
         with patch("vchat.views.projects.views.get_session"):
             raw = _raw(project_views.project_source_settings)
             with pytest.raises(web.HTTPNotFound):
@@ -257,17 +246,12 @@ class TestSourceSettingsView:
         req["db"] = db
         req["user"] = SimpleNamespace(id=1)
 
-        monkeypatch.setattr(
-            project_views,
-            "_project_context",
-            lambda request: SimpleNamespace(id="global"),
-        )
-
         with patch("vchat.views.projects.views.get_session"):
             raw = _raw(project_views.project_source_settings)
             result = await raw(req)
 
-        assert result["source"].is_paused is True
+        assert "project" not in result
+        assert result["item"].is_paused is True
 
 
 # ---------------------------------------------------------------------------

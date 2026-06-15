@@ -15,7 +15,7 @@ from vchat.utils import login_required, meta, paginator
 from vchat.views.api.views import decrypt_client_secret
 
 
-class BaseForm(Form):
+class AdminCSRFBase(Form):
     class Meta:
         csrf = True
         csrf_secret = config["secret_key"]
@@ -23,7 +23,7 @@ class BaseForm(Form):
         csrf_time_limit = timedelta(minutes=20)
 
 
-class CreateUserForm(BaseForm):
+class UserAdd(AdminCSRFBase):
     email = StringField(
         "Email",
         [
@@ -43,7 +43,7 @@ class CreateUserForm(BaseForm):
     )
 
 
-class UserPasswordForm(BaseForm):
+class UserPasswordEdit(AdminCSRFBase):
     password = PasswordField(
         "Новый пароль",
         [
@@ -59,7 +59,20 @@ class UserPasswordForm(BaseForm):
     )
 
 
-class ApiClientForm(BaseForm):
+class ApiClientAdd(AdminCSRFBase):
+    name = StringField(
+        "Имя",
+        [
+            validators.Length(
+                min=1, max=128, message="Length from 1 to 128 characters"
+            ),
+            validators.DataRequired(message="Обязательное поле"),
+        ],
+        render_kw={"placeholder": "Client name"},
+    )
+
+
+class ApiClientEdit(AdminCSRFBase):
     name = StringField(
         "Имя",
         [
@@ -191,7 +204,7 @@ async def event_list(request):
 @aiohttp_jinja2.template("admin/user_list.html")
 async def user_list(request):
     session = await get_session(request)
-    add_form = CreateUserForm(meta={"csrf_context": session})
+    add_form = UserAdd(meta={"csrf_context": session})
     users = await _get_users(request["db"])
     return {
         "users": users,
@@ -206,7 +219,7 @@ async def user_list(request):
 @aiohttp_jinja2.template("admin/api_client_list.html")
 async def api_client_list(request):
     session = await get_session(request)
-    add_form = ApiClientForm(meta={"csrf_context": session})
+    add_form = ApiClientAdd(meta={"csrf_context": session})
     return {
         "clients": await _get_api_clients(
             request["db"],

@@ -26,6 +26,8 @@ Examples:
 - Edit/update forms are named `[Thing]Edit`.
 - Nested subforms may use domain names such as `PinnedMessageForm`.
 - Do not use generic names like `[Thing]Form` for add/edit forms.
+- Keep simple field declarations local to each form class. Do not extract a
+  one-use helper just to share a short WTForms field between add/edit classes.
 - Do not add form properties named `default_*`.
 
 ## View Contract

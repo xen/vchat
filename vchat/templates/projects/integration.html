@@ -60,9 +60,9 @@
         action="{{ url('project_integration') }}"
         class="grid gap-4"
       >
-        {{ create_form.csrf_token }}
-        {{ render_field(create_form.name) }}
-        {{ render_field(create_form.agent_name) }}
+        {{ form.csrf_token }}
+        {{ render_field(form.name) }}
+        {{ render_field(form.agent_name) }}
 
         <div class="flex justify-start gap-2">
           <button type="submit" class="btn btn-primary btn-sm">{{ 'Создать' }}</button>

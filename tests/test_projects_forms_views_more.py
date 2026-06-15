@@ -77,8 +77,8 @@ def _raw(func):
     return func
 
 
-def test_source_form_normalizes_url_to_origin() -> None:
-    form = project_forms.SourceForm(
+def test_source_add_normalizes_url_to_origin() -> None:
+    form = project_forms.SourceAdd(
         formdata=MultiDict(
             {"url": "https://Example.Local:8443/docs/page?x=1#section"}
         ),
@@ -89,8 +89,8 @@ def test_source_form_normalizes_url_to_origin() -> None:
     assert form.url.data == "https://example.local:8443"
 
 
-def test_source_form_exposes_enable_triggers_checkbox() -> None:
-    form = project_forms.SourceForm(meta={"csrf_context": {}})
+def test_source_add_exposes_enable_triggers_checkbox() -> None:
+    form = project_forms.SourceAdd(meta={"csrf_context": {}})
 
     assert hasattr(form, "enable_triggers")
     assert form.enable_triggers.data is False
@@ -406,7 +406,7 @@ async def test_project_source_settings_post_site_rules(
 
     monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(
-        project_views.forms, "SourceSettingsForm", lambda **kwargs: _Form()
+        project_views.forms, "SourceSettingsEdit", lambda **kwargs: _Form()
     )
     monkeypatch.setattr(project_views, "admin_event", _event)
     monkeypatch.setattr(project_views, "flash", _flash)
@@ -415,10 +415,6 @@ async def test_project_source_settings_post_site_rules(
         "delay",
         lambda source_id: delayed.append(source_id),
     )
-    monkeypatch.setattr(
-        project_views, "_project_context", lambda _r: SimpleNamespace(id="global")
-    )
-
     async def _apply_source_trigger_rules(*_args):
         return 0
 
@@ -447,7 +443,7 @@ async def test_project_source_settings_post_site_rules(
 
 
 @pytest.mark.asyncio
-async def test_add_source_includes_default_ignored_params(
+async def test_project_edit_sources_add_source_includes_default_ignored_params(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _PostData(dict):
@@ -462,10 +458,6 @@ async def test_add_source_includes_default_ignored_params(
     req = _Req(method="POST", post_data=_PostData(url="https://example.local"))
     req["db"] = db
     req["user"] = SimpleNamespace(id=1)
-    req.headers["X-CSRFToken"] = "token"
-    req.app[project_views.SIGNER_KEY] = SimpleNamespace(loads=lambda token, max_age: 1)
-    req.match_info["action"] = "add_source"
-    req.match_info["item_id"] = "global"
 
     async def _session(_request):
         return {"user_id": 1}
@@ -487,7 +479,7 @@ async def test_add_source_includes_default_ignored_params(
 
     monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(
-        project_views.forms, "SourceForm", lambda *args, **kwargs: _Form()
+        project_views.forms, "SourceAdd", lambda *args, **kwargs: _Form()
     )
     monkeypatch.setattr(project_views, "admin_event", _event)
 
@@ -505,9 +497,10 @@ async def test_add_source_includes_default_ignored_params(
         lambda source_id: delayed.append(source_id),
     )
 
-    response = await _raw(project_views.project_action)(req)
-    assert response.status == 200
-    assert response.headers["HX-Refresh"] == "true"
+    with pytest.raises(web.HTTPFound) as exc:
+        await _raw(project_views.project_edit_sources)(req)
+
+    assert exc.value.location == "/x"
     assert db.commits == 1
     assert len(db.added) == 1
 
@@ -528,7 +521,7 @@ async def test_add_source_includes_default_ignored_params(
 
 
 @pytest.mark.asyncio
-async def test_add_source_persists_blocked_source_without_enqueue(
+async def test_project_edit_sources_add_source_persists_blocked_without_enqueue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class _PostData(dict):
@@ -539,10 +532,6 @@ async def test_add_source_persists_blocked_source_without_enqueue(
     req = _Req(method="POST", post_data=_PostData(url="https://blocked.example"))
     req["db"] = db
     req["user"] = SimpleNamespace(id=1)
-    req.headers["X-CSRFToken"] = "token"
-    req.app[project_views.SIGNER_KEY] = SimpleNamespace(loads=lambda token, max_age: 1)
-    req.match_info["action"] = "add_source"
-    req.match_info["item_id"] = "global"
 
     async def _session(_request):
         return {"user_id": 1}
@@ -563,7 +552,7 @@ async def test_add_source_persists_blocked_source_without_enqueue(
 
     monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(
-        project_views.forms, "SourceForm", lambda *args, **kwargs: _Form()
+        project_views.forms, "SourceAdd", lambda *args, **kwargs: _Form()
     )
     monkeypatch.setattr(project_views, "admin_event", _event)
 
@@ -578,9 +567,10 @@ async def test_add_source_persists_blocked_source_without_enqueue(
         lambda source_id: delayed.append(source_id),
     )
 
-    response = await _raw(project_views.project_action)(req)
-    assert response.status == 200
-    assert response.headers["HX-Refresh"] == "true"
+    with pytest.raises(web.HTTPFound) as exc:
+        await _raw(project_views.project_edit_sources)(req)
+
+    assert exc.value.location == "/x"
     assert db.commits == 0
     assert len(db.added) == 1
     assert events == ["source_create"]

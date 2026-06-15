@@ -178,7 +178,7 @@
         <span class="text-base-content">{{ form.name.data }}</span>
       </h1>
       <a
-        href="{{ url('demo_page') }}?code={{ project.code }}"
+        href="{{ url('demo_page') }}?code={{ item.code }}"
         class="link link-hover mt-1 inline-flex items-center gap-1.5 text-sm text-base-content/70"
         target="_blank"
         rel="noopener"
@@ -198,7 +198,7 @@
             id="widget-url"
             type="text"
             class="input input-bordered input-sm join-item min-w-0 flex-1 font-mono text-sm"
-            value="{{ project.public_url }}"
+            value="{{ item.public_url }}"
             readonly
           >
           <button
@@ -215,7 +215,7 @@
       <div class="grid gap-2">
         <label for="widget-embed-code" class="label-text">{{ 'Код вставки' }}</label>
         <div class="grid gap-2">
-          <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ project.public_url }}" defer&gt;&lt;/script&gt;
+          <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ item.public_url }}" defer&gt;&lt;/script&gt;
 &lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
           <div>
             <button
@@ -235,7 +235,7 @@
   <div class="card bg-base-100 shadow">
     <form
       method="POST"
-      action="{{ url('project_widget_edit', widget_id=project.id) }}"
+      action="{{ url('project_widget_edit', widget_id=item.id) }}"
       data-widget-settings-form
       class="card-body grid gap-10"
     >
@@ -480,8 +480,8 @@
       <div class="flex flex-wrap gap-2">
         <form
           method="POST"
-          action="{{ url('actions', action='widget_reset_code', item_id=project.id) }}"
-          hx-post="{{ url('actions', action='widget_reset_code', item_id=project.id) }}"
+          action="{{ url('actions', action='widget_reset_code', item_id=item.id) }}"
+          hx-post="{{ url('actions', action='widget_reset_code', item_id=item.id) }}"
           hx-swap="none"
           hx-confirm="{{ 'Сбросить код виджета? Старый код вставки перестанет работать.' }}"
         >
@@ -492,8 +492,8 @@
         </form>
         <form
           method="POST"
-          action="{{ url('actions', action='widget_delete', item_id=project.id) }}"
-          hx-post="{{ url('actions', action='widget_delete', item_id=project.id) }}"
+          action="{{ url('actions', action='widget_delete', item_id=item.id) }}"
+          hx-post="{{ url('actions', action='widget_delete', item_id=item.id) }}"
           hx-swap="none"
           hx-confirm="{{ 'Удалить виджет полностью?' }}"
         >

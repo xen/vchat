@@ -110,7 +110,12 @@ from vchat.utils import (
     validate_signed_user_csrf,
 )
 
-from vchat.views.admin.views import ApiClientForm, CreateUserForm, UserPasswordForm
+from vchat.views.admin.views import (
+    ApiClientAdd,
+    ApiClientEdit,
+    UserAdd,
+    UserPasswordEdit,
+)
 from vchat.views.api.views import decrypt_client_secret, encrypt_client_secret
 
 from . import forms
@@ -147,7 +152,7 @@ async def _api_client_list_context(
     request: web.Request,
     db_session,
     *,
-    add_form: ApiClientForm,
+    add_form: ApiClientAdd,
     new_credentials=None,
     selected_source_ids: set[int] | None = None,
 ) -> dict[str, Any]:
@@ -1041,7 +1046,6 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     ]
 
     return {
-        "project": _project_context(request),
         "document": document,
         "page_title": document_display_title,
         "document_display_title": document_display_title,
@@ -1291,7 +1295,7 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
             }
         )
     if form is None:
-        form = forms.TriggerSettingsForm(
+        form = forms.TriggerEdit(
             meta={"csrf_context": await get_session(request)},
             data={
                 "default_templates": "\n".join(
@@ -1317,7 +1321,6 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
     )
     await db_session.rollback()
     return {
-        "project": _project_context(request),
         "active_section": str(request.app.router["project_triggers"].url_for()),
         "form": form,
         "source_trigger_rows": source_trigger_rows,
@@ -1336,8 +1339,8 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
 async def project_triggers(request):
     db_session = request["db"]
     session = await get_session(request)
-    data = await request.post() if request.method == "POST" else None
-    form = forms.TriggerSettingsForm(
+    data = await request.post() if getattr(request, "method", "GET") == "POST" else None
+    form = forms.TriggerEdit(
         meta={"csrf_context": session},
         formdata=data,
         data={
@@ -1365,13 +1368,7 @@ async def project_triggers(request):
                     _compile_trigger_patterns(source_patterns)
                 except (TriggerPatternError, re.error) as exc:
                     await flash(request, f"Некорректный regex: {exc}", "error")
-                    context = await _load_trigger_settings_context(request, form)
-                    return aiohttp_jinja2.render_template(
-                        "projects/triggers.html",
-                        request,
-                        context,
-                        status=400,
-                    )
+                    return await _load_trigger_settings_context(request, form)
 
                 cfg = source.config
                 source.config = SourceConfig(
@@ -1403,13 +1400,7 @@ async def project_triggers(request):
                 "success",
             )
             raise web.HTTPFound(request.app.router["project_triggers"].url_for())
-        context = await _load_trigger_settings_context(request, form)
-        return aiohttp_jinja2.render_template(
-            "projects/triggers.html",
-            request,
-            context,
-            status=400,
-        )
+        return await _load_trigger_settings_context(request, form)
 
     return await _load_trigger_settings_context(request, form)
 
@@ -1523,6 +1514,44 @@ async def _get_source_row_data(db_session, source_id: int) -> dict[str, Any] | N
 @aiohttp_jinja2.template("projects/sources.html")
 async def project_edit_sources(request):
     db_session = request["db"]
+    session = await get_session(request)
+    data = (
+        await request.post()
+        if getattr(request, "method", "GET") == "POST"
+        else None
+    )
+    form = forms.SourceAdd(
+        formdata=data,
+        meta={"csrf_context": session},
+    )
+
+    if data is not None and form.validate():
+        uri = form.url.data
+        parsed_uri = urlparse(uri)
+        title = parsed_uri.netloc or parsed_uri.path
+        reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
+        rule_types = data.getall("rule_type[]", [])
+        rule_values = data.getall("rule_value[]", [])
+        rules = [
+            CrawlerRule(type=rt, value=rv.strip())
+            for rt, rv in zip(rule_types, rule_values)
+            if rv.strip()
+        ]
+        source = Source(
+            uri=uri,
+            title=title,
+            config=SourceConfig(rules=with_default_ignored_param_rules(rules)),
+            reindex_cron=reindex_cron,
+            enable_triggers=bool(form.enable_triggers.data),
+        )
+        db_session.add(source)
+        is_blocked = await _check_source_blocking_and_commit(
+            request, db_session, source
+        )
+        await admin_event("source_create", request)
+        if not is_blocked:
+            crawl_source_task.delay(source.id)
+        raise web.HTTPFound(request.path)
 
     is_excl, is_err, is_pend, is_ready, is_proc = _build_progress_conditions()
 
@@ -1574,9 +1603,6 @@ async def project_edit_sources(request):
 
     sources = [_serialize_source_row(row) for row in source_rows]
 
-    session = await get_session(request)
-    form = forms.SourceForm(meta={"csrf_context": session})
-
     overall_total = int(
         (overall_row.errors or 0)
         + (overall_row.pending or 0)
@@ -1585,8 +1611,7 @@ async def project_edit_sources(request):
         + (overall_row.excluded or 0)
     )
 
-    return {
-        "project": _project_context(request),
+    context = {
         "sources": sources,
         "form": form,
         "overall": {
@@ -1598,6 +1623,15 @@ async def project_edit_sources(request):
             "excluded": int(overall_row.excluded or 0),
         },
     }
+
+    if data is not None:
+        return aiohttp_jinja2.render_template(
+            "projects/sources.html",
+            request,
+            context,
+            status=400,
+        )
+    return context
 
 
 @meta(title="Настройки источника")
@@ -1630,7 +1664,7 @@ async def project_source_settings(request):
             "enable_triggers": source.enable_triggers,
         }
 
-    form = forms.SourceSettingsForm(**form_kwargs)
+    form = forms.SourceSettingsEdit(**form_kwargs)
 
     if data is not None and form.validate():
         current_cfg = source.config
@@ -1720,8 +1754,7 @@ async def project_source_settings(request):
 
     now = datetime.now(timezone.utc)
     return {
-        "project": _project_context(request),
-        "source": source,
+        "item": source,
         "source_blocked_label": describe_blocked_reason(source.blocked_reason),
         "form": form,
         "doc_count": int(doc_stats_row.doc_count or 0),
@@ -1777,7 +1810,7 @@ async def project_action(request):
     if action == "user_create":
         session = await get_session(request)
         data = await request.post()
-        form = CreateUserForm(data, meta={"csrf_context": session})
+        form = UserAdd(data, meta={"csrf_context": session})
         users = (
             (await db_session.execute(sa.select(User).order_by(User.id.desc())))
             .scalars()
@@ -1839,7 +1872,7 @@ async def project_action(request):
 
         session = await get_session(request)
         data = await request.post() if request.method == "POST" else None
-        form = UserPasswordForm(data, meta={"csrf_context": session})
+        form = UserPasswordEdit(data, meta={"csrf_context": session})
 
         if request.method == "POST":
             if not form.validate():
@@ -1904,7 +1937,7 @@ async def project_action(request):
     if action == "api_client_create":
         session = await get_session(request)
         data = await request.post()
-        form = ApiClientForm(data, meta={"csrf_context": session})
+        form = ApiClientAdd(data, meta={"csrf_context": session})
         source_ids = [
             int(source_id)
             for source_id in data.getall("source_ids", [])
@@ -1965,7 +1998,7 @@ async def project_action(request):
             await _api_client_list_context(
                 request,
                 db_session,
-                add_form=ApiClientForm(meta={"csrf_context": session}),
+                add_form=ApiClientAdd(meta={"csrf_context": session}),
                 new_credentials=SimpleNamespace(
                     message="Клиент {name} создан".format(name=client.name),
                     client_id=client_id,
@@ -1987,9 +2020,9 @@ async def project_action(request):
         reset_secret = data.get("reset_secret") == "1"
         if reset_secret:
             validate_signed_user_csrf(request)
-            form = ApiClientForm(data, meta={"csrf": False})
+            form = ApiClientEdit(data, meta={"csrf": False})
         else:
-            form = ApiClientForm(data, meta={"csrf_context": session})
+            form = ApiClientEdit(data, meta={"csrf_context": session})
         source_ids = [
             int(source_id)
             for source_id in data.getall("source_ids", [])
@@ -2002,7 +2035,7 @@ async def project_action(request):
                 await _api_client_list_context(
                     request,
                     db_session,
-                    add_form=ApiClientForm(meta={"csrf_context": session}),
+                    add_form=ApiClientAdd(meta={"csrf_context": session}),
                     selected_source_ids=set(source_ids),
                 ),
                 status=400,
@@ -2052,7 +2085,7 @@ async def project_action(request):
             await _api_client_list_context(
                 request,
                 db_session,
-                add_form=ApiClientForm(meta={"csrf_context": session}),
+                add_form=ApiClientAdd(meta={"csrf_context": session}),
                 new_credentials=(
                     SimpleNamespace(
                         message="Секрет клиента {name} сброшен".format(
@@ -2162,7 +2195,7 @@ async def project_action(request):
         return aiohttp_jinja2.render_template(
             "projects/_integration_secret_field.html",
             request,
-            {"project": _project_context(request), "project_secret": secret},
+            {"project_secret": secret},
         )
 
     if action == "delete_document":
@@ -2210,42 +2243,6 @@ async def project_action(request):
         await db_session.commit()
         await admin_event("file_delete", request)
         return web.Response(text="", status=200)
-
-    if action == "add_source":
-        data = await request.post()
-        session = await get_session(request)
-        form = forms.SourceForm(data, meta={"csrf_context": session})
-        if not form.validate():
-            return web.Response(text="Error", status=400)
-
-        uri = form.url.data
-        parsed_uri = urlparse(uri)
-        title = parsed_uri.netloc or parsed_uri.path
-        reindex_cron = normalize_reindex_cron(form.reindex_cron.data)
-        rule_types = data.getall("rule_type[]", [])
-        rule_values = data.getall("rule_value[]", [])
-        rules = [
-            CrawlerRule(type=rt, value=rv.strip())
-            for rt, rv in zip(rule_types, rule_values)
-            if rv.strip()
-        ]
-        source = Source(
-            uri=uri,
-            title=title,
-            config=SourceConfig(rules=with_default_ignored_param_rules(rules)),
-            reindex_cron=reindex_cron,
-            enable_triggers=bool(form.enable_triggers.data),
-        )
-        db_session.add(source)
-        is_blocked = await _check_source_blocking_and_commit(
-            request, db_session, source
-        )
-        await admin_event("source_create", request)
-        if not is_blocked:
-            crawl_source_task.delay(source.id)
-        response = web.Response(text="ok")
-        response.headers["HX-Refresh"] = "true"
-        return response
 
     if action == "delete_source":
         source = await db_session.scalar(
@@ -2532,7 +2529,6 @@ async def project_view(request):
     )
 
     return {
-        "project": _project_context(request),
         "sources": sources,
         "source_filters": source_filters,
     }
@@ -2954,7 +2950,6 @@ async def project_stats(request):
         total_metadata_only_docs += files_metadata_only_count
 
     return {
-        "project": _project_context(request),
         "labels": labels,
         "data_chats": data_chats,
         "data_users": data_users,
@@ -3116,17 +3111,11 @@ async def project_integration(request):
             meta={"csrf_context": session},
         )
         if not form.validate():
-            return aiohttp_jinja2.render_template(
-                "projects/integration.html",
-                request,
-                {
-                    "project": _project_context(request),
-                    "project_secret": secret,
-                    "create_form": form,
-                    "widgets": await _widget_integrations(request["db"]),
-                },
-                status=400,
-            )
+            return {
+                "project_secret": secret,
+                "form": form,
+                "widgets": await _widget_integrations(request["db"]),
+            }
 
         widget = WidgetIntegration(code="")
         form.populate_obj(widget)
@@ -3156,9 +3145,8 @@ async def project_integration(request):
         await request["db"].commit()
 
     return {
-        "project": _project_context(request),
         "project_secret": secret,
-        "create_form": forms.WidgetIntegrationAdd(meta={"csrf_context": session}),
+        "form": forms.WidgetIntegrationAdd(meta={"csrf_context": session}),
         "widgets": await _widget_integrations(request["db"]),
     }
 
@@ -3186,12 +3174,7 @@ async def project_widget_edit(request):
 
     if request.method == "POST":
         if not form.validate():
-            return aiohttp_jinja2.render_template(
-                "projects/widget_edit.html",
-                request,
-                {"project": widget, "form": form},
-                status=400,
-            )
+            return {"item": widget, "form": form}
         widget.name = form.name.data
         widget.agent_name = form.agent_name.data
         widget.system_prompt = form.system_prompt.data
@@ -3212,7 +3195,7 @@ async def project_widget_edit(request):
         )
 
     return {
-        "project": widget,
+        "item": widget,
         "form": form,
     }
 
@@ -3374,7 +3357,6 @@ async def project_files(request):
     files_rows = await _files_rows(db_session)
 
     return {
-        "project": _project_context(request),
         "active_section": str(request.app.router["project_files"].url_for()),
         "files_rows": files_rows,
         "current_document": None,
@@ -3440,7 +3422,6 @@ async def file_document(request):
     files_rows = await _files_rows(db_session)
 
     return {
-        "project": _project_context(request),
         "active_section": str(request.app.router["project_files"].url_for()),
         "files_rows": files_rows,
         "current_document": document,

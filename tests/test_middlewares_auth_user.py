@@ -355,7 +355,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _admin_event(name, req):
         _ = name, req
 
-    monkeypatch.setattr(auth_views, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
     monkeypatch.setattr(auth_views.password_context, "verify", lambda raw, hashed: True)
@@ -449,7 +449,7 @@ async def test_login_ldap_rejects_inactive_existing_user(
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "authenticate_ldap", _authenticate)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
@@ -521,7 +521,7 @@ async def test_login_ldap_rejects_existing_local_user(
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "authenticate_ldap", _authenticate)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
@@ -873,7 +873,7 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
     monkeypatch.setattr(
@@ -945,7 +945,7 @@ async def test_login_redis_lock_blocks_parallel_checks(
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "LoginForm", _Form)
+    monkeypatch.setattr(auth_views, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
 

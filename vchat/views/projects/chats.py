@@ -15,8 +15,6 @@ from vchat.models import Chat, ChatMsg, Page
 from vchat.settings import config
 from vchat.utils import login_required, meta, paginator
 
-from .views import _project_context
-
 logger = logging.getLogger("vchat.projects.chats")
 REDIS_URL = config.get("redis_uri", "redis://localhost:6379/3")
 redis = aioredis.from_url(REDIS_URL, decode_responses=True)
@@ -135,7 +133,6 @@ async def chats_list(request):
             active_chats = result.scalars().all()
 
     return {
-        "project": _project_context(request),
         "active_chats": active_chats,
     }
 
@@ -419,7 +416,6 @@ async def history_list(request):
     )
 
     return {
-        "project": _project_context(request),
         "chats": chats,
         "pagination": pagination,
         "guardrail_filter": guardrail_filter,
@@ -505,7 +501,6 @@ async def history_detail(request):
     await _mark_deleted_history_sources(request["db"], messages)
 
     return {
-        "project": _project_context(request),
         "chat": chat,
         "chat_meta": chat_meta,
         "messages": messages,

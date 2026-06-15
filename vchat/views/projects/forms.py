@@ -209,7 +209,7 @@ class WidgetIntegrationEdit(Form):
         self.cleaned_pinned_messages = messages
 
 
-class TriggerSettingsForm(Form):
+class TriggerEdit(Form):
     class Meta:
         csrf = True
         csrf_secret = config["secret_key"]
@@ -226,7 +226,7 @@ class TriggerSettingsForm(Form):
     )
 
 
-class SourceForm(Form):
+class SourceAdd(Form):
     class Meta:
         csrf = True
         csrf_secret = config["secret_key"]
@@ -279,7 +279,7 @@ class SourceForm(Form):
     )
 
 
-class SourceSettingsForm(SourceForm):
+class SourceSettingsEdit(SourceAdd):
     concurrent_requests = IntegerField(
         "Параллельные запросы (CONCURRENT_REQUESTS)",
         validators=[validators.Optional(), validators.NumberRange(min=1, max=256)],

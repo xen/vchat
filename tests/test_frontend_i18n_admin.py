@@ -606,7 +606,7 @@ async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(admin_views, "_get_users", _fake_get_users)
     monkeypatch.setattr(admin_views, "get_session", _fake_get_session)
     monkeypatch.setattr(vchat_utils, "get_session", _fake_get_session)
-    monkeypatch.setattr(admin_views, "CreateUserForm", lambda meta=None: {"meta": meta})
+    monkeypatch.setattr(admin_views, "UserAdd", lambda meta=None: {"meta": meta})
 
     request = _FakeRequest(
         {

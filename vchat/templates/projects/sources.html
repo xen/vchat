@@ -9,20 +9,22 @@
             <span id="sources-live-dot" class="hidden status status-success status-sm"></span>
             <span class="hidden sm:inline">Авто</span>
         </label>
-        <button hx-get="{{ url('project_edit_sources') }}"
+        <button type="button"
+                hx-get="{{ url('project_edit_sources') }}"
                 hx-target="#sources-body"
                 hx-select="#sources-body"
                 hx-swap="outerHTML"
                 class="btn btn-sm btn-ghost">
             <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
         </button>
-        <button hx-post="{{ url('actions', action='crawl_all', item_id='global') }}"
+        <button type="button"
+                hx-post="{{ url('actions', action='crawl_all', item_id='global') }}"
                 hx-swap="none"
                 class="btn btn-secondary btn-sm max-sm:btn-square">
             <iconify-icon icon="lucide:refresh-cw" class="size-4"></iconify-icon>
             <span class="hidden sm:inline">Обойти все</span>
         </button>
-        <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
+        <button type="button" onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm max-sm:btn-square">
             <iconify-icon icon="lucide:plus" class="size-4"></iconify-icon>
             <span class="hidden sm:inline">Добавить источник</span>
         </button>
@@ -134,7 +136,7 @@
     <div class="card-body text-base-content/50 text-center py-12">
         <iconify-icon icon="lucide:inbox" class="size-10 mx-auto mb-2"></iconify-icon>
         Источники не найдены.
-        <button onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm mt-4 mx-auto">
+        <button type="button" onclick="add_source_modal.showModal()" class="btn btn-primary btn-sm mt-4 mx-auto">
             Добавить первый источник
         </button>
     </div>
@@ -147,9 +149,17 @@
 <dialog id="add_source_modal" class="modal">
     <div class="modal-box">
         <h3 class="font-bold text-lg">Добавить новый источник</h3>
-        <form id="add_source_form" hx-post="{{ url('actions', action='add_source', item_id='global') }}" hx-swap="none" class="py-4">
+        <form id="add_source_form" method="post" action="{{ url('project_edit_sources') }}" class="py-4">
             {{ form.csrf_token }}
-            <div id="add_source_errors" class="hidden alert alert-error mb-4 text-sm flex-col items-start gap-1"></div>
+            {% if form.errors %}
+            <div id="add_source_errors" class="alert alert-error mb-4 text-sm flex-col items-start gap-1">
+                {% for field_errors in form.errors.values() %}
+                    {% for message in field_errors %}
+                    <div>{{ message }}</div>
+                    {% endfor %}
+                {% endfor %}
+            </div>
+            {% endif %}
 
             <div class="form-control w-full mb-4">
                 <label class="label">
@@ -218,31 +228,9 @@ window.swapSourceToggleButton = function(event) {
     }
 };
 
-const addSourceForm = document.getElementById('add_source_form');
-const addSourceErrors = document.getElementById('add_source_errors');
-
-addSourceForm.addEventListener('htmx:responseError', function(e) {
-    try {
-        const data = JSON.parse(e.detail.xhr.responseText);
-        const errors = data.errors || {};
-        addSourceErrors.innerHTML = '';
-        Object.entries(errors).forEach(([, msgs]) => {
-            msgs.forEach(msg => {
-                const line = document.createElement('div');
-                line.textContent = msg;
-                addSourceErrors.appendChild(line);
-            });
-        });
-    } catch {
-        addSourceErrors.textContent = e.detail.xhr.responseText || 'Ошибка при сохранении';
-    }
-    addSourceErrors.classList.remove('hidden');
-});
-
-addSourceForm.addEventListener('htmx:beforeRequest', function() {
-    addSourceErrors.classList.add('hidden');
-    addSourceErrors.innerHTML = '';
-});
+if (document.getElementById('add_source_errors')) {
+    document.getElementById('add_source_modal')?.showModal();
+}
 </script>
 
 {% endblock %}

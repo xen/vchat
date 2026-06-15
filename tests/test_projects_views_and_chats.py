@@ -65,13 +65,11 @@ async def test_chats_list_returns_active_chats(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(chats_views, "redis", _Redis())
     monkeypatch.setattr(chats_views, "async_session_factory", _Factory())
-    monkeypatch.setattr(
-        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
-    )
     raw = chats_views.chats_list.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(
         _Req(user=SimpleNamespace(id=1), app={"login": None}, path="/chats")
     )
+    assert "project" not in payload
     assert payload["active_chats"]
 
 
@@ -146,12 +144,10 @@ async def test_history_list_builds_pagination_and_filters(
             self._store[key] = value
 
     request = _HistoryReq()
-    monkeypatch.setattr(
-        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
-    )
 
     raw = chats_views.history_list.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(request)
+    assert "project" not in payload
     assert payload["pagination"]["total"] == 1
     assert payload["pagination"]["page"] == 1
     assert payload["guardrail_filter"] is True
@@ -204,12 +200,10 @@ async def test_history_detail_masks_pii_and_maps_guardrail_labels(
             return _Res()
 
     request = _Req(db=_Db(), match_info={"chat_id": "chat-1"})
-    monkeypatch.setattr(
-        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
-    )
 
     raw = chats_views.history_detail.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(request)
+    assert "project" not in payload
     assert payload["chat"].id == "chat-1"
     assert isinstance(payload["messages"][0].has_masked_pii, bool)
     assert payload["messages"][1].guardrail_hit is True
@@ -276,12 +270,10 @@ async def test_history_detail_uses_used_chunks_snapshot_and_marks_deleted(
             return _Res([])
 
     request = _Req(db=_Db(), match_info={"chat_id": "chat-1"})
-    monkeypatch.setattr(
-        chats_views, "_project_context", lambda request: SimpleNamespace(id="global")
-    )
 
     raw = chats_views.history_detail.__wrapped__.__wrapped__.__wrapped__
     payload = await raw(request)
+    assert "project" not in payload
     source = payload["messages"][0].context_sources[0]
     assert source["page_url"] == "https://docs.example.com/a"
     assert source["display_path"] == "Doc A / Section"
@@ -415,7 +407,7 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     )
 
     rendered = template.render(
-        project=widget,
+        item=widget,
         form=form,
     )
 
@@ -522,7 +514,7 @@ def test_widget_integration_add_form_uses_initial_welcome_message() -> None:
 
     rendered = env.get_template("projects/integration.html").render(
         widgets=[],
-        create_form=project_forms.WidgetIntegrationAdd(
+        form=project_forms.WidgetIntegrationAdd(
             meta={"csrf": False}
         ),
     )
