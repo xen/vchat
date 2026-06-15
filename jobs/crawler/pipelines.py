@@ -2,7 +2,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, NotRequired, TypedDict
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, delete, func, or_, select, true
@@ -69,16 +69,6 @@ class PageStatusErrorInfo:
     message: str | None = None
     error: str | None = None
     exception_class: str | None = None
-
-
-class PageStatusItem(TypedDict):
-    url: str
-    source_id: int
-    http_status: NotRequired[int | None]
-    etag: NotRequired[str | None]
-    raw_content: NotRequired[bytes | None]
-    raw_content_meta: NotRequired[dict[str, Any]]
-    content_type: NotRequired[str | None]
 
 
 def is_auth_redirect(original_url: str, final_url: str) -> bool:
@@ -806,7 +796,7 @@ def sync_uri(uri: str) -> str:
 
 def save_page_status(
     engine,
-    item: CrawledItem | PageStatusItem,
+    item: CrawledItem,
     status: PageStatus,
     status_error: PageStatusError | None,
     *,
@@ -892,7 +882,7 @@ def save_page_status(
 
 def handle_error_page(
     engine,
-    item: CrawledItem | PageStatusItem,
+    item: CrawledItem,
 ) -> None:
     url = item["url"]
     source_id = int(item["source_id"])

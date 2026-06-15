@@ -5,6 +5,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -188,44 +189,18 @@ def mark_blocked_source_pages_ready(
     )
 
 
+@dataclass(slots=True)
 class PageChunkContext:
-    __slots__ = (
-        "id",
-        "source_id",
-        "uri",
-        "title",
-        "content",
-        "content_hash",
-        "meta",
-        "status_error",
-        "raw_content_type",
-        "raw_content_size",
-    )
-
-    def __init__(
-        self,
-        *,
-        id: int,
-        source_id: int | None,
-        uri: str | None,
-        title: str | None,
-        content: str,
-        content_hash: str,
-        meta: dict | None,
-        status_error: str | None,
-        raw_content_type: str | None,
-        raw_content_size: int | None,
-    ) -> None:
-        self.id = id
-        self.source_id = source_id
-        self.uri = uri
-        self.title = title
-        self.content = content
-        self.content_hash = content_hash
-        self.meta = meta or {}
-        self.status_error = status_error
-        self.raw_content_type = raw_content_type
-        self.raw_content_size = raw_content_size
+    id: int
+    source_id: int | None
+    uri: str | None
+    title: str | None
+    content: str
+    content_hash: str
+    meta: dict
+    status_error: PageStatusError | None
+    raw_content_type: str | None
+    raw_content_size: int | None
 
 
 def _metadata_only_index_reason(doc: Page | PageChunkContext) -> str | None:
@@ -456,7 +431,7 @@ def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | Non
         title=getattr(row, "title", None),
         content=row.content or "",
         content_hash=row._hash,
-        meta=row.meta,
+        meta=row.meta or {},
         status_error=row.status_error,
         raw_content_type=getattr(row, "raw_content_type", None),
         raw_content_size=getattr(row, "raw_content_size", None),
@@ -698,10 +673,9 @@ def mark_page_chunks_current(session: Session, doc: Page | PageChunkContext) -> 
 def mark_page_embedder_failed(
     session: Session,
     page_id: int,
+    exc: Exception,
     *,
-    message: str,
-    error: str | None = None,
-    exception_class: str | None = None,
+    message: str | None = None,
 ) -> None:
     page = session.get(Page, page_id)
     if page is None:
@@ -715,11 +689,9 @@ def mark_page_embedder_failed(
     meta.pop("reason", None)
     meta.pop("exception_class", None)
     meta["reason"] = PageStatusError.embedder_failed.value
-    meta["message"] = message
-    if error:
-        meta["error"] = error
-    if exception_class:
-        meta["exception_class"] = exception_class
+    meta["message"] = message or str(exc)
+    meta["error"] = str(exc)
+    meta["exception_class"] = type(exc).__name__
     page.meta = meta
     session.execute(sa.delete(Chunk).where(Chunk.page_id == page_id))
     update_page_shingles(
@@ -1479,9 +1451,7 @@ def index_document(document_id: int):
                 mark_page_embedder_failed(
                     session,
                     document_id,
-                    message=str(exc),
-                    error=str(exc),
-                    exception_class=type(exc).__name__,
+                    exc,
                 )
             except Exception as exc:
                 logging.exception(
@@ -1491,9 +1461,8 @@ def index_document(document_id: int):
                 mark_page_embedder_failed(
                     session,
                     document_id,
+                    exc,
                     message="Unexpected failure during document chunk materialization.",
-                    error=str(exc),
-                    exception_class=type(exc).__name__,
                 )
     finally:
         try:
@@ -2112,38 +2081,24 @@ def _probe_common_sitemaps(source_uri: str) -> list[str]:
 
 def _upsert_sitemap(
     session: Session,
-    *,
-    source_id: int,
-    sitemap_url: str,
-    discovered_via: str,
-    discovered_from_url: str | None = None,
-    is_excluded: bool = False,
-    ignore_reason: str | None = None,
+    candidate: Sitemap,
 ) -> None:
     existing = session.execute(
         select(Sitemap).where(
-            Sitemap.source_id == source_id,
-            Sitemap.url == sitemap_url,
+            Sitemap.source_id == candidate.source_id,
+            Sitemap.url == candidate.url,
         )
     ).scalar_one_or_none()
     if existing is None:
-        session.add(
-            Sitemap(
-                source_id=source_id,
-                url=sitemap_url,
-                discovered_via=discovered_via,
-                discovered_from_url=discovered_from_url,
-                is_excluded=is_excluded,
-                ignore_reason=ignore_reason,
-            )
-        )
+        candidate.is_excluded = candidate.ignore_reason is not None
+        session.add(candidate)
         return
 
-    if discovered_from_url and not existing.discovered_from_url:
-        existing.discovered_from_url = discovered_from_url
-    if ignore_reason:
+    if candidate.discovered_from_url and not existing.discovered_from_url:
+        existing.discovered_from_url = candidate.discovered_from_url
+    if candidate.ignore_reason:
         existing.is_excluded = True
-        existing.ignore_reason = ignore_reason
+        existing.ignore_reason = candidate.ignore_reason
 
 
 def _refresh_source_discovery(
@@ -2209,22 +2164,23 @@ def _refresh_source_discovery(
         if not _is_valid_sitemap_address(source.uri, normalized_sitemap_url):
             _upsert_sitemap(
                 session,
-                source_id=source.id,
-                sitemap_url=normalized_sitemap_url,
-                discovered_via="robots_txt"
-                if sitemap_url in sitemap_urls
-                else "auto_probe",
-                is_excluded=True,
-                ignore_reason="wrong_address",
+                Sitemap(
+                    source_id=source.id,
+                    url=normalized_sitemap_url,
+                    discovered_via="robots_txt"
+                    if sitemap_url in sitemap_urls
+                    else "auto_probe",
+                    ignore_reason="wrong_address",
+                ),
             )
             continue
         _upsert_sitemap(
             session,
-            source_id=source.id,
-            sitemap_url=normalized_sitemap_url,
-            discovered_via="robots_txt"
-            if sitemap_url in sitemap_urls
-            else "auto_probe",
+            Sitemap(
+                source_id=source.id,
+                url=normalized_sitemap_url,
+                discovered_via="robots_txt" if sitemap_url in sitemap_urls else "auto_probe",
+            ),
         )
 
     robots_body_text = None
@@ -2262,91 +2218,6 @@ def _refresh_source_discovery(
                     last_crawled_at=datetime.now(timezone.utc),
                 )
             )
-
-
-def _upsert_sitemap_pages(
-    session: Session,
-    *,
-    source_id: int,
-    source_uri: str,
-    parsed_entries: list[tuple[str, str | None]],
-    sitemap_url: str | None = None,
-    source_rules: list[dict] | None = None,
-    source_id_by_host: dict[str, int] | None = None,
-) -> set[str]:
-    prioritized_urls: set[str] = set()
-    for raw_page_url, lastmod_str in parsed_entries:
-        page_url = normalize_url_for_queue(raw_page_url, source_rules)
-        if not page_url or not url_allowed_by_rules(page_url, source_rules):
-            continue
-        if not _is_valid_sitemap_address(source_uri, page_url):
-            continue
-        page_source_id = resolve_source_id_for_url(
-            page_url,
-            source_id_by_host or {},
-            fallback_source_id=source_id,
-        )
-        page = session.execute(
-            select(Page).where(Page.uri == page_url)
-        ).scalar_one_or_none()
-        if page is None:
-            page = Page(
-                source_id=page_source_id,
-                uri=page_url,
-                discover_by="sitemap",
-                discover_source=sitemap_url,
-            )
-            page._hash = ""
-            session.add(page)
-            continue
-
-        if lastmod_str is None:
-            continue
-        new_lastmod = normalize_datetime(
-            datetime.fromisoformat(lastmod_str.replace("Z", "+00:00"))
-        )
-        existing_lastmod = normalize_datetime(page.last_modified_at)
-        if existing_lastmod is None:
-            prioritized_urls.add(page_url)
-            continue
-        if new_lastmod is not None and existing_lastmod < new_lastmod:
-            prioritized_urls.add(page_url)
-    return prioritized_urls
-
-
-def _upsert_child_sitemaps(
-    session: Session,
-    *,
-    source_id: int,
-    source_uri: str,
-    parent_sitemap_url: str,
-    parsed_entries: list[tuple[str, str | None]],
-) -> list[str]:
-    discovered_urls: list[str] = []
-    for raw_sitemap_url, _lastmod_str in parsed_entries:
-        sitemap_url = normalize_url_for_queue(raw_sitemap_url)
-        if not sitemap_url:
-            continue
-        if not _is_valid_sitemap_address(source_uri, sitemap_url):
-            _upsert_sitemap(
-                session,
-                source_id=source_id,
-                sitemap_url=sitemap_url,
-                discovered_via="sitemap_index",
-                discovered_from_url=parent_sitemap_url,
-                is_excluded=True,
-                ignore_reason="wrong_address",
-            )
-            continue
-        _upsert_sitemap(
-            session,
-            source_id=source_id,
-            sitemap_url=sitemap_url,
-            discovered_via="sitemap_index",
-            discovered_from_url=parent_sitemap_url,
-        )
-        discovered_urls.append(sitemap_url)
-    return discovered_urls
 
 
 def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
@@ -2460,13 +2331,33 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
             print(f"Sitemap ignored ({exc}): {sm.url}")
             continue
         if document_kind == "sitemapindex":
-            discovered_urls = _upsert_child_sitemaps(
-                session,
-                source_id=source_id,
-                source_uri=source.uri,
-                parent_sitemap_url=sm.url,
-                parsed_entries=parsed_entries,
-            )
+            discovered_urls: list[str] = []
+            for raw_sitemap_url, _lastmod_str in parsed_entries:
+                sitemap_url = normalize_url_for_queue(raw_sitemap_url)
+                if not sitemap_url:
+                    continue
+                if not _is_valid_sitemap_address(source.uri, sitemap_url):
+                    _upsert_sitemap(
+                        session,
+                        Sitemap(
+                            source_id=source.id,
+                            url=sitemap_url,
+                            discovered_via="sitemap_index",
+                            discovered_from_url=sm.url,
+                            ignore_reason="wrong_address",
+                        ),
+                    )
+                    continue
+                _upsert_sitemap(
+                    session,
+                    Sitemap(
+                        source_id=source.id,
+                        url=sitemap_url,
+                        discovered_via="sitemap_index",
+                        discovered_from_url=sm.url,
+                    ),
+                )
+                discovered_urls.append(sitemap_url)
             if discovered_urls:
                 session.flush()
                 child_sitemaps = (
@@ -2481,17 +2372,42 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
                 )
                 pending_sitemaps.extend(child_sitemaps)
         else:
-            prioritized_urls.update(
-                _upsert_sitemap_pages(
-                    session,
-                    source_id=source_id,
-                    source_uri=source.uri,
-                    parsed_entries=parsed_entries,
-                    sitemap_url=sm.url,
-                    source_rules=source_rules,
-                    source_id_by_host=source_id_by_host,
+            for raw_page_url, lastmod_str in parsed_entries:
+                page_url = normalize_url_for_queue(raw_page_url, source_rules)
+                if not page_url or not url_allowed_by_rules(page_url, source_rules):
+                    continue
+                if not _is_valid_sitemap_address(source.uri, page_url):
+                    continue
+                page_source_id = resolve_source_id_for_url(
+                    page_url,
+                    source_id_by_host,
+                    fallback_source_id=source.id,
                 )
-            )
+                page = session.execute(
+                    select(Page).where(Page.uri == page_url)
+                ).scalar_one_or_none()
+                if page is None:
+                    page = Page(
+                        source_id=page_source_id,
+                        uri=page_url,
+                        discover_by="sitemap",
+                        discover_source=sm.url,
+                    )
+                    page._hash = ""
+                    session.add(page)
+                    continue
+
+                if lastmod_str is None:
+                    continue
+                new_lastmod = normalize_datetime(
+                    datetime.fromisoformat(lastmod_str.replace("Z", "+00:00"))
+                )
+                existing_lastmod = normalize_datetime(page.last_modified_at)
+                if existing_lastmod is None:
+                    prioritized_urls.add(page_url)
+                    continue
+                if new_lastmod is not None and existing_lastmod < new_lastmod:
+                    prioritized_urls.add(page_url)
 
         sm.last_content_hash = new_hash
         sm.last_fetched_at = now

@@ -541,9 +541,7 @@ def pending_chunks(counted: bool = False):
                     mark_page_embedder_failed(
                         session,
                         exc.page_id,
-                        message=str(exc),
-                        error=str(exc),
-                        exception_class=type(exc).__name__,
+                        exc,
                     )
                 else:
                     raise

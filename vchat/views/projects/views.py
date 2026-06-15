@@ -3048,7 +3048,7 @@ async def project_chat(request):
         chat.meta = merge_chat_meta(
             chat.meta,
             request,
-            source_page_url=request.rel_url.query.get("source_page_url"),
+            {"source_page_url": request.rel_url.query.get("source_page_url")},
         )
         await request["db"].commit()
     else:
@@ -3062,7 +3062,7 @@ async def project_chat(request):
             meta=merge_chat_meta(
                 {},
                 request,
-                source_page_url=request.rel_url.query.get("source_page_url"),
+                {"source_page_url": request.rel_url.query.get("source_page_url")},
             ),
         )
         request["db"].add(chat)
@@ -3266,7 +3266,7 @@ async def _render_public_chat(request, widget: SimpleNamespace):
         chat.meta = merge_chat_meta(
             resume_meta,
             request,
-            source_page_url=source_page_url,
+            {"source_page_url": source_page_url},
         )
         await request["db"].commit()
     else:
@@ -3276,7 +3276,7 @@ async def _render_public_chat(request, widget: SimpleNamespace):
             meta=merge_chat_meta(
                 {"name": user_name, "email": user_email, "widget_code": widget.code},
                 request,
-                source_page_url=source_page_url,
+                {"source_page_url": source_page_url},
             ),
         )
         request["db"].add(chat)

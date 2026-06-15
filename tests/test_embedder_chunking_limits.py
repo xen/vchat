@@ -247,9 +247,7 @@ def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
     crawler_tasks.mark_page_embedder_failed(
         _Session(),
         55,
-        message="Chunk exploded",
-        error="Chunk exploded",
-        exception_class="EmbedderDocumentError",
+        crawler_tasks.EmbedderDocumentError("Chunk exploded"),
     )
 
     assert page.status == PageStatus.parsing

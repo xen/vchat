@@ -71,28 +71,29 @@ def validate_source_page_url(value: str | None) -> str | None:
 def merge_chat_meta(
     existing: dict[str, Any] | None,
     request: web.Request,
-    *,
-    device_fingerprint: str | None = None,
-    platform: str | None = None,
-    language: str | None = None,
-    timezone_name: str | None = None,
-    screen: str | None = None,
-    source_page_url: str | None = None,
+    client_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     meta = dict(existing or {})
     user_agent = request.headers.get("User-Agent", "").strip()
+    client_meta = dict(client_meta or {})
 
     updates = {
         "ip_address": extract_client_ip(request),
         "user_agent": user_agent or None,
         "browser": infer_browser(user_agent),
         "device_type": infer_device_type(user_agent),
-        "device_fingerprint": (device_fingerprint or "").strip() or None,
-        "platform": (platform or "").strip() or None,
-        "language": (language or "").strip() or None,
-        "timezone": (timezone_name or "").strip() or None,
-        "screen": (screen or "").strip() or None,
-        "source_page_url": validate_source_page_url(source_page_url),
+        "device_fingerprint": (
+            client_meta.get("device_fingerprint") or ""
+        ).strip()
+        or None,
+        "platform": (client_meta.get("platform") or "").strip() or None,
+        "language": (client_meta.get("language") or "").strip() or None,
+        "timezone": (
+            client_meta.get("timezone_name") or client_meta.get("timezone") or ""
+        ).strip()
+        or None,
+        "screen": (client_meta.get("screen") or "").strip() or None,
+        "source_page_url": validate_source_page_url(client_meta.get("source_page_url")),
         "session_updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

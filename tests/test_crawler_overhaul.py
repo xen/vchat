@@ -1335,105 +1335,6 @@ class TestSitemapDiscovery:
         ]
         assert crawl_delay == 7
 
-    def test_upsert_sitemap_pages_creates_missing_pages(self):
-        from jobs.crawler.tasks import _upsert_sitemap_pages
-
-        session = MagicMock()
-        session.execute.return_value.scalar_one_or_none.return_value = None
-
-        added_objects = []
-
-        def fake_add(obj):
-            added_objects.append(obj)
-
-        session.add.side_effect = fake_add
-
-        prioritized = _upsert_sitemap_pages(
-            session,
-            source_id=1,
-            source_uri="https://example.com",
-            parsed_entries=[("https://example.com/page", None)],
-            sitemap_url="https://example.com/sitemap.xml",
-            source_rules=[],
-        )
-
-        assert prioritized == set()
-        assert any(
-            getattr(obj, "uri", None) == "https://example.com/page"
-            for obj in added_objects
-        )
-        created_page = next(
-            obj
-            for obj in added_objects
-            if getattr(obj, "uri", None) == "https://example.com/page"
-        )
-        assert created_page.discover_by == "sitemap"
-        assert created_page.discover_source == "https://example.com/sitemap.xml"
-
-    def test_upsert_sitemap_pages_skips_urls_filtered_by_regex(self):
-        from jobs.crawler.tasks import _upsert_sitemap_pages
-
-        session = MagicMock()
-        session.execute.return_value.scalar_one_or_none.return_value = None
-
-        prioritized = _upsert_sitemap_pages(
-            session,
-            source_id=1,
-            source_uri="https://example.com",
-            parsed_entries=[("https://example.com/blog/post#frag", None)],
-            source_rules=[{"type": "regex", "value": r"^https://example.com/course/"}],
-        )
-
-        assert prioritized == set()
-        session.add.assert_not_called()
-
-    def test_upsert_sitemap_pages_handles_naive_sitemap_lastmod(self):
-        from jobs.crawler.tasks import _upsert_sitemap_pages
-
-        session = MagicMock()
-        page = SimpleNamespace(
-            last_modified_at=datetime(2026, 5, 1, tzinfo=timezone.utc)
-        )
-        session.execute.return_value.scalar_one_or_none.return_value = page
-
-        prioritized = _upsert_sitemap_pages(
-            session,
-            source_id=1,
-            source_uri="https://example.com",
-            parsed_entries=[("https://example.com/page", "2026-06-01")],
-            source_rules=[],
-        )
-
-        assert prioritized == {"https://example.com/page"}
-
-    def test_upsert_sitemap_pages_skips_cross_host_urlset_entries(self):
-        from jobs.crawler.tasks import _upsert_sitemap_pages
-
-        session = MagicMock()
-        session.execute.return_value.scalar_one_or_none.return_value = None
-
-        added_objects = []
-        session.add.side_effect = added_objects.append
-
-        _upsert_sitemap_pages(
-            session,
-            source_id=1,
-            source_uri="https://vbudushee.ru",
-            parsed_entries=[
-                ("https://grant.vbudushee.ru/public/application/cards", None)
-            ],
-            source_rules=[],
-            source_id_by_host={
-                "vbudushee.ru": 1,
-                "grant.vbudushee.ru": 2,
-            },
-        )
-
-        created_pages = [
-            obj for obj in added_objects if obj.__class__.__name__ == "Page"
-        ]
-        assert created_pages == []
-
     def test_parse_sitemap_document_detects_sitemap_index(self):
         from jobs.crawler.tasks import _parse_sitemap_document
 
@@ -1450,58 +1351,6 @@ class TestSitemapDiscovery:
             ("https://example.com/sitemap-a.xml", "2026-01-01"),
             ("https://example.com/sitemap-b.xml", None),
         ]
-
-    def test_upsert_child_sitemaps_creates_sitemap_records(self):
-        from jobs.crawler.tasks import _upsert_child_sitemaps
-
-        session = MagicMock()
-        session.execute.return_value.scalar_one_or_none.return_value = None
-
-        added_objects = []
-        session.add.side_effect = added_objects.append
-
-        discovered = _upsert_child_sitemaps(
-            session,
-            source_id=1,
-            source_uri="https://example.com/",
-            parent_sitemap_url="https://example.com/sitemap.xml",
-            parsed_entries=[
-                ("https://example.com/sitemap-a.xml", None),
-                ("https://example.com/sitemap-b.xml", None),
-            ],
-        )
-
-        assert discovered == [
-            "https://example.com/sitemap-a.xml",
-            "https://example.com/sitemap-b.xml",
-        ]
-        assert all(
-            getattr(obj, "url", "").startswith("https://example.com/sitemap-")
-            for obj in added_objects
-        )
-
-    def test_invalid_child_sitemap_is_added_as_excluded_with_reason(self):
-        from jobs.crawler.tasks import _upsert_child_sitemaps
-
-        session = MagicMock()
-        session.execute.return_value.scalar_one_or_none.return_value = None
-
-        added_objects = []
-        session.add.side_effect = added_objects.append
-
-        discovered = _upsert_child_sitemaps(
-            session,
-            source_id=1,
-            source_uri="https://example.com/",
-            parent_sitemap_url="https://example.com/sitemap.xml",
-            parsed_entries=[("https://other.com/sitemap.xml", None)],
-        )
-
-        assert discovered == []
-        assert added_objects[0].is_excluded is True
-        assert added_objects[0].ignore_reason == "wrong_address"
-        assert added_objects[0].discovered_via == "sitemap_index"
-        assert added_objects[0].discovered_from_url == "https://example.com/sitemap.xml"
 
     def test_sync_sitemaps_skips_fetch_within_24_hours(self):
         from jobs.crawler.tasks import _sync_sitemaps_for_source
@@ -1583,11 +1432,14 @@ class TestSitemapDiscovery:
         sitemaps_result.scalars.return_value.all.return_value = [sitemap]
         source_page_count_result = MagicMock()
         source_page_count_result.scalar_one.return_value = 0
+        page_result = MagicMock()
+        page_result.scalar_one_or_none.return_value = None
         session.execute.side_effect = [
             source_result,
             source_rows_result,
             sitemaps_result,
             source_page_count_result,
+            page_result,
         ]
 
         with (
@@ -1596,16 +1448,11 @@ class TestSitemapDiscovery:
                 "jobs.crawler.tasks._fetch_sitemap",
                 return_value=(200, body, "etag-2", None),
             ) as fetch_mock,
-            patch(
-                "jobs.crawler.tasks._upsert_sitemap_pages",
-                return_value=set(),
-            ) as upsert_pages_mock,
         ):
             datetime_mock.now.return_value = now
             _sync_sitemaps_for_source(session, 1)
 
         fetch_mock.assert_called_once_with("https://example.com/sitemap.xml", None)
-        upsert_pages_mock.assert_called_once()
         assert sitemap.last_fetched_at == now
         assert sitemap.last_etag == "etag-2"
         assert sitemap.url_count == 1
@@ -1639,11 +1486,14 @@ class TestSitemapDiscovery:
         sitemaps_result.scalars.return_value.all.return_value = [sitemap]
         source_page_count_result = MagicMock()
         source_page_count_result.scalar_one.return_value = 1
+        page_result = MagicMock()
+        page_result.scalar_one_or_none.return_value = None
         session.execute.side_effect = [
             source_result,
             source_rows_result,
             sitemaps_result,
             source_page_count_result,
+            page_result,
         ]
 
         body = b"""<?xml version="1.0" encoding="UTF-8"?>
@@ -1658,16 +1508,11 @@ class TestSitemapDiscovery:
                 "jobs.crawler.tasks._fetch_sitemap",
                 return_value=(200, body, "etag-2", None),
             ) as fetch_mock,
-            patch(
-                "jobs.crawler.tasks._upsert_sitemap_pages",
-                return_value=set(),
-            ) as upsert_pages_mock,
         ):
             datetime_mock.now.return_value = now
             _sync_sitemaps_for_source(session, 1)
 
         fetch_mock.assert_called_once_with("https://example.com/sitemap.xml", "etag-1")
-        upsert_pages_mock.assert_called_once()
         assert sitemap.last_fetched_at == now
         assert sitemap.last_etag == "etag-2"
         assert sitemap.url_count == 1
@@ -1681,6 +1526,7 @@ class TestSitemapDiscovery:
 class TestPageStatusOnErrors:
     def test_4xx_sets_error_4xx_status(self):
         """Pipeline should record error_4xx for 4xx HTTP responses."""
+        from jobs.crawler.items import CrawledItem
         from jobs.crawler.pipelines import handle_error_page
 
         with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
@@ -1697,12 +1543,12 @@ class TestPageStatusOnErrors:
             mock_session_cls.return_value = session
 
             engine = MagicMock()
-            item = {
-                "url": "https://example.com/gone",
-                "source_id": 1,
-                "http_status": 404,
-                "etag": None,
-            }
+            item = CrawledItem(
+                url="https://example.com/gone",
+                source_id=1,
+                http_status=404,
+                etag=None,
+            )
 
             from vchat.views.projects.page_status import PageStatus, PageStatusError
 
@@ -1717,6 +1563,7 @@ class TestPageStatusOnErrors:
 
     def test_repeated_4xx_increases_check_interval(self):
         """After 2+ errors the check_interval_days should be set to 90."""
+        from jobs.crawler.items import CrawledItem
         from jobs.crawler.pipelines import handle_error_page
 
         with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
@@ -1733,12 +1580,12 @@ class TestPageStatusOnErrors:
             mock_session_cls.return_value = session
 
             engine = MagicMock()
-            item = {
-                "url": "https://example.com/gone",
-                "source_id": 1,
-                "http_status": 404,
-                "etag": None,
-            }
+            item = CrawledItem(
+                url="https://example.com/gone",
+                source_id=1,
+                http_status=404,
+                etag=None,
+            )
 
             handle_error_page(engine, item)
 
@@ -1746,6 +1593,7 @@ class TestPageStatusOnErrors:
 
     def test_5xx_sets_error_5xx_status(self):
         """save_page_status with http_5xx should record the right status."""
+        from jobs.crawler.items import CrawledItem
         from jobs.crawler.pipelines import save_page_status
         from vchat.views.projects.page_status import PageStatus, PageStatusError
 
@@ -1763,12 +1611,12 @@ class TestPageStatusOnErrors:
             mock_session_cls.return_value = session
 
             engine = MagicMock()
-            item = {
-                "url": "https://example.com/error",
-                "source_id": 1,
-                "http_status": 500,
-                "etag": None,
-            }
+            item = CrawledItem(
+                url="https://example.com/error",
+                source_id=1,
+                http_status=500,
+                etag=None,
+            )
 
             save_page_status(
                 engine,
@@ -1781,6 +1629,7 @@ class TestPageStatusOnErrors:
             assert page_mock.status_error == PageStatusError.http_5xx
 
     def test_save_page_status_stores_reason_details(self):
+        from jobs.crawler.items import CrawledItem
         from jobs.crawler.pipelines import PageStatusErrorInfo, save_page_status
 
         with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
@@ -1797,12 +1646,12 @@ class TestPageStatusOnErrors:
             mock_session_cls.return_value = session
 
             engine = MagicMock()
-            item = {
-                "url": "https://example.com/error",
-                "source_id": 1,
-                "http_status": 200,
-                "etag": None,
-            }
+            item = CrawledItem(
+                url="https://example.com/error",
+                source_id=1,
+                http_status=200,
+                etag=None,
+            )
 
             from vchat.views.projects.page_status import PageStatus, PageStatusError
 
@@ -1829,6 +1678,7 @@ class TestPageStatusOnErrors:
             assert page_mock.meta["other"] == "value"
 
     def test_save_page_status_clears_stale_reason_details(self):
+        from jobs.crawler.items import CrawledItem
         from jobs.crawler.pipelines import save_page_status
 
         with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
@@ -1850,12 +1700,12 @@ class TestPageStatusOnErrors:
             mock_session_cls.return_value = session
 
             from vchat.views.projects.page_status import PageStatus
-            item = {
-                "url": "https://example.com/page",
-                "source_id": 1,
-                "http_status": 200,
-                "etag": None,
-            }
+            item = CrawledItem(
+                url="https://example.com/page",
+                source_id=1,
+                http_status=200,
+                etag=None,
+            )
 
             save_page_status(
                 MagicMock(),

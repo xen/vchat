@@ -351,7 +351,6 @@ async def generate_suggestions(
                 api_key = await get_gigachat_access_token(
                     session,
                     basic_auth_key=api_key,
-                    oauth_timeout_seconds=GIGACHAT_OAUTH_TIMEOUT_SECONDS,
                 )
                 request_timeout_seconds = GIGACHAT_SUGGEST_TIMEOUT_SECONDS
                 ssl = bool(config.get("gigachat_verify_ssl_certs", True))
@@ -430,9 +429,6 @@ OPENAI_BASE_URL = config.get("openai_base_url", "https://api.openai.com/v1")
 OPENAI_MODEL = config.get("openai_model", "gpt-4o-mini")
 CHAT_RESPONSE_MAX_TOKENS = int(config.get("chat_response_max_tokens", 900))
 USER_CHAT_MESSAGE_MAX_CHARS = 4000
-GIGACHAT_OAUTH_TIMEOUT_SECONDS = float(
-    config.get("gigachat_oauth_timeout_seconds", 15.0)
-)
 GIGACHAT_REQUEST_TIMEOUT_SECONDS = float(
     config.get("gigachat_request_timeout_seconds", 60.0)
 )
@@ -516,6 +512,8 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
 
     model = ctx.model_id or OPENAI_MODEL
     current_system_prompt = ctx.system_prompt or SYSTEM_PROMPT
+    model_max_tokens = getattr(ctx.model, "max_tokens", CHAT_RESPONSE_MAX_TOKENS)
+    max_response_tokens = min(CHAT_RESPONSE_MAX_TOKENS, model_max_tokens)
     guardrails_client = (
         get_guardrails_client(api_key=api_key, base_url=base_url)
         if provider_id == "openai"
@@ -531,7 +529,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
             model=model,
             temperature=0.2,
             stream=True,
-            max_tokens=min(CHAT_RESPONSE_MAX_TOKENS, ctx.model.max_tokens),
+            max_tokens=max_response_tokens,
             stream_options={"include_usage": True},
             **({"extra_headers": headers} if headers else {}),
         )
@@ -612,7 +610,6 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                 api_key = await get_gigachat_access_token(
                     session,
                     basic_auth_key=api_key,
-                    oauth_timeout_seconds=GIGACHAT_OAUTH_TIMEOUT_SECONDS,
                 )
                 request_timeout_seconds = GIGACHAT_REQUEST_TIMEOUT_SECONDS
                 ssl = bool(config.get("gigachat_verify_ssl_certs", True))
@@ -633,10 +630,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                         ),
                         "temperature": 0.2,
                         "stream": True,
-                        "max_tokens": min(
-                            CHAT_RESPONSE_MAX_TOKENS,
-                            ctx.model.max_tokens,
-                        ),
+                        "max_tokens": max_response_tokens,
                         "stream_options": {"include_usage": True},
                     },
                     timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),
@@ -845,47 +839,6 @@ async def save_chat_message_suggestions(
         await db.commit()
 
 
-async def generate_save_and_send_suggestions(
-    *,
-    ws: web.WebSocketResponse,
-    assistant_msg_id: int,
-    user_text: str,
-    assistant_text: str,
-    sources: list[dict[str, Any]],
-    full_context_payload: dict[str, Any],
-    gen_context: GenerationContext,
-) -> None:
-    suggestions = await generate_suggestions(
-        user_text=user_text,
-        assistant_text=assistant_text,
-        sources=sources,
-        ctx=gen_context,
-    )
-    if not suggestions:
-        return
-    await save_chat_message_suggestions(
-        assistant_msg_id=assistant_msg_id,
-        suggestions=suggestions,
-        full_context_payload=full_context_payload,
-    )
-    try:
-        await ws.send_json(
-            with_request_id(
-                {
-                    "type": "suggested_actions",
-                    "actions": suggestions,
-                    "msg_id": assistant_msg_id,
-                }
-            )
-        )
-    except Exception as exc:
-        logger.warning(
-            "Failed to send suggested actions: msg_id=%s error=%s",
-            assistant_msg_id,
-            exc,
-        )
-
-
 async def load_trigger_response_cache(
     *,
     page_id: int,
@@ -940,47 +893,6 @@ def load_signed_trigger_page_id(app, raw_page_token: str) -> int | None:
         )
     except (BadSignature, ValueError, TypeError):
         return None
-
-
-async def save_trigger_response_cache(
-    *,
-    page_id: int,
-    trigger_key: str,
-    user_text: str,
-    response_text: str,
-    full_context: str,
-    used_chunks: list[dict],
-    tokens: int,
-    provider: str | None,
-    model: str | None,
-) -> None:
-    stmt = pg_insert(TriggerResponseCache).values(
-        page_id=page_id,
-        trigger_key=trigger_key,
-        prompt_hash=trigger_prompt_hash(user_text),
-        response_text=response_text,
-        full_context=full_context,
-        used_chunks=used_chunks,
-        provider=provider,
-        model=model,
-        tokens=tokens,
-        updated_at=sa.func.now(),
-    )
-    stmt = stmt.on_conflict_do_update(
-        constraint="uq_trigger_response_cache_page_trigger_prompt",
-        set_={
-            "response_text": stmt.excluded.response_text,
-            "full_context": stmt.excluded.full_context,
-            "used_chunks": stmt.excluded.used_chunks,
-            "provider": stmt.excluded.provider,
-            "model": stmt.excluded.model,
-            "tokens": stmt.excluded.tokens,
-            "updated_at": sa.func.now(),
-        },
-    )
-    async with async_session_factory() as db:
-        await db.execute(stmt)
-        await db.commit()
 
 
 async def stream_cached_trigger_response(
@@ -1109,36 +1021,12 @@ async def websocket(request):
     serializer = URLSafeSerializer(SECRET_KEY)
     suggestion_tasks: set[asyncio.Task[None]] = set()
 
-    def schedule_suggestion_task(
-        *,
-        assistant_msg_id: int,
-        user_text: str,
-        assistant_text: str,
-        sources: list[dict[str, Any]],
-        full_context_payload: dict[str, Any],
-        gen_context: GenerationContext,
-    ) -> None:
-        task = asyncio.create_task(
-            generate_save_and_send_suggestions(
-                ws=ws,
-                assistant_msg_id=assistant_msg_id,
-                user_text=user_text,
-                assistant_text=assistant_text,
-                sources=sources,
-                full_context_payload=full_context_payload,
-                gen_context=gen_context,
-            )
-        )
-        suggestion_tasks.add(task)
-
-        def _cleanup(completed: asyncio.Task[None]) -> None:
-            suggestion_tasks.discard(completed)
-            try:
-                completed.result()
-            except Exception as exc:
-                logger.warning("Suggested actions task failed: %s", exc)
-
-        task.add_done_callback(_cleanup)
+    def cleanup_suggestion_task(completed: asyncio.Task[None]) -> None:
+        suggestion_tasks.discard(completed)
+        try:
+            completed.result()
+        except Exception as exc:
+            logger.warning("Suggested actions task failed: %s", exc)
 
     async def persist_guardrail_messages(
         *,
@@ -1415,16 +1303,18 @@ async def websocket(request):
                     chat_id = chat_id_ctx.get()
                     if chat_id is None:
                         raise RuntimeError("chat_id context is not set")
-                    context_result = await get_context(
-                        db=ctx_db,
-                        chat_id=chat_id,
-                        prompt=user_text,
-                        provider=gen_context.provider,
-                        model=gen_context.model,
-                        vector_top_k=0 if skip_rag else 10,
-                        ft_top_m=0 if skip_rag else 10,
-                        allowed_source_ids=[] if widget is not None else None,
-                    )
+                    context_kwargs = {
+                        "db": ctx_db,
+                        "chat_id": chat_id,
+                        "prompt": user_text,
+                        "provider": gen_context.provider,
+                        "model": gen_context.model,
+                        "vector_top_k": 0 if skip_rag else 10,
+                        "ft_top_m": 0 if skip_rag else 10,
+                    }
+                    if widget is not None:
+                        context_kwargs["allowed_source_ids"] = []
+                    context_result = await get_context(**context_kwargs)
                 finish_stage("context_retrieval", stage_started_at)
 
                 used_chunks = context_result.used_chunks
@@ -1622,14 +1512,40 @@ async def websocket(request):
                 finish_stage("send_final_response", stage_started_at)
 
                 stage_started_at = time.monotonic()
-                schedule_suggestion_task(
-                    assistant_msg_id=assistant_msg_id,
-                    user_text=user_text,
-                    assistant_text=total_content,
-                    sources=sources,
-                    full_context_payload=full_context_payload,
-                    gen_context=gen_context,
-                )
+                async def suggest_and_send_actions() -> None:
+                    suggestions = await generate_suggestions(
+                        user_text=user_text,
+                        assistant_text=total_content,
+                        sources=sources,
+                        ctx=gen_context,
+                    )
+                    if not suggestions:
+                        return
+                    await save_chat_message_suggestions(
+                        assistant_msg_id=assistant_msg_id,
+                        suggestions=suggestions,
+                        full_context_payload=full_context_payload,
+                    )
+                    try:
+                        await ws.send_json(
+                            with_request_id(
+                                {
+                                    "type": "suggested_actions",
+                                    "actions": suggestions,
+                                    "msg_id": assistant_msg_id,
+                                }
+                            )
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Failed to send suggested actions: msg_id=%s error=%s",
+                            assistant_msg_id,
+                            exc,
+                        )
+
+                suggestion_task = asyncio.create_task(suggest_and_send_actions())
+                suggestion_tasks.add(suggestion_task)
+                suggestion_task.add_done_callback(cleanup_suggestion_task)
                 await asyncio.sleep(0)
                 finish_stage("schedule_suggestions", stage_started_at)
 
@@ -1643,24 +1559,40 @@ async def websocket(request):
                         user_text=user_text,
                     )
                 ):
-                    await save_trigger_response_cache(
+                    trigger_full_context = json.dumps(
+                        {
+                            "policy": context_policy,
+                            "coverage": coverage,
+                            "sources": sources,
+                        },
+                        ensure_ascii=False,
+                    )
+                    stmt = pg_insert(TriggerResponseCache).values(
                         page_id=trigger_page_id,
                         trigger_key=trigger_key,
-                        user_text=user_text,
+                        prompt_hash=trigger_prompt_hash(user_text),
                         response_text=total_content,
-                        full_context=json.dumps(
-                            {
-                                "policy": context_policy,
-                                "coverage": coverage,
-                                "sources": sources,
-                            },
-                            ensure_ascii=False,
-                        ),
+                        full_context=trigger_full_context,
                         used_chunks=used_chunks,
                         tokens=total_tokens,
                         provider=assistant_provider,
                         model=assistant_model,
                     )
+                    stmt = stmt.on_conflict_do_update(
+                        constraint="uq_trigger_response_cache_page_trigger_prompt",
+                        set_={
+                            "response_text": stmt.excluded.response_text,
+                            "full_context": stmt.excluded.full_context,
+                            "used_chunks": stmt.excluded.used_chunks,
+                            "provider": stmt.excluded.provider,
+                            "model": stmt.excluded.model,
+                            "tokens": stmt.excluded.tokens,
+                            "updated_at": sa.func.now(),
+                        },
+                    )
+                    async with async_session_factory() as db:
+                        await db.execute(stmt)
+                        await db.commit()
 
                 # Enqueue Celery-compatible background tasks (shared Redis queue)
                 try:
@@ -1826,12 +1758,7 @@ async def chat_actions(request):
         chat.meta = merge_chat_meta(
             chat.meta,
             request,
-            device_fingerprint=payload.get("device_fingerprint"),
-            platform=payload.get("platform"),
-            language=payload.get("language"),
-            timezone_name=payload.get("timezone"),
-            screen=payload.get("screen"),
-            source_page_url=payload.get("source_page_url"),
+            payload,
         )
         await db.commit()
         return json_response({"ok": True})

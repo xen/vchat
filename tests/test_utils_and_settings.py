@@ -156,14 +156,14 @@ def test_merge_chat_meta_stores_validated_source_page_url() -> None:
     meta = merge_chat_meta(
         {},
         req,
-        source_page_url="https://navigator.vbudushee.ru/demo?age=8-10",
+        {"source_page_url": "https://navigator.vbudushee.ru/demo?age=8-10"},
     )
     assert meta["source_page_url"] == "https://navigator.vbudushee.ru/demo?age=8-10"
 
     next_meta = merge_chat_meta(
         meta,
         req,
-        source_page_url="javascript:sendall_cookies_to_evil_host()",
+        {"source_page_url": "javascript:sendall_cookies_to_evil_host()"},
     )
     assert (
         next_meta["source_page_url"]

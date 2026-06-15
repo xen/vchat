@@ -58,7 +58,6 @@ async def main() -> None:
             access_token = await get_gigachat_access_token(
                 session,
                 basic_auth_key=basic_key,
-                oauth_timeout_seconds=oauth_timeout_seconds,
             )
             logger.info("OAuth token received successfully")
 
