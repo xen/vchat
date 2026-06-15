@@ -330,6 +330,79 @@ class TestGeneralSpiderTrackedSources:
         assert item["url"] == "https://ai-academy.ru/upload/iblock/bb6/baseline.ipynb"
         assert item["out_links"] == []
 
+    def test_download_too_large_meta_parses_scrapy_cancelled_download(self):
+        from scrapy.exceptions import DownloadCancelledError
+
+        from jobs.crawler.spiders.general import download_too_large_meta
+
+        exc = DownloadCancelledError(
+            "Expected to receive 19578423 bytes which is larger than "
+            "download max size (10485760) in request <GET https://example.com/a.pdf>."
+        )
+
+        assert download_too_large_meta(exc) == {
+            "stored": False,
+            "size": 19578423,
+            "max_size": 10485760,
+            "reason": "too_big",
+        }
+
+    def test_download_too_large_errback_marks_page_too_big(self):
+        from scrapy.exceptions import DownloadCancelledError
+        from twisted.python.failure import Failure
+
+        from jobs.crawler.spiders.general import GeneralSpider
+        from vchat.views.projects.page_status import PageStatus, PageStatusError
+
+        engine = object()
+        with patch(
+            "jobs.crawler.spiders.general.create_sync_engine",
+            return_value=engine,
+        ):
+            spider = GeneralSpider(
+                url="https://example.com",
+                source_id=12,
+                config={"rules": []},
+            )
+
+        request = Request(
+            "https://example.com/large.pdf",
+            meta={"target_source_id": 12, "target_source_rules": []},
+        )
+        failure = Failure(
+            DownloadCancelledError(
+                "Expected to receive 22 bytes which is larger than download "
+                "max size (10) in request <GET https://example.com/large.pdf>."
+            )
+        )
+        failure.request = request
+
+        with (
+            patch("jobs.crawler.spiders.general.save_page_status") as save_mock,
+            patch("jobs.crawler.spiders.general.increment_run_stat") as stat_mock,
+        ):
+            assert spider.handle_download_error(failure) is None
+
+        save_mock.assert_called_once()
+        args = save_mock.call_args.args
+        kwargs = save_mock.call_args.kwargs
+        assert args[0] is engine
+        assert args[2:] == (PageStatus.crawler, PageStatusError.too_big)
+        assert args[1]["url"] == "https://example.com/large.pdf"
+        assert args[1]["source_id"] == 12
+        assert args[1]["raw_content"] is None
+        assert args[1]["raw_content_meta"] == {
+            "stored": False,
+            "size": 22,
+            "max_size": 10,
+            "reason": "too_big",
+        }
+        assert kwargs["error_info"].reason == PageStatusError.too_big.value
+        assert kwargs["error_info"].message == (
+            "Downloaded file is too large to index (22 bytes > 10 bytes)."
+        )
+        stat_mock.assert_called_once_with(engine, None, "pages_excluded")
+
     def test_parse_item_extracts_links_from_html_404_response(self):
         from jobs.crawler.spiders.general import GeneralSpider
 
@@ -355,7 +428,7 @@ class TestGeneralSpiderTrackedSources:
 
             request = Request(
                 "https://books.vbudushee.ru/books/example/",
-                meta={"handle_httpstatus_all": True},
+                meta={"handle_httpstatus_list": list(range(400, 600))},
             )
             response = HtmlResponse(
                 url="https://books.vbudushee.ru/books/example/",
@@ -920,6 +993,137 @@ class TestCrawlRunCreation:
         binary_mock.assert_called_once()
         html_mock.assert_not_called()
         schedule_mock.assert_called_once_with(56)
+
+    def test_pipeline_marks_raw_oversize_file_too_big_before_extraction(self):
+        from jobs.crawler.pipelines import DatabasePipeline
+
+        from vchat.views.projects.page_status import PageStatus, PageStatusError
+
+        page = SimpleNamespace(
+            id=57,
+            source_id=1,
+            uri="https://example.com/large.pdf",
+            meta={},
+            status_error=None,
+            is_hub_page=False,
+            content_value=None,
+            stable_count=0,
+            error_count=0,
+            check_interval_days=7,
+            title="",
+        )
+
+        session = MagicMock()
+        session.__enter__ = lambda s: session
+        session.__exit__ = MagicMock(return_value=False)
+        session.commit = MagicMock()
+        session.flush = MagicMock()
+        session.execute.return_value.scalars.return_value.first.return_value = page
+
+        pipeline = DatabasePipeline.__new__(DatabasePipeline)
+        pipeline.logger = MagicMock()
+        pipeline.engine = MagicMock()
+        pipeline._crawl_run_id = None
+
+        spider = MagicMock()
+        spider.logger = MagicMock()
+
+        item = {
+            "url": page.uri,
+            "source_id": 1,
+            "http_status": 200,
+            "content_type": "application/pdf",
+            "raw_content": b"%PDF-1.7\nlarge payload",
+            "content": "",
+            "meta": {},
+            "out_links": [],
+        }
+
+        with (
+            patch("jobs.indexing.documents.raw_content_max_bytes", return_value=10),
+            patch("jobs.crawler.pipelines.Session", return_value=session),
+            patch("jobs.crawler.pipelines.extract_binary_url_document") as binary_mock,
+            patch("jobs.crawler.pipelines.extract_url_document") as html_mock,
+            patch("jobs.crawler.pipelines.update_page_shingles"),
+            patch("jobs.crawler.pipelines.schedule_index_document") as schedule_mock,
+        ):
+            pipeline.process_item(item, spider)
+
+        binary_mock.assert_not_called()
+        html_mock.assert_not_called()
+        schedule_mock.assert_not_called()
+        assert page.status == PageStatus.ready
+        assert page.status_error == PageStatusError.too_big
+        assert page.raw_content is None
+        assert page.raw_content_size == len(item["raw_content"])
+        assert page.raw_content_type == "application/pdf"
+        assert page.meta["reason"] == PageStatusError.too_big.value
+        assert page.meta["raw_content"]["reason"] == "too_big"
+        assert page.meta["message"] == (
+            "Downloaded file is too large to index (22 bytes > 10 bytes)."
+        )
+
+    def test_pipeline_does_not_soft_extract_oversize_4xx_body(self):
+        from jobs.crawler.pipelines import DatabasePipeline
+
+        from vchat.views.projects.page_status import PageStatus, PageStatusError
+
+        page = SimpleNamespace(
+            id=58,
+            source_id=1,
+            uri="https://example.com/large-error-page",
+            meta={},
+            status_error=None,
+            is_hub_page=False,
+            content_value=None,
+            stable_count=0,
+            error_count=0,
+            check_interval_days=7,
+            title="",
+        )
+
+        session = MagicMock()
+        session.__enter__ = lambda s: session
+        session.__exit__ = MagicMock(return_value=False)
+        session.commit = MagicMock()
+        session.flush = MagicMock()
+        session.execute.return_value.scalars.return_value.first.return_value = page
+
+        pipeline = DatabasePipeline.__new__(DatabasePipeline)
+        pipeline.logger = MagicMock()
+        pipeline.engine = MagicMock()
+        pipeline._crawl_run_id = None
+
+        spider = MagicMock()
+        spider.logger = MagicMock()
+
+        item = {
+            "url": page.uri,
+            "source_id": 1,
+            "http_status": 404,
+            "content_type": "text/html",
+            "raw_content": b"<html>oversize error page</html>",
+            "content": "<html>oversize error page</html>",
+            "meta": {},
+            "out_links": [],
+        }
+
+        with (
+            patch("jobs.indexing.documents.raw_content_max_bytes", return_value=10),
+            patch("jobs.crawler.pipelines.Session", return_value=session),
+            patch("jobs.crawler.pipelines.extract_url_document") as html_mock,
+            patch("jobs.crawler.pipelines.extract_binary_url_document") as binary_mock,
+            patch("jobs.crawler.pipelines.update_page_shingles"),
+            patch("jobs.crawler.pipelines.schedule_index_document") as schedule_mock,
+        ):
+            pipeline.process_item(item, spider)
+
+        html_mock.assert_not_called()
+        binary_mock.assert_not_called()
+        schedule_mock.assert_not_called()
+        assert page.status == PageStatus.ready
+        assert page.status_error == PageStatusError.too_big
+        assert page.meta["reason"] == PageStatusError.too_big.value
 
 
 class TestPageLinkSync:
@@ -1492,12 +1696,17 @@ class TestPageStatusOnErrors:
             )
             mock_session_cls.return_value = session
 
-            logger = MagicMock()
             engine = MagicMock()
+            item = {
+                "url": "https://example.com/gone",
+                "source_id": 1,
+                "http_status": 404,
+                "etag": None,
+            }
 
             from vchat.views.projects.page_status import PageStatus, PageStatusError
 
-            handle_error_page(engine, "https://example.com/gone", 1, 404, None, logger)
+            handle_error_page(engine, item)
 
             assert page_mock.status == PageStatus.ready
             assert page_mock.status_error == PageStatusError.http_4xx
@@ -1523,10 +1732,15 @@ class TestPageStatusOnErrors:
             )
             mock_session_cls.return_value = session
 
-            logger = MagicMock()
             engine = MagicMock()
+            item = {
+                "url": "https://example.com/gone",
+                "source_id": 1,
+                "http_status": 404,
+                "etag": None,
+            }
 
-            handle_error_page(engine, "https://example.com/gone", 1, 404, None, logger)
+            handle_error_page(engine, item)
 
             assert page_mock.check_interval_days == 90
 
@@ -1548,25 +1762,26 @@ class TestPageStatusOnErrors:
             )
             mock_session_cls.return_value = session
 
-            logger = MagicMock()
             engine = MagicMock()
+            item = {
+                "url": "https://example.com/error",
+                "source_id": 1,
+                "http_status": 500,
+                "etag": None,
+            }
 
             save_page_status(
                 engine,
-                "https://example.com/error",
-                1,
+                item,
                 PageStatus.crawler,
                 PageStatusError.http_5xx,
-                500,
-                None,
-                logger,
             )
 
             assert page_mock.status == PageStatus.crawler
             assert page_mock.status_error == PageStatusError.http_5xx
 
     def test_save_page_status_stores_reason_details(self):
-        from jobs.crawler.pipelines import save_page_status
+        from jobs.crawler.pipelines import PageStatusErrorInfo, save_page_status
 
         with patch("jobs.crawler.pipelines.Session") as mock_session_cls:
             session = MagicMock()
@@ -1581,24 +1796,27 @@ class TestPageStatusOnErrors:
             )
             mock_session_cls.return_value = session
 
-            logger = MagicMock()
             engine = MagicMock()
+            item = {
+                "url": "https://example.com/error",
+                "source_id": 1,
+                "http_status": 200,
+                "etag": None,
+            }
 
             from vchat.views.projects.page_status import PageStatus, PageStatusError
 
             save_page_status(
                 engine,
-                "https://example.com/error",
-                1,
+                item,
                 PageStatus.crawler,
                 PageStatusError.extraction_failed,
-                200,
-                None,
-                logger,
-                reason="extraction_failed",
-                message="Document extraction failed after the page was downloaded.",
-                error="boom",
-                exception_class="ValueError",
+                error_info=PageStatusErrorInfo(
+                    reason="extraction_failed",
+                    message="Document extraction failed after the page was downloaded.",
+                    error="boom",
+                    exception_class="ValueError",
+                ),
             )
 
             assert page_mock.meta["reason"] == "extraction_failed"
@@ -1632,16 +1850,18 @@ class TestPageStatusOnErrors:
             mock_session_cls.return_value = session
 
             from vchat.views.projects.page_status import PageStatus
+            item = {
+                "url": "https://example.com/page",
+                "source_id": 1,
+                "http_status": 200,
+                "etag": None,
+            }
 
             save_page_status(
                 MagicMock(),
-                "https://example.com/page",
-                1,
+                item,
                 PageStatus.parsing,
                 None,
-                200,
-                None,
-                MagicMock(),
             )
 
             assert "reason" not in page_mock.meta

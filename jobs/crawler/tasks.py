@@ -48,7 +48,11 @@ from jobs.documents.content import (
 )
 from vchat.models.data import Chunk, CrawlRun, Page, PageShingle, Sitemap, Source
 from vchat.views.metrics import record_crawl_run
-from vchat.views.projects.page_status import PageStatus, PageStatusError
+from vchat.views.projects.page_status import (
+    EXCLUDED_INDEX_STATUS_ERRORS,
+    PageStatus,
+    PageStatusError,
+)
 from vchat.settings import config
 from jobs.crawler.source_blocking import (
     apply_source_blocking_result,
@@ -1431,6 +1435,7 @@ def crawl_page_task(page_id: int):
     if result.returncode != 0:
         print(f"Page crawler failed with exit code {result.returncode}")
     else:
+        should_refresh_index = True
         engine = create_sync_engine()
         try:
             with Session(bind=engine) as session:
@@ -1439,14 +1444,21 @@ def crawl_page_task(page_id: int):
                     raise RuntimeError(
                         f"Source {source_id} disappeared after page crawl"
                     )
+                page = session.get(Page, page_id)
+                if (
+                    page is not None
+                    and page.status_error in EXCLUDED_INDEX_STATUS_ERRORS
+                ):
+                    should_refresh_index = False
                 source.last_reindexed_at = datetime.now(timezone.utc)
                 session.commit()
         finally:
             engine.dispose()
 
-        print("Triggering index refresh and boilerplate rebuild")
-        schedule_refresh_project_index()
-        rebuild_boilerplate_index.delay(source_id)
+        if should_refresh_index:
+            print("Triggering index refresh and boilerplate rebuild")
+            schedule_refresh_project_index()
+            rebuild_boilerplate_index.delay(source_id)
 
     print(f"Finished crawling page {page_id}")
 

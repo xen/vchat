@@ -9,6 +9,7 @@ class CrawledItem(scrapy.Item):
     etag = scrapy.Field()
     content = scrapy.Field()
     raw_content = scrapy.Field()
+    raw_content_meta = scrapy.Field()
     source_id = scrapy.Field()
     content_type = scrapy.Field()
     title = scrapy.Field()

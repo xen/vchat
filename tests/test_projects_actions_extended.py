@@ -50,7 +50,7 @@ class _App(dict):
             "file_document": _Route("/file/{document_id}"),
             "project_integration": _Route("/integration"),
             "project_triggers": _Route("/triggers"),
-            "project_widget_edit": _Route("/integration/widgets/{widget_id}"),
+            "project_widget_edit": _Route("/integration/{widget_id}"),
         }
 
 
@@ -108,6 +108,9 @@ class _DB:
 
     async def commit(self):
         self.commits += 1
+
+    async def rollback(self):
+        pass
 
 
 def _raw_project_action():
@@ -337,8 +340,9 @@ async def test_project_triggers_generate_htmx_queues_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     req = _Request(
-        action="",
-        post_data=MultiDict({"action": "generate"}),
+        action="generate_triggers",
+        item_id="global",
+        post_data=MultiDict(),
         headers={"X-CSRFToken": "ok"},
     )
     db = _DB()
@@ -361,36 +365,48 @@ async def test_project_triggers_generate_htmx_queues_task(
         lambda: queued.append("generate"),
     )
 
-    resp = await _raw_project_triggers()(req)
+    resp = await _raw_project_action()(req)
 
-    assert resp.status == 204
-    assert resp.headers["HX-Redirect"] == "/triggers"
+    assert resp.status == 200
+    assert resp.headers["HX-Trigger"] == "project-triggers:refresh"
     assert queued == ["generate"]
     assert db.commits == 0
 
 
 @pytest.mark.asyncio
-async def test_project_action_widget_create_requires_signed_header() -> None:
+async def test_project_integration_create_requires_form_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     req = _Request(
-        action="widget_create",
-        item_id="global",
+        action="",
         post_data=MultiDict({"name": "Widget"}),
         headers={},
     )
     req["db"] = _DB()
     req["user"] = SimpleNamespace(id=1)
 
-    with pytest.raises(web.HTTPForbidden):
-        await _raw_project_action()(req)
+    def _render_template(*args, **kwargs):
+        _ = args
+        return web.Response(text="form error", status=kwargs["status"])
+
+    async def _session(request):
+        _ = request
+        return {}
+
+    monkeypatch.setattr(project_views, "get_session", _session)
+    monkeypatch.setattr(project_views.aiohttp_jinja2, "render_template", _render_template)
+
+    response = await _raw(project_views.project_integration)(req)
+
+    assert response.status == 400
 
 
 @pytest.mark.asyncio
-async def test_project_action_widget_create_uses_default_welcome_message(
+async def test_project_integration_add_uses_initial_welcome_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     req = _Request(
-        action="widget_create",
-        item_id="global",
+        action="",
         post_data=MultiDict({"name": "Widget"}),
     )
     db = _DB()
@@ -409,17 +425,33 @@ async def test_project_action_widget_create_uses_default_welcome_message(
         widget.id = 7
         widget.code = "new-code"
 
+    async def _session(request):
+        _ = request
+        return {}
+
+    original_form = project_views.forms.WidgetIntegrationAdd
+
+    def _form_without_csrf(*args, **kwargs):
+        kwargs["meta"] = {"csrf": False}
+        return original_form(*args, **kwargs)
+
+    monkeypatch.setattr(
+        project_views.forms,
+        "WidgetIntegrationAdd",
+        _form_without_csrf,
+    )
+    monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(project_views, "_assign_new_widget_code", _assign_code)
     monkeypatch.setattr(project_views, "admin_event", _event)
     monkeypatch.setattr(project_views, "flash", _flash)
 
-    resp = await _raw_project_action()(req)
+    with pytest.raises(web.HTTPFound) as exc:
+        await _raw(project_views.project_integration)(req)
 
-    assert resp.status == 204
-    assert resp.headers["HX-Redirect"] == "/integration/widgets/7"
+    assert str(exc.value.location) == "/integration/7"
     assert db.added[0].agent_name == "Чат поддержки"
     assert db.added[0].welcome_messages == [
-        "Здравствуйте! Напишите ваш вопрос."
+        "Добро пожаловать в чат, задавайте вопросы"
     ]
     assert db.added[0].waiting_messages == ["Готовлю ответ"]
     assert db.added[0].footer_text == "Отправить Enter, новая строка Shift+Enter"
@@ -430,7 +462,7 @@ async def test_project_action_widget_create_uses_default_welcome_message(
 
 
 @pytest.mark.asyncio
-async def test_project_action_widget_update_saves_footer_text(
+async def test_project_widget_edit_saves_footer_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     widget = SimpleNamespace(
@@ -447,16 +479,17 @@ async def test_project_action_widget_update_saves_footer_text(
         updated_at=None,
     )
     req = _Request(
-        action="widget_update",
-        item_id="7",
+        action="",
         post_data=MultiDict(
             [
                 ("name", "Widget"),
                 ("agent_name", "Agent"),
-                ("welcome_text[]", "Hello"),
-                ("welcome_text[]", "<strong>Second</strong>"),
-                ("waiting_text[]", "Готовлю ответ"),
-                ("waiting_text[]", "<script>x</script>Проверяю источники"),
+                ("welcome_messages-0", "Hello"),
+                ("welcome_messages-1", "<strong>Second</strong>"),
+                ("waiting_messages-0", "Готовлю ответ"),
+                ("waiting_messages-1", "Проверяю источники"),
+                ("pinned_messages-0-text", "<strong>Pinned</strong>"),
+                ("pinned_messages-0-color", "primary"),
                 (
                     "footer_text",
                     '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a><script>x</script>',
@@ -467,6 +500,7 @@ async def test_project_action_widget_update_saves_footer_text(
             ]
         ),
     )
+    req.match_info = {"widget_id": "7"}
     db = _DB(scalar_values=[widget])
     req["db"] = db
     req["user"] = SimpleNamespace(id=1)
@@ -479,16 +513,36 @@ async def test_project_action_widget_update_saves_footer_text(
     async def _flash(_request, message, category="success"):
         flashes.append((message, category))
 
+    async def _session(request):
+        _ = request
+        return {}
+
+    original_form = project_views.forms.WidgetIntegrationEdit
+
+    def _form_without_csrf(*args, **kwargs):
+        kwargs["meta"] = {"csrf": False}
+        return original_form(*args, **kwargs)
+
+    monkeypatch.setattr(
+        project_views.forms,
+        "WidgetIntegrationEdit",
+        _form_without_csrf,
+    )
+    monkeypatch.setattr(project_views, "get_session", _session)
     monkeypatch.setattr(project_views, "admin_event", _event)
     monkeypatch.setattr(project_views, "flash", _flash)
 
-    resp = await _raw_project_action()(req)
+    with pytest.raises(web.HTTPFound) as exc:
+        await _raw(project_views.project_widget_edit)(req)
 
-    assert resp.status == 204
-    assert resp.headers["HX-Redirect"] == "/integration/widgets/7"
+    assert str(exc.value.location) == "/integration/7"
     assert widget.name == "Widget"
+    assert widget.agent_name == "Agent"
     assert widget.welcome_messages == ["Hello", "<strong>Second</strong>"]
     assert widget.waiting_messages == ["Готовлю ответ", "Проверяю источники"]
+    assert widget.pinned_messages == [
+        {"text": "<strong>Pinned</strong>", "color": "primary"}
+    ]
     assert widget.footer_text.startswith('<a href="https://vbudushee.ru/faq/"')
     assert "script" not in widget.footer_text
     assert not hasattr(widget, "contact_url")
@@ -521,8 +575,8 @@ async def test_project_action_widget_reset_code_generates_new_code(
 
     resp = await _raw_project_action()(req)
 
-    assert resp.status == 204
-    assert resp.headers["HX-Redirect"] == "/integration/widgets/7"
+    assert resp.status == 200
+    assert resp.headers["HX-Refresh"] == "true"
     assert widget.code == "new-code"
     assert widget.updated_at is not None
     assert db.commits == 1
@@ -531,7 +585,7 @@ async def test_project_action_widget_reset_code_generates_new_code(
 
 
 @pytest.mark.asyncio
-async def test_project_action_widget_delete_redirects_to_integration(
+async def test_project_action_widget_delete_returns_plain_action_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     widget = SimpleNamespace(id=7)
@@ -548,8 +602,8 @@ async def test_project_action_widget_delete_redirects_to_integration(
 
     resp = await _raw_project_action()(req)
 
-    assert resp.status == 204
-    assert resp.headers["HX-Redirect"] == "/integration"
+    assert resp.status == 200
+    assert "HX-Trigger" not in resp.headers
     assert "HX-Refresh" not in resp.headers
     assert db.deleted == [widget]
     assert db.commits == 1
@@ -561,6 +615,7 @@ async def test_project_triggers_requires_signed_csrf(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     req = _Request(action="", post_data=MultiDict({"action": "generate"}), headers={})
+    req.match_info = {"action": "generate_triggers", "item_id": "global"}
     req["db"] = _DB()
     req["user"] = SimpleNamespace(id=1)
 
@@ -571,7 +626,7 @@ async def test_project_triggers_requires_signed_csrf(
     monkeypatch.setattr(project_views, "get_session", _session)
 
     with pytest.raises(web.HTTPForbidden):
-        await _raw_project_triggers()(req)
+        await _raw_project_action()(req)
 
 
 @pytest.mark.asyncio
@@ -579,8 +634,9 @@ async def test_project_triggers_rejects_bad_csrf_signature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     req = _Request(
-        action="",
-        post_data=MultiDict({"action": "generate"}),
+        action="generate_triggers",
+        item_id="global",
+        post_data=MultiDict(),
         headers={"X-CSRFToken": "bad"},
     )
     req.app[SIGNER_KEY] = _BadSigner()
@@ -594,7 +650,7 @@ async def test_project_triggers_rejects_bad_csrf_signature(
     monkeypatch.setattr(project_views, "get_session", _session)
 
     with pytest.raises(web.HTTPForbidden):
-        await _raw_project_triggers()(req)
+        await _raw_project_action()(req)
 
 
 @pytest.mark.asyncio

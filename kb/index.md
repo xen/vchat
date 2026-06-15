@@ -5,6 +5,13 @@ This directory is the project-local knowledge base for agents.
 Start here when the user asks to use project knowledge, `/kb`, `/review`, or
 when a task touches a repeated project pattern.
 
+Global reusable memory lives in `/Users/xen/Dev/treasure`. Use it for portable
+architecture, rituals, recipes, roles, and writing rules. Keep this
+project `kb/` focused on vchat-specific adapters and constraints.
+
+Concrete task specs live in `specs/`. Use them for broad tasks, growing tasks,
+and work that needs explicit goals, iterations, and verification criteria.
+
 Do not read `docs/` unless the user pins a specific document or asks to work
 with documents. `docs/` is a materialized conversation/document archive, not
 agent operating knowledge.
@@ -20,6 +27,7 @@ agent operating knowledge.
 - `kb/ops.md` - server access, local database, Redis and deploy boundaries.
 - `kb/review.md` - end-of-task review ritual and review output style.
 - `kb/invariants.md` - hard rules suitable for checks, hooks, and CI.
+- `specs/` - concrete task specifications and verification criteria.
 
 ## Maintenance
 

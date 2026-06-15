@@ -10,6 +10,7 @@ from aiohttp import web
 from yarl import URL
 
 from vchat.views.projects import chats as chats_views
+from vchat.views.projects import forms as project_forms
 from vchat.views.projects import views as project_views
 
 
@@ -377,32 +378,45 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
         url=lambda name, **kwargs: URL(
             f"/actions/{kwargs['action']}/{kwargs['item_id']}"
             if name == "actions"
+            else f"/integration/{kwargs['widget_id']}"
+            if name == "project_widget_edit"
             else "/integration"
         ),
         csrf_token=lambda: "token",
     )
     template = env.get_template("projects/widget_edit.html")
+    widget = SimpleNamespace(
+        id=1,
+        name="Widget",
+        code="abc",
+        agent_name="Agent",
+        welcome_messages=["Hello", "<strong>Second</strong>"],
+        waiting_messages=["Готовлю ответ", "Проверяю источники"],
+        footer_text='Footer <a href="https://vbudushee.ru/faq/">link</a>',
+        system_prompt="Prompt",
+        pinned_messages=[SimpleNamespace(text="Pinned", color="primary")],
+        suggestions_enabled=True,
+        suggestions_prompt="Suggestions",
+        public_url="https://example.com/widget.js",
+    )
+    form = project_forms.WidgetIntegrationEdit(
+        data={
+            "name": widget.name,
+            "agent_name": widget.agent_name,
+            "welcome_messages": widget.welcome_messages,
+            "waiting_messages": widget.waiting_messages,
+            "footer_text": widget.footer_text,
+            "system_prompt": widget.system_prompt,
+            "pinned_messages": [{"text": "Pinned", "color": "primary"}],
+            "suggestions_enabled": widget.suggestions_enabled,
+            "suggestions_prompt": widget.suggestions_prompt,
+        },
+        meta={"csrf": False},
+    )
 
     rendered = template.render(
-        widget=SimpleNamespace(
-            id=1,
-            name="Widget",
-            code="abc",
-            public_url="https://example.com/widget.js",
-            agent_name="Agent",
-            welcome_messages=["Hello", "<strong>Second</strong>"],
-            waiting_messages=["Готовлю ответ", "Проверяю источники"],
-            footer_text='Footer <a href="https://vbudushee.ru/faq/">link</a>',
-            system_prompt="Prompt",
-            pinned_messages=[SimpleNamespace(text="Pinned", color="primary")],
-            suggestions_enabled=True,
-            suggestions_prompt="Suggestions",
-        ),
-        default_welcome_message=project_views.DEFAULT_WIDGET_WELCOME_MESSAGE,
-        default_waiting_message=project_views.DEFAULT_WIDGET_WAITING_MESSAGE,
-        default_widget_footer_text="Footer",
-        default_system_prompt="Prompt",
-        default_suggestions_prompt="Suggestions",
+        project=widget,
+        form=form,
     )
 
     assert '<option value="neutral"' in rendered
@@ -432,9 +446,9 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     assert 'Приветственные сообщения' in rendered
     assert 'Тексты ожидания' in rendered
     assert 'id="waiting-messages"' in rendered
-    assert 'name="waiting_text[]"' in rendered
-    assert 'type="text"\n        name="waiting_text[]"' in rendered
-    assert "<textarea\n        name=\"waiting_text[]\"" not in rendered
+    assert 'name="waiting_messages-0"' in rendered
+    assert 'type="text"\n        name="waiting_messages-0"' in rendered
+    assert "<textarea\n        name=\"waiting_messages-0\"" not in rendered
     assert "Проверяю источники" in rendered
     assert 'data-add-waiting-message' in rendered
     assert 'data-remove-waiting-message' in rendered
@@ -444,7 +458,7 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     assert 'table table-zebra widget-rich-table' not in rendered
     assert 'data-welcome-editor' in rendered
     assert 'data-welcome-message' in rendered
-    assert 'name="welcome_text[]"' in rendered
+    assert 'name="welcome_messages-0"' in rendered
     assert "<strong>Second</strong>" in rendered
     assert 'data-add-welcome-message' in rendered
     assert 'data-remove-welcome-message' in rendered
@@ -484,7 +498,7 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     assert rendered.index(">Сохранить</button>") < rendered.index(">Отмена</a>")
 
 
-def test_widget_integration_create_form_uses_default_welcome_message() -> None:
+def test_widget_integration_add_form_uses_initial_welcome_message() -> None:
     templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
     env = jinja2.Environment(
         loader=jinja2.ChoiceLoader(
@@ -499,6 +513,8 @@ def test_widget_integration_create_form_uses_default_welcome_message() -> None:
         url=lambda name, **kwargs: URL(
             f"/actions/{kwargs['action']}/{kwargs['item_id']}"
             if name == "actions"
+            else f"/integration/{kwargs['widget_id']}"
+            if name == "project_widget_edit"
             else "/integration"
         ),
         csrf_token=lambda: "token",
@@ -506,17 +522,16 @@ def test_widget_integration_create_form_uses_default_welcome_message() -> None:
 
     rendered = env.get_template("projects/integration.html").render(
         widgets=[],
-        default_welcome_message=project_views.DEFAULT_WIDGET_WELCOME_MESSAGE,
-        default_waiting_message=project_views.DEFAULT_WIDGET_WAITING_MESSAGE,
-        default_widget_footer_text="Footer",
-        default_system_prompt="Prompt",
+        create_form=project_forms.WidgetIntegrationAdd(
+            meta={"csrf": False}
+        ),
     )
 
     assert 'name="name"' in rendered
     assert 'name="agent_name"' in rendered
     assert 'value="Чат поддержки"' in rendered
-    assert 'name="welcome_text[]"' not in rendered
-    assert 'name="waiting_text[]"' not in rendered
+    assert 'name="welcome_messages-0"' not in rendered
+    assert 'name="waiting_messages-0"' not in rendered
     assert 'name="footer_text"' not in rendered
     assert 'name="system_prompt"' not in rendered
 
@@ -531,17 +546,17 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
 
     rendered = env.get_template("chat/chat.html").render(
         project=SimpleNamespace(title="Demo"),
-        agent_name="Demo chat",
-        pinned_messages=[],
+        widget=SimpleNamespace(
+            agent_name="Demo chat",
+            pinned_messages=[],
+            welcome_messages=["Hello"],
+            waiting_messages=["Готовлю ответ", "Проверяю источники"],
+            footer_text='<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>.<br>Отправить Enter, новая строка Shift+Enter',
+        ),
         support_csrf_token="token",
         initial_messages=[],
         signed_chat_id=None,
         payload="signed-payload",
-        welcome_message="Hello",
-        waiting_messages=["Готовлю ответ", "Проверяю источники"],
-        default_waiting_message="Готовлю ответ",
-        footer_text='<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>.<br>Отправить Enter, новая строка Shift+Enter',
-        default_widget_footer_text="Footer",
     )
 
     assert 'id="log"' in rendered

@@ -3,8 +3,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 from wtforms import (
     BooleanField,
+    FieldList,
     Form,
+    FormField,
     IntegerField,
+    SelectField,
     StringField,
     TextAreaField,
     validators,
@@ -20,6 +23,7 @@ from jobs.crawler.source_settings import (
     validate_reindex_cron,
 )
 from vchat.settings import config
+from vchat.utils import SafeHTML
 
 DEFAULT_SYSTEM_PROMPT = (
     "Ты дружелюбный ИИ-ассистент. Тон общения: дружелюбный, открытый, "
@@ -41,12 +45,168 @@ DEFAULT_SUGGESTIONS_PROMPT = """Ты генерируешь подсказки �
 Пиши на языке последнего вопроса пользователя.
 """
 
-DEFAULT_WIDGET_FOOTER_TEXT = "Отправить Enter, новая строка Shift+Enter"
+WIDGET_AGENT_NAME = "Чат поддержки"
+WIDGET_FOOTER_TEXT = "Отправить Enter, новая строка Shift+Enter"
+WIDGET_WELCOME_MESSAGES = ["Добро пожаловать в чат, задавайте вопросы"]
+WIDGET_WAITING_MESSAGES = ["Готовлю ответ"]
+WIDGET_ALLOWED_PINNED_COLORS = {
+    "primary",
+    "secondary",
+    "accent",
+    "neutral",
+    "info",
+    "success",
+    "warning",
+}
 
 
-def normalize_source_origin(value: str) -> str:
-    split = urlsplit((value or "").strip())
-    return urlunsplit((split.scheme.lower(), split.netloc.lower(), "", "", ""))
+class PinnedMessageForm(Form):
+    text = StringField(
+        "Сообщение",
+        validators=[
+            validators.Optional(),
+            validators.Length(max=4000),
+            SafeHTML(max_text_length=400),
+        ],
+        default="",
+    )
+    color = SelectField(
+        "Цвет",
+        choices=[(color, color) for color in sorted(WIDGET_ALLOWED_PINNED_COLORS)],
+        default="neutral",
+    )
+
+
+class WidgetIntegrationAdd(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = config["secret_key"]
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=20)
+
+    name = StringField(
+        "Название",
+        validators=[
+            validators.DataRequired(message="Название обязательно"),
+            validators.Length(max=128, message="Длина до 128 символов"),
+        ],
+        description="Внутреннее название, нужно только для удобства в админке.",
+    )
+    agent_name = StringField(
+        "Название чата",
+        validators=[
+            validators.DataRequired(message="Название чата обязательно"),
+            validators.Length(max=100),
+        ],
+        default=WIDGET_AGENT_NAME,
+        description="Показывается пользователю в окне чата.",
+    )
+
+
+class WidgetIntegrationEdit(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = config["secret_key"]
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=20)
+
+    name = StringField(
+        "Название",
+        validators=[
+            validators.DataRequired(message="Название обязательно"),
+            validators.Length(max=128, message="Длина до 128 символов"),
+        ],
+    )
+    agent_name = StringField(
+        "Название чата",
+        validators=[
+            validators.DataRequired(message="Название чата обязательно"),
+            validators.Length(max=100),
+        ],
+        default=WIDGET_AGENT_NAME,
+    )
+    system_prompt = TextAreaField(
+        "Системный промпт",
+        validators=[
+            validators.DataRequired(message="Системный промпт обязателен"),
+            validators.Length(max=12000),
+        ],
+        default=DEFAULT_SYSTEM_PROMPT,
+    )
+    suggestions_enabled = BooleanField("Показывать подсказки", default=False)
+    suggestions_prompt = TextAreaField(
+        "Промпт подсказок",
+        validators=[
+            validators.DataRequired(message="Промпт подсказок обязателен"),
+            validators.Length(max=8000),
+        ],
+        default=DEFAULT_SUGGESTIONS_PROMPT,
+    )
+    welcome_messages = FieldList(
+        StringField(
+            "Приветственное сообщение",
+            validators=[
+                validators.Optional(),
+                validators.Length(max=4000),
+                SafeHTML(max_text_length=2000),
+            ],
+            default="",
+        ),
+        "Приветственные сообщения",
+        min_entries=1,
+        default=WIDGET_WELCOME_MESSAGES,
+    )
+    waiting_messages = FieldList(
+        StringField(
+            "Сообщение ожидания",
+            filters=[str.strip],
+            validators=[validators.Optional(), validators.Length(max=120)],
+            default="",
+        ),
+        "Сообщения ожидания",
+        min_entries=1,
+        default=WIDGET_WAITING_MESSAGES,
+    )
+    pinned_messages = FieldList(
+        FormField(PinnedMessageForm),
+        "Закрепленные сообщения",
+        min_entries=0,
+        max_entries=3,
+    )
+    footer_text = StringField(
+        "Текст под полем ввода",
+        validators=[
+            validators.Optional(),
+            validators.Length(max=1000),
+            SafeHTML(max_text_length=600),
+        ],
+        default=WIDGET_FOOTER_TEXT,
+    )
+
+    def validate_welcome_messages(self, field) -> None:
+        messages = [entry.data for entry in field.entries if entry.data]
+        self.cleaned_welcome_messages = messages or list(WIDGET_WELCOME_MESSAGES)
+        if not messages and field.entries:
+            field.entries[0].data = self.cleaned_welcome_messages[0]
+
+    def validate_waiting_messages(self, field) -> None:
+        messages = [entry.data for entry in field.entries if entry.data]
+        self.cleaned_waiting_messages = messages or list(WIDGET_WAITING_MESSAGES)
+        if not messages and field.entries:
+            field.entries[0].data = self.cleaned_waiting_messages[0]
+
+    def validate_pinned_messages(self, field) -> None:
+        messages = []
+        for entry in field.entries[:3]:
+            if not entry.form.text.data:
+                continue
+            messages.append(
+                {
+                    "text": entry.form.text.data,
+                    "color": entry.form.color.data,
+                }
+            )
+        self.cleaned_pinned_messages = messages
 
 
 class TriggerSettingsForm(Form):
@@ -109,7 +269,8 @@ class SourceForm(Form):
             )
 
     def validate_url(self, field):
-        field.data = normalize_source_origin(field.data)
+        split = urlsplit(field.data.strip())
+        field.data = urlunsplit((split.scheme.lower(), split.netloc.lower(), "", "", ""))
 
     enable_triggers = BooleanField(
         "Разрешить пользовательские триггеры",
@@ -147,5 +308,3 @@ class SourceSettingsForm(SourceForm):
         default=False,
         render_kw={"class": "checkbox checkbox-primary"},
     )
-
-

@@ -254,3 +254,17 @@ def test_general_spider_allows_word_pdf_and_pptx_links() -> None:
         assert "pptx" not in spider._link_extractor.deny_extensions
     finally:
         spider.closed("test")
+
+
+def test_general_spider_follows_redirects_but_handles_error_statuses() -> None:
+    spider = GeneralSpider(url="https://example.com", source_id=1, config={})
+    try:
+        request = next(spider.start_requests())
+        status_list = request.meta["handle_httpstatus_list"]
+        assert 301 not in status_list
+        assert 302 not in status_list
+        assert 404 in status_list
+        assert 500 in status_list
+        assert "handle_httpstatus_all" not in request.meta
+    finally:
+        spider.closed("test")

@@ -2,12 +2,13 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 from urllib.parse import urlparse
 
 from sqlalchemy import create_engine, delete, func, or_, select, true
 from sqlalchemy.orm import Session
 
+from jobs.crawler.items import CrawledItem
 from jobs.crawler.document_pipeline import (
     detect_binary_document_kind,
     extract_binary_url_document,
@@ -23,6 +24,7 @@ from jobs.documents.content import (
     content_sha256,
     document_too_big_message,
     is_document_too_big,
+    raw_document_too_big_message,
 )
 from jobs.documents.types import guess_document_type
 from vchat.models.data import Chunk, CrawlRun, Page, PageLink, PageShingle, Source
@@ -59,6 +61,24 @@ AUTO_INDEX_POLICY_META_KEYS = (
 class DuplicatePage:
     id: int
     uri: str
+
+
+@dataclass(frozen=True)
+class PageStatusErrorInfo:
+    reason: str
+    message: str | None = None
+    error: str | None = None
+    exception_class: str | None = None
+
+
+class PageStatusItem(TypedDict):
+    url: str
+    source_id: int
+    http_status: NotRequired[int | None]
+    etag: NotRequired[str | None]
+    raw_content: NotRequired[bytes | None]
+    raw_content_meta: NotRequired[dict[str, Any]]
+    content_type: NotRequired[str | None]
 
 
 def is_auth_redirect(original_url: str, final_url: str) -> bool:
@@ -369,6 +389,7 @@ class DatabasePipeline:
         etag = item.get("etag")
         source_rules = list(getattr(spider, "source_rules", []) or [])
         raw_content, raw_content_meta = raw_content_payload(item.get("raw_content"))
+        item["raw_content_meta"] = raw_content_meta
 
         spider.logger.info(f"Pipeline received {url}")
 
@@ -376,18 +397,46 @@ class DatabasePipeline:
         if is_auth_redirect(url, final_url):
             save_page_status(
                 self.engine,
-                url,
-                source_id,
+                item,
                 PageStatus.crawler,
                 PageStatusError.excluded_auth,
-                http_status,
-                etag,
-                self.logger,
-                raw_content=raw_content,
-                raw_content_type=item.get("content_type"),
-                raw_content_meta=raw_content_meta,
-                reason="excluded_auth_redirect",
-                message="Request redirected to an auth/login page.",
+                error_info=PageStatusErrorInfo(
+                    reason="excluded_auth_redirect",
+                    message="Request redirected to an auth/login page.",
+                ),
+            )
+            increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
+            return item
+
+        # Handle 5xx errors
+        if http_status and http_status >= 500:
+            save_page_status(
+                self.engine,
+                item,
+                PageStatus.crawler,
+                PageStatusError.http_5xx,
+                error_info=PageStatusErrorInfo(
+                    reason="http_5xx",
+                    message=f"Source returned HTTP {http_status}.",
+                    error=f"HTTP {http_status}",
+                ),
+            )
+            increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
+            return item
+
+        if raw_content_meta.get("reason") == "too_big":
+            save_page_status(
+                self.engine,
+                item,
+                PageStatus.crawler,
+                PageStatusError.too_big,
+                error_info=PageStatusErrorInfo(
+                    reason=PageStatusError.too_big.value,
+                    message=raw_document_too_big_message(
+                        raw_content_meta["size"],
+                        raw_content_meta["max_size"],
+                    ),
+                ),
             )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
             return item
@@ -419,14 +468,7 @@ class DatabasePipeline:
             if not markdown_content:
                 handle_error_page(
                     self.engine,
-                    url,
-                    source_id,
-                    http_status,
-                    etag,
-                    self.logger,
-                    raw_content=raw_content,
-                    raw_content_type=content_type,
-                    raw_content_meta=raw_content_meta,
+                    item,
                 )
                 increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
                 return item
@@ -435,27 +477,6 @@ class DatabasePipeline:
                 http_status,
                 url,
             )
-
-        # Handle 5xx errors
-        if http_status and http_status >= 500:
-            save_page_status(
-                self.engine,
-                url,
-                source_id,
-                PageStatus.crawler,
-                PageStatusError.http_5xx,
-                http_status,
-                etag,
-                self.logger,
-                raw_content=raw_content,
-                raw_content_type=content_type,
-                raw_content_meta=raw_content_meta,
-                reason="http_5xx",
-                message=f"Source returned HTTP {http_status}.",
-                error=f"HTTP {http_status}",
-            )
-            increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
-            return item
 
         if markdown_content is None:
             try:
@@ -485,20 +506,17 @@ class DatabasePipeline:
                 )
                 save_page_status(
                     self.engine,
-                    url,
-                    source_id,
+                    item,
                     PageStatus.crawler,
                     PageStatusError.extraction_failed,
-                    http_status,
-                    etag,
-                    self.logger,
-                    raw_content=raw_content,
-                    raw_content_type=content_type,
-                    raw_content_meta=raw_content_meta,
-                    reason="extraction_failed",
-                    message="Document extraction failed after the page was downloaded.",
-                    error=str(exc),
-                    exception_class=type(exc).__name__,
+                    error_info=PageStatusErrorInfo(
+                        reason="extraction_failed",
+                        message=(
+                            "Document extraction failed after the page was downloaded."
+                        ),
+                        error=str(exc),
+                        exception_class=type(exc).__name__,
+                    ),
                 )
                 increment_run_stat(self.engine, self._crawl_run_id, "pages_errors")
                 return item
@@ -506,18 +524,13 @@ class DatabasePipeline:
         if not markdown_content:
             save_page_status(
                 self.engine,
-                url,
-                source_id,
+                item,
                 PageStatus.crawler,
                 PageStatusError.no_content,
-                http_status,
-                etag,
-                self.logger,
-                raw_content=raw_content,
-                raw_content_type=content_type,
-                raw_content_meta=raw_content_meta,
-                reason="empty_extracted_content",
-                message="No useful text remained after extraction.",
+                error_info=PageStatusErrorInfo(
+                    reason="empty_extracted_content",
+                    message="No useful text remained after extraction.",
+                ),
             )
             increment_run_stat(self.engine, self._crawl_run_id, "pages_excluded")
             return item
@@ -759,20 +772,17 @@ class DatabasePipeline:
             spider.logger.error(f"Error processing {url}: {e}", exc_info=True)
             save_page_status(
                 self.engine,
-                url,
-                source_id,
+                item,
                 PageStatus.crawler,
                 PageStatusError.extraction_failed,
-                http_status,
-                etag,
-                self.logger,
-                raw_content=raw_content,
-                raw_content_type=content_type,
-                raw_content_meta=raw_content_meta,
-                reason="pipeline_processing_failed",
-                message="Crawler pipeline failed while saving or scheduling the document.",
-                error=str(e),
-                exception_class=type(e).__name__,
+                error_info=PageStatusErrorInfo(
+                    reason="pipeline_processing_failed",
+                    message=(
+                        "Crawler pipeline failed while saving or scheduling the document."
+                    ),
+                    error=str(e),
+                    exception_class=type(e).__name__,
+                ),
             )
 
         return item
@@ -796,22 +806,24 @@ def sync_uri(uri: str) -> str:
 
 def save_page_status(
     engine,
-    url: str,
-    source_id: int,
+    item: CrawledItem | PageStatusItem,
     status: PageStatus,
     status_error: PageStatusError | None,
-    http_status: int | None,
-    etag: str | None,
-    logger,
     *,
-    reason: str | None = None,
-    message: str | None = None,
-    error: str | None = None,
-    exception_class: str | None = None,
-    raw_content: bytes | None = None,
-    raw_content_type: str | None = None,
-    raw_content_meta: dict | None = None,
+    error_info: PageStatusErrorInfo | None = None,
 ) -> None:
+    url = item["url"]
+    source_id = int(item["source_id"])
+    http_status = item.get("http_status")
+    etag = item.get("etag")
+    raw_content = item.get("raw_content")
+    raw_content_meta = item.get("raw_content_meta")
+    if raw_content_meta is None:
+        raw_content, raw_content_meta = raw_content_payload(raw_content)
+    elif not raw_content_meta.get("stored"):
+        raw_content = None
+    raw_content_type = item.get("content_type")
+
     with Session(bind=engine) as session:
         page, created = get_or_create_page(session, source_id=source_id, uri=url)
 
@@ -856,13 +868,13 @@ def save_page_status(
         meta = dict(page.meta or {})
         if raw_content_meta is not None:
             meta["raw_content"] = raw_content_meta
-        if reason:
+        if error_info is not None:
             set_error_meta(
                 meta,
-                reason=reason,
-                message=message,
-                error=error,
-                exception_class=exception_class,
+                reason=error_info.reason,
+                message=error_info.message,
+                error=error_info.error,
+                exception_class=error_info.exception_class,
             )
         else:
             clear_error_meta(meta)
@@ -880,16 +892,20 @@ def save_page_status(
 
 def handle_error_page(
     engine,
-    url: str,
-    source_id: int,
-    http_status: int,
-    etag: str | None,
-    logger,
-    *,
-    raw_content: bytes | None = None,
-    raw_content_type: str | None = None,
-    raw_content_meta: dict | None = None,
+    item: CrawledItem | PageStatusItem,
 ) -> None:
+    url = item["url"]
+    source_id = int(item["source_id"])
+    http_status = item.get("http_status")
+    etag = item.get("etag")
+    raw_content = item.get("raw_content")
+    raw_content_meta = item.get("raw_content_meta")
+    if raw_content_meta is None:
+        raw_content, raw_content_meta = raw_content_payload(raw_content)
+    elif not raw_content_meta.get("stored"):
+        raw_content = None
+    raw_content_type = item.get("content_type")
+
     with Session(bind=engine) as session:
         page, created = get_or_create_page(session, source_id=source_id, uri=url)
 

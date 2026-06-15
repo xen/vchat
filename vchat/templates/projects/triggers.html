@@ -7,10 +7,8 @@
         <button
             type="button"
             class="btn btn-secondary btn-sm gap-2"
-            hx-post="{{ url('project_triggers') }}"
+            hx-post="{{ url('actions', action='generate_triggers', item_id='global') }}"
             hx-swap="none"
-            hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
-            hx-vals='{"action": "generate"}'
         >
             <iconify-icon icon="lucide:sparkles" class="size-4"></iconify-icon>
             Сгенерировать
@@ -179,11 +177,9 @@
         <button
             type="button"
             class="btn btn-error btn-outline btn-sm gap-2 mt-4"
-            hx-post="{{ url('project_triggers') }}"
+            hx-post="{{ url('actions', action='clear_triggers', item_id='global') }}"
             hx-swap="none"
             hx-confirm="Очистить сгенерированные триггеры и кэши ответов для источников с правилами триггеров?"
-            hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
-            hx-vals='{"action": "clear"}'
         >
             <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
             Очистить триггеры и кэши ответов

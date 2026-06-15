@@ -355,6 +355,67 @@ class TestCrawlPageTaskPayload:
         assert payload["single_page_only"] is True
         assert "crawler_max_pages" not in payload
 
+    def test_page_task_skips_index_refresh_for_excluded_page_after_crawl(self):
+        from vchat.models.data import Page, Source
+        from vchat.views.projects.page_status import PageStatusError
+
+        page = SimpleNamespace(
+            id=8,
+            source_id=42,
+            uri="https://test.com/large.pdf",
+            status_error=PageStatusError.too_big.value,
+        )
+        source = make_source(
+            source_id=42,
+            uri="https://test.com",
+        )
+
+        engine_mock = MagicMock()
+        session_mock = MagicMock()
+        session_mock.__enter__ = lambda s: session_mock
+        session_mock.__exit__ = MagicMock(return_value=False)
+
+        def fake_execute(stmt):
+            stmt_text = str(stmt)
+            if "JOIN source ON source.id = page.source_id" in stmt_text:
+                return MagicMock(one_or_none=lambda: (page, source))
+            if "crawl_run" in stmt_text:
+                return MagicMock(scalars=lambda: MagicMock(all=lambda: []))
+            if "FROM source" in stmt_text:
+                return MagicMock(scalars=lambda: MagicMock(all=lambda: []))
+            return MagicMock()
+
+        def fake_get(model, item_id):
+            if model is Source and item_id == source.id:
+                return source
+            if model is Page and item_id == page.id:
+                return page
+            return None
+
+        session_mock.execute.side_effect = fake_execute
+        session_mock.get.side_effect = fake_get
+
+        with (
+            patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
+            patch("jobs.crawler.tasks.Session", return_value=session_mock),
+            patch(
+                "jobs.crawler.tasks.subprocess.run",
+                return_value=SimpleNamespace(returncode=0, stdout="", stderr=""),
+            ),
+            patch(
+                "jobs.crawler.tasks.schedule_refresh_project_index"
+            ) as refresh_mock,
+            patch(
+                "jobs.crawler.tasks.rebuild_boilerplate_index.delay"
+            ) as rebuild_mock,
+        ):
+            from jobs.crawler import tasks as crawler_tasks
+
+            crawler_tasks.crawl_page_task(page.id)
+
+        refresh_mock.assert_not_called()
+        rebuild_mock.assert_not_called()
+
     def test_page_task_rejects_page_with_unavailable_source(self):
         engine_mock = MagicMock()
         session_mock = MagicMock()

@@ -65,7 +65,7 @@
   <!-- Навигация -->
   <header class="vchat-chat-header flex-none navbar bg-base-100 border-b border-base-200 shadow-sm z-10 min-h-12 px-4 gap-2">
     <div class="flex-1 gap-2 items-center">
-      <span class="vchat-agent-title leading-tight">{{ agent_name if agent_name else ('Виртуальный ассистент') }}</span>
+      <span class="vchat-agent-title leading-tight">{{ widget.agent_name if widget.agent_name else ('Виртуальный ассистент') }}</span>
     </div>
     <div class="flex-none">
       <button id="vchat-mobile-close" type="button" class="vchat-mobile-close btn btn-ghost btn-sm btn-square"
@@ -81,7 +81,7 @@
 
   <main id="log" class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" role="log"
     aria-label="{{ 'История сообщений' }}" aria-live="polite" aria-relevant="additions text" aria-atomic="false">
-    {% if pinned_messages %}
+    {% if widget.pinned_messages %}
     <section class="space-y-2" aria-label="{{ 'Закрепленные сообщения' }}">
       {% set pinned_classes = {
         'neutral': 'bg-base-200 text-base-content border-base-300',
@@ -92,7 +92,7 @@
         'success': 'bg-success/10 text-success border-success/20',
         'warning': 'bg-warning/10 text-warning border-warning/20'
       } %}
-      {% for pinned in pinned_messages[:3] %}
+      {% for pinned in widget.pinned_messages[:3] %}
       {% set pinned_color = pinned.color if pinned.color in pinned_classes else 'neutral' %}
       <div class="pinned-message-rich rounded border px-3 py-2 text-sm leading-relaxed {{ pinned_classes[pinned_color] }}">
         {{ pinned.text|safe }}
@@ -116,7 +116,7 @@
       </div>
       <div class="vchat-composer-toolbar">
         <div class="min-w-0">
-          <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ footer_text|safe }}</div>
+          <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ widget.footer_text|safe }}</div>
           <div id="composer-limit" class="text-xs leading-snug text-base-content/60" aria-live="polite"></div>
         </div>
         <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm"
@@ -138,7 +138,7 @@
     const mobileCloseBtn = document.getElementById('vchat-mobile-close');
     const csrfToken = {{ (support_csrf_token if support_csrf_token is defined else csrf_token()) | tojson | safe }};
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
-    const waitingMessages = ({{ waiting_messages|default([])|tojson|safe }} || []).filter((message) => String(message || '').trim());
+    const waitingMessages = ({{ widget.waiting_messages|tojson|safe }} || []).filter((message) => String(message || '').trim());
     const defaultWaitingMessage = waitingMessages[0] || 'Готовлю ответ';
     const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
 
@@ -847,7 +847,7 @@
     connect();
     reportSession();
 
-    const welcomeMessage = {{ welcome_message| tojson | safe }};
+    const welcomeMessage = {{ widget.welcome_messages|first|tojson|safe }};
     if (!initialMessages.length && welcomeMessage) {
       appendMsg(welcomeMessage, 'bot');
     }

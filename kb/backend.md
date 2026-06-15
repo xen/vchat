@@ -49,6 +49,16 @@
 - Do not add runtime guards, assertions, or exceptions only to satisfy a type
   checker. Restructure the control flow or use a narrow local type annotation.
 
+## Internal helper contracts
+
+- Internal helpers should not take long parameter lists copied out of one
+  item, request, form, row, or context object. Pass the source object plus a
+  small typed options/error payload, and let the helper read only the fields it
+  needs.
+- Do not precompute branch-specific values only to pass them into an internal
+  helper where most branches ignore them. Move extraction into the branch or
+  into the helper's typed payload.
+
 ## Python tooling
 
 - Run Python tooling from the project virtualenv using `venv/bin/...`.

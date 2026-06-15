@@ -34,3 +34,10 @@ def document_too_big_message(content: str) -> str:
         "Document content is too large to index "
         f"({len(content or '')} chars > {INDEXABLE_DOCUMENT_MAX_CHARS})."
     )
+
+
+def raw_document_too_big_message(size: int, max_size: int) -> str:
+    return (
+        "Downloaded file is too large to index "
+        f"({size} bytes > {max_size} bytes)."
+    )

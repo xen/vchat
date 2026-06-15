@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import html
-import re
 from types import SimpleNamespace
 
 import pytest
 from aiohttp import web
+from multidict import MultiDict
 from yarl import URL
 
 from vchat.models.source_config import CrawlerRule, SourceConfig
@@ -78,13 +77,16 @@ def _raw(func):
     return func
 
 
-def test_normalize_source_origin_keeps_only_domain() -> None:
-    assert (
-        project_forms.normalize_source_origin(
-            "https://Example.Local:8443/docs/page?x=1#section"
-        )
-        == "https://example.local:8443"
+def test_source_form_normalizes_url_to_origin() -> None:
+    form = project_forms.SourceForm(
+        formdata=MultiDict(
+            {"url": "https://Example.Local:8443/docs/page?x=1#section"}
+        ),
+        meta={"csrf": False},
     )
+
+    assert form.validate()
+    assert form.url.data == "https://example.local:8443"
 
 
 def test_source_form_exposes_enable_triggers_checkbox() -> None:
@@ -95,58 +97,112 @@ def test_source_form_exposes_enable_triggers_checkbox() -> None:
     assert form.enable_triggers.label.text == "Разрешить пользовательские триггеры"
 
 
-def test_pinned_messages_from_form_keeps_three_messages() -> None:
-    data = SimpleNamespace(
-        getall=lambda key, default=None: (
-            ["One", "", "Three", "Four"]
-            if key == "pinned_text[]"
-            else ["primary", "bad", "warning", "success"]
+def _widget_form(post_data: MultiDict) -> project_forms.WidgetIntegrationEdit:
+    return project_forms.WidgetIntegrationEdit(
+        formdata=post_data,
+        meta={"csrf": False},
+    )
+
+
+def test_widget_pinned_messages_field_keeps_three_messages() -> None:
+    form = _widget_form(
+        MultiDict(
+            [
+                ("name", "Widget"),
+                ("pinned_messages-0-text", "One"),
+                ("pinned_messages-0-color", "primary"),
+                ("pinned_messages-1-text", ""),
+                ("pinned_messages-1-color", "neutral"),
+                ("pinned_messages-2-text", "Three"),
+                ("pinned_messages-2-color", "warning"),
+                ("pinned_messages-3-text", "Four"),
+                ("pinned_messages-3-color", "success"),
+            ]
         )
     )
 
-    messages = project_views._pinned_messages_from_form(data)
-
-    assert messages == [
+    assert form.validate()
+    assert form.cleaned_pinned_messages == [
         {"text": "One", "color": "primary"},
         {"text": "Three", "color": "warning"},
     ]
 
 
-def test_pinned_messages_from_form_sanitizes_rich_text_and_limits_length() -> None:
-    data = SimpleNamespace(
-        getall=lambda key, default=None: (
-            [
-                '<strong>Bold</strong> <a href="example.com">bad</a> '
-                '<a href="https://example.com">ok</a><script>x</script>'
-                + ("x" * 500)
-            ]
-            if key == "pinned_text[]"
-            else ["success"]
+def test_widget_pinned_messages_field_rejects_bad_color() -> None:
+    form = _widget_form(
+        MultiDict(
+            {
+                "name": "Widget",
+                "agent_name": "Agent",
+                "system_prompt": "Prompt",
+                "suggestions_prompt": "Suggestions",
+                "footer_text": "Footer",
+                "pinned_messages-0-text": "One",
+                "pinned_messages-0-color": "bad",
+            }
         )
     )
 
-    messages = project_views._pinned_messages_from_form(data)
+    assert not form.validate()
+    assert "pinned_messages" in form.errors
 
+
+def test_widget_pinned_messages_field_sanitizes_rich_text() -> None:
+    form = _widget_form(
+        MultiDict(
+            [
+                ("name", "Widget"),
+                (
+                    "pinned_messages-0-text",
+                    '<strong>Bold</strong> <a href="example.com">bad</a> '
+                    '<a href="https://example.com">ok</a><script>x</script>',
+                ),
+                ("pinned_messages-0-color", "success"),
+            ]
+        )
+    )
+
+    assert form.validate()
+    messages = form.cleaned_pinned_messages
     assert messages[0]["color"] == "success"
     assert "<strong>Bold</strong>" in messages[0]["text"]
     assert '<a href="https://example.com"' in messages[0]["text"]
     assert "script" not in messages[0]["text"]
     assert "href=\"example.com\"" not in messages[0]["text"]
-    assert len(html.unescape(re.sub("<[^>]+>", "", messages[0]["text"]))) == 400
+
+
+def test_widget_pinned_messages_field_rejects_long_text() -> None:
+    form = _widget_form(
+        MultiDict(
+            {
+                "name": "Widget",
+                "pinned_messages-0-text": "x" * 401,
+                "pinned_messages-0-color": "success",
+            }
+        )
+    )
+
+    assert not form.validate()
+    assert "pinned_messages" in form.errors
 
 
 def test_widget_footer_text_from_form_sanitizes_rich_text() -> None:
-    data = {
-        "footer_text": (
-            '<strong>Правила</strong> '
-            '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>'
-            "<br><b>Важно</b>"
-            '<script>alert(1)</script>'
+    form = _widget_form(
+        MultiDict(
+            {
+                "name": "Widget",
+                "footer_text": (
+                    '<strong>Правила</strong> '
+                    '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>'
+                    "<br><b>Важно</b>"
+                    '<script>alert(1)</script>'
+                ),
+            }
         )
-    }
+    )
 
-    footer_text = project_views._widget_footer_text_from_form(data)
-
+    assert form.validate()
+    footer_text = form.footer_text.data
     assert "<strong>Правила</strong>" in footer_text
     assert '<a href="https://vbudushee.ru/faq/"' in footer_text
     assert "<br>" in footer_text
@@ -155,9 +211,16 @@ def test_widget_footer_text_from_form_sanitizes_rich_text() -> None:
     assert "alert" not in footer_text
 
 
+def test_widget_footer_text_allows_empty_string() -> None:
+    form = _widget_form(MultiDict({"name": "Widget", "footer_text": ""}))
+
+    assert form.validate()
+    assert form.footer_text.data == ""
+
+
 def test_widget_text_defaults_match_creation_contract() -> None:
     assert (
-        project_views.forms.DEFAULT_WIDGET_FOOTER_TEXT
+        project_views.forms.WIDGET_FOOTER_TEXT
         == "Отправить Enter, новая строка Shift+Enter"
     )
     assert project_views.forms.DEFAULT_SYSTEM_PROMPT == (
@@ -173,21 +236,21 @@ def test_widget_text_defaults_match_creation_contract() -> None:
     )
 
 
-def test_welcome_messages_from_form_sanitizes_many_rich_text_items() -> None:
-    data = SimpleNamespace(
-        getall=lambda key, default=None: (
+def test_widget_welcome_messages_field_sanitizes_many_rich_text_items() -> None:
+    form = _widget_form(
+        MultiDict(
             [
-                '<strong>Первое</strong><script>x</script>',
-                "",
-                '<a href="https://vbudushee.ru/faq/">Второе</a>',
-                '<b>Третье</b>' + ("x" * 2500),
+                ("name", "Widget"),
+                ("welcome_messages-0", '<strong>Первое</strong><script>x</script>'),
+                ("welcome_messages-1", ""),
+                ("welcome_messages-2", '<a href="https://vbudushee.ru/faq/">Второе</a>'),
+                ("welcome_messages-3", '<b>Третье</b>'),
             ]
-            if key == "welcome_text[]"
-            else []
         )
     )
 
-    messages = project_views._welcome_messages_from_form(data)
+    assert form.validate()
+    messages = form.cleaned_welcome_messages
 
     assert len(messages) == 3
     assert "<strong>Первое</strong>" in messages[0]
@@ -195,69 +258,72 @@ def test_welcome_messages_from_form_sanitizes_many_rich_text_items() -> None:
     assert "x" not in messages[0]
     assert '<a href="https://vbudushee.ru/faq/"' in messages[1]
     assert "<b>Третье</b>" in messages[2]
-    assert len(html.unescape(re.sub("<[^>]+>", "", messages[2]))) == 2000
 
 
-def test_welcome_messages_from_form_falls_back_to_default() -> None:
-    data = SimpleNamespace(getall=lambda key, default=None: [""] if key else [])
+def test_widget_welcome_messages_field_falls_back_to_default() -> None:
+    form = _widget_form(MultiDict({"name": "Widget", "welcome_messages-0": ""}))
 
-    assert project_views._welcome_messages_from_form(data) == [
-        project_views.DEFAULT_WIDGET_WELCOME_MESSAGE
-    ]
+    assert form.validate()
+    assert form.cleaned_welcome_messages == project_forms.WIDGET_WELCOME_MESSAGES
 
 
-def test_waiting_messages_from_form_sanitizes_plain_text_items() -> None:
-    data = SimpleNamespace(
-        getall=lambda key, default=None: (
+def test_widget_message_field_lists_use_defaults_for_empty_model_values() -> None:
+    form = project_forms.WidgetIntegrationEdit(
+        data={"name": "Widget", "welcome_messages": [], "waiting_messages": []},
+        meta={"csrf": False},
+    )
+
+    assert form.validate()
+    assert form.welcome_messages.data == project_forms.WIDGET_WELCOME_MESSAGES
+    assert form.waiting_messages.data == project_forms.WIDGET_WAITING_MESSAGES
+
+
+def test_widget_welcome_messages_field_rejects_long_text() -> None:
+    form = _widget_form(
+        MultiDict({"name": "Widget", "welcome_messages-0": "x" * 2001})
+    )
+
+    assert not form.validate()
+    assert "welcome_messages" in form.errors
+
+
+def test_widget_waiting_messages_field_keeps_text_items() -> None:
+    form = _widget_form(
+        MultiDict(
             [
-                "Готовлю ответ",
-                "",
-                "<strong>Проверяю источники</strong>",
-                "<script>alert(1)</script>Подбираю материалы",
-                "x" * 160,
+                ("name", "Widget"),
+                ("waiting_messages-0", "Готовлю ответ"),
+                ("waiting_messages-1", ""),
+                ("waiting_messages-2", "Проверяю источники"),
+                ("waiting_messages-3", "<strong>Подбираю материалы</strong>"),
             ]
-            if key == "waiting_text[]"
-            else []
         )
     )
 
-    messages = project_views._waiting_messages_from_form(data)
+    assert form.validate()
+    messages = form.cleaned_waiting_messages
 
-    assert messages[:3] == [
+    assert messages == [
         "Готовлю ответ",
         "Проверяю источники",
-        "Подбираю материалы",
-    ]
-    assert "<" not in "".join(messages)
-    assert "alert" not in "".join(messages)
-    assert len(messages[3]) == 120
-
-
-def test_waiting_messages_from_form_falls_back_to_default() -> None:
-    data = SimpleNamespace(getall=lambda key, default=None: [""] if key else [])
-
-    assert project_views._waiting_messages_from_form(data) == [
-        project_views.DEFAULT_WIDGET_WAITING_MESSAGE
+        "<strong>Подбираю материалы</strong>",
     ]
 
 
-def test_random_welcome_message_uses_sanitized_message_list(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    seen_messages = []
+def test_widget_waiting_messages_field_falls_back_to_default() -> None:
+    form = _widget_form(MultiDict({"name": "Widget", "waiting_messages-0": ""}))
 
-    def _choice(messages):
-        seen_messages.append(messages)
-        return messages[0]
+    assert form.validate()
+    assert form.cleaned_waiting_messages == project_forms.WIDGET_WAITING_MESSAGES
 
-    monkeypatch.setattr(project_views.secrets, "choice", _choice)
 
-    message = project_views._random_welcome_message(
-        ["<script>x</script>", "<strong>Второе</strong>"]
+def test_widget_waiting_messages_field_rejects_long_text() -> None:
+    form = _widget_form(
+        MultiDict({"name": "Widget", "waiting_messages-0": "x" * 121})
     )
 
-    assert seen_messages == [["<strong>Второе</strong>"]]
-    assert message == "<strong>Второе</strong>"
+    assert not form.validate()
+    assert "waiting_messages" in form.errors
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,12 @@
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
 import pycld2 as cld2
 from dateutil import parser as date_parser
+from scrapy.exceptions import DownloadCancelledError
 from scrapy.link import Link
 from scrapy.linkextractors import IGNORED_EXTENSIONS, LinkExtractor
 from scrapy.http import HtmlResponse, Request, TextResponse
@@ -21,8 +23,14 @@ from ..url_rules import (
     extract_hostname,
 )
 from jobs.db import create_sync_engine
+from jobs.documents.content import raw_document_too_big_message
+from jobs.crawler.pipelines import (
+    PageStatusErrorInfo,
+    increment_run_stat,
+    save_page_status,
+)
 from vchat.models.data import Page
-from vchat.views.projects.page_status import PageStatusError
+from vchat.views.projects.page_status import PageStatus, PageStatusError
 
 DOWNLOADABLE_DOCUMENT_EXTENSIONS = {
     "doc",
@@ -30,11 +38,29 @@ DOWNLOADABLE_DOCUMENT_EXTENSIONS = {
     "pdf",
     "pptx",
 }
+DOWNLOAD_TOO_LARGE_PATTERN = re.compile(
+    r"Expected to receive (?P<size>\d+) bytes which is larger than "
+    r"download max size \((?P<max_size>\d+)\)"
+)
+
+
+def download_too_large_meta(exc: BaseException) -> dict[str, int | str] | None:
+    if not isinstance(exc, DownloadCancelledError):
+        return None
+    match = DOWNLOAD_TOO_LARGE_PATTERN.search(str(exc))
+    if match is None:
+        return None
+    return {
+        "stored": False,
+        "size": int(match.group("size")),
+        "max_size": int(match.group("max_size")),
+        "reason": "too_big",
+    }
 
 
 class GeneralSpider(CrawlSpider):
     name = "general"
-    _HTTP_STATUS_META = {"handle_httpstatus_all": True}
+    _HTTP_STATUS_META = {"handle_httpstatus_list": list(range(400, 600))}
 
     def __init__(self, url=None, source_id=None, config=None, *args, **kwargs):
         self.source_id = int(source_id) if source_id else None
@@ -178,6 +204,7 @@ class GeneralSpider(CrawlSpider):
             yield Request(
                 url,
                 dont_filter=True,
+                errback=self.handle_download_error,
                 meta={
                     **self._HTTP_STATUS_META,
                     "target_source_id": self.source_id,
@@ -195,6 +222,7 @@ class GeneralSpider(CrawlSpider):
             yield Request(
                 seed_url,
                 dont_filter=False,
+                errback=self.handle_download_error,
                 meta={
                     **self._HTTP_STATUS_META,
                     "target_source_id": self.source_id,
@@ -207,7 +235,42 @@ class GeneralSpider(CrawlSpider):
         source_id, source_rules = self._request_source_context(request.url)
         request.meta["target_source_id"] = source_id
         request.meta["target_source_rules"] = list(source_rules)
-        return request
+        return request.replace(errback=self.handle_download_error)
+
+    def handle_download_error(self, failure):
+        raw_content_meta = download_too_large_meta(failure.value)
+        if raw_content_meta is None:
+            self.logger.error("Download failed for %s", failure.request, exc_info=True)
+            return None
+
+        source_id = int(
+            failure.request.meta.get("target_source_id") or self.source_id or 0
+        )
+        source_rules = list(
+            failure.request.meta.get("target_source_rules") or self.source_rules
+        )
+        url = normalize_url_for_queue(failure.request.url, source_rules)
+        item = CrawledItem()
+        item["url"] = url
+        item["source_id"] = source_id
+        item["raw_content"] = None
+        item["raw_content_meta"] = raw_content_meta
+        item["content_type"] = None
+        save_page_status(
+            self._engine,
+            item,
+            PageStatus.crawler,
+            PageStatusError.too_big,
+            error_info=PageStatusErrorInfo(
+                reason=PageStatusError.too_big.value,
+                message=raw_document_too_big_message(
+                    int(raw_content_meta["size"]),
+                    int(raw_content_meta["max_size"]),
+                ),
+            ),
+        )
+        increment_run_stat(self._engine, self.crawl_run_id, "pages_excluded")
+        return None
 
     def parse_item(self, response):
         print(f"Crawling {response.url}")

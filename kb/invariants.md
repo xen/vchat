@@ -17,6 +17,9 @@ These rules should be enforced by hooks, checks, or review whenever practical.
   contexts. Use a visible `_ignore_*` or `_skip_*` name, or omit the assignment.
 - Runtime code must not use `assert` for ordinary validation or type narrowing.
 - Type-checker fixes should not introduce impossible runtime branches.
+- Internal-only helpers should not expose broad positional signatures when the
+  arguments are fields from one source object; pass the typed source object and
+  a narrow options payload instead.
 
 ## Architecture and operations
 

@@ -65,8 +65,9 @@
   {%- endif %}
 {%- endmacro %}
 
-{% macro pinned_message_row(item=None) %}
-  {% set current_color = item.color|default('neutral') if item else 'neutral' %}
+{% macro pinned_message_row(item=None, index='__prefix__') %}
+  {% set current_text = item.form.text.data if item else '' %}
+  {% set current_color = item.form.color.data if item else 'neutral' %}
   <tr class="align-top {{ pinned_message_color_class(current_color) }}" data-pinned-message>
     <td class="w-8 p-1">
       <button
@@ -82,8 +83,8 @@
     <td class="min-w-0 p-0 pr-2">
       <input
         type="hidden"
-        name="pinned_text[]"
-        value="{{ item.text if item else '' }}"
+        name="pinned_messages-{{ index }}-text"
+        value="{{ current_text }}"
         data-pinned-html-input
       >
       <div
@@ -93,7 +94,7 @@
         data-pinned-editor
         data-placeholder="{{ 'Сообщение' }}"
         data-max-length="400"
-      >{{ item.text|safe if item else '' }}</div>
+      >{{ current_text|safe }}</div>
     </td>
     <td class="w-60 align-top">
       <div class="join w-full items-start">
@@ -103,7 +104,7 @@
         >
           <span class="size-4 rounded-full {{ color_swatch(current_color) }}" data-pinned-color-preview></span>
         </span>
-        <select name="pinned_color[]" class="select select-bordered select-sm join-item w-full bg-base-100 text-base-content" data-pinned-color>
+        <select name="pinned_messages-{{ index }}-color" class="select select-bordered select-sm join-item w-full bg-base-100 text-base-content" data-pinned-color>
           {% for value, label in colors %}
           <option value="{{ value }}" style="{{ color_option_style(value) }}" {% if current_color == value %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
@@ -118,12 +119,13 @@
   </tr>
 {% endmacro %}
 
-{% macro welcome_message_row(text='') %}
+{% macro welcome_message_row(field=None, index='__prefix__') %}
+  {% set text = field.data if field else '' %}
   <tr class="align-top" data-welcome-message>
     <td class="min-w-0 p-0 pr-2">
       <input
         type="hidden"
-        name="welcome_text[]"
+        name="welcome_messages-{{ index }}"
         value="{{ text }}"
         data-welcome-html-input
       >
@@ -145,12 +147,13 @@
   </tr>
 {% endmacro %}
 
-{% macro waiting_message_row(text='') %}
+{% macro waiting_message_row(field=None, index='__prefix__') %}
+  {% set text = field.data if field else '' %}
   <tr class="align-top" data-waiting-message>
     <td class="min-w-0 p-0 pr-2">
       <input
         type="text"
-        name="waiting_text[]"
+        name="waiting_messages-{{ index }}"
         class="input input-bordered w-full"
         value="{{ text }}"
         maxlength="120"
@@ -172,10 +175,10 @@
       <h1 class="flex flex-wrap items-center gap-2 break-words text-lg font-medium">
         <a href="{{ url('project_integration') }}" class="text-base-content/50 transition-colors hover:text-base-content">{{ 'Код виджета' }}</a>
         <span class="mx-2 text-base-content/40">&gt;</span>
-        <span class="text-base-content">{{ widget.name }}</span>
+        <span class="text-base-content">{{ form.name.data }}</span>
       </h1>
       <a
-        href="{{ url('demo_page') }}?code={{ widget.code }}"
+        href="{{ url('demo_page') }}?code={{ project.code }}"
         class="link link-hover mt-1 inline-flex items-center gap-1.5 text-sm text-base-content/70"
         target="_blank"
         rel="noopener"
@@ -195,7 +198,7 @@
             id="widget-url"
             type="text"
             class="input input-bordered input-sm join-item min-w-0 flex-1 font-mono text-sm"
-            value="{{ widget.public_url }}"
+            value="{{ project.public_url }}"
             readonly
           >
           <button
@@ -212,7 +215,7 @@
       <div class="grid gap-2">
         <label for="widget-embed-code" class="label-text">{{ 'Код вставки' }}</label>
         <div class="grid gap-2">
-          <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ widget.public_url }}" defer&gt;&lt;/script&gt;
+          <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ project.public_url }}" defer&gt;&lt;/script&gt;
 &lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
           <div>
             <button
@@ -232,12 +235,11 @@
   <div class="card bg-base-100 shadow">
     <form
       method="POST"
-      action="{{ url('actions', action='widget_update', item_id=widget.id) }}"
-      hx-post="{{ url('actions', action='widget_update', item_id=widget.id) }}"
-      hx-swap="none"
-      hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
+      action="{{ url('project_widget_edit', widget_id=project.id) }}"
+      data-widget-settings-form
       class="card-body grid gap-10"
     >
+      {{ form.csrf_token }}
       <section class="grid gap-3">
         <div>
           <h2 class="text-base font-medium">{{ 'Внутренние настройки' }}</h2>
@@ -253,7 +255,7 @@
               type="text"
               name="name"
               aria-label="{{ 'Название виджета' }}"
-              value="{{ widget.name }}"
+              value="{{ form.name.data }}"
               class="input input-bordered w-full"
               maxlength="128"
               required
@@ -279,7 +281,7 @@
             type="text"
             name="agent_name"
             aria-label="{{ 'Заголовок чата' }}"
-            value="{{ widget.agent_name }}"
+            value="{{ form.agent_name.data }}"
             class="input input-bordered w-full"
             maxlength="100"
             placeholder="{{ 'Чат поддержки' }}"
@@ -300,9 +302,8 @@
                 </tr>
               </thead>
               <tbody id="welcome-messages">
-                {% set welcome_messages = widget.welcome_messages or [default_welcome_message] %}
-                {% for text in welcome_messages %}
-                {{ welcome_message_row(text) }}
+                {% for field in form.welcome_messages %}
+                {{ welcome_message_row(field, loop.index0) }}
                 {% endfor %}
               </tbody>
             </table>
@@ -325,7 +326,7 @@
             </div>
           </div>
           <div id="pinned-messages-container" class="overflow-x-auto">
-            {% if widget.pinned_messages %}
+            {% if form.pinned_messages|length %}
             <table class="table widget-rich-table w-full table-fixed">
               <thead>
                 <tr>
@@ -336,8 +337,8 @@
                 </tr>
               </thead>
               <tbody id="pinned-messages">
-                {% for item in widget.pinned_messages %}
-                {{ pinned_message_row(item) }}
+                {% for item in form.pinned_messages %}
+                {{ pinned_message_row(item, loop.index0) }}
                 {% endfor %}
               </tbody>
             </table>
@@ -366,12 +367,12 @@
                 value="1"
                 class="toggle toggle-primary"
                 data-suggestions-toggle
-                {% if widget.suggestions_enabled %}checked{% endif %}
+                {% if form.suggestions_enabled.data %}checked{% endif %}
               >
               <span class="label-text">{{ 'Включено' }}</span>
             </label>
           </div>
-          <div class="grid gap-3 {% if not widget.suggestions_enabled %}hidden{% endif %}" data-suggestions-prompt-panel>
+          <div class="grid gap-3 {% if not form.suggestions_enabled.data %}hidden{% endif %}" data-suggestions-prompt-panel>
             <div>
               <h4 class="text-sm font-medium">{{ 'Промпт для подсказок' }}</h4>
               <p class="mt-1 text-sm text-base-content/60">{{ 'Опишите, какие продолжения диалога предлагать пользователю. Формат JSON, последний вопрос, финальный ответ и связанные страницы добавляются автоматически.' }}</p>
@@ -382,7 +383,7 @@
               class="textarea textarea-bordered w-full font-mono text-sm"
               rows="8"
               maxlength="6000"
-            >{{ widget.suggestions_prompt or default_suggestions_prompt }}</textarea>
+            >{{ form.suggestions_prompt.data }}</textarea>
           </div>
         </section>
 
@@ -400,9 +401,8 @@
                 </tr>
               </thead>
               <tbody id="waiting-messages">
-                {% set waiting_messages = widget.waiting_messages or [default_waiting_message] %}
-                {% for text in waiting_messages %}
-                {{ waiting_message_row(text) }}
+                {% for field in form.waiting_messages %}
+                {{ waiting_message_row(field, loop.index0) }}
                 {% endfor %}
               </tbody>
             </table>
@@ -425,7 +425,7 @@
           <input
             type="hidden"
             name="footer_text"
-            value="{{ widget.footer_text or default_widget_footer_text }}"
+            value="{{ form.footer_text.data }}"
             data-footer-html-input
           >
           <div
@@ -436,7 +436,7 @@
             data-footer-editor
             data-placeholder="{{ 'Текст подвала' }}"
             data-max-length="600"
-          >{{ (widget.footer_text or default_widget_footer_text)|safe }}</div>
+          >{{ form.footer_text.data|safe }}</div>
         </section>
         </div>
       </section>
@@ -459,7 +459,7 @@
               class="textarea textarea-bordered w-full font-mono text-sm"
               rows="10"
               maxlength="4000"
-            >{{ widget.system_prompt or default_system_prompt }}</textarea>
+            >{{ form.system_prompt.data }}</textarea>
           </section>
         </div>
       </section>
@@ -480,11 +480,10 @@
       <div class="flex flex-wrap gap-2">
         <form
           method="POST"
-          action="{{ url('actions', action='widget_reset_code', item_id=widget.id) }}"
-          hx-post="{{ url('actions', action='widget_reset_code', item_id=widget.id) }}"
+          action="{{ url('actions', action='widget_reset_code', item_id=project.id) }}"
+          hx-post="{{ url('actions', action='widget_reset_code', item_id=project.id) }}"
           hx-swap="none"
           hx-confirm="{{ 'Сбросить код виджета? Старый код вставки перестанет работать.' }}"
-          hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
         >
           <button type="submit" class="btn btn-outline btn-warning btn-sm">
             <iconify-icon icon="lucide:rotate-ccw" class="size-4"></iconify-icon>
@@ -493,11 +492,10 @@
         </form>
         <form
           method="POST"
-          action="{{ url('actions', action='widget_delete', item_id=widget.id) }}"
-          hx-post="{{ url('actions', action='widget_delete', item_id=widget.id) }}"
+          action="{{ url('actions', action='widget_delete', item_id=project.id) }}"
+          hx-post="{{ url('actions', action='widget_delete', item_id=project.id) }}"
           hx-swap="none"
           hx-confirm="{{ 'Удалить виджет полностью?' }}"
-          hx-headers='{"X-CSRFToken": {{ csrf_token()|tojson }}}'
         >
           <button type="submit" class="btn btn-outline btn-error btn-sm">
             <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
@@ -681,6 +679,24 @@
 
   const syncAllPinnedEditors = () => {
     document.querySelectorAll('[data-pinned-editor]').forEach(syncPinnedEditorInput);
+    reindexDynamicFields();
+  };
+
+  const reindexDynamicFields = () => {
+    document.querySelectorAll('[data-welcome-message]').forEach((row, index) => {
+      const input = row.querySelector('[data-welcome-html-input]');
+      if (input) input.name = `welcome_messages-${index}`;
+    });
+    document.querySelectorAll('[data-waiting-message]').forEach((row, index) => {
+      const input = row.querySelector('input');
+      if (input) input.name = `waiting_messages-${index}`;
+    });
+    document.querySelectorAll('[data-pinned-message]').forEach((row, index) => {
+      const input = row.querySelector('[data-pinned-html-input]');
+      if (input) input.name = `pinned_messages-${index}-text`;
+      const select = row.querySelector('[data-pinned-color]');
+      if (select) select.name = `pinned_messages-${index}-color`;
+    });
   };
 
   const syncWelcomeRemoveButtons = () => {
@@ -901,6 +917,7 @@
       const editor = tbody.querySelector('[data-pinned-message]:last-child [data-pinned-editor]');
       if (editor) syncPinnedEditorInput(editor);
       syncPinnedButton();
+      reindexDynamicFields();
     }
 
     if (event.target.closest('[data-add-welcome-message]')) {
@@ -911,11 +928,13 @@
         editor.focus();
       }
       syncWelcomeRemoveButtons();
+      reindexDynamicFields();
     }
 
     if (event.target.closest('[data-add-waiting-message]')) {
       waitingContainer.append(waitingTemplate.content.cloneNode(true));
       waitingContainer.querySelector('[data-waiting-message]:last-child input')?.focus();
+      reindexDynamicFields();
     }
 
     const removeWelcome = event.target.closest('[data-remove-welcome-message]');
@@ -925,17 +944,20 @@
       }
       removeWelcome.closest('[data-welcome-message]').remove();
       syncWelcomeRemoveButtons();
+      reindexDynamicFields();
     }
 
     const removeWaiting = event.target.closest('[data-remove-waiting-message]');
     if (removeWaiting) {
       removeWaiting.closest('[data-waiting-message]').remove();
+      reindexDynamicFields();
     }
 
     const remove = event.target.closest('[data-remove-pinned-message]');
     if (remove) {
       remove.closest('[data-pinned-message]').remove();
       syncPinnedButton();
+      reindexDynamicFields();
     }
   });
 
@@ -1013,18 +1035,19 @@
     delete draggedPinnedMessage.dataset.dragging;
     draggedPinnedMessage = null;
     isPinnedMessageDragging = false;
+    reindexDynamicFields();
   };
 
   document.addEventListener('mousedown', startPinnedMessageDrag);
   document.addEventListener('mousemove', movePinnedMessageDrag);
   document.addEventListener('mouseup', stopPinnedMessageDrag);
   document.addEventListener('mouseleave', stopPinnedMessageDrag);
-
-  document.querySelector('form[hx-post*="widget_update"]').addEventListener('submit', syncAllPinnedEditors);
+  document.querySelector('[data-widget-settings-form]').addEventListener('submit', syncAllPinnedEditors);
   document.querySelectorAll('[data-pinned-color]').forEach(updateColorPreview);
   document.querySelectorAll('[data-pinned-editor]').forEach(syncPinnedEditorInput);
   syncWelcomeRemoveButtons();
   syncSuggestionsPromptVisibility();
   syncPinnedButton();
+  reindexDynamicFields();
 </script>
 {% endblock %}
