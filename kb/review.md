@@ -26,3 +26,6 @@ bugs, regressions, inconsistency with KB rules, and missing tests.
 - Prefer project-specific consistency issues over generic style comments.
 - Flag UI pattern drift, migration risks, swallowed errors, missing tests, and
   violations of fail-fast or server-access policy.
+- For new functions with more than three parameters, check whether the values
+  belong to one source object, request, form, row, or context. If they do, flag
+  the signature and suggest a typed source object plus a narrow options payload.

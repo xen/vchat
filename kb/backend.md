@@ -51,10 +51,10 @@
 
 ## Internal helper contracts
 
-- Internal helpers should not take long parameter lists copied out of one
-  item, request, form, row, or context object. Pass the source object plus a
-  small typed options/error payload, and let the helper read only the fields it
-  needs.
+- New internal helpers with more than three parameters require review for
+  whether the values are copied out of one item, request, form, row, or context
+  object. If they are, pass the source object plus a small typed options/error
+  payload, and let the helper read only the fields it needs.
 - Do not precompute branch-specific values only to pass them into an internal
   helper where most branches ignore them. Move extraction into the branch or
   into the helper's typed payload.
