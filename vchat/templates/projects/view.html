@@ -20,9 +20,9 @@
                         @search="updateSearch($event)"
                         placeholder="Поиск по названию или URL..." />
                 </label>
-                <label class="select select-sm w-40 shrink-0">
-                    <iconify-icon icon="lucide:filter" class="text-base-content/70 size-4.5"></iconify-icon>
-                    <select x-model="sourceFilter" @change="updateSourceFilter">
+                <label class="select select-sm w-56 shrink-0 gap-2 max-sm:w-full">
+                    <iconify-icon icon="lucide:filter" class="text-base-content/70 size-4.5 pointer-events-none relative z-10 shrink-0"></iconify-icon>
+                    <select class="ml-2 min-w-0 truncate" x-model="sourceFilter" @change="updateSourceFilter">
                         <option value="">Все источники</option>
                         {% for source_name in source_filters %}
                             <option value="{{ source_name }}">{{ source_name }}</option>
