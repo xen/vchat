@@ -185,18 +185,23 @@
                     </div>
                     <div id="index_rules_container" class="overflow-x-auto">
                         {% if source.config.rules %}
-                            <table class="table table-zebra w-full">
+                            <table class="table table-zebra table-fixed w-full">
+                                <colgroup>
+                                    <col class="w-56">
+                                    <col>
+                                    <col class="w-16">
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th class="w-px whitespace-nowrap">{{ 'Тип' }}</th>
+                                        <th>{{ 'Тип' }}</th>
                                         <th>{{ 'Значение' }}</th>
-                                        <th class="w-16"></th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for rule in source.config.rules %}
                                     <tr class="rule-row align-top">
-                                        <td class="whitespace-nowrap">
+                                        <td class="whitespace-normal break-words">
                                             <input type="hidden" name="rule_type[]" value="{{ rule.type }}">
                                             {% if rule.type == 'xpath' %}
                                                 XPath
@@ -208,8 +213,8 @@
                                                 Регулярное выражение URL
                                             {% endif %}
                                         </td>
-                                        <td>
-                                            <input type="text" name="rule_value[]" value="{{ rule.value }}" class="input input-bordered input-sm w-full" placeholder="Значение">
+                                        <td class="min-w-0">
+                                            <input type="text" name="rule_value[]" value="{{ rule.value }}" class="input input-bordered input-sm w-full min-w-0" placeholder="Значение">
                                         </td>
                                         <td class="text-right">
                                             <button
@@ -329,16 +334,16 @@
 
 <template id="rule_template">
     <tr class="rule-row align-top">
-        <td class="whitespace-nowrap">
-            <select name="rule_type[]" class="select select-bordered select-sm w-full">
+        <td class="whitespace-normal break-words">
+            <select name="rule_type[]" class="select select-bordered select-sm w-full min-w-0">
                 <option value="xpath">XPath</option>
                 <option value="css">CSS правило</option>
                 <option value="param">Игнорируемый параметр</option>
                 <option value="regex">Регулярное выражение URL</option>
             </select>
         </td>
-        <td>
-            <input type="text" name="rule_value[]" class="input input-bordered input-sm w-full" placeholder="Значение">
+        <td class="min-w-0">
+            <input type="text" name="rule_value[]" class="input input-bordered input-sm w-full min-w-0" placeholder="Значение">
         </td>
         <td class="text-right">
             <button type="button" onclick="this.closest('.rule-row').remove()" class="btn btn-square btn-sm btn-ghost text-error" title="{{ 'Удалить' }}">
@@ -360,12 +365,17 @@
             return;
         }
         rulesContainer.innerHTML = `
-            <table class="table table-zebra w-full">
+            <table class="table table-zebra table-fixed w-full">
+                <colgroup>
+                    <col class="w-56">
+                    <col>
+                    <col class="w-16">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th class="w-px whitespace-nowrap">{{ 'Тип' }}</th>
+                        <th>{{ 'Тип' }}</th>
                         <th>{{ 'Значение' }}</th>
-                        <th class="w-16"></th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody></tbody>
