@@ -82,6 +82,7 @@ class _DB:
         self.deleted = []
         self.added = []
         self.commits = 0
+        self.rollbacks = 0
 
     async def scalar(self, stmt):
         _ = stmt
@@ -110,7 +111,7 @@ class _DB:
         self.commits += 1
 
     async def rollback(self):
-        pass
+        self.rollbacks += 1
 
 
 def _raw_project_action():
@@ -546,6 +547,78 @@ async def test_project_widget_edit_saves_footer_text(
     assert db.commits == 1
     assert events == ["widget_update"]
     assert flashes == [("Код виджета обновлен", "success")]
+
+
+@pytest.mark.asyncio
+async def test_project_widget_edit_invalid_post_returns_context_without_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = SimpleNamespace(
+        id=7,
+        name="Old",
+        agent_name="Agent",
+        welcome_messages=["Hello"],
+        waiting_messages=["Готовлю ответ"],
+        footer_text="Footer",
+        system_prompt="Prompt",
+        suggestions_enabled=False,
+        suggestions_prompt="Suggestions",
+        pinned_messages=[],
+        updated_at=None,
+        code="abc",
+    )
+    req = _Request(
+        action="",
+        post_data=MultiDict(
+            [
+                ("name", ""),
+                ("agent_name", "Agent"),
+                ("welcome_messages-0", "Hello"),
+                ("waiting_messages-0", "Готовлю ответ"),
+                ("footer_text", "Footer"),
+                ("system_prompt", "Prompt"),
+                ("suggestions_prompt", "Suggestions"),
+            ]
+        ),
+    )
+    req.match_info = {"widget_id": "7"}
+    db = _DB(scalar_values=[item])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+
+    async def _session(request):
+        _ = request
+        return {}
+
+    original_form = project_views.forms.WidgetIntegrationEdit
+
+    def _form_without_csrf(*args, **kwargs):
+        kwargs["meta"] = {"csrf": False}
+        return original_form(*args, **kwargs)
+
+    def _render_template(*args, **kwargs):
+        _ = args, kwargs
+        raise AssertionError("project_widget_edit must return context dict")
+
+    monkeypatch.setattr(
+        project_views.forms,
+        "WidgetIntegrationEdit",
+        _form_without_csrf,
+    )
+    monkeypatch.setattr(project_views, "get_session", _session)
+    monkeypatch.setattr(
+        project_views.aiohttp_jinja2,
+        "render_template",
+        _render_template,
+    )
+
+    context = await _raw(project_views.project_widget_edit)(req)
+
+    assert context["item"] is item
+    assert "form" in context
+    assert context["form"].errors["name"] == ["Название обязательно"]
+    assert db.commits == 0
+    assert db.rollbacks == 0
 
 
 @pytest.mark.asyncio

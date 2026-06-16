@@ -3156,10 +3156,10 @@ async def project_integration(request):
 @aiohttp_jinja2.template("projects/widget_edit.html")
 async def project_widget_edit(request):
     widget_id = int(request.match_info["widget_id"])
-    widget = await request["db"].scalar(
+    item = await request["db"].scalar(
         sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
     )
-    if not widget:
+    if not item:
         await request["db"].rollback()
         raise web.HTTPNotFound()
 
@@ -3167,24 +3167,24 @@ async def project_widget_edit(request):
     formdata = await request.post() if request.method == "POST" else None
     form = forms.WidgetIntegrationEdit(
         formdata=formdata,
-        obj=widget if formdata is None else None,
+        obj=item if formdata is None else None,
         meta={"csrf_context": session},
     )
-    widget.public_url = _public_widget_url(getattr(widget, "code", ""))
+    item.public_url = _public_widget_url(getattr(item, "code", ""))
 
     if request.method == "POST":
         if not form.validate():
-            return {"item": widget, "form": form}
-        widget.name = form.name.data
-        widget.agent_name = form.agent_name.data
-        widget.system_prompt = form.system_prompt.data
-        widget.suggestions_enabled = form.suggestions_enabled.data
-        widget.suggestions_prompt = form.suggestions_prompt.data
-        widget.footer_text = form.footer_text.data
-        widget.welcome_messages = form.cleaned_welcome_messages
-        widget.waiting_messages = form.cleaned_waiting_messages
-        widget.pinned_messages = form.cleaned_pinned_messages
-        widget.updated_at = datetime.now(timezone.utc)
+            return {"item": item, "form": form}
+        item.name = form.name.data
+        item.agent_name = form.agent_name.data
+        item.system_prompt = form.system_prompt.data
+        item.suggestions_enabled = form.suggestions_enabled.data
+        item.suggestions_prompt = form.suggestions_prompt.data
+        item.footer_text = form.footer_text.data
+        item.welcome_messages = form.cleaned_welcome_messages
+        item.waiting_messages = form.cleaned_waiting_messages
+        item.pinned_messages = form.cleaned_pinned_messages
+        item.updated_at = datetime.now(timezone.utc)
         await request["db"].commit()
         await admin_event("widget_update", request)
         await flash(request, "Код виджета обновлен", "success")
@@ -3195,7 +3195,7 @@ async def project_widget_edit(request):
         )
 
     return {
-        "item": widget,
+        "item": item,
         "form": form,
     }
 
