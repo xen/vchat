@@ -632,6 +632,29 @@ def test_widget_loader_template_exposes_dialog_and_iframe_accessibility() -> Non
     assert 'event.key === "Escape"' in rendered
 
 
+def test_demo_error_payload_generates_request_id_per_click() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(templates_dir)),
+        autoescape=True,
+    )
+
+    rendered = env.get_template("demo.html").render(
+        widgets=[{"id": 1, "name": "Demo widget", "code": "widget-code"}],
+        trigger_pages=[],
+        selected_widget_code="widget-code",
+        selected_trigger_url="",
+        selected_trigger_url_is_listed=False,
+    )
+
+    assert "Ошибка ответа провайдера" in rendered
+    assert "provider_response_error" in rendered
+    assert "window.crypto.getRandomValues(bytes);" in rendered
+    assert "byte.toString(16).padStart(2, \"0\")" in rendered
+    assert "payload: { ...item.payload, request_id: generateDemoRequestId() }" in rendered
+    assert "demo-provider-response" not in rendered
+
+
 def test_frontend_chat_citation_buttons_are_accessible() -> None:
     source = (
         Path(__file__).resolve().parents[1]

@@ -361,7 +361,7 @@
     const demoSystemPayloads = [
       {
         label: "Ошибка ответа провайдера",
-        payload: { ok: false, error: "provider_response_error", request_id: "demo-provider-response" },
+        payload: { ok: false, error: "provider_response_error" },
       },
     ];
 
@@ -412,6 +412,12 @@
       });
     }
 
+    function generateDemoRequestId() {
+      const bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
     async function sendSystemPayload(item) {
       if (!item || !item.payload) {
         return;
@@ -420,7 +426,7 @@
       await waitForChatListener();
       iframe.contentWindow?.postMessage({
         type: "vchat_demo_server_payload",
-        payload: item.payload,
+        payload: { ...item.payload, request_id: generateDemoRequestId() },
       }, widgetOrigin());
     }
 
