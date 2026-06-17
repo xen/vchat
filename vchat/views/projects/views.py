@@ -3085,6 +3085,7 @@ async def project_chat(request):
         "agent_name": "",
         "welcome_message": "",
         "footer_text": forms.WIDGET_FOOTER_TEXT,
+        "error_message": forms.WIDGET_ERROR_MESSAGE,
         "pinned_messages": [],
         "ai_provider_options": get_ai_provider_options(),
         "current_ai_provider": provider_obj.id,
@@ -3121,6 +3122,7 @@ async def project_integration(request):
         form.populate_obj(widget)
         widget.welcome_messages = list(forms.WIDGET_WELCOME_MESSAGES)
         widget.waiting_messages = list(forms.WIDGET_WAITING_MESSAGES)
+        widget.error_message = forms.WIDGET_ERROR_MESSAGE
         widget.footer_text = forms.WIDGET_FOOTER_TEXT
         widget.system_prompt = forms.DEFAULT_SYSTEM_PROMPT
         widget.suggestions_prompt = forms.DEFAULT_SUGGESTIONS_PROMPT
@@ -3180,6 +3182,7 @@ async def project_widget_edit(request):
         item.system_prompt = form.system_prompt.data
         item.suggestions_enabled = form.suggestions_enabled.data
         item.suggestions_prompt = form.suggestions_prompt.data
+        item.error_message = form.error_message.data
         item.footer_text = form.footer_text.data
         item.welcome_messages = form.cleaned_welcome_messages
         item.waiting_messages = form.cleaned_waiting_messages

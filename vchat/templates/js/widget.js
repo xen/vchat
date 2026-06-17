@@ -16,6 +16,7 @@
   var userEmail = container.getAttribute("data-user-email") || "";
   var sign = container.getAttribute("data-xsign") || "";
   var sourcePageUrl = container.getAttribute("data-source-page-url") || window.location.href;
+  var demoSystemMessages = container.getAttribute("data-demo-system-messages") === "true";
   var triggerResolvePath = {{ trigger_resolve_path | tojson | safe }};
   var chatStorageTtlMs = 30 * 60 * 1000;
   var triggerItems = [];
@@ -348,6 +349,7 @@
     if (userEmail) chatUrl.searchParams.append("user_email", userEmail);
     if (sign) chatUrl.searchParams.append("sign", sign);
     if (activeChat) chatUrl.searchParams.append("chat_id", activeChat.signed_chat_id);
+    if (demoSystemMessages) chatUrl.searchParams.append("demo_system_messages", "1");
     chatUrl.searchParams.append("source_page_url", sourcePageUrl);
     return chatUrl.toString();
   }

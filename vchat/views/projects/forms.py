@@ -49,6 +49,9 @@ WIDGET_AGENT_NAME = "Чат поддержки"
 WIDGET_FOOTER_TEXT = "Отправить Enter, новая строка Shift+Enter"
 WIDGET_WELCOME_MESSAGES = ["Добро пожаловать в чат, задавайте вопросы"]
 WIDGET_WAITING_MESSAGES = ["Готовлю ответ"]
+WIDGET_ERROR_MESSAGE = (
+    "Извините, сейчас не удалось получить ответ. Попробуйте отправить сообщение позже."
+)
 WIDGET_ALLOWED_PINNED_COLORS = {
     "primary",
     "secondary",
@@ -181,6 +184,15 @@ class WidgetIntegrationEdit(Form):
             SafeHTML(max_text_length=600),
         ],
         default=WIDGET_FOOTER_TEXT,
+    )
+    error_message = StringField(
+        "Сообщение при ошибке",
+        validators=[
+            validators.DataRequired(message="Сообщение при ошибке обязательно"),
+            validators.Length(max=4000),
+            SafeHTML(max_text_length=2000),
+        ],
+        default=WIDGET_ERROR_MESSAGE,
     )
 
     def validate_welcome_messages(self, field) -> None:

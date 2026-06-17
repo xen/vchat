@@ -218,10 +218,50 @@ def test_widget_footer_text_allows_empty_string() -> None:
     assert form.footer_text.data == ""
 
 
+def test_widget_error_message_from_form_sanitizes_rich_text() -> None:
+    form = _widget_form(
+        MultiDict(
+            {
+                "name": "Widget",
+                "error_message": (
+                    "<strong>Сервис временно недоступен</strong>"
+                    '<a href="https://vbudushee.ru/faq/">Помощь</a>'
+                    "<script>alert(1)</script>"
+                ),
+            }
+        )
+    )
+
+    assert form.validate()
+    assert "<strong>Сервис временно недоступен</strong>" in form.error_message.data
+    assert '<a href="https://vbudushee.ru/faq/"' in form.error_message.data
+    assert "script" not in form.error_message.data
+    assert "alert" not in form.error_message.data
+
+
+def test_widget_error_message_requires_text() -> None:
+    form = _widget_form(MultiDict({"name": "Widget", "error_message": ""}))
+
+    assert not form.validate()
+    assert "error_message" in form.errors
+
+
+def test_widget_error_message_rejects_long_text() -> None:
+    form = _widget_form(
+        MultiDict({"name": "Widget", "error_message": "x" * 2001})
+    )
+
+    assert not form.validate()
+    assert "error_message" in form.errors
+
+
 def test_widget_text_defaults_match_creation_contract() -> None:
     assert (
         project_views.forms.WIDGET_FOOTER_TEXT
         == "Отправить Enter, новая строка Shift+Enter"
+    )
+    assert project_views.forms.WIDGET_ERROR_MESSAGE.startswith(
+        "Извините, сейчас не удалось получить ответ."
     )
     assert project_views.forms.DEFAULT_SYSTEM_PROMPT == (
         "Ты дружелюбный ИИ-ассистент. Тон общения: дружелюбный, открытый, "

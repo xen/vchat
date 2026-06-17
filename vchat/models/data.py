@@ -155,6 +155,7 @@ class WidgetIntegration(Base, Created, Updated):
     waiting_messages: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list
     )
+    error_message: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     footer_text: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     system_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     suggestions_enabled: Mapped[bool] = mapped_column(

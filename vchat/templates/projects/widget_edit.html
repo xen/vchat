@@ -419,6 +419,28 @@
 
         <section class="grid gap-4">
           <div>
+            <h3 class="text-sm font-medium">{{ 'Сообщение при ошибке' }}</h3>
+            <p class="mt-1 text-sm text-base-content/60">{{ 'Показывается пользователю, если ассистент не смог получить ответ. Выделите текст, чтобы сделать его жирным или добавить ссылку.' }}</p>
+          </div>
+          <input
+            type="hidden"
+            name="error_message"
+            value="{{ form.error_message.data }}"
+            data-error-message-html-input
+          >
+          <div
+            class="textarea textarea-bordered min-h-24 h-auto w-full max-w-full resize-y overflow-y-auto whitespace-pre-wrap break-words bg-transparent leading-relaxed"
+            contenteditable="true"
+            role="textbox"
+            data-pinned-editor
+            data-error-message-editor
+            data-placeholder="{{ 'Сообщение при ошибке' }}"
+            data-max-length="2000"
+          >{{ form.error_message.data|safe }}</div>
+        </section>
+
+        <section class="grid gap-4">
+          <div>
             <h3 class="text-sm font-medium">{{ 'Текст подвала' }}</h3>
             <p class="mt-1 text-sm text-base-content/60">{{ 'Небольшой текст под полем ввода. Выделите текст, чтобы сделать его жирным или добавить ссылку.' }}</p>
           </div>
@@ -661,6 +683,11 @@
   };
 
   const syncPinnedEditorInput = (editor) => {
+    if (editor.matches('[data-error-message-editor]')) {
+      const input = document.querySelector('[data-error-message-html-input]');
+      if (input) input.value = editor.innerHTML.trim();
+      return;
+    }
     if (editor.matches('[data-footer-editor]')) {
       const input = document.querySelector('[data-footer-html-input]');
       if (input) input.value = editor.innerHTML.trim();

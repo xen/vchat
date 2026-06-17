@@ -42,6 +42,7 @@ class _FakeCtx:
     provider: _FakeProvider
     model: _FakeModel
     system_prompt: str = "sys"
+    error_message: str = "User-safe error"
 
     @property
     def provider_id(self) -> str:
@@ -384,11 +385,13 @@ def test_build_generation_context_appends_answer_format_policy_to_custom_prompt(
             system_prompt="Custom system prompt",
             suggestions_enabled=True,
             suggestions_prompt=chat_views.DEFAULT_SUGGESTIONS_PROMPT,
+            error_message="Custom error",
         ),
     )
 
     assert ctx.system_prompt.startswith("Custom system prompt\n\n")
     assert chat_views.ANSWER_FORMAT_POLICY in ctx.system_prompt
+    assert ctx.error_message == "Custom error"
 
 
 def test_build_chat_completion_messages_normalizes_developer_role() -> None:
@@ -880,11 +883,76 @@ async def test_websocket_sends_internal_error_json(
     result_ws = await chat_views.websocket(request)
 
     assert result_ws is ws
-    assert any(
-        item.get("ok") is False and item.get("error") == "RuntimeError"
-        for item in ws.sent_json
-    )
+    error_payloads = [item for item in ws.sent_json if item.get("ok") is False]
+    assert error_payloads
+    assert error_payloads[0]["error"] == "internal_error"
+    assert error_payloads[0]["content"] == "User-safe error"
+    assert "request_id" in error_payloads[0]
+    assert "detail" not in error_payloads[0]
     assert metrics_calls and metrics_calls[0]["status"] == "internal_error"
+
+
+@pytest.mark.asyncio
+async def test_websocket_sends_neutral_provider_response_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ws = _FakeWs(
+        [
+            _WsMessage(type=aiohttp.WSMsgType.TEXT, data="hello"),
+            _WsMessage(type=aiohttp.WSMsgType.ERROR, data=None),
+        ]
+    )
+    monkeypatch.setattr(chat_views.web, "WebSocketResponse", lambda: ws)
+    monkeypatch.setattr(chat_views, "redis", _FakeRedis())
+    monkeypatch.setattr(
+        chat_views, "async_session_factory", _FakeSessionFactory(chat_exists="chat-1")
+    )
+
+    class _Serializer:
+        def __init__(self, secret):
+            _ = secret
+
+        def loads(self, payload, salt=None, max_age=None):
+            _ = payload, salt, max_age
+            return 1, "chat-1"
+
+        def dumps(self, value, salt=None):
+            _ = value, salt
+            return "signed"
+
+    monkeypatch.setattr(chat_views, "URLSafeSerializer", _Serializer)
+    monkeypatch.setattr(
+        chat_views,
+        "build_generation_context",
+        lambda app, widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
+    )
+
+    async def _provider_error(*, text: str, provider: Any) -> GuardrailDecision:
+        _ = text, provider
+        raise aiohttp.ClientResponseError(
+            request_info=SimpleNamespace(real_url="https://api.example.local/v1"),
+            history=(),
+            status=503,
+            message="provider secret response",
+        )
+
+    monkeypatch.setattr(chat_views, "check_input_guardrails", _provider_error)
+    monkeypatch.setattr(chat_views, "record_chat_request", lambda **kwargs: None)
+
+    request = SimpleNamespace(match_info={"payload": "ok"}, app={})
+    result_ws = await chat_views.websocket(request)
+
+    assert result_ws is ws
+    assert len(ws.sent_json) == 1
+    payload = ws.sent_json[0]
+    assert payload["ok"] is False
+    assert payload["error"] == "provider_response_error"
+    assert payload["content"] == "User-safe error"
+    assert "request_id" in payload
+    assert "detail" not in payload
+    assert "status" not in payload
+    assert "openai" not in payload["error"]
+    assert "provider secret response" not in str(payload)
 
 
 @pytest.mark.asyncio
@@ -931,11 +999,10 @@ async def test_websocket_rejects_overlong_user_message(
     result_ws = await chat_views.websocket(request)
 
     assert result_ws is ws
-    assert ws.sent_json == [
-        {
-            "ok": False,
-            "error": "message_too_long",
-            "detail": "Сообщение слишком длинное. Сократите его до 4000 символов.",
-            "limit": chat_views.USER_CHAT_MESSAGE_MAX_CHARS,
-        }
-    ]
+    assert len(ws.sent_json) == 1
+    assert ws.sent_json[0]["ok"] is False
+    assert ws.sent_json[0]["error"] == "message_too_long"
+    assert ws.sent_json[0]["content"] == "User-safe error"
+    assert ws.sent_json[0]["limit"] == chat_views.USER_CHAT_MESSAGE_MAX_CHARS
+    assert "request_id" in ws.sent_json[0]
+    assert "detail" not in ws.sent_json[0]

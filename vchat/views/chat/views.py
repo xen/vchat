@@ -32,7 +32,7 @@ from vchat.tracing import (
     request_id_ctx,
     request_id_headers,
 )
-from vchat.views.projects.forms import DEFAULT_SUGGESTIONS_PROMPT
+from vchat.views.projects.forms import DEFAULT_SUGGESTIONS_PROMPT, WIDGET_ERROR_MESSAGE
 from vchat.views.chat.meta import merge_chat_meta
 from vchat.db import async_session_factory
 from vchat.views.chat.guardrails import (
@@ -135,6 +135,7 @@ class GenerationContext:
     system_prompt: str
     suggestions_enabled: bool = True
     suggestions_prompt: str = DEFAULT_SUGGESTIONS_PROMPT
+    error_message: str = WIDGET_ERROR_MESSAGE
 
     @property
     def provider_id(self) -> str:
@@ -164,12 +165,16 @@ def build_generation_context(
     suggestions_prompt = (
         (widget.suggestions_prompt if widget is not None else "") or ""
     ).strip() or DEFAULT_SUGGESTIONS_PROMPT
+    error_message = (
+        (getattr(widget, "error_message", "") if widget is not None else "") or ""
+    ).strip() or WIDGET_ERROR_MESSAGE
     return GenerationContext(
         provider,
         model,
         system_prompt,
         suggestions_enabled=suggestions_enabled,
         suggestions_prompt=suggestions_prompt,
+        error_message=error_message,
     )
 
 
@@ -1171,17 +1176,19 @@ async def websocket(request):
                 continue
 
             if len(user_text) > USER_CHAT_MESSAGE_MAX_CHARS:
+                request_id = generate_request_id()
+                request_id_token = request_id_ctx.set(request_id)
                 await ws.send_json(
-                    {
-                        "ok": False,
-                        "error": "message_too_long",
-                        "detail": (
-                            "Сообщение слишком длинное. Сократите его до "
-                            f"{USER_CHAT_MESSAGE_MAX_CHARS} символов."
-                        ),
-                        "limit": USER_CHAT_MESSAGE_MAX_CHARS,
-                    }
+                    with_request_id(
+                        {
+                            "ok": False,
+                            "error": "message_too_long",
+                            "content": gen_context.error_message,
+                            "limit": USER_CHAT_MESSAGE_MAX_CHARS,
+                        }
+                    )
                 )
+                request_id_ctx.reset(request_id_token)
                 continue
 
             request_id = generate_request_id()
@@ -1651,20 +1658,31 @@ async def websocket(request):
                     with_request_id(
                         {
                             "ok": False,
-                            "error": "openai_http_error",
-                            "status": e.status,
-                            "detail": e.message,
+                            "error": "provider_response_error",
+                            "content": gen_context.error_message,
                         }
                     )
                 )
-            except Exception as e:
-                request_status = "internal_error"
+            except (asyncio.TimeoutError, aiohttp.ClientError):
+                request_status = "provider_connection_error"
                 await ws.send_json(
                     with_request_id(
                         {
                             "ok": False,
-                            "error": type(e).__name__,
-                            "detail": str(e),
+                            "error": "provider_connection_error",
+                            "content": gen_context.error_message,
+                        }
+                    )
+                )
+            except Exception:
+                request_status = "internal_error"
+                logger.exception("Chat request failed: request_id=%s", get_request_id())
+                await ws.send_json(
+                    with_request_id(
+                        {
+                            "ok": False,
+                            "error": "internal_error",
+                            "content": gen_context.error_message,
                         }
                     )
                 )

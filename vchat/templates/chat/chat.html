@@ -135,6 +135,8 @@
     const initialMessages = {{ initial_messages|default([])|tojson|safe }};
     const waitingMessages = ({{ widget.waiting_messages|tojson|safe }} || []).filter((message) => String(message || '').trim());
     const defaultWaitingMessage = waitingMessages[0] || 'Готовлю ответ';
+    const defaultErrorMessage = {{ ((widget.error_message if widget.error_message is defined else error_message|default("Извините, сейчас не удалось получить ответ. Попробуйте отправить сообщение позже.")) or "Извините, сейчас не удалось получить ответ. Попробуйте отправить сообщение позже.")|tojson|safe }};
+    const demoSystemMessagesEnabled = new URLSearchParams(window.location.search).get('demo_system_messages') === '1';
     const signedChatId = {{ signed_chat_id|default(None)|tojson|safe }};
 
     let ws;
@@ -491,6 +493,27 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
+    function appendErrorMsg(message, requestId = null) {
+      const chatDiv = document.createElement('div');
+      chatDiv.className = 'chat chat-start';
+      chatDiv.setAttribute('role', 'article');
+      chatDiv.setAttribute('aria-label', '{{ "Сообщение об ошибке" }}');
+
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble chat-bubble-error text-error-content';
+      bubble.innerHTML = String(message || defaultErrorMessage || '');
+      if (requestId) {
+        const requestIdEl = document.createElement('div');
+        requestIdEl.className = 'mt-2 text-xs opacity-70';
+        requestIdEl.textContent = `Request ID: ${requestId}`;
+        bubble.appendChild(requestIdEl);
+      }
+      chatDiv.appendChild(bubble);
+      currentBotBubble = null;
+      logEl.appendChild(chatDiv);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
     function randomWaitingMessage(currentText = '') {
       if (waitingMessages.length === 1) return waitingMessages[0];
       const variants = waitingMessages.filter((message) => message !== currentText);
@@ -653,6 +676,54 @@
       window.location.reload();
     }
 
+    function processServerPayload(data) {
+      if (data.type === 'suggested_actions') {
+        renderSuggestedActions(data.actions || [], data.msg_id || null);
+      } else if (data.ok) {
+        if (data.partial) {
+          if (data.content) {
+            appendMsg(data.content, 'bot', true);
+          }
+        } else if (currentBotBubble) {
+          if (data.content || currentBotBubble.dataset.loading === 'true') {
+            const rawText = (currentBotBubble.dataset.raw || '') + (data.content || '');
+            currentBotBubble.dataset.raw = rawText;
+            delete currentBotBubble.dataset.loading;
+            stopLoadingMessageRotation();
+            renderBotMarkdown(currentBotBubble, rawText);
+          }
+          attachStructuredContext(currentBotBubble, data.sources || [], data.reason_code || null);
+          const chatDiv = currentBotBubble.closest('.chat');
+          if (chatDiv && data.msg_id) {
+            chatDiv.dataset.chatMsgId = String(data.msg_id);
+          }
+          if (chatDiv && data.signed_msg_id) {
+            ensureVoteArea(chatDiv, data.msg_id, data.signed_msg_id);
+          }
+          notifyChatActivity();
+          setSending(false);
+          currentBotBubble = null;
+        } else {
+          appendMsg(
+            data.content || '',
+            'bot',
+            false,
+            data.msg_id,
+            data.signed_msg_id,
+            null,
+            data.sources || [],
+            data.reason_code || null,
+          );
+          notifyChatActivity();
+          setSending(false);
+        }
+      } else {
+        removeLoadingMsg();
+        appendErrorMsg(data.content || defaultErrorMessage, data.request_id || null);
+        setSending(false);
+      }
+    }
+
     function connect() {
       if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) {
         return;
@@ -702,51 +773,7 @@
         }
 
         try {
-          if (data.type === 'suggested_actions') {
-            renderSuggestedActions(data.actions || [], data.msg_id || null);
-          } else if (data.ok) {
-            if (data.partial) {
-              if (data.content) {
-                appendMsg(data.content, 'bot', true);
-              }
-            } else if (currentBotBubble) {
-              if (data.content || currentBotBubble.dataset.loading === 'true') {
-                const rawText = (currentBotBubble.dataset.raw || '') + (data.content || '');
-                currentBotBubble.dataset.raw = rawText;
-                delete currentBotBubble.dataset.loading;
-                stopLoadingMessageRotation();
-                renderBotMarkdown(currentBotBubble, rawText);
-              }
-              attachStructuredContext(currentBotBubble, data.sources || [], data.reason_code || null);
-              const chatDiv = currentBotBubble.closest('.chat');
-              if (chatDiv && data.msg_id) {
-                chatDiv.dataset.chatMsgId = String(data.msg_id);
-              }
-              if (chatDiv && data.signed_msg_id) {
-                ensureVoteArea(chatDiv, data.msg_id, data.signed_msg_id);
-              }
-              notifyChatActivity();
-              setSending(false);
-              currentBotBubble = null;
-            } else {
-              appendMsg(
-                data.content || '',
-                'bot',
-                false,
-                data.msg_id,
-                data.signed_msg_id,
-                null,
-                data.sources || [],
-                data.reason_code || null,
-              );
-              notifyChatActivity();
-              setSending(false);
-            }
-          } else {
-            removeLoadingMsg();
-            appendMsg(`Ошибка: ${data.error} ${data.status ? '(' + data.status + ')' : ''}\n${typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)}`, 'error');
-            setSending(false);
-          }
+          processServerPayload(data);
         } catch (e) {
           console.error('WS handler error', e, data);
           removeLoadingMsg();
@@ -823,7 +850,25 @@
 
     window.addEventListener('message', (event) => {
       const data = event.data || {};
-      if (!data || data.type !== 'vchat_trigger') {
+      if (!data) {
+        return;
+      }
+      if (
+        demoSystemMessagesEnabled
+        && data.type === 'vchat_demo_server_payload'
+        && data.payload
+        && typeof data.payload === 'object'
+      ) {
+        try {
+          processServerPayload(data.payload);
+        } catch (e) {
+          console.error('Demo server payload handler error', e, data.payload);
+          removeLoadingMsg();
+          setSending(false);
+        }
+        return;
+      }
+      if (data.type !== 'vchat_trigger') {
         return;
       }
       const text = String(data.text || '').trim();

@@ -141,6 +141,52 @@
       color: var(--muted);
     }
 
+    .system-messages {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+      width: min(100%, 560px);
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.78);
+      font-family: Arial, sans-serif;
+    }
+
+    .system-messages h2 {
+      margin: 0;
+      font: 700 16px/1.3 Arial, sans-serif;
+      color: var(--text);
+    }
+
+    .system-messages p {
+      margin: 0;
+      font: 400 14px/1.5 Arial, sans-serif;
+      color: var(--muted);
+    }
+
+    .system-message-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .system-message-actions button {
+      min-height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      padding: 0 12px;
+      font: 600 14px/1.2 Arial, sans-serif;
+      cursor: pointer;
+    }
+
+    .system-message-actions button:disabled {
+      cursor: wait;
+      opacity: 0.58;
+    }
+
     ul {
       margin: 0;
       padding-left: 20px;
@@ -239,6 +285,12 @@
         {% endif %}
       </form>
 
+      <section class="system-messages" data-system-messages {% if not selected_widget_code %}hidden{% endif %}>
+        <h2>Системные сообщения</h2>
+        <p data-system-messages-status>Выберите состояние, чтобы показать его в открытом чате.</p>
+        <div class="system-message-actions" data-system-message-actions></div>
+      </section>
+
       <div class="content">
         <section>
           <h2>Что здесь показано</h2>
@@ -267,6 +319,7 @@
     data-user-uid="demo-user"
     data-user-name="Demo User"
     data-user-email="demo@local.vchat.com"
+    data-demo-system-messages="true"
   ></div>
   <script>
     const loader = document.querySelector("[data-widget-loader]");
@@ -301,6 +354,109 @@
       script.defer = true;
       document.body.append(script);
     }
+
+    const systemMessages = document.querySelector("[data-system-messages]");
+    const systemMessagesStatus = document.querySelector("[data-system-messages-status]");
+    const systemMessageActions = document.querySelector("[data-system-message-actions]");
+    const demoSystemPayloads = [
+      {
+        label: "Ошибка ответа провайдера",
+        payload: { ok: false, error: "provider_response_error", request_id: "demo-provider-response" },
+      },
+    ];
+
+    function setSystemMessagesStatus(text) {
+      if (systemMessagesStatus) {
+        systemMessagesStatus.textContent = text;
+      }
+    }
+
+    function widgetOrigin() {
+      return window.location.origin;
+    }
+
+    function waitForWidgetIframe() {
+      return new Promise((resolve, reject) => {
+        const existing = document.getElementById("vchat-widget-iframe");
+        if (existing?.contentWindow) {
+          resolve(existing);
+          return;
+        }
+        const startedAt = Date.now();
+        const timer = window.setInterval(() => {
+          const iframe = document.getElementById("vchat-widget-iframe");
+          if (iframe?.contentWindow) {
+            window.clearInterval(timer);
+            resolve(iframe);
+            return;
+          }
+          if (Date.now() - startedAt > 3000) {
+            window.clearInterval(timer);
+            reject(new Error("Widget iframe was not created"));
+          }
+        }, 80);
+      });
+    }
+
+    async function openWidgetIframe() {
+      const button = document.getElementById("vchat-widget-button");
+      if (button?.getAttribute("aria-expanded") !== "true") {
+        button?.click();
+      }
+      return waitForWidgetIframe();
+    }
+
+    function waitForChatListener() {
+      return new Promise((resolve) => {
+        window.setTimeout(resolve, 500);
+      });
+    }
+
+    async function sendSystemPayload(item) {
+      if (!item || !item.payload) {
+        return;
+      }
+      const iframe = await openWidgetIframe();
+      await waitForChatListener();
+      iframe.contentWindow?.postMessage({
+        type: "vchat_demo_server_payload",
+        payload: item.payload,
+      }, widgetOrigin());
+    }
+
+    function renderSystemMessages(items) {
+      if (!systemMessageActions) {
+        return;
+      }
+      systemMessageActions.replaceChildren();
+      setSystemMessagesStatus("Нажмите состояние, чтобы показать его в открытом чате.");
+      for (const item of items) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = item.label;
+        button.addEventListener("click", async () => {
+          button.disabled = true;
+          try {
+            await sendSystemPayload(item);
+          } catch (error) {
+            console.error("Failed to send demo system payload", error);
+            setSystemMessagesStatus("Не удалось показать системное сообщение в чате.");
+          } finally {
+            button.disabled = false;
+          }
+        });
+        systemMessageActions.append(button);
+      }
+    }
+
+    async function loadSystemMessages() {
+      if (!widgetCode || !systemMessages || !systemMessageActions) {
+        return;
+      }
+      renderSystemMessages(demoSystemPayloads);
+    }
+
+    loadSystemMessages();
   </script>
 </body>
 </html>
