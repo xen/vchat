@@ -559,8 +559,12 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert 'aria-label="Форма отправки сообщения"' in rendered
     assert 'id="prompt-label"' in rendered
     assert 'aria-labelledby="prompt-label"' in rendered
-    assert 'aria-describedby="composer-footer composer-limit"' in rendered
+    assert 'aria-describedby="composer-footer"' in rendered
     assert 'id="composer-footer"' in rendered
+    assert 'id="composer-limit"' not in rendered
+    assert "userMessageInputMaxChars = 4050" in rendered
+    assert "vchat-prompt-highlight-overflow" in rendered
+    assert "Превышен лимит" not in rendered
     assert 'id="status"' not in rendered
     assert 'aria-atomic="true"' not in rendered
     assert "Контакты" not in rendered
