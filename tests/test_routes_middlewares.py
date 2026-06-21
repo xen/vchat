@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -255,36 +256,154 @@ def test_get_middlewares_and_routes() -> None:
     assert to_path(app.router["users"].url_for(), has_trailing_slash=False) == "/users"
 
 
+class HealthDB:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.executed = False
+        self.fail = fail
+
+    async def execute(self, _query) -> None:
+        self.executed = True
+        if self.fail:
+            raise RuntimeError("db down")
+
+
+class HealthRedis:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.pinged = False
+        self.fail = fail
+
+    async def ping(self) -> None:
+        self.pinged = True
+        if self.fail:
+            raise RuntimeError("redis down")
+
+
+class HealthBrokerRedis:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def ping(self) -> None:
+        return None
+
+    async def llen(self, queue_name: str) -> int:
+        return {"celery": 1, "crawler": 0, "embeddings": 2}[queue_name]
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class HealthRequest(dict):
+    def __init__(self, redis: HealthRedis, db: HealthDB) -> None:
+        super().__init__(db=db)
+        self.app = {REDIS_KEY: redis}
+
+
+def _patch_ready_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    worker_queues: dict[str, list[str]] | None = None,
+) -> None:
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    monkeypatch.setitem(health.config, "chat_provider", "openai")
+    monkeypatch.setitem(health.config, "chat_model", "gpt-4o-mini")
+    monkeypatch.setitem(health.config, "openai_api_key", "test-key")
+    monkeypatch.setitem(health.config, "embedding_model_dir", str(model_dir))
+    monkeypatch.setitem(health.config, "celery_redis_uri", "redis://localhost/")
+    monkeypatch.setitem(health.config, "celery_broker_db", 31)
+    monkeypatch.setattr(health, "redis_from_url", lambda *_args, **_kwargs: HealthBrokerRedis())
+    monkeypatch.setattr(health, "resolve_embedding_device", lambda: "cpu")
+    monkeypatch.setattr(health.chat_ctx, "_embed_model", object())
+    monkeypatch.setattr(health.chat_ctx, "_rerank_model", object())
+    monkeypatch.setattr(
+        health,
+        "_inspect_celery_workers",
+        lambda _timeout: worker_queues
+        or {"worker-default": ["celery"], "worker-embedder": ["embeddings"]},
+    )
+
+
 @pytest.mark.asyncio
-async def test_health_handlers() -> None:
+async def test_health_handlers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     live_response = await health.live(None)  # type: ignore[arg-type]
     assert live_response.status == 200
 
-    class DB:
-        def __init__(self) -> None:
-            self.executed = False
+    _patch_ready_dependencies(monkeypatch, tmp_path)
 
-        async def execute(self, _query) -> None:
-            self.executed = True
+    db = HealthDB()
+    redis = HealthRedis()
+    ready_response = await health.ready(HealthRequest(redis, db))  # type: ignore[arg-type]
+    payload = json.loads(ready_response.text)
 
-    class Redis:
-        def __init__(self) -> None:
-            self.pinged = False
-
-        async def ping(self) -> None:
-            self.pinged = True
-
-    class Request(dict):
-        def __init__(self, redis: Redis, db: DB) -> None:
-            super().__init__(db=db)
-            self.app = {REDIS_KEY: redis}
-
-    db = DB()
-    redis = Redis()
-    ready_response = await health.ready(Request(redis, db))  # type: ignore[arg-type]
     assert ready_response.status == 200
+    assert payload["status"] == "ok"
+    assert payload["checks"]["database"]["status"] == "ok"
+    assert payload["checks"]["redis"]["status"] == "ok"
+    assert payload["checks"]["celery_broker"]["queues"]["embeddings"] == 2
+    assert payload["checks"]["embedder"]["workers"] == ["worker-embedder"]
+    assert payload["checks"]["llm"] == {
+        "status": "ok",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+    }
     assert db.executed is True
     assert redis.pinged is True
+
+
+@pytest.mark.asyncio
+async def test_health_ready_returns_503_without_embedder_worker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_ready_dependencies(
+        monkeypatch,
+        tmp_path,
+        worker_queues={"worker-default": ["celery"]},
+    )
+
+    response = await health.ready(HealthRequest(HealthRedis(), HealthDB()))  # type: ignore[arg-type]
+    payload = json.loads(response.text)
+
+    assert response.status == 503
+    assert payload["status"] == "degraded"
+    assert payload["checks"]["embedder"]["status"] == "failed"
+    assert payload["checks"]["embedder"]["required_queue"] == "embeddings"
+
+
+@pytest.mark.asyncio
+async def test_health_ready_returns_503_for_invalid_llm_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_ready_dependencies(monkeypatch, tmp_path)
+    monkeypatch.setitem(health.config, "chat_provider", "missing-provider")
+
+    response = await health.ready(HealthRequest(HealthRedis(), HealthDB()))  # type: ignore[arg-type]
+    payload = json.loads(response.text)
+
+    assert response.status == 503
+    assert payload["status"] == "degraded"
+    assert payload["checks"]["llm"]["status"] == "failed"
+    assert payload["checks"]["llm"]["provider"] == "missing-provider"
+
+
+@pytest.mark.asyncio
+async def test_health_ready_returns_503_for_database_and_redis_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _patch_ready_dependencies(monkeypatch, tmp_path)
+
+    response = await health.ready(
+        HealthRequest(HealthRedis(fail=True), HealthDB(fail=True))  # type: ignore[arg-type]
+    )
+    payload = json.loads(response.text)
+
+    assert response.status == 503
+    assert payload["status"] == "degraded"
+    assert payload["checks"]["database"]["status"] == "failed"
+    assert payload["checks"]["redis"]["status"] == "failed"
 
 
 def test_error_base_template_defines_home_link() -> None:
