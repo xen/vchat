@@ -83,6 +83,14 @@
             {% if p_msg %}
                 <p class="text-xs {% if p_error %}text-error/80{% else %}opacity-70{% endif %}">{{ p_msg }}</p>
             {% endif %}
+            {% if document_duplicate %}
+                <div class="text-xs text-base-content/75">
+                    <span class="opacity-60">Основной документ:</span>
+                    <a href="{{ document_duplicate.detail_url }}" class="link link-hover font-medium">
+                        {{ document_duplicate.title }}
+                    </a>
+                </div>
+            {% endif %}
         </div>
         <p class="text-sm"><span class="opacity-60">Статистика:</span> {{ document_stats_summary }}</p>
         <p class="text-sm"><span class="opacity-60">Обход:</span> {{ document_crawl_summary }}</p>

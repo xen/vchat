@@ -51,6 +51,7 @@ BOILERPLATE_ATTR_HINTS = BOILERPLATE_HINTS + (
     "register",
     "auth",
 )
+HTML_TEXT_NOISE_TAGS = ("script", "style", "noscript", "template", "svg")
 AUTH_HEADING_HINTS = {
     "авторизация",
     "войти",
@@ -90,8 +91,14 @@ BROAD_BINARY_DOCUMENT_TYPES = {
 }
 
 
+def _strip_nul_chars(text: str) -> str:
+    return text.replace("\x00", "")
+
+
 def normalize_markdown(text: str) -> str:
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    lines = (
+        _strip_nul_chars(text).replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    )
     normalized: list[str] = []
     blank_count = 0
     in_code_block = False
@@ -356,7 +363,7 @@ def normalize_title_candidate(candidate: str | None) -> str | None:
     if not candidate:
         return None
 
-    cleaned = html.unescape(str(candidate))
+    cleaned = html.unescape(_strip_nul_chars(str(candidate)))
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if not cleaned:
         return None
@@ -388,7 +395,7 @@ def normalize_file_metadata_title_candidate(candidate: str | None) -> str | None
     if not candidate:
         return None
 
-    cleaned = html.unescape(str(candidate))
+    cleaned = html.unescape(_strip_nul_chars(str(candidate)))
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     if not cleaned:
         return None
@@ -776,6 +783,19 @@ def _html_to_markdown_like(soup: BeautifulSoup) -> tuple[str, int]:
     return markdown, boilerplate_removed
 
 
+def _html_to_visible_text(soup: BeautifulSoup) -> str:
+    for node in soup.find_all(HTML_TEXT_NOISE_TAGS):
+        node.decompose()
+
+    container = soup.body or soup
+    lines = [
+        line.strip()
+        for line in container.get_text("\n", strip=True).splitlines()
+        if line.strip()
+    ]
+    return normalize_markdown("\n".join(lines))
+
+
 def _extract_nav_title(soup: BeautifulSoup, url: str) -> str | None:
     """
     Find a self-referencing navigation link on the page and return its text.
@@ -818,7 +838,7 @@ def extract_url_document(
     nav_title = _extract_nav_title(soup, source_url)
     best_title = nav_title or html_title
 
-    markdown, removed = _html_to_markdown_like(soup)
+    markdown, removed = _html_to_markdown_like(BeautifulSoup(body, "html.parser"))
     if markdown.strip():
         normalized, normalized_title, meta = build_document_payload(
             content=markdown,
@@ -832,8 +852,9 @@ def extract_url_document(
         meta["extraction"]["boilerplate_removed_count"] = removed
         return normalized, normalized_title, meta
 
+    visible_text = _html_to_visible_text(soup)
     return build_document_payload(
-        content=body,
+        content=visible_text,
         title=best_title,
         extractor="plain_text_html",
         fallback_used=True,
@@ -841,4 +862,3 @@ def extract_url_document(
         content_type=content_type,
         doc_type=doc_type,
     )
-

@@ -920,6 +920,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
                 Page.meta["message"].as_string().label("meta_message"),
                 Page.meta["error"].as_string().label("meta_error"),
                 Page.meta["exception_class"].as_string().label("meta_exception_class"),
+                Page.meta["duplicate_of_page_id"].label("meta_duplicate_of_page_id"),
             )
             .options(defer(Page.content), defer(Page.meta))
             .where(Page.id == document_id)
@@ -940,6 +941,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         meta_message,
         meta_error,
         meta_exception_class,
+        meta_duplicate_of_page_id,
     ) = document_row
     document_content_preview = document_content_preview or ""
     document_content_size_bytes = int(document_content_size_bytes or 0)
@@ -955,7 +957,11 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         is_truncated=document_content_is_truncated,
     )
     document_content_can_expand = (
-        document_content_is_truncated and not _is_ignored_document(document)
+        document_content_is_truncated
+        and (
+            document.status_error == PageStatusError.duplicate_content
+            or not _is_ignored_document(document)
+        )
     )
     document_meta = {
         "extraction": meta_extraction if isinstance(meta_extraction, dict) else {},
@@ -968,12 +974,41 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         ("message", meta_message),
         ("error", meta_error),
         ("exception_class", meta_exception_class),
+        ("duplicate_of_page_id", meta_duplicate_of_page_id),
     ):
         if value:
             document_meta[key] = value
     set_committed_value(document, "meta", document_meta)
     document_links = await _document_link_groups(db, document)
     document_display_title = _display_document_title(document.title, document.uri)
+    document_duplicate = None
+    duplicate_page_id = None
+    if meta_duplicate_of_page_id:
+        try:
+            duplicate_page_id = int(meta_duplicate_of_page_id)
+        except (TypeError, ValueError):
+            duplicate_page_id = None
+    if duplicate_page_id is not None:
+        duplicate_row = (
+            await db.execute(
+                sa.select(Page.id, Page.title, Page.uri).where(
+                    Page.id == duplicate_page_id
+                )
+            )
+        ).one_or_none()
+        if duplicate_row is not None:
+            duplicate_id, duplicate_title, duplicate_uri = duplicate_row
+            document_duplicate = {
+                "id": duplicate_id,
+                "title": _display_document_title(duplicate_title, duplicate_uri),
+                "detail_url": f"/page/{duplicate_id}",
+            }
+        else:
+            document_duplicate = {
+                "id": duplicate_page_id,
+                "title": f"Документ #{duplicate_page_id}",
+                "detail_url": f"/page/{duplicate_page_id}",
+            }
     document_source = None
     document_triggers_enabled = False
     if document.source_id:
@@ -1061,6 +1096,7 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         ),
         "document_crawl_fields": _document_crawl_fields(document),
         "document_pipeline": _document_pipeline_steps(document),
+        "document_duplicate": document_duplicate,
         "document_stats_summary": _document_stats_summary(
             document,
             chunk_rows,
@@ -3015,7 +3051,10 @@ async def project_document_content_rest(request):
         raise web.HTTPNotFound()
 
     document, document_content_rest = row
-    if _is_ignored_document(document):
+    if (
+        document.status_error != PageStatusError.duplicate_content
+        and _is_ignored_document(document)
+    ):
         raise web.HTTPNotFound()
 
     return {

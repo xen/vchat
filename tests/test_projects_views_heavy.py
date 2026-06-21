@@ -356,6 +356,63 @@ def test_document_content_template_renders_compact_summary() -> None:
     assert "Данные обходов" not in rendered
 
 
+def test_document_content_template_renders_duplicate_primary_document_link() -> None:
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(
+            str(Path(__file__).resolve().parents[1] / "vchat" / "templates")
+        )
+    )
+    env.globals["url"] = lambda name, document_id: f"/page/{document_id}"
+    template = env.get_template("projects/document_content.html")
+    rendered = template.render(
+        document=SimpleNamespace(
+            id=2,
+            title="Duplicate",
+            uri="https://example.com/current?age=5-7",
+            status="ready",
+            status_error="duplicate_content",
+            meta={},
+            content="body",
+        ),
+        document_display_title="Duplicate",
+        document_content_preview="body",
+        document_content_is_truncated=False,
+        document_content_can_expand=False,
+        document_content_preview_chars=500,
+        document_content_preview_source_chars=4,
+        document_content_char_count=4,
+        document_content_remaining_chars=0,
+        document_pipeline=(
+            "ready",
+            "duplicate_content",
+            "Полный дубликат содержимого другой страницы",
+        ),
+        document_duplicate={
+            "id": 1,
+            "title": "Primary",
+            "detail_url": "/page/1",
+        },
+        document_stats_summary="4 Б, 0 чанков, 0 слов, 0 таблиц",
+        document_crawl_summary="код 200",
+        document_structure=[],
+        document_outline=[],
+        document_extraction={},
+        document_chunks=[],
+        document_crawl_fields=[],
+        document_links={"mutual": [], "incoming": [], "outgoing": []},
+        document_links_graph={"currentNodeId": "page-2", "nodes": [], "links": []},
+    )
+
+    duplicate_block_start = rendered.index("Основной документ:")
+    duplicate_block_end = rendered.index("Статистика:", duplicate_block_start)
+    duplicate_block = rendered[duplicate_block_start:duplicate_block_end]
+
+    assert "Основной документ:" in rendered
+    assert 'href="/page/1"' in duplicate_block
+    assert "Primary" in duplicate_block
+    assert "https://example.com/current" not in duplicate_block
+
+
 def test_document_content_template_renders_document_links_widget() -> None:
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(
@@ -535,6 +592,29 @@ async def test_project_document_content_rest_rejects_non_integer_offset() -> Non
         await raw(req)
 
     assert exc.value.text == "offset must be an integer"
+
+
+@pytest.mark.asyncio
+async def test_project_document_content_rest_allows_duplicate_content() -> None:
+    req = _Req(
+        match_info={"document_id": "1"},
+        rel_url=SimpleNamespace(query={"offset": "500"}),
+        db=_DB(
+            execute_results=[
+                _Resp(
+                    one_row=(
+                        SimpleNamespace(status="ready", status_error="duplicate_content"),
+                        "remaining content",
+                    )
+                )
+            ]
+        ),
+    )
+    raw = project_views.project_document_content_rest.__wrapped__.__wrapped__
+
+    payload = await raw(req)
+
+    assert payload["document_content_rest"] == "remaining content"
 
 
 @pytest.mark.asyncio

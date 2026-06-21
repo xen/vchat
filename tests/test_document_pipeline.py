@@ -9,6 +9,7 @@ from pypdf import PdfWriter
 from scrapy.linkextractors import IGNORED_EXTENSIONS
 
 from jobs.crawler.document_pipeline import (
+    build_document_payload,
     detect_binary_document_kind,
     extract_binary_url_document,
     extract_url_document,
@@ -65,6 +66,55 @@ def test_extract_url_document_prefers_html_title_and_strips_auth_forms() -> None
     assert "Основное описание продукта." in content
     assert meta["extraction"]["extractor"] == "beautifulsoup"
     assert meta["extraction"]["boilerplate_removed_count"] >= 1
+
+
+def test_extract_url_document_fallback_uses_visible_text_not_raw_html() -> None:
+    html = """
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Вход</title>
+        <script>window.state = "%s";</script>
+      </head>
+      <body>
+        <main class="auth-form">
+          <div>Заявочная кампания закрыта.</div>
+          <div>Для продолжения войдите в личный кабинет.</div>
+          <form>
+            <label>Адрес электронной почты</label>
+            <input name="email" />
+            <label>Пароль</label>
+            <input type="password" name="password" />
+          </form>
+          <svg>
+            <image href="data:image/png;base64,%s"></image>
+          </svg>
+        </main>
+      </body>
+    </html>
+    """ % (
+        "x" * 1000,
+        "A" * 1000,
+    )
+
+    content, title, meta = extract_url_document(
+        "https://example.com/identity/account/login",
+        html_body=html,
+        content_type="text/html; charset=utf-8",
+    )
+
+    assert title == "Вход"
+    assert content == (
+        "Заявочная кампания закрыта.\n"
+        "Для продолжения войдите в личный кабинет.\n"
+        "Адрес электронной почты\n"
+        "Пароль"
+    )
+    assert "<!DOCTYPE html>" not in content
+    assert "data:image/png" not in content
+    assert "window.state" not in content
+    assert meta["extraction"]["extractor"] == "plain_text_html"
+    assert meta["extraction"]["fallback_used"] is True
 
 
 def test_extract_binary_url_document_extracts_docx_text_and_tables() -> None:
@@ -228,6 +278,24 @@ def test_extract_binary_url_document_returns_empty_content_for_image_only_pdf() 
     assert title == "Metadata Terms"
     assert meta["extraction"]["extractor"] == "pypdf"
     assert meta["extraction"]["fallback_used"] is False
+
+
+def test_build_document_payload_strips_nul_chars_from_text_fields() -> None:
+    content, title, meta = build_document_payload(
+        content="## Заг\x00оловок\n\nТек\x00ст документа",
+        title="Мет\x00аданные",
+        extractor="pypdf",
+        fallback_used=False,
+        degraded_mode=False,
+        content_type="application/pdf",
+        doc_type="pdf",
+    )
+
+    assert "\x00" not in content
+    assert "\x00" not in (title or "")
+    assert "Текст документа" in content
+    assert meta["structure"][0]["content"] == "Заголовок"
+    assert all("\x00" not in block["content"] for block in meta["structure"])
 
 
 def test_detect_binary_document_kind_uses_mime_before_url_path() -> None:
