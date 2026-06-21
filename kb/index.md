@@ -1,39 +1,46 @@
-# Agent Knowledge Base
+# База знаний агента
 
-This directory is the project-local knowledge base for agents.
+Эта директория - проектная база знаний для агентов.
 
-Start here when the user asks to use project knowledge, `/kb`, `/review`, or
-when a task touches a repeated project pattern.
+Начинай отсюда, когда пользователь просит использовать проектные знания,
+`/kb`, `/review` или когда задача затрагивает повторяемый проектный паттерн.
 
-Global reusable memory lives in `/Users/xen/Dev/treasure`. Use it for portable
-architecture, rituals, recipes, roles, and writing rules. Keep this
-project `kb/` focused on vchat-specific adapters and constraints.
+Глобальная переиспользуемая память живет в `/Users/xen/Dev/treasure`.
+Используй ее для переносимых архитектурных правил, ритуалов, рецептов, ролей и
+правил письма. Проектный `kb/` держи сфокусированным на адаптерах и
+ограничениях `vchat`.
 
-Concrete task specs live in `specs/`. Use them for broad tasks, growing tasks,
-and work that needs explicit goals, iterations, and verification criteria.
+Конкретные спецификации задач живут в `specs/`. Используй их для широких или
+растущих задач, а также для работы, где нужны явные цели, итерации и критерии
+проверки.
 
-Do not read `docs/` unless the user pins a specific document or asks to work
-with documents. `docs/` is a materialized conversation/document archive, not
-agent operating knowledge.
+Не читай `docs/`, если пользователь не указал конкретный документ или не
+попросил работать с документами. `docs/` - архив созданных документов и
+разговоров, а не рабочая память агента.
 
-## Map
+## Карта
 
-- `kb/workflow.md` - task rituals, when to read KB, when to update it.
-- `kb/design.md` - UI taste, layout decisions, repeated visual patterns.
-- `kb/frontend.md` - frontend structure, local browser verification, build flow.
-- `kb/forms.md` - page forms, WTForms naming, validation and template contracts.
-- `kb/actions.md` - small page actions, HTMX action commands, response contracts.
-- `kb/backend.md` - backend layout, migrations, jobs, config, fail-fast rules.
-- `kb/ops.md` - server access, local database, Redis and deploy boundaries.
-- `kb/review.md` - end-of-task review ritual and review output style.
-- `kb/invariants.md` - hard rules suitable for checks, hooks, and CI.
-- `specs/` - concrete task specifications and verification criteria.
+- `kb/workflow.md` - рабочие ритуалы, когда читать KB и когда обновлять ее.
+- `kb/design.md` - UI-вкус, решения по раскладке и повторяемые визуальные
+  паттерны.
+- `kb/frontend.md` - структура фронтенда, локальная проверка в браузере и
+  порядок сборки.
+- `kb/forms.md` - формы страниц, именование WTForms, валидация и договор с
+  шаблонами.
+- `kb/actions.md` - небольшие команды страниц, HTMX-действия и договоры
+  ответов.
+- `kb/backend.md` - устройство бэкенда, миграции, фоновые задачи,
+  конфигурация и правила fail-fast.
+- `kb/ops.md` - доступ к серверам, локальная база данных, Redis и границы
+  деплоя.
+- `kb/review.md` - ритуал проверки результата и стиль ревью.
+- `kb/invariants.md` - жесткие правила для проверок, хуков и CI.
+- `specs/` - конкретные спецификации задач и критерии проверки.
 
-## Maintenance
+## Поддержка
 
-Keep files short and directive. Prefer rules that affect future patches over
-history or rationale.
+Держи файлы короткими и директивными. Предпочитай правила, которые реально
+влияют на будущие правки, а не историю или объяснения задним числом.
 
-If a file grows beyond roughly 200 lines, split it into a directory with an
-`index.md` and focused child files. Example: replace the single design file with
-a design directory containing an index, forms notes, and navigation notes.
+Дели KB-файл только когда текущая правка делает его заметно трудным для
+поддержки.

@@ -1,48 +1,49 @@
-# Actions Knowledge
+# Действия
 
-Use this for small page commands. For full page forms and WTForms validation,
-read `kb/forms.md`.
+Используй этот файл для маленьких команд страницы. Для полноценных форм страниц
+и WTForms-валидации читай `kb/forms.md`.
 
-## Boundary
+## Граница
 
-- Actions are independent commands already located on a page.
-- Actions do not own a page, route template, or full form state.
-- Use actions for commands like starting a background task, resetting a token,
-  deleting an item, clearing generated data, or toggling status.
-- If a command edits many fields or owns page/modal state, it is a page form;
-  implement it using `kb/forms.md`.
+- Действия - независимые команды, которые уже находятся на странице.
+- Действия не владеют страницей, шаблоном маршрута или полным состоянием формы.
+- Используй действия для команд вроде запуска фоновой задачи, сброса токена,
+  удаления объекта, очистки сгенерированных данных или переключения статуса.
+- Если команда редактирует много полей или владеет состоянием страницы/модалки,
+  это форма страницы. Реализуй ее по `kb/forms.md`.
 
-Examples:
+Примеры:
 
-- `generate_triggers` starts trigger generation in the background.
-- `clear_triggers` clears generated triggers and response caches.
-- `widget_reset_code` resets a widget embed code.
-- `widget_delete` deletes a widget integration.
+- `generate_triggers` запускает генерацию триггеров в фоне.
+- `clear_triggers` очищает сгенерированные триггеры и кэши ответов.
+- `widget_reset_code` сбрасывает embed-код виджета.
+- `widget_delete` удаляет интеграцию виджета.
 
-Not actions:
+Не действия:
 
-- `project_integration` add form.
-- `project_widget_edit` full edit form.
-- `project_triggers` settings form.
+- форма добавления `project_integration`.
+- полная форма редактирования `project_widget_edit`.
+- форма настроек `project_triggers`.
 
-## Routes
+## Маршруты
 
-- Actions use the shared route:
+- Действия используют общий маршрут:
   `/actions/{action}/{item_id}`.
-- Do not create named standalone routes for commands with no page and no
-  template.
-- Do not use the shared action route for a page form.
+- Не создавай отдельные именованные маршруты для команд без собственной
+  страницы и шаблона.
+- Не используй общий маршрут действий для формы страницы.
 
 ## HTMX
 
-- HTMX actions may use `hx-post="{{ url('actions', ...) }}"`.
-- Rely on the global page CSRF header from `<body>`.
-- Do not add per-button `hx-headers`.
-- Do not generate `csrf_token()|tojson` near individual HTMX buttons.
-- Use `type="button"` for standalone HTMX buttons that do not submit a form.
-- Keep action markup separate from the main page form.
+- HTMX-действия могут использовать `hx-post="{{ url('actions', ...) }}"`.
+- Опирайся на глобальный CSRF-заголовок страницы из `<body>`.
+- Не добавляй `hx-headers` на отдельные кнопки.
+- Не генерируй `csrf_token()|tojson` рядом с отдельными HTMX-кнопками.
+- Для самостоятельных HTMX-кнопок, которые не отправляют форму, используй
+  `type="button"`.
+- Держи разметку действий отдельно от основной формы страницы.
 
-Current button shape:
+Текущий вид кнопки:
 
 ```jinja
 <button
@@ -52,14 +53,15 @@ Current button shape:
 >
 ```
 
-## Responses
+## Ответы
 
-- Actions return concrete action responses: `web.Response(text="ok")`,
-  `HX-Trigger`, `HX-Refresh`, or an error status.
-- Do not redirect from actions.
-- Use a named `HX-Trigger` when the page has specific refresh behavior.
+- Действия возвращают конкретные ответы действий: `web.Response(text="ok")`,
+  `HX-Trigger`, `HX-Refresh` или статус ошибки.
+- Действия не делают перенаправление.
+- Используй именованный `HX-Trigger`, когда у страницы есть особое поведение
+  обновления.
 
-Current response shape:
+Текущий вид ответа:
 
 ```python
 response = web.Response(text="ok")
@@ -67,21 +69,22 @@ response.headers["HX-Trigger"] = "project-triggers:refresh"
 return response
 ```
 
-## Data and Jobs
+## Данные и фоновые задачи
 
-- Actions may parse only minimal command input such as `item_id`.
-- Actions must not parse or sanitize fields owned by page forms.
-- Complex user input means the command should become a page form.
-- Background-job buttons are actions: enqueue the job and return immediately.
-- Keep fail-fast behavior for database, Redis, Celery, network, and dependency
-  failures.
-- Do not keep legacy action aliases unless explicitly approved.
+- Действия могут разбирать только минимальный ввод команды, например `item_id`.
+- Действия не должны разбирать или очищать поля, которыми владеют формы страниц.
+- Сложный пользовательский ввод означает, что команда должна стать формой
+  страницы.
+- Кнопки фоновых задач - это действия: поставь задачу в очередь и сразу верни
+  ответ.
+- Для сбоев базы данных, Redis, Celery, сети и зависимостей сохраняй fail-fast.
+- Не держи устаревшие псевдонимы действий без явного одобрения.
 
-## Checks
+## Проверки
 
-- Test actions separately from page forms.
-- Assert `HX-Trigger` or `HX-Refresh` headers and side effects.
-- Template tests should assert `url('actions', ...)` and absence of per-button
-  `hx-headers`.
-- Page-form tests should assert redirects from page views, not actions.
-
+- Тестируй действия отдельно от форм страниц.
+- Проверяй `HX-Trigger` или `HX-Refresh` заголовки и побочные эффекты.
+- Шаблонные тесты должны проверять `url('actions', ...)` и отсутствие
+  `hx-headers` на отдельных кнопках.
+- Тесты форм страниц должны проверять перенаправление из обработчиков страниц,
+  а не из действий.

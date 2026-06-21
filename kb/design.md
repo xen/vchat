@@ -1,36 +1,40 @@
-# Design Knowledge
+# Дизайн
 
-## Forms
+## Формы
 
-- Save/primary submit actions belong on the left side of form action rows and
-  must appear before cancel/secondary actions unless a page-specific reason is
-  documented.
-- Reuse the existing primary button and form action layout before introducing a
-  new placement.
-- A new form page should match existing admin forms in spacing, label alignment,
-  validation placement, and submit/cancel ordering.
-- If one page differs from the established form pattern, treat it as a bug unless
-  the user says the difference is intentional.
-- Field layout in admin forms is always: visible field name, helper/description
-  text, then the editing control. Do not put helper text after the control.
-- Use vertical spacing to separate form groups. Do not add decorative borders,
-  divider lines, or background boxes around form groups unless the user asks for
-  that exact visual treatment.
-- Rich-text editors in widget settings intentionally use a 2px blue left border
-  to distinguish editable rich blocks. Do not remove it when cleaning up other
-  borders.
+- Кнопки сохранения и основной отправки формы стоят слева в строках действий и
+  идут перед отменой и вторичными действиями, если для конкретной страницы не
+  задокументирована причина отступить от этого правила.
+- Перед новым расположением переиспользуй существующую основную кнопку и
+  раскладку действий формы.
+- Новая страница формы должна совпадать с существующими формами админки по
+  отступам, выравниванию подписей, размещению валидации и порядку
+  отправки и отмены.
+- Если одна страница отличается от принятого паттерна формы, считай это багом,
+  пока пользователь не скажет, что отличие намеренное.
+- Раскладка поля в формах админки всегда такая: видимое имя поля,
+  вспомогательный или описательный текст, затем элемент редактирования. Не
+  ставь вспомогательный текст после элемента редактирования.
+- Разделяй группы формы вертикальными отступами. Не добавляй декоративные
+  рамки, разделительные линии или фоновые блоки вокруг групп формы, если
+  пользователь не попросил именно такой визуальный прием.
+- Rich-text редакторы в настройках виджета намеренно используют левую синюю рамку
+  `2px`, чтобы отделять редактируемые rich-блоки. Не удаляй ее при уборке
+  других рамок.
 
-## UI consistency
+## Согласованность UI
 
-- Prefer existing components and local HTML/CSS patterns over new one-off
-  markup.
-- Do not introduce a new visual pattern if a matching one exists in the current
-  frontend.
-- Check both the source template and rendered DOM before deciding a layout issue
-  is fixed.
+- Предпочитай существующие компоненты и локальные HTML/CSS-паттерны новым
+  одноразовым фрагментам разметки.
+- Не вводи новый визуальный паттерн, если в текущем фронтенде уже есть
+  подходящий.
+- Перед выводом, что проблема раскладки исправлена, проверь и исходный шаблон,
+  и отрисованный DOM.
 
-## Browser verification
+## Проверка в браузере
 
-- For local UI work, inspect the real rendered page in the Codex in-app browser.
-- Do not rely on `curl`, guessed HTML, or source reading as the primary proof for
-  visual layout, DOM structure, CSS, or browser behavior.
+- Для локальной UI-работы смотри реальную отрисованную страницу во встроенном
+  браузере Codex.
+- Не используй `curl`, догадки по HTML или чтение исходников как основное
+  доказательство для визуальной раскладки, DOM-структуры, CSS или поведения
+  браузера.

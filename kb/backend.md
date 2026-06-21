@@ -1,65 +1,70 @@
-# Backend Knowledge
+# Бэкенд
 
-## Structure
+## Структура
 
-- `vchat/` contains the web application, settings, routes, views, templates,
-  database model definitions, metrics, and middleware.
-- `jobs/` contains background execution: Celery wiring, crawler, embedder,
-  indexing, documents, and triggers.
-- `migrations/` contains Alembic migrations and must stay consistent with model
-  changes.
-- `tests/` contains unit, integration-style, chat, crawler, and RAG quality
-  tests.
+- `vchat/` содержит веб-приложение, настройки, маршруты, представления, шаблоны,
+  модели базы данных, метрики и middleware.
+- `jobs/` содержит фоновое выполнение: связку Celery, crawler, embedder,
+  индексирование, документы и триггеры.
+- `migrations/` содержит Alembic-миграции и должен оставаться согласованным с
+  изменениями моделей.
+- `tests/` содержит unit-тесты, интеграционные проверки, тесты чата, crawler и
+  качества RAG.
 
-## Configuration
+## Конфигурация
 
-- Prefer the existing config system and `vchat/config.yaml` defaults.
-- Config keys are flat lowercase internally. Environment overrides may arrive
-  in any case, but must normalize to the same lowercase key name; do not add
-  aliases for the same setting.
-- In production mode, fail fast if `secret_key`, `cookie_key`, or
-  `vchat_secret` remain empty, placeholders, or unchanged from defaults.
-- Do not add code-level dependency fallbacks for missing declared packages.
-- Keep environment-specific runtime differences documented in KB or AGENTS
-  policy, not hidden in application branches.
+- Предпочитай существующую систему конфигурации и значения по умолчанию из
+  `vchat/config.yaml`.
+- Внутри приложения ключи конфигурации плоские и в нижнем регистре. Значения из
+  окружения могут приходить в любом регистре, но должны нормализоваться к тому
+  же имени ключа в нижнем регистре. Не добавляй псевдонимы для одной и той же
+  настройки.
+- В production-режиме приложение должно падать сразу, если `secret_key`,
+  `cookie_key` или `vchat_secret` пустые, являются placeholder-значениями или
+  не отличаются от дефолтов.
+- Не добавляй резервные пути в код для отсутствующих, но объявленных
+  зависимостей.
+- Отличия времени выполнения между окружениями документируй в KB или
+  AGENTS-политике, а не прячь в ветвлениях приложения.
 
-## Crawler and remote input
+## Crawler и внешний ввод
 
-- Enforce remote body limits while streaming and before handing data to
-  parsers. Do not download an entire response and then check its size; the limit
-  must stop memory growth and parser work at the boundary. New crawler-style
-  downloads should use the shared configured byte limit rather than local magic
-  numbers.
+- Ограничение размера удаленного тела нужно применять во время streaming и до
+  передачи данных парсерам. Нельзя сначала скачать весь ответ и потом проверять
+  размер: лимит должен останавливать рост памяти и работу парсера на границе.
+  Новые crawler-подобные загрузки должны использовать общий настроенный лимит
+  байт, а не локальные magic numbers.
 
-## RAG and widgets
+## RAG и виджеты
 
-- Public widgets are untrusted external entry points, so RAG retrieval must be
-  scoped by explicit widget/source configuration. A missing binding is a
-  configuration problem, not permission to search the whole project knowledge
-  base. Future widget features should keep this default-deny posture for any
-  project data they expose.
+- Публичные виджеты - недоверенные внешние точки входа, поэтому retrieval RAG
+  должен ограничиваться явной конфигурацией виджета и источников. Отсутствие
+  привязки - проблема конфигурации, а не разрешение искать по всей базе знаний
+  проекта. Новые возможности виджетов должны сохранять модель "запрещено по
+  умолчанию" для любых проектных данных, которые они раскрывают.
 
-## Failure policy
+## Политика ошибок
 
-- Default to fail-fast behavior.
-- Do not hide database, Redis, Celery, network, or dependency failures behind
-  silent recovery.
-- Do not add backward-compatibility shims, deprecated task aliases, or old call
-  paths unless the user explicitly approves that exact tradeoff.
-- Do not add runtime guards, assertions, or exceptions only to satisfy a type
-  checker. Restructure the control flow or use a narrow local type annotation.
+- По умолчанию используй fail-fast.
+- Не прячь сбои базы данных, Redis, Celery, сети или зависимостей за тихим
+  восстановлением.
+- Не добавляй shim-и обратной совместимости, устаревшие псевдонимы задач или
+  старые пути вызова без явного одобрения пользователя для этого tradeoff.
+- Не добавляй проверки времени выполнения, `assert` или исключения только ради
+  проверки типов. Перестрой поток выполнения или используй узкую локальную
+  аннотацию типа.
 
-## Internal helper contracts
+## Договоры внутренних помощников
 
-- New internal helpers with more than three parameters require review for
-  whether the values are copied out of one item, request, form, row, or context
-  object. If they are, pass the source object plus a small typed options/error
-  payload, and let the helper read only the fields it needs.
-- Do not precompute branch-specific values only to pass them into an internal
-  helper where most branches ignore them. Move extraction into the branch or
-  into the helper's typed payload.
+- Новые внутренние помощники с более чем тремя параметрами требуют проверки:
+  не скопированы ли эти значения из одного объекта, запроса, формы, строки или
+  контекста. Если да, передай исходный объект и небольшой типизированный набор
+  опций или ошибок, а помощник пусть читает только нужные поля.
+- Не вычисляй заранее значения для отдельных веток только ради передачи во
+  внутренний помощник, где большинство веток их игнорирует. Перенеси извлечение
+  в саму ветку или в типизированный набор опций помощника.
 
-## Python tooling
+## Python-инструменты
 
-- Run Python tooling from the project virtualenv using `venv/bin/...`.
-- Do not try system `python`, `python3`, or global `pytest` first.
+- Запускай Python-инструменты из проектного virtualenv через `venv/bin/...`.
+- Не пробуй сначала системные `python`, `python3` или глобальный `pytest`.

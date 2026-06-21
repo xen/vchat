@@ -1,31 +1,33 @@
-# Review Knowledge
+# Ревью
 
-## Purpose
+## Назначение
 
-`/review` is a compact code review ritual at the end of work. It should find
-bugs, regressions, inconsistency with KB rules, and missing tests.
+`/review` - компактный ритуал ревью кода в конце работы. Он должен находить
+баги, регрессии, несогласованность с правилами KB и недостающие тесты.
 
-## Inputs
+## Входные данные
 
-- Inspect `git diff` and changed files.
-- Read `kb/index.md`, then only the KB files relevant to the diff.
-- Do not read `docs/` unless the user pinned a document for the task.
+- Проверь `git diff` и измененные файлы.
+- Прочитай `kb/index.md`, затем только KB-файлы, относящиеся к изменениям.
+- Не читай `docs/`, если пользователь не закрепил документ для задачи.
 
-## Output style
+## Стиль вывода
 
-- Findings first, ordered by severity.
-- Use exact file and line references.
-- Keep comments terse: location, problem, fix.
-- Answer reviews in Russian unless the user explicitly asks for another language.
-- If there are no findings, say so and mention remaining test gaps or residual
-  risk.
+- Сначала замечания, по убыванию серьезности.
+- Используй точные ссылки на файл и строку.
+- Пиши кратко: место, проблема, исправление.
+- Отвечай на ревью по-русски, если пользователь явно не попросил другой язык.
+- Если замечаний нет, скажи это и укажи оставшиеся пробелы в проверках или
+  остаточный риск.
 
-## Review scope
+## Область ревью
 
-- Review only by default. Do not fix the code unless the user asks for fixes.
-- Prefer project-specific consistency issues over generic style comments.
-- Flag UI pattern drift, migration risks, swallowed errors, missing tests, and
-  violations of fail-fast or server-access policy.
-- For new functions with more than three parameters, check whether the values
-  belong to one source object, request, form, row, or context. If they do, flag
-  the signature and suggest a typed source object plus a narrow options payload.
+- По умолчанию только ревью. Не исправляй код, если пользователь не попросил
+  фиксы.
+- Предпочитай проектные проблемы согласованности общим замечаниям по стилю.
+- Отмечай дрейф UI-паттернов, риски миграций, проглоченные ошибки,
+  недостающие тесты и нарушения fail-fast или политики доступа к серверу.
+- Для новых функций с более чем тремя параметрами проверь, не принадлежат ли
+  значения одному исходному объекту, запросу, форме, строке или контексту.
+  Если да, отметь сигнатуру и предложи типизированный исходный объект плюс
+  узкий набор опций.

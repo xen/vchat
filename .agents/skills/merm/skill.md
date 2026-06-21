@@ -1,52 +1,53 @@
 ---
 name: beautiful-mermaid
 description: |
-  Render beautiful Mermaid diagrams as SVGs or ASCII art. Use when user sends Mermaid code blocks
-  (\`\`\`mermaid ... \`\`\`) and wants to visualize them. Supports: Flowcharts, State, Sequence, Class, ER diagrams.
-  Features: Ultra-fast (100+ diagrams <500ms), zero DOM dependencies, 15 built-in themes, Shiki theme compatibility.
-  Perfect for: Telegram messages, terminal output, web interfaces, CLI tools.
+  Рендерит Mermaid-диаграммы в SVG или ASCII-графику. Используй, когда пользователь присылает Mermaid-блоки
+  (\`\`\`mermaid ... \`\`\`) и хочет их визуализировать. Поддерживает flowchart, state, sequence, class и ER-диаграммы.
+  Возможности: очень быстрый рендер (100+ диаграмм меньше чем за 500 мс), без DOM-зависимостей, 15 встроенных тем, совместимость с темами Shiki.
+  Подходит для Telegram-сообщений, терминального вывода, веб-интерфейсов и CLI-инструментов.
 ---
 
 # Beautiful Mermaid
 
-Render Mermaid diagrams as beautiful SVGs or ASCII art. Ultra-fast, fully themeable, zero DOM dependencies. Built for the AI era.
+Рендерит Mermaid-диаграммы в аккуратные SVG или ASCII-графику. Работает быстро,
+полностью настраивается темами и не требует DOM-зависимостей.
 
-## When to Use
+## Когда использовать
 
-Use this skill when:
+Используй этот скилл, когда:
 
-- User sends Mermaid code blocks (\`\`\`mermaid ... \`\`\`)
-- User asks to "render" or "visualize" a diagram
-- User wants terminal/ASCII output for diagrams
-- User needs themed diagrams (15 built-in themes)
-- User wants SVG output for rich UIs
+- пользователь присылает Mermaid-блоки (\`\`\`mermaid ... \`\`\`);
+- пользователь просит "отрендерить" или "визуализировать" диаграмму;
+- нужен терминальный или ASCII-вывод диаграммы;
+- нужны диаграммы с темой оформления: доступно 15 встроенных тем;
+- нужен SVG-вывод для насыщенного интерфейса.
 
-## Installation
+## Установка
 
 ```bash
 npm install beautiful-mermaid
-# or
+# или
 bun add beautiful-mermaid
-# or
+# или
 pnpm add beautiful-mermaid
 ```
 
-## Quick Start
+## Быстрый старт
 
-### SVG Output (Default)
+### SVG-вывод по умолчанию
 
 ```typescript
 import { renderMermaid } from "beautiful-mermaid";
 
 const svg = await renderMermaid(`
   graph TD
-    A[Start] --> B{Decision}
-    B -->|Yes| C[Action]
-    B -->|No| D[End]
+    A[Старт] --> B{Решение}
+    B -->|Да| C[Действие]
+    B -->|Нет| D[Конец]
 `);
 ```
 
-### ASCII Output (Terminal)
+### ASCII-вывод для терминала
 
 ```typescript
 import { renderMermaidAscii } from "beautiful-mermaid";
@@ -54,9 +55,9 @@ import { renderMermaidAscii } from "beautiful-mermaid";
 const ascii = renderMermaidAscii(`graph LR; A --> B --> C`);
 ```
 
-**Output:**
+**Вывод:**
 
-```
+```text
 ┌───┐     ┌───┐     ┌───┐
 │   │     │   │     │   │
 │ A │────►│ B │────►│ C │
@@ -64,27 +65,27 @@ const ascii = renderMermaidAscii(`graph LR; A --> B --> C`);
 └───┘     └───┘     └───┘
 ```
 
-## Supported Diagrams
+## Поддерживаемые диаграммы
 
-| Type      | Syntax              | Description                   |
-| --------- | ------------------- | ----------------------------- |
-| Flowchart | `graph TD/LR/BT/RL` | All directions supported      |
-| State     | `stateDiagram-v2`   | State machine diagrams        |
-| Sequence  | `sequenceDiagram`   | Sequence/interaction diagrams |
-| Class     | `classDiagram`      | Class inheritance diagrams    |
-| ER        | `erDiagram`         | Entity-relationship diagrams  |
+| Тип       | Синтаксис           | Описание                            |
+| --------- | ------------------- | ----------------------------------- |
+| Flowchart | `graph TD/LR/BT/RL` | Поддерживаются все направления      |
+| State     | `stateDiagram-v2`   | Диаграммы конечных автоматов        |
+| Sequence  | `sequenceDiagram`   | Диаграммы последовательности        |
+| Class     | `classDiagram`      | Диаграммы наследования классов      |
+| ER        | `erDiagram`         | Диаграммы сущностей и связей        |
 
-### Flowchart Example
+### Пример flowchart
 
 \`\`\`mermaid
 graph TD
-A[Start] --> B{Decision}
-B -->|Yes| C[Action]
-B -->|No| D[End]
+A[Старт] --> B{Решение}
+B -->|Да| C[Действие]
+B -->|Нет| D[Конец]
 C --> D
 \`\`\`
 
-### Sequence Example
+### Пример sequence diagram
 
 \`\`\`mermaid
 sequenceDiagram
@@ -92,17 +93,17 @@ Alice->>Bob: Hello Bob!
 Bob-->>Alice: Hi Alice!
 \`\`\`
 
-## Theming System
+## Система тем
 
-### Built-in Themes (15)
+### Встроенные темы: 15 вариантов
 
 ```typescript
 import { renderMermaid, THEMES } from "beautiful-mermaid";
 
-// Use a built-in theme
+// Использовать встроенную тему
 const svg = await renderMermaid(diagram, THEMES["tokyo-night"]);
 
-// Available themes:
+// Доступные темы:
 THEMES["zinc-light"];
 THEMES["zinc-dark"];
 THEMES["tokyo-night"];
@@ -120,31 +121,31 @@ THEMES["solarized-dark"];
 THEMES["one-dark"];
 ```
 
-### Custom Theme (Mono Mode)
+### Пользовательская тема в монохромном режиме
 
 ```typescript
-// Just two colors - the system derives everything
+// Достаточно двух цветов: остальные система выводит сама
 const svg = await renderMermaid(diagram, {
-  bg: "#1a1b26", // Background
-  fg: "#a9b1d6", // Foreground
+  bg: "#1a1b26", // фон
+  fg: "#a9b1d6", // основной цвет
 });
 ```
 
-### Enriched Theme
+### Расширенная тема
 
 ```typescript
 const svg = await renderMermaid(diagram, {
   bg: "#1a1b26",
   fg: "#a9b1d6",
-  line: "#3d59a1", // Edge color
-  accent: "#7aa2f7", // Arrow heads
-  muted: "#565f89", // Secondary text
-  surface: "#292e42", // Node fill
-  border: "#3d59a1", // Node stroke
+  line: "#3d59a1", // цвет ребер
+  accent: "#7aa2f7", // стрелки и акценты
+  muted: "#565f89", // вторичный текст
+  surface: "#292e42", // заливка узлов
+  border: "#3d59a1", // обводка узлов
 });
 ```
 
-### Shiki Theme Compatibility
+### Совместимость с темами Shiki
 
 ```typescript
 import { renderMermaid, fromShikiTheme } from "beautiful-mermaid";
@@ -155,74 +156,74 @@ const colors = fromShikiTheme(highlighter.getTheme("vitesse-dark"));
 const svg = await renderMermaid(diagram, colors);
 ```
 
-## ASCII/Unicode Output
+## ASCII/Unicode-вывод
 
-For terminal environments:
+Для терминальных окружений:
 
 ```typescript
 import { renderMermaidAscii } from "beautiful-mermaid";
 
-// Unicode (prettier, default)
+// Unicode: красивее, используется по умолчанию
 const unicode = renderMermaidAscii(`graph LR; A --> B`);
 
-// Pure ASCII (maximum compatibility)
+// Чистый ASCII: максимальная совместимость
 const ascii = renderMermaidAscii(`graph LR; A --> B`, { useAscii: true });
 
-// Custom spacing
+// Пользовательские отступы
 renderMermaidAscii(diagram, {
   useAscii: false,
-  paddingX: 5, // Horizontal spacing
-  paddingY: 5, // Vertical spacing
-  boxBorderPadding: 1, // Inner padding
+  paddingX: 5, // горизонтальный отступ
+  paddingY: 5, // вертикальный отступ
+  boxBorderPadding: 1, // внутренний отступ
 });
 ```
 
-## API Reference
+## API
 
 ### renderMermaid(text, options?): Promise<string>
 
-Render Mermaid to SVG.
+Рендерит Mermaid в SVG.
 
-**Options:**
+**Параметры:**
 
-| Option        | Type    | Default   | Description             |
-| ------------- | ------- | --------- | ----------------------- |
-| `bg`          | string  | `#FFFFFF` | Background color        |
-| `fg`          | string  | `#27272A` | Foreground color        |
-| `line`        | string? | —         | Edge color              |
-| `accent`      | string? | —         | Arrow heads, highlights |
-| `muted`       | string? | —         | Secondary text          |
-| `surface`     | string? | —         | Node fill tint          |
-| `border`      | string? | —         | Node stroke             |
-| `font`        | string  | `Inter`   | Font family             |
-| `transparent` | boolean | `false`   | Transparent background  |
+| Опция         | Тип     | По умолчанию | Описание                 |
+| ------------- | ------- | --------- | -------------------------- |
+| `bg`          | string  | `#FFFFFF` | Цвет фона                  |
+| `fg`          | string  | `#27272A` | Основной цвет              |
+| `line`        | string? | -         | Цвет ребер                 |
+| `accent`      | string? | -         | Стрелки и акценты          |
+| `muted`       | string? | -         | Вторичный текст            |
+| `surface`     | string? | -         | Оттенок заливки узлов      |
+| `border`      | string? | -         | Обводка узлов              |
+| `font`        | string  | `Inter`   | Семейство шрифта           |
+| `transparent` | boolean | `false`   | Прозрачный фон             |
 
 ### renderMermaidAscii(text, options?): string
 
-Render Mermaid to ASCII/Unicode. Synchronous.
+Рендерит Mermaid в ASCII/Unicode. Синхронный вызов.
 
-**Options:**
+**Параметры:**
 
-| Option             | Type    | Default | Description                  |
-| ------------------ | ------- | ------- | ---------------------------- |
-| `useAscii`         | boolean | `false` | Use ASCII instead of Unicode |
-| `paddingX`         | number  | `5`     | Horizontal node spacing      |
-| `paddingY`         | number  | `5`     | Vertical node spacing        |
-| `boxBorderPadding` | number  | `1`     | Inner box padding            |
+| Опция              | Тип     | По умолчанию | Описание                      |
+| ------------------ | ------- | ------- | -------------------------------- |
+| `useAscii`         | boolean | `false` | Использовать ASCII вместо Unicode |
+| `paddingX`         | number  | `5`     | Горизонтальный отступ узлов      |
+| `paddingY`         | number  | `5`     | Вертикальный отступ узлов        |
+| `boxBorderPadding` | number  | `1`     | Внутренний отступ блока          |
 
 ### THEMES: Record<string, DiagramColors>
 
-All 15 built-in themes.
+Все 15 встроенных тем.
 
 ### fromShikiTheme(theme): DiagramColors
 
-Extract diagram colors from Shiki theme.
+Извлекает цвета диаграммы из темы Shiki.
 
-## Usage in OpenClaw
+## Использование в OpenClaw
 
-### Telegram Integration
+### Интеграция с Telegram
 
-For Telegram, render as SVG and send as photo:
+Для Telegram рендерь SVG и отправляй его как изображение:
 
 ```typescript
 import { renderMermaid } from "beautiful-mermaid";
@@ -232,12 +233,12 @@ async function sendMermaid(message: string) {
 
   for (const block of blocks) {
     const svg = await renderMermaid(block.code, THEMES["tokyo-night"]);
-    // Send SVG as photo to Telegram
+    // Отправить SVG как изображение в Telegram
   }
 }
 ```
 
-### Terminal/CLI Output
+### Вывод в терминал или CLI
 
 ```typescript
 import { renderMermaidAscii } from "beautiful-mermaid";
@@ -248,54 +249,54 @@ function printDiagram(code: string) {
 }
 ```
 
-## Performance
+## Производительность
 
-- **100+ diagrams** in under 500ms
-- **Zero DOM dependencies** - pure TypeScript
-- **Ultra-fast** - no browser/Puppeteer needed
+- **100+ диаграмм** меньше чем за 500 мс.
+- **Без DOM-зависимостей** - чистый TypeScript.
+- **Очень быстро** - браузер и Puppeteer не нужны.
 
-## Comparison to Alternatives
+## Сравнение с альтернативами
 
-| Feature      | beautiful-mermaid        | mmdc      |
-| ------------ | ------------------------ | --------- |
-| Dependencies | Zero DOM                 | Puppeteer |
-| Speed        | <500ms for 100+ diagrams | Slower    |
-| ASCII output | ✅ Native                | ❌ No     |
-| Themes       | 15 built-in + Shiki      | CSS       |
-| Size         | Lightweight              | Heavy     |
+| Возможность | beautiful-mermaid        | mmdc      |
+| ----------- | ------------------------ | --------- |
+| Зависимости | Без DOM                  | Puppeteer |
+| Скорость    | <500 мс для 100+ диаграмм | Медленнее |
+| ASCII       | ✅ Нативно                | ❌ Нет    |
+| Темы        | 15 встроенных + Shiki     | CSS       |
+| Размер      | Легковесный              | Тяжелый   |
 
-## Example Workflow
+## Пример рабочего процесса
 
-**Input:**
+**Ввод:**
 
-```
-Here is the system architecture:
+```text
+Вот архитектура системы:
 
 \`\`\`mermaid
 graph TD
-  User --> LB[Load Balancer]
-  LB --> API[API Server]
-  API --> DB[(Database)]
+  Пользователь --> LB[Балансировщик]
+  LB --> API[API-сервер]
+  API --> DB[(База данных)]
   API --> Cache
 \`\`\`
 
-And the flow:
+И поток вызовов:
 
 \`\`\`mermaid
 sequenceDiagram
-  participant U as User
+  participant U as Пользователь
   participant A as API
-  U->>A: Request
-  A-->>U: Response
+  U->>A: Запрос
+  A-->>U: Ответ
 \`\`\`
 ```
 
-**Action:** Render both diagrams with appropriate theme.
+**Действие:** отрендерить обе диаграммы с подходящей темой.
 
-**Output:** Send two SVG images with captions.
+**Вывод:** отправить два SVG-изображения с подписями.
 
-## Resources
+## Ресурсы
 
 - **npm:** https://www.npmjs.com/package/beautiful-mermaid
 - **GitHub:** https://github.com/lukilabs/beautiful-mermaid
-- **Live Demo:** https://agents.craft.do/mermaid
+- **Живая демонстрация:** https://agents.craft.do/mermaid

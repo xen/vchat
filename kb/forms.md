@@ -1,111 +1,132 @@
-# Forms Knowledge
+# Формы
 
-Use this for admin page forms. For standalone commands and HTMX buttons, read
-`kb/actions.md`.
+Используй этот файл для форм страниц админки. Для самостоятельных команд и
+HTMX-кнопок читай `kb/actions.md`.
 
-## Boundary
+## Граница
 
-- Page forms own page or modal state and are served by the page view at their
-  own URL.
-- Page forms POST normally with `method="POST"` and include
+- Формы страниц владеют состоянием страницы или модалки и обслуживаются
+  обработчиком страницы на собственном URL.
+- Формы страниц отправляются обычным POST с `method="POST"` и содержат
   `{{ form.csrf_token }}`.
-- Page forms may redirect after valid POST. Actions must not redirect as a page
-  navigation shortcut.
-- If a command has no page, no template, and no form state, it is an action; see
+- После валидного POST форма страницы может сделать перенаправление. Действия
+  не должны использовать перенаправление как короткий путь навигации страницы.
+- Если у команды нет страницы, шаблона и состояния формы, это действие; см.
   `kb/actions.md`.
 
-Examples:
+Примеры:
 
-- `project_integration` is the `/integration` add form for `WidgetIntegration`.
-- `project_widget_edit` is the full `/integration/{widget_id}` edit form.
-- `project_triggers` is the `/triggers` settings form.
+- `project_integration` - форма добавления `WidgetIntegration` на
+  `/integration`.
+- `project_widget_edit` - полная форма редактирования на
+  `/integration/{widget_id}`.
+- `project_triggers` - форма настроек на `/triggers`.
 
-## Naming
+## Именование
 
-- Add/create forms are named `[Thing]Add`.
-- Edit/update forms are named `[Thing]Edit`.
-- Nested subforms may use domain names such as `PinnedMessageForm`.
-- Do not use generic names like `[Thing]Form` for add/edit forms.
-- Keep simple field declarations local to each form class. Do not extract a
-  one-use helper just to share a short WTForms field between add/edit classes.
-- Do not add form properties named `default_*`.
+- Формы добавления/создания называются `[Thing]Add`.
+- Формы редактирования/обновления называются `[Thing]Edit`.
+- Вложенные subforms могут использовать доменные имена вроде
+  `PinnedMessageForm`.
+- Не используй общие имена вроде `[Thing]Form` для форм добавления и
+  редактирования.
+- Простые объявления полей держи локально в классе формы. Не выноси одноразовый
+  помощник только ради короткого WTForms-поля, общего для классов добавления и
+  редактирования.
+- Не добавляй свойства формы с именами `default_*`.
 
-## View Contract
+## Договор обработчика страницы
 
-- Construct the form once near the start of the page view.
-- For GET, pass `data={...}` with render-ready values; normalize empty model
-  values to domain constants there.
-- For POST, pass `formdata=await request.post()` and validate once.
-- On invalid POST, rollback and render the same template with status `400`.
-- On valid POST, assign form-cleaned values to the model, commit, emit
-  event/flash if needed, and redirect from the page view.
-- Keep context narrow. Widget edit uses only `project` and `form`.
-- Views may assign `form.field.data` and explicit `form.cleaned_*` values.
-  Views must not parse raw POST fields owned by the form.
+- Создавай форму один раз в начале обработчика страницы.
+- Для GET передавай `data={...}` с готовыми к рендеру значениями; пустые
+  значения модели нормализуй там к доменным константам.
+- Для POST передавай `formdata=await request.post()` и валидируй один раз.
+- При невалидном POST сделай rollback и отрендери тот же шаблон со статусом
+  `400`.
+- При валидном POST присвой очищенные формой значения модели, зафиксируй
+  транзакцию, отправь событие или всплывающее сообщение при необходимости и сделай
+  перенаправление из обработчика страницы.
+- Держи контекст узким. Редактирование виджета использует только `project` и
+  `form`.
+- Обработчик может присваивать `form.field.data` и явные `form.cleaned_*`
+  значения. Обработчик не должен разбирать сырые POST-поля, которыми владеет
+  форма.
 
-## Validation and Cleaning
+## Валидация и очистка
 
-- Sanitize on write inside the WTForms class, usually in `validate_<field>`.
-- Do not sanitize display-time values to compensate for dirty saved data.
-- Do not silently truncate user input. Validate length and return form errors.
-- Let WTForms field validators handle ordinary required/length/choice checks.
-- Rich text uses `SafeHTML.clean(value, max_text_length=...)`: it returns clean
-  HTML or raises `ValidationError`.
-- Plain text list entries should be stripped and saved as plain strings.
-- Empty cleaned lists fall back to domain constants inside the form.
-- `FieldList.data` is computed by WTForms; do not assign it. Use
-  `cleaned_welcome_messages`, `cleaned_waiting_messages`, or
-  `cleaned_pinned_messages` for aggregate cleaned values.
+- Очищай значения при записи внутри WTForms-класса, обычно в
+  `validate_<field>`.
+- Не очищай значения на этапе отображения, чтобы компенсировать грязные
+  сохраненные данные.
+- Не обрезай пользовательский ввод молча. Проверяй длину и возвращай ошибки
+  формы.
+- Обычные проверки required/length/choice оставляй валидаторам WTForms-полей.
+- Форматированный текст использует `SafeHTML.clean(value, max_text_length=...)`: он
+  возвращает безопасный HTML или выбрасывает `ValidationError`.
+- Элементы списков с обычным текстом нужно очищать через `strip` и сохранять как
+  обычные строки.
+- Пустые очищенные списки внутри формы откатываются к доменным константам.
+- `FieldList.data` вычисляет WTForms; не присваивай его вручную. Для агрегатных
+  очищенных значений используй `cleaned_welcome_messages`,
+  `cleaned_waiting_messages` или `cleaned_pinned_messages`.
 
-## WTForms Lists
+## Списки WTForms
 
-- Use `FieldList(StringField(...))` for dynamic string lists.
-- Use `FieldList(FormField(SubForm))` for dynamic structured lists.
-- Do not invent custom fields for ordinary dynamic lists.
-- Client names must match WTForms indexing:
+- Для динамических строковых списков используй `FieldList(StringField(...))`.
+- Для динамических структурированных списков используй
+  `FieldList(FormField(SubForm))`.
+- Не придумывай пользовательские поля для обычных динамических списков.
+- Имена на клиенте должны соответствовать индексации WTForms:
   - `welcome_messages-0`
   - `waiting_messages-0`
   - `pinned_messages-0-text`
   - `pinned_messages-0-color`
-- Do not use legacy names like `welcome_text[]`, `waiting_text[]`,
-  `pinned_text[]`, or `pinned_color[]`.
-- Dynamic JavaScript must reindex rows before submit and after add/remove/drag.
-- Put field-level constraints on the field itself. Example: pinned color is a
-  `SelectField`, not a manual allowlist check in `validate_pinned_messages`.
+- Не используй устаревшие имена вроде `welcome_text[]`, `waiting_text[]`,
+  `pinned_text[]` или `pinned_color[]`.
+- Динамический JavaScript должен переиндексировать строки перед отправкой формы
+  и после добавления, удаления или перетаскивания.
+- Ограничения уровня поля ставь на само поле. Пример: цвет pinned-сообщения -
+  это `SelectField`, а не ручной allowlist в `validate_pinned_messages`.
 
-## Templates
+## Шаблоны
 
-- If a page has one main form, the context variable is `form`.
-- Add modals may use a specific variable such as `create_form`.
-- Use `vchat/templates/macros.html` `render_field` for ordinary fields.
-- Custom rich editors may use hidden inputs, but hidden input names must be
-  WTForms field names.
-- Do not put value fallbacks in templates, for example
+- Если у страницы одна основная форма, переменная контекста называется `form`.
+- Модалки добавления могут использовать конкретную переменную, например
+  `create_form`.
+- Для обычных полей используй `render_field` из
+  `vchat/templates/macros.html`.
+- Пользовательские редакторы форматированного текста могут использовать скрытые
+  поля, но имена скрытых полей должны быть именами WTForms-полей.
+- Не добавляй резервные значения в шаблонах, например
   `{{ form.footer_text.data or default_widget_footer_text }}`.
-- A full page form must not use `hx-post`, `hx-swap="none"`, or per-element
-  `hx-headers`.
-- HTMX buttons inside a page are actions; see `kb/actions.md`.
+- Полная форма страницы не должна использовать `hx-post`, `hx-swap="none"` или
+  `hx-headers` на отдельных элементах.
+- HTMX-кнопки внутри страницы - это действия; см. `kb/actions.md`.
 
-## Defaults
+## Значения по умолчанию
 
-- Reused widget defaults are domain constants:
+- Переиспользуемые дефолты виджета - доменные константы:
   - `WIDGET_AGENT_NAME`
   - `WIDGET_FOOTER_TEXT`
   - `WIDGET_WELCOME_MESSAGES`
   - `WIDGET_WAITING_MESSAGES`
   - `WIDGET_ALLOWED_PINNED_COLORS`
-- Large prompt defaults may remain module constants such as
-  `DEFAULT_SYSTEM_PROMPT` and `DEFAULT_SUGGESTIONS_PROMPT`.
-- Add forms use field `default=...` for editable default values.
-- Add views explicitly assign model fields that are not present in the add form.
-- Edit views fill GET `data={...}` with current model values or domain defaults;
-  templates render form values directly.
+- Большие дефолты промптов могут оставаться модульными константами вроде
+  `DEFAULT_SYSTEM_PROMPT` и `DEFAULT_SUGGESTIONS_PROMPT`.
+- Формы добавления используют `default=...` для редактируемых значений по
+  умолчанию.
+- Обработчики добавления явно присваивают модели поля, которых нет в форме
+  добавления.
+- Обработчики редактирования заполняют GET `data={...}` текущими значениями
+  модели или доменными дефолтами; шаблоны рендерят значения формы напрямую.
 
-## Checks
+## Проверки
 
-- Test forms directly with `MultiDict`.
-- POST tests must use WTForms field names.
-- Template tests should assert rendered field names.
-- Assert rich text keeps allowed tags/links and removes scripts/unsafe links.
-- Assert long text is rejected, not truncated.
-- Assert page-form redirects happen only from page views, not actions.
+- Тестируй формы напрямую через `MultiDict`.
+- POST-тесты должны использовать имена полей WTForms.
+- Шаблонные тесты должны проверять отрендеренные имена полей.
+- Проверяй, что форматированный текст сохраняет разрешенные теги/ссылки и
+  удаляет скрипты вместе с небезопасными ссылками.
+- Проверяй, что длинный текст отклоняется, а не обрезается.
+- Проверяй, что перенаправление формы страницы происходит только из
+  обработчиков страниц, а не из действий.

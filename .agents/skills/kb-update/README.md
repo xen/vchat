@@ -1,12 +1,12 @@
 # kb-update
 
-Maintains the project-local `kb/` directory after implementation.
+Поддерживает проектную директорию `kb/` после реализации.
 
-Invoke with:
+Вызов:
 
 ```text
 /kb
 ```
 
-The skill captures reusable agent knowledge as compact rules and runs
-`make agent-kb-check`.
+Скилл сохраняет переиспользуемые проектные знания как компактные правила. Если
+в проекте задокументирована релевантная проверка для KB-правок, запусти ее.

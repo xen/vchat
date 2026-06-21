@@ -1,27 +1,31 @@
-# Operations Knowledge
+# Эксплуатация
 
-## Server access
+## Доступ к серверам
 
-- Do not access any remote server unless the user explicitly asks for server
-  access in the current task.
-- Server details in `AGENTS.md` are reference material, not standing permission.
-- If server access would help but was not requested, ask first and wait.
+- Не обращайся к удаленным серверам, если пользователь явно не попросил
+  серверный доступ в текущей задаче.
+- Сведения о серверах в `AGENTS.md` - справочный материал, а не постоянное
+  разрешение.
+- Если серверный доступ мог бы помочь, но пользователь его не просил, сначала
+  спроси и дождись ответа.
 
-## Local database
+## Локальная база данных
 
-- Local PostgreSQL connection: `postgresql://xen@localhost:5432/vchat`.
-- For migrations, verify relevant record counts before and after when data
-  integrity is part of the task.
+- Локальное подключение PostgreSQL: `postgresql://xen@localhost:5432/vchat`.
+- Для миграций проверяй релевантное количество записей до и после, когда
+  целостность данных входит в задачу.
 
 ## Redis
 
-- Local repo defaults use separate Redis databases for app, Celery broker, and
-  Celery result backend.
-- Do not mix local defaults with current test-server runtime overrides.
-- Queue diagnostics must read from the Celery broker DB, not the app Redis DB.
+- Локальные дефолты репозитория используют разные базы Redis для
+  приложения, брокера Celery и backend-а результатов Celery.
+- Не смешивай локальные дефолты с переопределениями времени выполнения текущего тестового
+  сервера.
+- Диагностика очередей должна читать базу брокера Celery, а не Redis-базу
+  приложения.
 
-## Deploy
+## Деплой
 
-- Prefer existing deployment scripts and Makefile targets.
-- Do not run deployment, SSH, remote psql, remote Redis, systemd, or journal
-  commands without explicit current-task permission.
+- Предпочитай существующие скрипты деплоя и цели Makefile.
+- Не запускай деплой, SSH, удаленный psql, удаленный Redis, systemd или
+  команды journal без явного разрешения в текущей задаче.

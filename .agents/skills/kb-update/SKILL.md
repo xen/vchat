@@ -1,52 +1,53 @@
 ---
 name: kb-update
 description: >
-  Maintain the project-local kb/ knowledge base after implementation. Use when the
-  user says "/kb", "update KB", "capture this rule", "knowledge base", or asks to
-  preserve a reusable project pattern without putting it in docs/.
+  Поддерживай проектную базу знаний `kb/` после реализации. Используй, когда
+  пользователь говорит "/kb", просит обновить KB, сохранить правило, пополнить
+  базу знаний или сохранить повторяемый проектный паттерн без переноса в
+  `docs/`.
 ---
 
-Update project-local agent knowledge without bloating context.
+Обновляй проектную рабочую память агента без раздувания контекста.
 
-## Workflow
+## Рабочий процесс
 
-1. Read `kb/index.md`.
-2. Inspect `git diff --stat` and relevant changed files.
-3. Identify reusable project knowledge:
-   - repeated UI/design decisions,
-   - architectural rules,
-   - workflow or verification rituals,
-   - hard invariants suitable for checks,
-   - fixes the user has had to request more than once.
-4. Propose the smallest KB edits needed.
-5. Apply edits only when the user asked you to update KB, not when they asked only
-   for a proposal.
-6. Run `make agent-kb-check`.
+1. Прочитай `kb/index.md`.
+2. Посмотри `git diff --stat` и релевантные измененные файлы.
+3. Найди переиспользуемое проектное знание:
+   - повторяющиеся UI- и дизайн-решения,
+   - архитектурные правила,
+   - рабочие ритуалы или ритуалы проверки,
+   - жесткие инварианты, подходящие для проверок,
+   - исправления, которые пользователь уже просил больше одного раза.
+4. Предложи минимальные KB-правки.
+5. Применяй правки только когда пользователь попросил обновить KB, а не когда
+   он попросил только предложение.
+6. Если проект документирует релевантную проверку для KB-правок, запусти ее.
 
-## What belongs in KB
+## Что относится к KB
 
-- Short directive rules that should steer future patches.
-- Stable project structure and command rituals.
-- Pointers from `kb/index.md` to focused KB files.
-- Split recommendations when a file is growing too large.
+- Короткие директивные правила, которые должны направлять будущие правки.
+- Стабильная структура проекта и командные ритуалы.
+- Ссылки из `kb/index.md` на сфокусированные KB-файлы.
+- Рекомендации по разделению, когда текущая правка делает файл трудным для
+  поддержки.
 
-## What does not belong in KB
+## Что не относится к KB
 
-- One-off debugging history.
-- Long meeting notes or materialized conversations.
-- Spec drafts, reports, or documents. Those belong in `docs/` only when the user
-  asks to preserve them there.
-- Server state snapshots unless they are stable operating policy.
+- Одноразовая история отладки.
+- Длинные заметки встреч или материализованные разговоры.
+- Черновики спецификаций, отчеты или документы. Им место в `docs/` только когда
+  пользователь просит сохранить их там.
+- Снимки состояния серверов, если это не стабильная операционная политика.
 
-## Style
+## Стиль
 
-- Keep entries compact and operational.
-- Prefer bullets over paragraphs.
-- Avoid rationale unless it changes future implementation choices.
-- Do not read `docs/` unless the user pins a specific document.
+- Держи записи компактными и операционными.
+- Предпочитай списки абзацам.
+- Избегай обоснований, если они не меняют будущие решения реализации.
+- Не читай `docs/`, если пользователь не закрепил конкретный документ.
 
-## Splitting rule
+## Правило разделения
 
-If a KB file grows beyond roughly 200 lines, propose replacing it with a directory
-that has an `index.md` plus focused child files. Preserve the old entry points by
-updating `kb/index.md`.
+Рассматривай разделение KB-файла только когда текущая правка делает его заметно
+трудным для поддержки.

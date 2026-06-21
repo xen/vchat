@@ -1,34 +1,42 @@
-# Workflow Knowledge
+# Рабочий процесс
 
-## Project memory boundaries
+## Границы проектной памяти
 
-- `kb/` is agent operating memory.
-- `docs/` is a document archive created during human-agent work.
-- Read `docs/` only when the user names or pins a specific document, or when a
-  KB file explicitly points to a pinned document for the current task.
+- `kb/` - рабочая память агента.
+- `docs/` - архив документов, созданных в работе человека и агента.
+- Читай `docs/` только когда пользователь называет или закрепляет конкретный
+  документ, либо когда KB-файл явно указывает на закрепленный документ для
+  текущей задачи.
 
-## Task flow
+## Ход задачи
 
-- Start with local code and `kb/index.md` when the task matches an existing
-  pattern.
-- Prefer existing Makefile targets and project scripts over ad hoc commands.
-- Use `venv/bin/...` for Python tooling.
-- Do not access remote servers unless the user explicitly asks for server
-  access in the current task.
+- Начинай с локального кода и `kb/index.md`, если задача похожа на уже
+  описанный проектный паттерн.
+- Для широких или растущих задач запускай глобальный task-start skill:
+  `/Users/xen/Dev/treasure/skills/task-start/SKILL.md`.
+- Конкретные спецификации задач сохраняй в `specs/` по правилам
+  [specs/README.md](../specs/README.md).
+- В спецификациях задач ссылайся только на контекст, который прямо ограничивает
+  реализацию. Не перечисляй KB-файлы, memories, чужие репозитории или прошлое
+  обсуждение только потому, что они были открыты при формулировке задачи.
+- Предпочитай существующие цели Makefile и проектные скрипты разовым командам.
+- Для Python-инструментов используй `venv/bin/...`.
+- Не обращайся к удаленным серверам, если пользователь явно не попросил
+  серверный доступ в текущей задаче.
 
-## End-of-task rituals
+## Ритуалы завершения
 
-- Use `/review` when a task changes code or behavior and the user wants the
-  compact review pass.
-- Use `/kb` after a task produces a reusable project rule, design decision, or
-  repeated fix.
-- Do not add one-off incident details to KB. Capture only knowledge that should
-  steer future work.
+- Используй `/review`, когда задача меняет код или поведение, а пользователь
+  хочет компактную проверку.
+- Используй `/kb`, когда задача дала повторяемое проектное правило, дизайн-
+  решение или исправление, которое пригодится снова.
+- Не добавляй в KB одноразовые детали инцидентов. Сохраняй только знания,
+  которые должны направлять будущую работу.
 
-## KB update rule
+## Правило обновления KB
 
-KB changes should be small, quoted, and operational:
+Правки KB должны быть маленькими, цитируемыми и рабочими:
 
-- bad: long history of why the rule exists.
-- good: "Save actions belong on the left side of form action rows unless a
-  page-specific reason is documented."
+- плохо: длинная история о том, почему правило появилось.
+- хорошо: "Кнопки сохранения стоят слева в строках действий формы, если для
+  конкретной страницы не задокументирована причина отступить от этого правила."

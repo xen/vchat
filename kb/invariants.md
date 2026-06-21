@@ -1,39 +1,44 @@
-# Project Invariants
+# Инварианты проекта
 
-These rules should be enforced by hooks, checks, or review whenever practical.
+Эти правила нужно по возможности закреплять хуками, проверками или ревью.
 
 ## Commit messages
 
-- Never include `Co-Authored-By:`.
-- Do not add AI attribution trailers.
+- Никогда не добавляй `Co-Authored-By:`.
+- Не добавляй attribution trailers для AI.
 
 ## Python
 
-- Python tooling must run through `venv/bin/...`.
-- Normal application dependencies must not use lazy import fallbacks.
-- Missing declared dependencies are environment problems, not code fallback
-  opportunities.
-- Do not use `_` as a scratch or ignored variable name outside i18n/gettext
-  contexts. Use a visible `_ignore_*` or `_skip_*` name, or omit the assignment.
-- Runtime code must not use `assert` for ordinary validation or type narrowing.
-- Type-checker fixes should not introduce impossible runtime branches.
+- Python-инструменты должны запускаться через `venv/bin/...`.
+- Обычные зависимости приложения не должны использовать ленивые импорты с
+  резервными путями.
+- Отсутствующие объявленные зависимости - проблема окружения, а не повод для
+  резервного пути в коде.
+- Не используй `_` как временное или игнорируемое имя переменной вне контекстов
+  i18n/gettext. Используй явное имя `_ignore_*` или `_skip_*`, либо не делай
+  присваивание.
+- Runtime-код не должен использовать `assert` для обычной валидации или
+  уточнения типа.
+- Исправления для проверки типов не должны добавлять невозможные ветки времени
+  выполнения.
 
-## Architecture and operations
+## Архитектура и эксплуатация
 
-- No remote server access without explicit current-task permission.
-- Default to fail-fast behavior.
-- Do not preserve legacy call paths or compatibility shims without explicit user
-  approval.
-- User-provided or model-provided text must not be inserted with `innerHTML`
-  unless it first passes through a project allowlist renderer such as
-  `renderSafeAssistantMarkdown`, or is escaped.
-- Browser form POST mutations must include signed CSRF tokens. HTML forms carry
-  `csrf_token`; fetch/HTMX requests use `X-CSRFToken`.
-- Public widgets must never query the global knowledge base without explicit
-  source scoping.
+- Никакого доступа к удаленным серверам без явного разрешения в текущей задаче.
+- По умолчанию используй fail-fast.
+- Не сохраняй устаревшие пути вызова или compatibility shims без явного
+  одобрения пользователя.
+- Пользовательский или сгенерированный моделью текст нельзя вставлять через
+  `innerHTML`, если он сначала не прошел через проектный allowlist renderer
+  вроде `renderSafeAssistantMarkdown` или не был экранирован.
+- Браузерные POST-мутации форм должны содержать подписанные CSRF-токены.
+  HTML-формы несут `csrf_token`; fetch/HTMX-запросы используют `X-CSRFToken`.
+- Публичные виджеты никогда не должны искать по глобальной базе знаний без
+  явного ограничения источников.
 
-## Knowledge base
+## База знаний
 
-- `docs/` is not agent operating knowledge.
-- `kb/index.md` must point to existing KB files.
-- KB files should stay short. Split files that grow beyond the agreed threshold.
+- `docs/` - не рабочая память агента.
+- `kb/index.md` должен ссылаться на существующие KB-файлы.
+- KB-файлы должны оставаться короткими и рабочими. Делить файл нужно тогда,
+  когда текущая правка делает его заметно трудным для поддержки.

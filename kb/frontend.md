@@ -1,23 +1,25 @@
-# Frontend Knowledge
+# Фронтенд
 
-## Structure
+## Структура
 
-- `frontend/` is the admin/front-office frontend.
-- `frontend_chat/` is the embeddable chat widget frontend.
-- Each frontend has its own `Makefile`, `package.json`, Vite config, source, and
-  generated `dist/`.
+- `frontend/` - фронтенд админки и рабочего интерфейса.
+- `frontend_chat/` - встраиваемый фронтенд чат-виджета.
+- У каждого фронтенда свой `Makefile`, `package.json`, Vite-конфигурация,
+  исходники и сгенерированный `dist/`.
 
-## Build flow
+## Сборка
 
-- Use the frontend-local Makefile when changing a specific frontend.
-- Use root `make frontend` when a change must rebuild both frontend packages.
-- Keep generated assets in sync when the project convention requires committed
-  `dist/` output.
+- Когда меняешь конкретный фронтенд, используй его локальный Makefile.
+- Используй корневой `make frontend`, когда изменение должно пересобрать оба
+  фронтенд-пакета.
+- Держи сгенерированные файлы синхронными, если проектная конвенция требует
+  коммитить `dist/`.
 
-## Verification
+## Проверка
 
-- For UI layout fixes, open local pages in the Codex in-app browser.
-- Capture the relevant rendered state before changing templates or CSS when the
-  issue is visual.
-- Verify the changed page and at least one nearby existing page that uses the
-  same pattern.
+- Для исправлений UI-раскладки открывай локальные страницы во встроенном
+  браузере Codex.
+- Если проблема визуальная, зафиксируй релевантное отрисованное состояние до
+  изменения шаблонов или CSS.
+- Проверь измененную страницу и хотя бы одну соседнюю существующую страницу,
+  которая использует тот же паттерн.
