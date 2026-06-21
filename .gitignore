@@ -105,3 +105,4 @@ frontend_chat/build
 media
 docs/word
 data/
+tmp/
