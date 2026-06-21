@@ -593,7 +593,8 @@ CREATE TABLE public.widget_integration (
     footer_text text DEFAULT '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>.<br>Отправить Enter, новая строка Shift+Enter'::text NOT NULL,
     welcome_messages jsonb DEFAULT '[]'::jsonb NOT NULL,
     waiting_messages jsonb DEFAULT '["Готовлю ответ"]'::jsonb NOT NULL,
-    error_message text DEFAULT 'Извините, сейчас не удалось получить ответ. Попробуйте отправить сообщение позже.'::text NOT NULL
+    error_message text DEFAULT 'Извините, сейчас не удалось получить ответ. Попробуйте отправить сообщение позже.'::text NOT NULL,
+    is_enabled boolean DEFAULT true NOT NULL
 );
 
 
