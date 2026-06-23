@@ -124,6 +124,14 @@ class _FakeSessionFactory:
         return False
 
 
+def test_make_websocket_response_sets_request_id_header_with_real_aiohttp() -> None:
+    request = {"request_id": "rid-1"}
+
+    ws = chat_views.make_websocket_response(request)
+
+    assert ws.headers[chat_views.REQUEST_ID_HEADER] == "rid-1"
+
+
 class _RowsSessionFactory:
     def __init__(self, row: Any) -> None:
         self.row = row

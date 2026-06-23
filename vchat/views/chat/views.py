@@ -1037,7 +1037,7 @@ async def stream_cached_response_text(
         )
 
 
-async def websocket(request):
+def make_websocket_response(request) -> web.WebSocketResponse:
     try:
         connection_request_id = request["request_id"]
     except (AttributeError, KeyError, TypeError):
@@ -1045,6 +1045,11 @@ async def websocket(request):
     ws = web.WebSocketResponse()
     if connection_request_id:
         ws.headers[REQUEST_ID_HEADER] = str(connection_request_id)
+    return ws
+
+
+async def websocket(request):
+    ws = make_websocket_response(request)
     await ws.prepare(request)
 
     serializer = URLSafeSerializer(SECRET_KEY)
