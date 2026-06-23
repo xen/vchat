@@ -59,6 +59,7 @@ class _FakeCtx:
 class _FakeWs:
     def __init__(self, incoming: list[_WsMessage]) -> None:
         self._incoming = deque(incoming)
+        self.headers: dict[str, str] = {}
         self.sent_json: list[dict[str, Any]] = []
         self.sent_str: list[str] = []
         self.closed_codes: list[int | None] = []
@@ -83,6 +84,13 @@ class _FakeWs:
 
     def exception(self) -> None:
         return None
+
+
+class _WebsocketRequest(dict[str, Any]):
+    def __init__(self, *, payload: str, app: dict[str, Any] | None = None, **items: Any):
+        super().__init__(items)
+        self.match_info = {"payload": payload}
+        self.app = app or {}
 
 
 class _FakeSession:
@@ -887,10 +895,11 @@ async def test_websocket_invalid_signature_closes_1008(
             raise BadSignature("bad")
 
     monkeypatch.setattr(chat_views, "URLSafeSerializer", _Serializer)
-    request = SimpleNamespace(match_info={"payload": "bad"}, app={})
+    request = _WebsocketRequest(payload="bad", request_id="rid-1")
 
     result_ws = await chat_views.websocket(request)
     assert result_ws is ws
+    assert ws.headers[chat_views.REQUEST_ID_HEADER] == "rid-1"
     assert 1008 in ws.closed_codes
 
 

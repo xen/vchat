@@ -1042,12 +1042,9 @@ async def websocket(request):
         connection_request_id = request["request_id"]
     except (AttributeError, KeyError, TypeError):
         connection_request_id = None
+    ws = web.WebSocketResponse()
     if connection_request_id:
-        ws = web.WebSocketResponse(
-            headers={REQUEST_ID_HEADER: str(connection_request_id)}
-        )
-    else:
-        ws = web.WebSocketResponse()
+        ws.headers[REQUEST_ID_HEADER] = str(connection_request_id)
     await ws.prepare(request)
 
     serializer = URLSafeSerializer(SECRET_KEY)
