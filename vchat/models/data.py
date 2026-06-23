@@ -148,6 +148,7 @@ class WidgetIntegration(Base, Created, Updated):
     code: Mapped[str] = mapped_column(
         sa.String(64), nullable=False, unique=True, index=True
     )
+    secret: Mapped[str] = mapped_column(sa.String(128), nullable=False, default="")
     agent_name: Mapped[str] = mapped_column(sa.String(100), nullable=False, default="")
     welcome_messages: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list
@@ -158,6 +159,12 @@ class WidgetIntegration(Base, Created, Updated):
     error_message: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     footer_text: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
     system_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    is_enabled: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=True,
+        server_default=sa.text("true"),
+    )
     suggestions_enabled: Mapped[bool] = mapped_column(
         sa.Boolean,
         nullable=False,
@@ -537,6 +544,75 @@ class TriggerResponseCache(Base, Created, Updated):
         nullable=False,
         default=0,
         server_default=sa.text("0"),
+    )
+
+
+class LLMCacheEntry(Base, Created, Updated):
+    __tablename__ = "llm_cache_entry"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "purpose",
+            "cache_key",
+            name="uq_llm_cache_entry_purpose_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    purpose: Mapped[str] = mapped_column(sa.String(64), nullable=False, index=True)
+    cache_key: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    question_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False, index=True)
+    retrieval_context_hash: Mapped[str | None] = mapped_column(
+        sa.String(64),
+        nullable=True,
+        index=True,
+    )
+    key_payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    response_payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    source_scope: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    provider: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
+    tokens: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
+    observed_count: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=1,
+        server_default=sa.text("1"),
+    )
+    potential_saved_requests: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
+    potential_saved_tokens: Mapped[int] = mapped_column(
+        sa.Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
+    is_enabled: Mapped[bool] = mapped_column(
+        sa.Boolean,
+        nullable=False,
+        default=True,
+        server_default=sa.text("true"),
+        index=True,
+    )
+    disabled_reason: Mapped[str | None] = mapped_column(sa.String(255), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        sa.TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+        index=True,
     )
 
 

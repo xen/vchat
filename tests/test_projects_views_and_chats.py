@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +15,23 @@ from yarl import URL
 from vchat.views.projects import chats as chats_views
 from vchat.views.projects import forms as project_forms
 from vchat.views.projects import views as project_views
+
+
+def _signed_widget_user_info(secret: str, **overrides) -> str:
+    payload = {
+        "timestamp": int(datetime.now(timezone.utc).timestamp()),
+        "user_uid": "user-123",
+        "user_name": "Иван Иванов",
+        "user_email": "ivan@example.com",
+    }
+    payload.update(overrides)
+    message = project_views._widget_user_info_signature_payload(payload)
+    payload["signature"] = hmac.new(
+        secret.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 class _Req:
@@ -226,7 +246,9 @@ async def test_history_detail_uses_used_chunks_snapshot_and_marks_deleted(
                     "uri": "https://docs.example.com/a",
                     "page_url": "https://docs.example.com/a",
                     "title": "Doc A",
+                    "source_title": "Friendly Docs",
                     "display_path": "Doc A / Section",
+                    "summary": "Короткое описание страницы.",
                     "section_path": "Section",
                     "kind": "text",
                 }
@@ -276,7 +298,9 @@ async def test_history_detail_uses_used_chunks_snapshot_and_marks_deleted(
     assert "project" not in payload
     source = payload["messages"][0].context_sources[0]
     assert source["page_url"] == "https://docs.example.com/a"
+    assert source["source_title"] == "Friendly Docs"
     assert source["display_path"] == "Doc A / Section"
+    assert source["summary"] == "Короткое описание страницы."
     assert source["page_deleted"] is True
 
 
@@ -381,9 +405,12 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
         id=1,
         name="Widget",
         code="abc",
+        secret="widget-secret",
         agent_name="Agent",
+        is_enabled=True,
         welcome_messages=["Hello", "<strong>Second</strong>"],
         waiting_messages=["Готовлю ответ", "Проверяю источники"],
+        error_message="<strong>Ошибка</strong>",
         footer_text='Footer <a href="https://vbudushee.ru/faq/">link</a>',
         system_prompt="Prompt",
         pinned_messages=[SimpleNamespace(text="Pinned", color="primary")],
@@ -395,8 +422,10 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
         data={
             "name": widget.name,
             "agent_name": widget.agent_name,
+            "is_enabled": widget.is_enabled,
             "welcome_messages": widget.welcome_messages,
             "waiting_messages": widget.waiting_messages,
+            "error_message": widget.error_message,
             "footer_text": widget.footer_text,
             "system_prompt": widget.system_prompt,
             "pinned_messages": [{"text": "Pinned", "color": "primary"}],
@@ -417,7 +446,11 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     assert 'value="primary"' in rendered and "selected" in rendered
     assert 'name="contact_url"' not in rendered
     assert 'Название виджета' in rendered
+    assert 'Секрет для подписи данных пользователя' in rendered
+    assert 'value="widget-secret"' in rendered
+    assert "widget_reset_secret" in rendered
     assert 'Название чата' not in rendered
+    assert 'name="is_enabled"' not in rendered
     assert 'Элементы чата' in rendered
     assert 'Заголовок чата' in rendered
     assert 'Системные настройки' in rendered
@@ -427,6 +460,7 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
         'Закрепленные сообщения',
         'Подсказки после ответа',
         'Тексты ожидания',
+        'Сообщение при ошибке',
         'Текст подвала',
     ]
     assert [rendered.index(label) for label in chat_order] == sorted(
@@ -444,6 +478,11 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     assert "Проверяю источники" in rendered
     assert 'data-add-waiting-message' in rendered
     assert 'data-remove-waiting-message' in rendered
+    assert 'name="error_message"' in rendered
+    assert 'data-error-message-editor' in rendered
+    assert 'data-error-message-html-input' in rendered
+    assert 'data-max-length="2000"' in rendered
+    assert '<strong>Ошибка</strong>' in rendered
     assert 'id="welcome-messages-container"' in rendered
     assert 'id="welcome-messages"' in rendered
     assert 'table widget-rich-table w-full table-fixed' in rendered
@@ -488,6 +527,97 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     assert "syncWelcomeRemoveButtons" in rendered
     assert "rows.length <= 1" in rendered
     assert rendered.index(">Сохранить</button>") < rendered.index(">Отмена</a>")
+    assert "Состояние виджета" in rendered
+    assert "Отключить виджет" in rendered
+    assert "widget_disable" in rendered
+    assert 'hx-confirm="Вы подтверждаете отключение виджета?"' in rendered
+    assert (
+        "Отключение заблокирует показ виджета на страницах где он установлен, "
+        "но не заблокирует загрузку внешнего JavaScript кода. После отключения "
+        "виджета его размер минимизируется, но все равно будет немного замедлять "
+        "загрузку страниц сайта"
+        in rendered
+    )
+    assert "Код вставки и удаление" in rendered
+    assert (
+        "Сброс кода создаст новый адрес виджета. Старый код вставки перестанет "
+        "запускать чат, поэтому код на сайтах нужно будет заменить на новый."
+        in rendered
+    )
+    assert (
+        "Удаление полностью уберет виджет из админки. На страницах, где остался "
+        "старый код вставки, будет загружаться только небольшой JavaScript с "
+        "сообщением о том, что виджет удален."
+        in rendered
+    )
+    assert rendered.index("Отключить виджет") < rendered.index("Сбросить код виджета")
+    assert rendered.index("Код вставки и удаление") < rendered.index(
+        "Сбросить код виджета"
+    )
+
+
+def test_widget_edit_template_shows_enable_action_when_disabled() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader(
+                    {"admin.html": "{% block content %}{% endblock %}"}
+                ),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: URL(
+            f"/actions/{kwargs['action']}/{kwargs['item_id']}"
+            if name == "actions"
+            else f"/integration/{kwargs['widget_id']}"
+            if name == "project_widget_edit"
+            else "/integration"
+        ),
+        csrf_token=lambda: "token",
+    )
+    template = env.get_template("projects/widget_edit.html")
+    widget = SimpleNamespace(
+        id=1,
+        name="Widget",
+        code="abc",
+        secret="widget-secret",
+        agent_name="Agent",
+        is_enabled=False,
+        welcome_messages=["Hello"],
+        waiting_messages=["Готовлю ответ"],
+        error_message="Ошибка",
+        footer_text="Footer",
+        system_prompt="Prompt",
+        pinned_messages=[],
+        suggestions_enabled=True,
+        suggestions_prompt="Suggestions",
+        public_url="https://example.com/widget.js",
+    )
+    form = project_forms.WidgetIntegrationEdit(
+        data={
+            "name": widget.name,
+            "agent_name": widget.agent_name,
+            "welcome_messages": widget.welcome_messages,
+            "waiting_messages": widget.waiting_messages,
+            "error_message": widget.error_message,
+            "footer_text": widget.footer_text,
+            "system_prompt": widget.system_prompt,
+            "suggestions_enabled": widget.suggestions_enabled,
+            "suggestions_prompt": widget.suggestions_prompt,
+        },
+        meta={"csrf": False},
+    )
+
+    rendered = template.render(item=widget, form=form)
+
+    assert "Состояние виджета: отключен" in rendered
+    assert "Включить виджет" in rendered
+    assert "widget_enable" in rendered
+    assert "Отключить виджет" not in rendered
 
 
 def test_widget_integration_add_form_uses_initial_welcome_message() -> None:
@@ -528,6 +658,53 @@ def test_widget_integration_add_form_uses_initial_welcome_message() -> None:
     assert 'name="system_prompt"' not in rendered
 
 
+def test_widget_integration_table_shows_enabled_state() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader({"admin.html": "{% block content %}{% endblock %}"}),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: URL(
+            f"/integration/{kwargs['widget_id']}"
+            if name == "project_widget_edit"
+            else "/integration"
+        ),
+        csrf_token=lambda: "token",
+    )
+
+    rendered = env.get_template("projects/integration.html").render(
+        widgets=[
+            SimpleNamespace(
+                id=1,
+                name="Active",
+                agent_name="Agent",
+                is_enabled=True,
+            ),
+            SimpleNamespace(
+                id=2,
+                name="Paused",
+                agent_name="Agent",
+                is_enabled=False,
+            ),
+        ],
+        form=project_forms.WidgetIntegrationAdd(meta={"csrf": False}),
+    )
+
+    assert "Состояние" in rendered
+    assert "Включен" in rendered
+    assert "Отключен" in rendered
+    assert 'colspan="3"' in env.get_template("projects/integration.html").render(
+        widgets=[],
+        form=project_forms.WidgetIntegrationAdd(meta={"csrf": False}),
+    )
+
+
 def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
     env = jinja2.Environment(
@@ -543,6 +720,7 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
             pinned_messages=[],
             welcome_messages=["Hello"],
             waiting_messages=["Готовлю ответ", "Проверяю источники"],
+            error_message="<strong>Не удалось получить ответ.</strong>",
             footer_text='<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>.<br>Отправить Enter, новая строка Shift+Enter',
         ),
         support_csrf_token="token",
@@ -576,6 +754,15 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert "setInterval(() =>" in rendered
     assert "}, 5000);" in rendered
     assert "vchat-waiting-text" in rendered
+    assert "const defaultErrorMessage =" in rendered
+    assert "\\u003cstrong\\u003e\\u041d\\u0435 \\u0443\\u0434\\u0430\\u043b\\u043e\\u0441\\u044c" in rendered
+    assert "function appendErrorMsg(message, requestId = null)" in rendered
+    assert "function processServerPayload(data)" in rendered
+    assert "demoSystemMessagesEnabled" in rendered
+    assert "vchat_demo_server_payload" in rendered
+    assert "Request ID:" in rendered
+    assert "data.detail" not in rendered
+    assert "data.status" not in rendered
     assert "function renderBotMarkdown(bubble, rawText)" in rendered
     assert "body.classList.remove('vchat-waiting-text');" in rendered
     assert "body.removeAttribute('role');" in rendered
@@ -591,6 +778,12 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert "setAttribute('role', 'list')" in rendered
     assert "Связанные страницы" in rendered
     assert "Связанные страницы ответа" in rendered
+    assert "vchat-source-origin" in rendered
+    assert "source.source_title" in rendered
+    assert "vchat-source-title-link" in rendered
+    assert "vchat-source-section" in rendered
+    assert "source.summary" in rendered
+    assert "vchat-source-summary" in rendered
     assert '>{{ "Источники" }}</span>' not in rendered
     assert "Источники ответа" not in rendered
     assert 'aria-hidden="true"' in rendered
@@ -630,9 +823,80 @@ def test_widget_loader_template_exposes_dialog_and_iframe_accessibility() -> Non
     assert 'button.setAttribute("aria-expanded", "true");' in rendered
     assert 'iframeContainer.setAttribute("aria-hidden", "false");' in rendered
     assert 'event.key === "Escape"' in rendered
+    assert 'data-demo-system-messages") === "true"' in rendered
+    assert 'chatUrl.searchParams.append("demo_system_messages", "1");' in rendered
+    assert 'container.getAttribute("data-user-info")' in rendered
+    assert 'chatUrl.searchParams.append("user_info", userInfo);' in rendered
+    assert 'chatUrl.searchParams.append("guest_uid", userUid);' in rendered
+    assert 'chatUrl.searchParams.append("user_uid"' not in rendered
+    assert 'chatUrl.searchParams.append("user_name"' not in rendered
+    assert 'chatUrl.searchParams.append("user_email"' not in rendered
 
 
-def test_demo_error_payload_generates_request_id_per_click() -> None:
+def test_signed_widget_user_info_accepts_valid_payload() -> None:
+    secret = "widget-secret"
+    raw = _signed_widget_user_info(secret)
+
+    assert project_views._load_signed_widget_user_info(
+        raw,
+        SimpleNamespace(secret=secret),
+    ) == {
+        "user_uid": "user-123",
+        "user_name": "Иван Иванов",
+        "user_email": "ivan@example.com",
+    }
+
+
+def test_signed_widget_user_info_rejects_modified_payload() -> None:
+    secret = "widget-secret"
+    payload = json.loads(_signed_widget_user_info(secret))
+    payload["user_name"] = "Mallory"
+
+    with pytest.raises(ValueError, match="signature is invalid"):
+        project_views._load_signed_widget_user_info(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            SimpleNamespace(secret=secret),
+        )
+
+
+def test_demo_page_exposes_system_message_controls() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(templates_dir)),
+        autoescape=True,
+    )
+
+    rendered = env.get_template("demo.html").render(
+        widgets=[{"id": 1, "name": "Demo widget", "code": "widget-code"}],
+        trigger_pages=[
+            {
+                "id": 20,
+                "title": "Docs page",
+                "uri": "https://example.com/docs/page",
+            }
+        ],
+        selected_widget_code="widget-code",
+        selected_trigger_url="https://example.com/docs/page",
+        selected_trigger_url_is_listed=True,
+    )
+
+    assert "Системные сообщения" in rendered
+    assert "data-system-message-actions" in rendered
+    assert 'data-demo-system-messages="true"' in rendered
+    assert "Ошибка ответа провайдера" in rendered
+    assert "provider_response_error" in rendered
+    assert "demo-provider-response" not in rendered
+    assert "generateDemoRequestId()" in rendered
+    assert "Ошибка соединения" not in rendered
+    assert "Внутренняя ошибка" not in rendered
+    assert "Сообщение слишком длинное" not in rendered
+    assert 'type: "vchat_demo_server_payload"' in rendered
+    assert "openWidgetIframe()" in rendered
+    assert "waitForChatListener()" in rendered
+    assert 'document.getElementById("vchat-widget-iframe")' in rendered
+
+
+def test_demo_page_system_messages_do_not_require_trigger_page() -> None:
     templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(templates_dir)),
@@ -647,12 +911,19 @@ def test_demo_error_payload_generates_request_id_per_click() -> None:
         selected_trigger_url_is_listed=False,
     )
 
+    assert "Системные сообщения" in rendered
+    assert "const demoSystemPayloads = [" in rendered
     assert "Ошибка ответа провайдера" in rendered
     assert "provider_response_error" in rendered
     assert "window.crypto.getRandomValues(bytes);" in rendered
     assert "byte.toString(16).padStart(2, \"0\")" in rendered
     assert "payload: { ...item.payload, request_id: generateDemoRequestId() }" in rendered
     assert "demo-provider-response" not in rendered
+    assert "provider_connection_error" not in rendered
+    assert "internal_error" not in rendered
+    assert "message_too_long" not in rendered
+    assert "renderSystemMessages(demoSystemPayloads);" in rendered
+    assert "Выберите страницу с триггерами" not in rendered
 
 
 def test_frontend_chat_citation_buttons_are_accessible() -> None:

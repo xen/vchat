@@ -14,6 +14,7 @@ from .data import (
     CrawlRun,
     PageShingle,
     TriggerResponseCache,
+    LLMCacheEntry,
 )
 from .admin_event import AdminEvent
 
@@ -35,5 +36,6 @@ __all__ = [
     "CrawlRun",
     "PageShingle",
     "TriggerResponseCache",
+    "LLMCacheEntry",
     "AdminEvent",
 ]

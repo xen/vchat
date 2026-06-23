@@ -11,10 +11,8 @@
   }
 
   var widgetCode = {{ widget_code | tojson | safe }};
-  var userUid = container.getAttribute("data-user-uid");
-  var userName = container.getAttribute("data-user-name") || "";
-  var userEmail = container.getAttribute("data-user-email") || "";
-  var sign = container.getAttribute("data-xsign") || "";
+  var userInfo = container.getAttribute("data-user-info") || "";
+  var userUid = "";
   var sourcePageUrl = container.getAttribute("data-source-page-url") || window.location.href;
   var demoSystemMessages = container.getAttribute("data-demo-system-messages") === "true";
   var triggerResolvePath = {{ trigger_resolve_path | tojson | safe }};
@@ -50,8 +48,20 @@
     } catch (error) {}
   }
 
+  function readUserUidFromUserInfo() {
+    if (!userInfo) {
+      return "";
+    }
+    try {
+      var payload = JSON.parse(userInfo);
+      return typeof payload.user_uid === "string" ? payload.user_uid.trim() : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
   function getOrCreateUserUid() {
-    var configuredUid = (userUid || "").trim();
+    var configuredUid = readUserUidFromUserInfo();
     if (configuredUid) {
       return configuredUid;
     }
@@ -344,10 +354,8 @@
     var chatPath = {{ widget_chat_path | tojson | safe }};
     var chatUrl = new URL(widgetOrigin() + chatPath);
     var activeChat = readActiveChat();
-    if (userUid) chatUrl.searchParams.append("user_uid", userUid);
-    if (userName) chatUrl.searchParams.append("user_name", userName);
-    if (userEmail) chatUrl.searchParams.append("user_email", userEmail);
-    if (sign) chatUrl.searchParams.append("sign", sign);
+    if (userInfo) chatUrl.searchParams.append("user_info", userInfo);
+    if (!userInfo && userUid) chatUrl.searchParams.append("guest_uid", userUid);
     if (activeChat) chatUrl.searchParams.append("chat_id", activeChat.signed_chat_id);
     if (demoSystemMessages) chatUrl.searchParams.append("demo_system_messages", "1");
     chatUrl.searchParams.append("source_page_url", sourcePageUrl);

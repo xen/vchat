@@ -60,6 +60,7 @@ VECTOR_MAX_DIST = 0.68
 MAX_CONTEXT_SNIPPET_TOKENS = 5000
 MAX_INPUT_CONTEXT_TOKENS = 10000
 CONTEXT_SAFETY_MARGIN = 1024
+SOURCE_SUMMARY_MAX_CHARS = 240
 RERANK_LIMIT = 48
 RRF_K = 60
 RERANK_MODEL = cfg.get("reranker_model_id", "BAAI/bge-reranker-v2-m3")
@@ -164,6 +165,8 @@ class Snippet:
     src: str | None = None
     uri: str | None = None
     title: str | None = None
+    source_title: str | None = None
+    summary: str | None = None
     kind: str | None = None
     header_text: str | None = None
     section_path: str | None = None
@@ -186,6 +189,8 @@ class Snippet:
             src=row.get("src"),
             uri=row.get("uri"),
             title=row.get("title"),
+            source_title=row.get("source_title"),
+            summary=row.get("summary"),
             kind=row.get("kind"),
             header_text=row.get("header_text"),
             section_path=row.get("section_path"),
@@ -606,7 +611,9 @@ async def vector_supply(
                c.embedding <=> :qvec AS dist,
                'chat' AS src,
                NULL AS uri,
-               NULL AS title
+               NULL AS title,
+               NULL AS source_title,
+               NULL AS summary
         FROM chunk c
         WHERE c.chat_id = :chat_id
           AND c.is_duplicate = false
@@ -619,23 +626,57 @@ async def vector_supply(
 
     kb_sql = sa.text(
         """
-        SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix, c.start_offset, c.end_offset,
-               c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
-               c.embedding <=> :qvec AS dist,
-               'kb' AS src,
-               d.uri AS uri,
-               d.title AS title
-        FROM chunk c
-        JOIN page d ON c.page_id = d.id
-        WHERE c.chat_id IS NULL
-          AND c.page_id IS NOT NULL
-          AND c.is_duplicate = false
-          AND c.embedding IS NOT NULL
-          AND c.embedding <=> :qvec <= :max_dist
-          AND (d.content_value IS NULL OR d.content_value > 0.1)
-          AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
-        ORDER BY c.embedding <=> :qvec
-        LIMIT :k_kb
+        WITH candidates AS (
+            SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix,
+                   c.start_offset, c.end_offset, c.kind, c.header_text,
+                   c.section_path, c.entity_terms, c.token_count,
+                   c.embedding <=> :qvec AS dist,
+                   'kb' AS src,
+                   d.uri AS uri,
+                   d.title AS title,
+                   d.source_id AS source_id
+            FROM chunk c
+            JOIN page d ON c.page_id = d.id
+            WHERE c.chat_id IS NULL
+              AND c.page_id IS NOT NULL
+              AND c.is_duplicate = false
+              AND c.embedding IS NOT NULL
+              AND c.embedding <=> :qvec <= :max_dist
+              AND (d.content_value IS NULL OR d.content_value > 0.1)
+              AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
+            ORDER BY c.embedding <=> :qvec
+            LIMIT :k_kb
+        )
+        SELECT candidates.id, candidates.text, candidates.chat_id,
+               candidates.document_id, candidates.chunk_ix,
+               candidates.start_offset, candidates.end_offset, candidates.kind,
+               candidates.header_text, candidates.section_path,
+               candidates.entity_terms, candidates.token_count, candidates.dist,
+               candidates.src, candidates.uri, candidates.title,
+               s.title AS source_title,
+               summary_chunk.text AS summary
+        FROM candidates
+        LEFT JOIN source s ON candidates.source_id = s.id
+        LEFT JOIN LATERAL (
+            SELECT sc.text
+            FROM chunk sc
+            WHERE sc.page_id = candidates.document_id
+              AND sc.is_duplicate = false
+              AND sc.kind IN ('section_summary', 'summary', 'file_summary')
+              AND (
+                  sc.section_path IS NOT DISTINCT FROM candidates.section_path
+                  OR sc.kind IN ('summary', 'file_summary')
+              )
+            ORDER BY
+                CASE
+                    WHEN sc.section_path IS NOT DISTINCT FROM candidates.section_path THEN 0
+                    WHEN sc.kind = 'summary' THEN 1
+                    ELSE 2
+                END,
+                sc.id
+            LIMIT 1
+        ) AS summary_chunk ON true
+        ORDER BY candidates.dist
         """
     ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
 
@@ -671,33 +712,66 @@ async def fulltext_supply(
 
     sql = sa.text(
         """
-        SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix, c.start_offset, c.end_offset,
-               c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
-               NULL::float8 AS dist,
-               'ft' AS src,
-               d.uri AS uri,
-               d.title AS title
-        FROM chunk c
-        LEFT JOIN page d ON c.page_id = d.id
-        WHERE (
-               c.fts @@ websearch_to_tsquery('russian', :q)
-            OR c.fts @@ websearch_to_tsquery('english', :q)
+        WITH candidates AS (
+            SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix,
+                   c.start_offset, c.end_offset, c.kind, c.header_text,
+                   c.section_path, c.entity_terms, c.token_count,
+                   NULL::float8 AS dist,
+                   'ft' AS src,
+                   d.uri AS uri,
+                   d.title AS title,
+                   d.source_id AS source_id,
+                   CASE
+                       WHEN :table_mode = true AND c.kind IN ('table', 'table_rows') THEN 3
+                       WHEN c.kind IN ('section_summary', 'summary') THEN 1
+                       ELSE 0
+                   END AS kind_rank,
+                   (
+                       ts_rank_cd(c.fts, websearch_to_tsquery('russian', :q))
+                       + ts_rank_cd(c.fts, websearch_to_tsquery('english', :q))
+                   ) AS text_rank
+            FROM chunk c
+            LEFT JOIN page d ON c.page_id = d.id
+            WHERE (
+                   c.fts @@ websearch_to_tsquery('russian', :q)
+                OR c.fts @@ websearch_to_tsquery('english', :q)
+            )
+              AND c.is_duplicate = false
+              AND (d.content_value IS NULL OR d.content_value > 0.1)
+              AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
+            ORDER BY kind_rank DESC, text_rank DESC, c.id DESC
+            LIMIT :m
         )
-          AND c.is_duplicate = false
-          AND (d.content_value IS NULL OR d.content_value > 0.1)
-          AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
-        ORDER BY
-            CASE
-                WHEN :table_mode = true AND c.kind IN ('table', 'table_rows') THEN 3
-                WHEN c.kind IN ('section_summary', 'summary') THEN 1
-                ELSE 0
-            END DESC,
-            (
-                ts_rank_cd(c.fts, websearch_to_tsquery('russian', :q))
-                + ts_rank_cd(c.fts, websearch_to_tsquery('english', :q))
-            ) DESC,
-            c.id DESC
-        LIMIT :m
+        SELECT candidates.id, candidates.text, candidates.chat_id,
+               candidates.document_id, candidates.chunk_ix,
+               candidates.start_offset, candidates.end_offset, candidates.kind,
+               candidates.header_text, candidates.section_path,
+               candidates.entity_terms, candidates.token_count, candidates.dist,
+               candidates.src, candidates.uri, candidates.title,
+               s.title AS source_title,
+               summary_chunk.text AS summary
+        FROM candidates
+        LEFT JOIN source s ON candidates.source_id = s.id
+        LEFT JOIN LATERAL (
+            SELECT sc.text
+            FROM chunk sc
+            WHERE sc.page_id = candidates.document_id
+              AND sc.is_duplicate = false
+              AND sc.kind IN ('section_summary', 'summary', 'file_summary')
+              AND (
+                  sc.section_path IS NOT DISTINCT FROM candidates.section_path
+                  OR sc.kind IN ('summary', 'file_summary')
+              )
+            ORDER BY
+                CASE
+                    WHEN sc.section_path IS NOT DISTINCT FROM candidates.section_path THEN 0
+                    WHEN sc.kind = 'summary' THEN 1
+                    ELSE 2
+                END,
+                sc.id
+            LIMIT 1
+        ) AS summary_chunk ON true
+        ORDER BY candidates.kind_rank DESC, candidates.text_rank DESC, candidates.id DESC
         """
     )
     rows = (
@@ -767,6 +841,32 @@ def sanitize_snippet_text(text: str) -> str:
             clean_lower = clean.lower()
     clean = SNIPPET_INJECTION_PATTERNS.sub("[redacted]", clean)
     return clean[:MAX_SNIPPET_LEN].strip()
+
+
+def normalize_source_summary(text: str | None) -> str | None:
+    clean = (text or "").replace("\r", "\n").strip()
+    if not clean:
+        return None
+
+    lines: list[str] = []
+    for raw_line in clean.splitlines():
+        line = re.sub(r"\s+", " ", raw_line).strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if lower.startswith("section:"):
+            continue
+        if lower.startswith("summary:"):
+            line = line.split(":", 1)[1].strip()
+        if line:
+            lines.append(line)
+
+    clean = " ".join(lines).strip()
+    if not clean:
+        return None
+    if len(clean) <= SOURCE_SUMMARY_MAX_CHARS:
+        return clean
+    return clean[: SOURCE_SUMMARY_MAX_CHARS - 1].rstrip(" .,;:") + "…"
 
 
 def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
@@ -1055,7 +1155,9 @@ def _build_source_payloads(snippets: list[Snippet]) -> list[dict[str, Any]]:
                 "uri": snippet.uri,
                 "page_url": snippet.uri,
                 "title": snippet.title,
+                "source_title": snippet.source_title,
                 "display_path": snippet.display_path,
+                "summary": normalize_source_summary(snippet.summary),
                 "kind": snippet.kind,
                 "header_text": snippet.header_text,
                 "section_path": snippet.section_path,
@@ -1077,7 +1179,9 @@ def _build_used_chunks(snippets: list[Snippet]) -> list[dict[str, Any]]:
                 "uri": snippet.uri,
                 "page_url": snippet.uri,
                 "title": snippet.title,
+                "source_title": snippet.source_title,
                 "display_path": snippet.display_path,
+                "summary": normalize_source_summary(snippet.summary),
                 "kind": snippet.kind,
                 "header_text": snippet.header_text,
                 "section_path": snippet.section_path,

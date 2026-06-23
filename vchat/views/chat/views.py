@@ -44,6 +44,10 @@ from vchat.views.chat.guardrails import (
 from vchat.views.chat.oauth import get_gigachat_access_token
 from vchat.utils import json_response
 from vchat.logging import log_json
+from vchat.llm_cache import (
+    cache_candidate_payload as _build_cache_candidate_payload,
+    record_chat_answer_cache_candidate,
+)
 from vchat.views.metrics import record_chat_request
 from vchat.models import (
     Chat,
@@ -119,6 +123,29 @@ def extract_total_tokens(usage_data: Any) -> int:
     if isinstance(nested, dict):
         return extract_total_tokens(nested)
     return 0
+
+
+def _cache_candidate_payload(
+    *,
+    user_text: str,
+    used_chunks: list[dict[str, Any]],
+    context_policy: dict[str, Any],
+    request_status: str,
+    guardrail_blocked: bool,
+    messages_count: int,
+) -> dict[str, Any]:
+    return _build_cache_candidate_payload(
+        user_text=user_text,
+        used_chunks=used_chunks,
+        context_policy=context_policy,
+        request_status=request_status,
+        guardrail_blocked=guardrail_blocked,
+        messages_count=messages_count,
+    )
+
+
+def _user_message_count(messages: list[dict[str, Any]]) -> int:
+    return sum(1 for message in messages if message.get("role") == "user")
 
 
 def with_request_id(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1142,6 +1169,7 @@ async def websocket(request):
                 break
 
             user_text = ""
+            messages: list[dict[str, Any]] = []
             trigger_page_id: int | None = None
             trigger_key: str | None = None
             if msg.type == web.WSMsgType.TEXT:
@@ -1601,6 +1629,47 @@ async def websocket(request):
                         await db.execute(stmt)
                         await db.commit()
 
+                cache_candidate_fields = _cache_candidate_payload(
+                    user_text=user_text,
+                    used_chunks=used_chunks,
+                    context_policy=context_policy,
+                    request_status=request_status,
+                    guardrail_blocked=False,
+                    messages_count=_user_message_count(messages),
+                )
+                if (
+                    cache_candidate_fields["cache_candidate"]
+                    and cache_candidate_fields["cache_retrieval_context_hash"]
+                ):
+                    try:
+                        async with async_session_factory() as db:
+                            await record_chat_answer_cache_candidate(
+                                db,
+                                question_hash=cache_candidate_fields[
+                                    "cache_question_hash"
+                                ],
+                                retrieval_context_hash=cache_candidate_fields[
+                                    "cache_retrieval_context_hash"
+                                ],
+                                provider=assistant_provider,
+                                model=assistant_model,
+                                widget_code=(
+                                    widget.code if widget is not None else None
+                                ),
+                                context_policy=context_policy,
+                                coverage=coverage,
+                                sources=sources,
+                                used_chunks=used_chunks,
+                                answer_text=total_content,
+                                tokens=total_tokens,
+                            )
+                            await db.commit()
+                    except Exception:
+                        logger.exception(
+                            "Failed to record LLM cache candidate: request_id=%s",
+                            get_request_id(),
+                        )
+
                 # Enqueue Celery-compatible background tasks (shared Redis queue)
                 try:
                     stage_started_at = time.monotonic()
@@ -1697,6 +1766,14 @@ async def websocket(request):
                     len(part.encode("utf-8")) for part in prompt_text_parts
                 )
                 prompt_chars = sum(len(part) for part in prompt_text_parts)
+                cache_candidate_fields = _cache_candidate_payload(
+                    user_text=user_text,
+                    used_chunks=used_chunks,
+                    context_policy=context_policy,
+                    request_status=request_status,
+                    guardrail_blocked=guardrail_blocked,
+                    messages_count=_user_message_count(messages),
+                )
                 log_json(
                     request_logger,
                     "chat_user_request",
@@ -1721,6 +1798,7 @@ async def websocket(request):
                     status=request_status,
                     chat_id=chat_id_ctx.get(None),
                     user_id=str(user_id_ctx.get(None)),
+                    **cache_candidate_fields,
                 )
                 try:
                     record_chat_request(

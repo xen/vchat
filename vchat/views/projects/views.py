@@ -44,7 +44,13 @@ from vchat.views.chat.ai import (
     get_ai_provider_options,
     resolve_ai_settings,
 )
-from vchat.settings import CONFIG_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.widget_state import (
+    WIDGET_STATE_DISABLED,
+    WIDGET_STATE_ENABLED,
+    WIDGET_STATE_MISSING,
+    cache_widget_state,
+)
 from vchat.views.chat.meta import merge_chat_meta
 from jobs.documents.types import DEFAULT_DOCUMENT_TYPE
 from jobs.documents.content import document_too_big_message, is_document_too_big
@@ -54,6 +60,7 @@ from vchat.models import (
     Chat,
     ChatMsg,
     Chunk,
+    LLMCacheEntry,
     Page,
     PageLink,
     Sitemap,
@@ -139,6 +146,7 @@ __all__ = [
     "project_stats",
     "project_integration",
     "project_widget_edit",
+    "project_llm_cache",
     "project_triggers",
     "project_trigger_rule_count",
     "public_widget_chat",
@@ -224,6 +232,10 @@ def _new_widget_code() -> str:
     return secrets.token_urlsafe(8).rstrip("_-")
 
 
+def _new_widget_secret() -> str:
+    return secrets.token_urlsafe(32)
+
+
 async def _assign_new_widget_code(db_session, widget: WidgetIntegration) -> None:
     code = _new_widget_code()
     while await db_session.scalar(
@@ -231,6 +243,16 @@ async def _assign_new_widget_code(db_session, widget: WidgetIntegration) -> None
     ):
         code = _new_widget_code()
     widget.code = code
+
+
+def _ensure_widget_secret(widget: WidgetIntegration | SimpleNamespace) -> None:
+    if not getattr(widget, "secret", ""):
+        widget.secret = _new_widget_secret()
+
+
+async def _cache_widget_enabled_state(request, widget: WidgetIntegration) -> None:
+    state = WIDGET_STATE_ENABLED if widget.is_enabled else WIDGET_STATE_DISABLED
+    await cache_widget_state(request.app[REDIS_KEY], widget.code, state)
 
 
 async def _widget_integrations(db_session) -> list[WidgetIntegration]:
@@ -1287,6 +1309,60 @@ async def _count_source_trigger_pattern(
     )
 
 
+async def _load_llm_cache_context(request: web.Request) -> dict[str, Any]:
+    db_session = request["db"]
+    entries = (
+        (
+            await db_session.execute(
+                sa.select(LLMCacheEntry)
+                .order_by(
+                    LLMCacheEntry.last_seen_at.desc(),
+                    LLMCacheEntry.id.desc(),
+                )
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    total_entries = await db_session.scalar(sa.select(sa.func.count(LLMCacheEntry.id)))
+    enabled_entries = await db_session.scalar(
+        sa.select(sa.func.count(LLMCacheEntry.id)).where(
+            LLMCacheEntry.is_enabled.is_(True)
+        )
+    )
+    observed_total = await db_session.scalar(
+        sa.select(sa.func.coalesce(sa.func.sum(LLMCacheEntry.observed_count), 0))
+    )
+    potential_saved_requests = await db_session.scalar(
+        sa.select(
+            sa.func.coalesce(sa.func.sum(LLMCacheEntry.potential_saved_requests), 0)
+        )
+    )
+    potential_saved_tokens = await db_session.scalar(
+        sa.select(sa.func.coalesce(sa.func.sum(LLMCacheEntry.potential_saved_tokens), 0))
+    )
+    await db_session.rollback()
+    return {
+        "active_section": str(request.app.router["project_llm_cache"].url_for()),
+        "entries": entries,
+        "stats": {
+            "total_entries": int(total_entries or 0),
+            "enabled_entries": int(enabled_entries or 0),
+            "observed_total": int(observed_total or 0),
+            "potential_saved_requests": int(potential_saved_requests or 0),
+            "potential_saved_tokens": int(potential_saved_tokens or 0),
+        },
+    }
+
+
+@meta(title="LLM-кеш")
+@login_required()
+@aiohttp_jinja2.template("projects/llm_cache.html")
+async def project_llm_cache(request):
+    return await _load_llm_cache_context(request)
+
+
 async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
     db_session = request["db"]
     sources = list(
@@ -2188,6 +2264,47 @@ async def project_action(request):
         response.headers["HX-Trigger"] = "project-triggers:refresh"
         return response
 
+    if action in {"llm_cache_enable", "llm_cache_disable", "llm_cache_delete"}:
+        cache_entry_id = int(item_id)
+        cache_entry = await db_session.scalar(
+            sa.select(LLMCacheEntry).where(LLMCacheEntry.id == cache_entry_id)
+        )
+        if cache_entry is None:
+            raise web.HTTPNotFound()
+
+        if action == "llm_cache_delete":
+            await db_session.delete(cache_entry)
+            event_name = "llm_cache_delete"
+            message = "Запись LLM-кеша удалена"
+        elif action == "llm_cache_disable":
+            cache_entry.is_enabled = False
+            cache_entry.disabled_reason = "manual"
+            cache_entry.updated_at = datetime.now(timezone.utc)
+            event_name = "llm_cache_disable"
+            message = "Запись LLM-кеша отключена"
+        else:
+            cache_entry.is_enabled = True
+            cache_entry.disabled_reason = None
+            cache_entry.updated_at = datetime.now(timezone.utc)
+            event_name = "llm_cache_enable"
+            message = "Запись LLM-кеша включена"
+
+        await db_session.commit()
+        await admin_event(event_name, request)
+        await flash(request, message, "success")
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
+
+    if action == "llm_cache_clear":
+        await db_session.execute(sa.delete(LLMCacheEntry))
+        await db_session.commit()
+        await admin_event("llm_cache_clear", request)
+        await flash(request, "Реестр LLM-кеша очищен", "success")
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
+
     if action == "widget_reset_code":
         widget_id = int(item_id)
         widget = await db_session.scalar(
@@ -2196,12 +2313,54 @@ async def project_action(request):
         if not widget:
             raise web.HTTPNotFound()
 
+        old_code = widget.code
         await _assign_new_widget_code(db_session, widget)
         widget.updated_at = datetime.now(timezone.utc)
 
         await db_session.commit()
+        await cache_widget_state(request.app[REDIS_KEY], old_code, WIDGET_STATE_MISSING)
+        await _cache_widget_enabled_state(request, widget)
         await admin_event("widget_reset_code", request)
         await flash(request, "Код виджета сброшен", "success")
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
+
+    if action == "widget_reset_secret":
+        widget_id = int(item_id)
+        widget = await db_session.scalar(
+            sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+        )
+        if not widget:
+            raise web.HTTPNotFound()
+
+        widget.secret = _new_widget_secret()
+        widget.updated_at = datetime.now(timezone.utc)
+        await db_session.commit()
+        await admin_event("widget_reset_secret", request)
+        await flash(request, "Секрет виджета сброшен", "success")
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
+
+    if action in {"widget_disable", "widget_enable"}:
+        widget_id = int(item_id)
+        widget = await db_session.scalar(
+            sa.select(WidgetIntegration).where(WidgetIntegration.id == widget_id)
+        )
+        if not widget:
+            raise web.HTTPNotFound()
+
+        widget.is_enabled = action == "widget_enable"
+        widget.updated_at = datetime.now(timezone.utc)
+        await db_session.commit()
+        await _cache_widget_enabled_state(request, widget)
+        await admin_event(action, request)
+        await flash(
+            request,
+            "Виджет включен" if widget.is_enabled else "Виджет отключен",
+            "success",
+        )
         response = web.Response(text="ok")
         response.headers["HX-Refresh"] = "true"
         return response
@@ -2214,8 +2373,10 @@ async def project_action(request):
         if not widget:
             raise web.HTTPNotFound()
 
+        code = widget.code
         await db_session.delete(widget)
         await db_session.commit()
+        await cache_widget_state(request.app[REDIS_KEY], code, WIDGET_STATE_MISSING)
         await admin_event("widget_delete", request)
 
         return web.Response(text="ok")
@@ -3159,6 +3320,8 @@ async def project_integration(request):
 
         widget = WidgetIntegration(code="")
         form.populate_obj(widget)
+        _ensure_widget_secret(widget)
+        widget.is_enabled = True
         widget.welcome_messages = list(forms.WIDGET_WELCOME_MESSAGES)
         widget.waiting_messages = list(forms.WIDGET_WAITING_MESSAGES)
         widget.error_message = forms.WIDGET_ERROR_MESSAGE
@@ -3170,6 +3333,7 @@ async def project_integration(request):
         await request["db"].flush()
         widget_id = widget.id
         await request["db"].commit()
+        await _cache_widget_enabled_state(request, widget)
         await admin_event("widget_create", request)
         await flash(request, "Код виджета создан", "success")
         raise web.HTTPFound(
@@ -3211,6 +3375,7 @@ async def project_widget_edit(request):
         obj=item if formdata is None else None,
         meta={"csrf_context": session},
     )
+    _ensure_widget_secret(item)
     item.public_url = _public_widget_url(getattr(item, "code", ""))
 
     if request.method == "POST":
@@ -3252,24 +3417,124 @@ async def _widget_integration_by_code(request, code: str) -> SimpleNamespace:
     return widget
 
 
+WIDGET_USER_INFO_MAX_AGE_SECONDS = 3600
+WIDGET_USER_INFO_CLOCK_SKEW_SECONDS = 300
+WIDGET_USER_INFO_ALLOWED_KEYS = {
+    "user_uid",
+    "user_name",
+    "user_email",
+    "timestamp",
+    "signature",
+}
+
+
+def _widget_user_info_signature_payload(data: dict[str, Any]) -> str:
+    return json.dumps(
+        {key: value for key, value in data.items() if key != "signature"},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _validate_widget_user_info_value(
+    data: dict[str, Any],
+    key: str,
+    *,
+    max_length: int,
+    required: bool = False,
+) -> str:
+    value = data.get(key, "")
+    if value == "" and not required:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string")
+    if not value and required:
+        raise ValueError(f"{key} is required")
+    if value != value.strip():
+        raise ValueError(f"{key} must not have surrounding whitespace")
+    if len(value) > max_length:
+        raise ValueError(f"{key} is too long")
+    if any(ord(char) < 32 for char in value):
+        raise ValueError(f"{key} contains control characters")
+    if "<" in value or ">" in value:
+        raise ValueError(f"{key} contains forbidden characters")
+    return value
+
+
+def _load_signed_widget_user_info(
+    raw_user_info: str,
+    widget: WidgetIntegration | SimpleNamespace,
+) -> dict[str, str]:
+    if len(raw_user_info) > 4096:
+        raise ValueError("user_info is too long")
+    try:
+        data = json.loads(raw_user_info)
+    except json.JSONDecodeError as exc:
+        raise ValueError("user_info is not valid JSON") from exc
+    if not isinstance(data, dict):
+        raise ValueError("user_info must be a JSON object")
+    unknown_keys = set(data) - WIDGET_USER_INFO_ALLOWED_KEYS
+    if unknown_keys:
+        raise ValueError("user_info contains unknown keys")
+    if not {"user_uid", "timestamp", "signature"}.issubset(data):
+        raise ValueError("user_info misses required keys")
+
+    user_uid = _validate_widget_user_info_value(
+        data, "user_uid", max_length=256, required=True
+    )
+    user_name = _validate_widget_user_info_value(data, "user_name", max_length=200)
+    user_email = _validate_widget_user_info_value(data, "user_email", max_length=254)
+    timestamp = data.get("timestamp")
+    if not isinstance(timestamp, int):
+        raise ValueError("timestamp must be an integer")
+    now = int(datetime.now(timezone.utc).timestamp())
+    if timestamp > now + WIDGET_USER_INFO_CLOCK_SKEW_SECONDS:
+        raise ValueError("timestamp is in the future")
+    if now - timestamp > WIDGET_USER_INFO_MAX_AGE_SECONDS:
+        raise ValueError("timestamp is expired")
+
+    signature = data.get("signature")
+    if not isinstance(signature, str) or not re.fullmatch(r"[0-9a-f]{64}", signature):
+        raise ValueError("signature must be a SHA-256 hex digest")
+    secret = getattr(widget, "secret", "") or ""
+    if not secret:
+        raise ValueError("widget secret is not configured")
+    expected_signature = hmac.new(
+        secret.encode("utf-8"),
+        _widget_user_info_signature_payload(data).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_signature, signature):
+        raise ValueError("signature is invalid")
+
+    return {
+        "user_uid": user_uid,
+        "user_name": user_name,
+        "user_email": user_email,
+    }
+
+
 async def _render_public_chat(request, widget: SimpleNamespace):
-    user_uid = request.query.get("user_uid", "").strip()
-    user_name = request.query.get("user_name", "")
-    user_email = request.query.get("user_email", "")
-    sign = request.query.get("sign", "")
+    user_info = request.query.get("user_info", "").strip()
+    if user_info:
+        try:
+            signed_user_info = _load_signed_widget_user_info(user_info, widget)
+        except ValueError:
+            return web.HTTPForbidden(text="Invalid user info")
+        user_uid = signed_user_info["user_uid"]
+        user_name = signed_user_info["user_name"]
+        user_email = signed_user_info["user_email"]
+    else:
+        guest_uid = request.query.get("guest_uid", "").strip()
+        user_uid = guest_uid if re.fullmatch(r"guest_[0-9a-f]{8}", guest_uid) else ""
+        user_name = ""
+        user_email = ""
     source_page_url = request.query.get("source_page_url", "")
     signed_resume_chat_id = request.query.get("chat_id", "").strip()
 
     if not user_uid:
         user_uid = f"guest_{uuid.uuid4().hex[:8]}"
-
-    secret = get_setting(request.app, "project.secret", "") or ""
-    if sign and secret:
-        expected_sign = hmac.new(
-            secret.encode("utf-8"), user_uid.encode("utf-8"), hashlib.sha256
-        ).hexdigest()
-        if not hmac.compare_digest(expected_sign, sign):
-            return web.HTTPForbidden(text="Invalid signature")
 
     serializer = URLSafeSerializer(config.get("secret_key"))
     if signed_resume_chat_id:

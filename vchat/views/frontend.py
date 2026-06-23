@@ -5,9 +5,17 @@ from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlsplit
 
 from jobs.crawler.tasks import crawl_page_task
-from vchat.settings import CONFIG_KEY, SIGNER_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
 from vchat.utils import json_response
 from vchat.models import Page, Source, WidgetIntegration
+from vchat.widget_state import (
+    WIDGET_STATE_DISABLED,
+    WIDGET_STATE_ENABLED,
+    WIDGET_STATE_MISSING,
+    cache_widget_state,
+    decode_widget_state,
+    widget_state_key,
+)
 from vchat.views.projects.page_status import PageStatus
 from vchat.views.triggers.rules import (
     canonical_page_url,
@@ -110,15 +118,48 @@ async def favicon(request):
     raise web.HTTPFound("/static/favicon.ico")
 
 
+def _inactive_widget_response(message: str, *, level: str = "info") -> web.Response:
+    return web.Response(
+        text=f"(function () {{ console.{level}({message!r}); }})();\n",
+        content_type="application/javascript",
+    )
+
+
+async def _load_widget_state(request, code: str) -> str:
+    redis = request.app[REDIS_KEY]
+    cached_state = decode_widget_state(await redis.get(widget_state_key(code)))
+    if cached_state in {
+        WIDGET_STATE_ENABLED,
+        WIDGET_STATE_DISABLED,
+        WIDGET_STATE_MISSING,
+    }:
+        return cached_state
+
+    is_enabled = await request["db"].scalar(
+        sa.select(WidgetIntegration.is_enabled).where(WidgetIntegration.code == code)
+    )
+    await request["db"].rollback()
+    if is_enabled is None:
+        state = WIDGET_STATE_MISSING
+    elif is_enabled:
+        state = WIDGET_STATE_ENABLED
+    else:
+        state = WIDGET_STATE_DISABLED
+    await cache_widget_state(redis, code, state)
+    return state
+
+
 async def widget_js(request):
     code = request.match_info.get("code", "").strip()
-    exists = await request["db"].scalar(
-        sa.select(WidgetIntegration.id).where(WidgetIntegration.code == code)
-    )
-    if not exists:
-        await request["db"].rollback()
-        raise web.HTTPNotFound(text="Widget code not found")
-    await request["db"].rollback()
+    state = await _load_widget_state(request, code)
+    if state == WIDGET_STATE_MISSING:
+        return _inactive_widget_response(
+            "vchat widget was removed. Please remove this embed code.",
+            level="warn",
+        )
+    if state == WIDGET_STATE_DISABLED:
+        return _inactive_widget_response("vchat widget is disabled.")
+
     widget_chat_path = str(request.app.router["public_widget_chat"].url_for(code=code))
     trigger_resolve_path = str(request.app.router["widget_triggers_resolve"].url_for())
     return aiohttp_jinja2.render_template(

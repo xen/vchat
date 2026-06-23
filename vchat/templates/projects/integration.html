@@ -20,6 +20,7 @@
             <tr>
               <th class="text-left">{{ 'Виджет' }}</th>
               <th class="text-left">{{ 'Название чата' }}</th>
+              <th class="text-left">{{ 'Состояние' }}</th>
             </tr>
           </thead>
           <tbody>
@@ -38,10 +39,17 @@
               <td class="align-top">
                 <span class="text-sm text-base-content/70">{{ widget.agent_name or ('Виртуальный ассистент') }}</span>
               </td>
+              <td class="align-top">
+                {% if widget.is_enabled %}
+                <span class="badge badge-success badge-outline">{{ 'Включен' }}</span>
+                {% else %}
+                <span class="badge badge-neutral">{{ 'Отключен' }}</span>
+                {% endif %}
+              </td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="2" class="py-8 text-center text-base-content/60">
+              <td colspan="3" class="py-8 text-center text-base-content/60">
                 {{ 'Коды виджета не созданы' }}
               </td>
             </tr>

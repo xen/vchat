@@ -215,8 +215,8 @@
       <div class="grid gap-2">
         <label for="widget-embed-code" class="label-text">{{ 'Код вставки' }}</label>
         <div class="grid gap-2">
-          <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;script src="{{ item.public_url }}" defer&gt;&lt;/script&gt;
-&lt;div id="vchat-chat"&gt;&lt;/div&gt;</code></pre>
+          <pre id="widget-embed-code" class="overflow-x-auto rounded bg-base-200 p-3 text-xs"><code>&lt;div id="vchat-chat"&gt;&lt;/div&gt;
+&lt;script src="{{ item.public_url }}" defer&gt;&lt;/script&gt;</code></pre>
           <div>
             <button
               type="button"
@@ -228,6 +228,28 @@
             </button>
           </div>
         </div>
+      </div>
+      <div class="grid gap-2">
+        <label for="widget-secret" class="label-text">{{ 'Секрет для подписи данных пользователя' }}</label>
+        <div class="join w-full max-w-3xl">
+          <input
+            id="widget-secret"
+            type="text"
+            class="input input-bordered input-sm join-item min-w-0 flex-1 font-mono text-sm"
+            value="{{ item.secret }}"
+            readonly
+          >
+          <button
+            type="button"
+            class="btn btn-outline btn-sm join-item"
+            title="{{ 'Скопировать' }}"
+            aria-label="{{ 'Скопировать' }}"
+            data-copy-value="widget-secret"
+          >
+            <iconify-icon icon="lucide:copy" class="size-4"></iconify-icon>
+          </button>
+        </div>
+        <p class="text-sm text-base-content/60">{{ 'Нужен только если сайт передает подписанный data-user-info.' }}</p>
       </div>
     </div>
   </div>
@@ -497,7 +519,44 @@
     <div class="card-body grid gap-3">
       <div>
         <h2 class="text-base font-medium text-error">{{ 'Опасная зона' }}</h2>
-        <p class="mt-1 text-sm text-base-content/60">{{ 'Сброс кода отключит старый код вставки. Удаление полностью отключит виджет на всех сайтах, где он установлен.' }}</p>
+        <p class="mt-1 text-sm text-base-content/60">{{ 'Действия ниже меняют доступность уже установленного кода виджета.' }}</p>
+      </div>
+      <div class="grid gap-1 text-sm text-base-content/70">
+        <div class="font-medium text-base-content">{{ 'Состояние виджета' }}: {% if item.is_enabled %}{{ 'включен' }}{% else %}{{ 'отключен' }}{% endif %}</div>
+        <p>{{ 'Отключение заблокирует показ виджета на страницах где он установлен, но не заблокирует загрузку внешнего JavaScript кода. После отключения виджета его размер минимизируется, но все равно будет немного замедлять загрузку страниц сайта' }}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {% if item.is_enabled %}
+        <form
+          method="POST"
+          action="{{ url('actions', action='widget_disable', item_id=item.id) }}"
+          hx-post="{{ url('actions', action='widget_disable', item_id=item.id) }}"
+          hx-swap="none"
+          hx-confirm="{{ 'Вы подтверждаете отключение виджета?' }}"
+        >
+          <button type="submit" class="btn btn-outline btn-warning btn-sm">
+            <iconify-icon icon="lucide:power-off" class="size-4"></iconify-icon>
+            {{ 'Отключить виджет' }}
+          </button>
+        </form>
+        {% else %}
+        <form
+          method="POST"
+          action="{{ url('actions', action='widget_enable', item_id=item.id) }}"
+          hx-post="{{ url('actions', action='widget_enable', item_id=item.id) }}"
+          hx-swap="none"
+        >
+          <button type="submit" class="btn btn-outline btn-success btn-sm">
+            <iconify-icon icon="lucide:power" class="size-4"></iconify-icon>
+            {{ 'Включить виджет' }}
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="grid gap-1 text-sm text-base-content/70">
+        <div class="font-medium text-base-content">{{ 'Код вставки и удаление' }}</div>
+        <p>{{ 'Сброс кода создаст новый адрес виджета. Старый код вставки перестанет запускать чат, поэтому код на сайтах нужно будет заменить на новый.' }}</p>
+        <p>{{ 'Удаление полностью уберет виджет из админки. На страницах, где остался старый код вставки, будет загружаться только небольшой JavaScript с сообщением о том, что виджет удален.' }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <form
@@ -510,6 +569,18 @@
           <button type="submit" class="btn btn-outline btn-warning btn-sm">
             <iconify-icon icon="lucide:rotate-ccw" class="size-4"></iconify-icon>
             {{ 'Сбросить код виджета' }}
+          </button>
+        </form>
+        <form
+          method="POST"
+          action="{{ url('actions', action='widget_reset_secret', item_id=item.id) }}"
+          hx-post="{{ url('actions', action='widget_reset_secret', item_id=item.id) }}"
+          hx-swap="none"
+          hx-confirm="{{ 'Сбросить секрет виджета? Старые подписи data-user-info перестанут проходить проверку.' }}"
+        >
+          <button type="submit" class="btn btn-outline btn-warning btn-sm">
+            <iconify-icon icon="lucide:key-round" class="size-4"></iconify-icon>
+            {{ 'Сбросить секрет' }}
           </button>
         </form>
         <form

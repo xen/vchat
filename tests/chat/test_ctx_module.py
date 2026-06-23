@@ -289,6 +289,37 @@ def test_file_summary_counts_as_quote_ready_source() -> None:
     assert coverage["section_count"] == 1
 
 
+def test_source_payload_includes_friendly_source_context() -> None:
+    snippet = ctx_mod.Snippet(
+        id=1,
+        text="Основной фрагмент.",
+        document_id=10,
+        chunk_ix=1,
+        uri="https://example.com/page",
+        title="Программа наставничества",
+        source_title="Навигатор возможностей",
+        section_path="Для школьников",
+        kind="text",
+        summary=(
+            "Section: Для школьников\n"
+            "Summary: Короткое описание страницы о программе наставничества "
+            "и вариантах участия для школьников."
+        ),
+    )
+
+    sources = ctx_mod._build_source_payloads([snippet])
+    used_chunks = ctx_mod._build_used_chunks([snippet])
+
+    assert sources[0]["source_title"] == "Навигатор возможностей"
+    assert sources[0]["summary"] == (
+        "Короткое описание страницы о программе наставничества "
+        "и вариантах участия для школьников."
+    )
+    assert "Section:" not in sources[0]["summary"]
+    assert used_chunks[0]["source_title"] == sources[0]["source_title"]
+    assert used_chunks[0]["summary"] == sources[0]["summary"]
+
+
 def test_build_context_from_snippets_includes_citation_ids() -> None:
     class _Provider:
         def token_count(self, text, model=None):

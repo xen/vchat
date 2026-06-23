@@ -8,6 +8,13 @@ from types import SimpleNamespace
 from yarl import URL
 
 from vchat.settings import CONFIG_KEY, SIGNER_KEY
+from vchat.settings import REDIS_KEY
+from vchat.widget_state import (
+    WIDGET_STATE_DISABLED,
+    WIDGET_STATE_MISSING,
+    WIDGET_STATE_TTL_SECONDS,
+    widget_state_key,
+)
 from vchat.models.source_config import CrawlerRule, SourceConfig
 from vchat import utils as vchat_utils
 from vchat.views import frontend
@@ -26,6 +33,27 @@ class _FakeRouterItem:
 class _FakeRouter(dict):
     def __getitem__(self, key):
         return super().__getitem__(key)
+
+
+class _FakeApp(dict):
+    def __init__(self, *, redis=None, router=None):
+        super().__init__()
+        if redis is not None:
+            self[REDIS_KEY] = redis
+        self.router = router or _FakeRouter()
+
+
+class _FakeRedis:
+    def __init__(self, cached_state: str | bytes | None = None) -> None:
+        self.cached_state = cached_state
+        self.set_calls = []
+
+    async def get(self, key):
+        self.get_key = key
+        return self.cached_state
+
+    async def set(self, key, value, *, ex):
+        self.set_calls.append((key, value, ex))
 
 
 class _FakeRequest(dict):
@@ -146,7 +174,8 @@ async def test_frontend_widget_js_renders_with_widget_path(
         {
             "db": _Db(),
             "match_info": {"code": "widget-code"},
-            "app": SimpleNamespace(
+            "app": _FakeApp(
+                redis=_FakeRedis(),
                 router=_FakeRouter(
                     {
                         "public_widget_chat": _FakeRouterItem("/chat/widget"),
@@ -161,6 +190,100 @@ async def test_frontend_widget_js_renders_with_widget_path(
     assert captured["template"] == "js/widget.js"
     assert captured["context"]["widget_chat_path"] == "/chat/widget"
     assert captured["context"]["widget_code"] == "widget-code"
+
+
+@pytest.mark.asyncio
+async def test_frontend_widget_js_returns_neutral_script_when_disabled() -> None:
+    class _Db:
+        scalar_called = False
+
+        async def scalar(self, stmt):
+            _ = stmt
+            self.scalar_called = True
+            return True
+
+        async def rollback(self):
+            return None
+
+    redis = _FakeRedis(WIDGET_STATE_DISABLED.encode("utf-8"))
+    db = _Db()
+    request = _FakeRequest(
+        {
+            "db": db,
+            "match_info": {"code": "widget-code"},
+            "app": _FakeApp(redis=redis),
+        }
+    )
+
+    response = await frontend.widget_js(request)
+
+    assert response.status == 200
+    assert response.content_type == "application/javascript"
+    assert "vchat widget is disabled." in response.text
+    assert "console.info" in response.text
+    assert db.scalar_called is False
+    assert redis.get_key == widget_state_key("widget-code")
+
+
+@pytest.mark.asyncio
+async def test_frontend_widget_js_caches_missing_widget_state() -> None:
+    class _Db:
+        rolled_back = False
+
+        async def scalar(self, stmt):
+            _ = stmt
+            return None
+
+        async def rollback(self):
+            self.rolled_back = True
+
+    redis = _FakeRedis()
+    db = _Db()
+    request = _FakeRequest(
+        {
+            "db": db,
+            "match_info": {"code": "removed-code"},
+            "app": _FakeApp(redis=redis),
+        }
+    )
+
+    response = await frontend.widget_js(request)
+
+    assert response.status == 200
+    assert "vchat widget was removed. Please remove this embed code." in response.text
+    assert "console.warn" in response.text
+    assert db.rolled_back is True
+    assert redis.set_calls == [
+        (widget_state_key("removed-code"), WIDGET_STATE_MISSING, WIDGET_STATE_TTL_SECONDS)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_frontend_widget_js_caches_disabled_db_state() -> None:
+    class _Db:
+        async def scalar(self, stmt):
+            _ = stmt
+            return False
+
+        async def rollback(self):
+            return None
+
+    redis = _FakeRedis()
+    request = _FakeRequest(
+        {
+            "db": _Db(),
+            "match_info": {"code": "widget-code"},
+            "app": _FakeApp(redis=redis),
+        }
+    )
+
+    response = await frontend.widget_js(request)
+
+    assert response.status == 200
+    assert "vchat widget is disabled." in response.text
+    assert redis.set_calls == [
+        (widget_state_key("widget-code"), WIDGET_STATE_DISABLED, WIDGET_STATE_TTL_SECONDS)
+    ]
 
 
 @pytest.mark.asyncio
@@ -196,7 +319,17 @@ async def test_demo_page_lists_widget_codes() -> None:
             self.rolled_back = True
 
     db = _Db()
-    request = _FakeRequest({"db": db, "query": {"code": "main-widget"}})
+    request = _FakeRequest(
+        {
+            "db": db,
+            "query": {"code": "main-widget"},
+            "app": _FakeApp(
+                router=_FakeRouter(
+                    {"widget_triggers_resolve": _FakeRouterItem("/widget/triggers")}
+                )
+            ),
+        }
+    )
     context = await frontend.demo_page.__wrapped__(request)
     assert context["widgets"] == [
         {"id": 1, "name": "Main widget", "code": "main-widget"}

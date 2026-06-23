@@ -339,11 +339,28 @@
       list.hidden = true;
       list.innerHTML = unique.map((source, index) => {
         const fallbackTitle = '{{ "Страница" }}';
-        const title = escapeHtml(source.title || `${fallbackTitle} ${index + 1}`);
+        const pageTitle = escapeHtml(source.title || source.display_path || `${fallbackTitle} ${index + 1}`);
+        const sourceTitle = escapeHtml(source.source_title || '');
+        const sectionTitle = source.section_path && source.section_path !== source.title
+          ? escapeHtml(source.section_path)
+          : '';
+        const summary = escapeHtml(source.summary || '');
+        const sourceLabel = sourceTitle
+          ? `<div class="vchat-source-origin">${sourceTitle}</div>`
+          : '';
+        const pageTitleHtml = source.uri
+          ? `<a class="vchat-source-title-link" href="${escapeHtml(source.uri)}" target="_blank" rel="noopener">${pageTitle}</a>`
+          : `<span class="vchat-source-title-link" aria-disabled="true">${pageTitle}</span>`;
+        const sectionHtml = sectionTitle
+          ? `<span class="vchat-source-section">${sectionTitle}</span>`
+          : '';
+        const summaryHtml = summary
+          ? `<div class="vchat-source-summary">${summary}</div>`
+          : '';
         if (!source.uri) {
-          return `<div class="vchat-source-link" role="listitem" aria-disabled="true">${title}</div>`;
+          return `<div class="vchat-source-card" role="listitem" aria-disabled="true">${sourceLabel}<div class="vchat-source-title-row">${pageTitleHtml}${sectionHtml}</div>${summaryHtml}</div>`;
         }
-        return `<a class="vchat-source-link" role="listitem" href="${escapeHtml(source.uri)}" target="_blank" rel="noopener">${title}</a>`;
+        return `<div class="vchat-source-card" role="listitem">${sourceLabel}<div class="vchat-source-title-row">${pageTitleHtml}${sectionHtml}</div>${summaryHtml}</div>`;
       }).join('');
 
       btn.addEventListener('click', () => {

@@ -119,6 +119,7 @@ def setup_routes(app: web.Application) -> None:
     add("GET", "/stats", projects.project_stats, name="project_stats")
     add("*", "/files", projects.project_files, name="project_files")
     add("*", "/triggers", projects.project_triggers, name="project_triggers")
+    add("GET", "/llm-cache", projects.project_llm_cache, name="project_llm_cache")
     add(
         "GET",
         "/triggers/count",

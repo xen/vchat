@@ -438,6 +438,66 @@ def test_suggestions_prompt_appends_structured_context_block() -> None:
     assert "Правила" in rendered
 
 
+def test_cache_candidate_payload_marks_strict_rag_answer_candidate() -> None:
+    payload = chat_views._cache_candidate_payload(
+        user_text="  Как подать заявку?  ",
+        used_chunks=[
+            {
+                "id": 10,
+                "document_id": 20,
+                "chunk_ix": 0,
+                "text_hash": "abc",
+                "uri": "https://example.com/page",
+            }
+        ],
+        context_policy={"reason_code": "ok"},
+        request_status="ok",
+        guardrail_blocked=False,
+        messages_count=1,
+    )
+
+    assert payload["cache_candidate"] is True
+    assert payload["cache_candidate_reason"] == "strict_exact_candidate"
+    assert payload["cache_question_hash"]
+    assert payload["cache_retrieval_context_hash"]
+
+
+def test_user_message_count_ignores_context_messages() -> None:
+    messages = [
+        {"role": "developer", "content": "[policy]"},
+        {"role": "developer", "content": "[context]"},
+        {"role": "user", "content": "Как подать заявку?"},
+    ]
+
+    assert chat_views._user_message_count(messages) == 1
+
+
+@pytest.mark.parametrize(
+    ("used_chunks", "messages_count", "reason_code"),
+    [
+        ([], 1, "ok"),
+        ([{"id": 10, "document_id": 20, "chunk_ix": 0}], 2, "ok"),
+        ([{"id": 10, "document_id": 20, "chunk_ix": 0}], 1, "no_context"),
+    ],
+)
+def test_cache_candidate_payload_rejects_risky_answers(
+    used_chunks: list[dict[str, Any]],
+    messages_count: int,
+    reason_code: str,
+) -> None:
+    payload = chat_views._cache_candidate_payload(
+        user_text="Как подать заявку?",
+        used_chunks=used_chunks,
+        context_policy={"reason_code": reason_code},
+        request_status="ok",
+        guardrail_blocked=False,
+        messages_count=messages_count,
+    )
+
+    assert payload["cache_candidate"] is False
+    assert payload["cache_candidate_reason"] == "no_cache"
+
+
 @pytest.mark.asyncio
 async def test_ai_chat_stream_guardrails_client_mode(
     monkeypatch: pytest.MonkeyPatch,

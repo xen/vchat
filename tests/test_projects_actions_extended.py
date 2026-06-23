@@ -12,7 +12,14 @@ from itsdangerous import BadSignature
 from multidict import MultiDict
 from yarl import URL
 
-from vchat.settings import CONFIG_KEY, SIGNER_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
+from vchat.widget_state import (
+    WIDGET_STATE_DISABLED,
+    WIDGET_STATE_ENABLED,
+    WIDGET_STATE_MISSING,
+    WIDGET_STATE_TTL_SECONDS,
+    widget_state_key,
+)
 from vchat.views.projects import views as project_views
 
 
@@ -42,7 +49,13 @@ class _Route:
 
 class _App(dict):
     def __init__(self):
-        super().__init__({SIGNER_KEY: _Signer(), CONFIG_KEY: {"secret_key": b"k" * 32}})
+        super().__init__(
+            {
+                SIGNER_KEY: _Signer(),
+                CONFIG_KEY: {"secret_key": b"k" * 32},
+                REDIS_KEY: _Redis(),
+            }
+        )
         self.router = {
             "users": _Route("/users/"),
             "actions": _Route("/actions/{action}/{item_id}"),
@@ -50,6 +63,7 @@ class _App(dict):
             "file_document": _Route("/file/{document_id}"),
             "project_integration": _Route("/integration"),
             "project_triggers": _Route("/triggers"),
+            "project_llm_cache": _Route("/llm-cache"),
             "project_widget_edit": _Route("/integration/{widget_id}"),
         }
 
@@ -73,6 +87,14 @@ class _Request(dict):
 
     async def post(self):
         return self._post_data
+
+
+class _Redis:
+    def __init__(self):
+        self.set_calls = []
+
+    async def set(self, key, value, *, ex):
+        self.set_calls.append((key, value, ex))
 
 
 class _DB:
@@ -452,9 +474,17 @@ async def test_project_integration_add_uses_initial_welcome_message(
         "Добро пожаловать в чат, задавайте вопросы"
     ]
     assert db.added[0].waiting_messages == ["Готовлю ответ"]
+    assert (
+        db.added[0].error_message
+        == "Извините, сейчас не удалось получить ответ. Попробуйте отправить сообщение позже."
+    )
     assert db.added[0].footer_text == "Отправить Enter, новая строка Shift+Enter"
     assert db.added[0].system_prompt == project_views.forms.DEFAULT_SYSTEM_PROMPT
+    assert db.added[0].secret
     assert db.commits == 1
+    assert req.app[REDIS_KEY].set_calls == [
+        (widget_state_key("new-code"), WIDGET_STATE_ENABLED, WIDGET_STATE_TTL_SECONDS)
+    ]
     assert events == ["widget_create"]
     assert flashes == [("Код виджета создан", "success")]
 
@@ -466,9 +496,12 @@ async def test_project_widget_edit_saves_footer_text(
     widget = SimpleNamespace(
         id=7,
         name="Old",
+        code="abc",
         agent_name="",
+        is_enabled=False,
         welcome_messages=[],
         waiting_messages=[],
+        error_message="",
         footer_text="",
         system_prompt="",
         suggestions_enabled=False,
@@ -486,6 +519,7 @@ async def test_project_widget_edit_saves_footer_text(
                 ("welcome_messages-1", "<strong>Second</strong>"),
                 ("waiting_messages-0", "Готовлю ответ"),
                 ("waiting_messages-1", "Проверяю источники"),
+                ("error_message", "<strong>Сбой</strong><script>x</script>"),
                 ("pinned_messages-0-text", "<strong>Pinned</strong>"),
                 ("pinned_messages-0-color", "primary"),
                 (
@@ -536,8 +570,10 @@ async def test_project_widget_edit_saves_footer_text(
     assert str(exc.value.location) == "/integration/7"
     assert widget.name == "Widget"
     assert widget.agent_name == "Agent"
+    assert widget.is_enabled is False
     assert widget.welcome_messages == ["Hello", "<strong>Second</strong>"]
     assert widget.waiting_messages == ["Готовлю ответ", "Проверяю источники"]
+    assert widget.error_message == "<strong>Сбой</strong>"
     assert widget.pinned_messages == [
         {"text": "<strong>Pinned</strong>", "color": "primary"}
     ]
@@ -545,6 +581,7 @@ async def test_project_widget_edit_saves_footer_text(
     assert "script" not in widget.footer_text
     assert not hasattr(widget, "contact_url")
     assert db.commits == 1
+    assert req.app[REDIS_KEY].set_calls == []
     assert events == ["widget_update"]
     assert flashes == [("Код виджета обновлен", "success")]
 
@@ -556,16 +593,18 @@ async def test_project_widget_edit_invalid_post_returns_context_without_commit(
     item = SimpleNamespace(
         id=7,
         name="Old",
+        code="abc",
         agent_name="Agent",
+        is_enabled=True,
         welcome_messages=["Hello"],
         waiting_messages=["Готовлю ответ"],
+        error_message="Ошибка",
         footer_text="Footer",
         system_prompt="Prompt",
         suggestions_enabled=False,
         suggestions_prompt="Suggestions",
         pinned_messages=[],
         updated_at=None,
-        code="abc",
     )
     req = _Request(
         action="",
@@ -575,6 +614,7 @@ async def test_project_widget_edit_invalid_post_returns_context_without_commit(
                 ("agent_name", "Agent"),
                 ("welcome_messages-0", "Hello"),
                 ("waiting_messages-0", "Готовлю ответ"),
+                ("error_message", "Ошибка"),
                 ("footer_text", "Footer"),
                 ("system_prompt", "Prompt"),
                 ("suggestions_prompt", "Suggestions"),
@@ -625,7 +665,7 @@ async def test_project_widget_edit_invalid_post_returns_context_without_commit(
 async def test_project_action_widget_reset_code_generates_new_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    widget = SimpleNamespace(id=7, code="old-code", updated_at=None)
+    widget = SimpleNamespace(id=7, code="old-code", is_enabled=False, updated_at=None)
     req = _Request(action="widget_reset_code", item_id="7", post_data=MultiDict())
     db = _DB(scalar_values=[widget, None])
     req["db"] = db
@@ -650,15 +690,133 @@ async def test_project_action_widget_reset_code_generates_new_code(
     assert widget.code == "new-code"
     assert widget.updated_at is not None
     assert db.commits == 1
+    assert req.app[REDIS_KEY].set_calls == [
+        (widget_state_key("old-code"), WIDGET_STATE_MISSING, WIDGET_STATE_TTL_SECONDS),
+        (widget_state_key("new-code"), WIDGET_STATE_DISABLED, WIDGET_STATE_TTL_SECONDS),
+    ]
     assert events == ["widget_reset_code"]
     assert flashes == [("Код виджета сброшен", "success")]
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_reset_secret_generates_new_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    widget = SimpleNamespace(id=7, code="widget-code", secret="old-secret")
+    req = _Request(action="widget_reset_secret", item_id="7", post_data=MultiDict())
+    db = _DB(scalar_values=[widget])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    monkeypatch.setattr(project_views, "_new_widget_secret", lambda: "new-secret")
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    response = await _raw_project_action()(req)
+
+    assert response.text == "ok"
+    assert response.headers["HX-Refresh"] == "true"
+    assert widget.secret == "new-secret"
+    assert widget.updated_at is not None
+    assert db.commits == 1
+    assert req.app[REDIS_KEY].set_calls == []
+    assert events == ["widget_reset_secret"]
+    assert flashes == [("Секрет виджета сброшен", "success")]
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_disable_updates_state_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    widget = SimpleNamespace(
+        id=7,
+        code="widget-code",
+        is_enabled=True,
+        updated_at=None,
+    )
+    req = _Request(action="widget_disable", item_id="7", post_data=MultiDict())
+    db = _DB(scalar_values=[widget])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 200
+    assert resp.headers["HX-Refresh"] == "true"
+    assert widget.is_enabled is False
+    assert widget.updated_at is not None
+    assert db.commits == 1
+    assert req.app[REDIS_KEY].set_calls == [
+        (widget_state_key("widget-code"), WIDGET_STATE_DISABLED, WIDGET_STATE_TTL_SECONDS)
+    ]
+    assert events == ["widget_disable"]
+    assert flashes == [("Виджет отключен", "success")]
+
+
+@pytest.mark.asyncio
+async def test_project_action_widget_enable_updates_state_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    widget = SimpleNamespace(
+        id=7,
+        code="widget-code",
+        is_enabled=False,
+        updated_at=None,
+    )
+    req = _Request(action="widget_enable", item_id="7", post_data=MultiDict())
+    db = _DB(scalar_values=[widget])
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 200
+    assert resp.headers["HX-Refresh"] == "true"
+    assert widget.is_enabled is True
+    assert widget.updated_at is not None
+    assert db.commits == 1
+    assert req.app[REDIS_KEY].set_calls == [
+        (widget_state_key("widget-code"), WIDGET_STATE_ENABLED, WIDGET_STATE_TTL_SECONDS)
+    ]
+    assert events == ["widget_enable"]
+    assert flashes == [("Виджет включен", "success")]
 
 
 @pytest.mark.asyncio
 async def test_project_action_widget_delete_returns_plain_action_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    widget = SimpleNamespace(id=7)
+    widget = SimpleNamespace(id=7, code="widget-code")
     req = _Request(action="widget_delete", item_id="7", post_data=MultiDict())
     db = _DB(scalar_values=[widget])
     req["db"] = db
@@ -677,7 +835,105 @@ async def test_project_action_widget_delete_returns_plain_action_response(
     assert "HX-Refresh" not in resp.headers
     assert db.deleted == [widget]
     assert db.commits == 1
+    assert req.app[REDIS_KEY].set_calls == [
+        (widget_state_key("widget-code"), WIDGET_STATE_MISSING, WIDGET_STATE_TTL_SECONDS)
+    ]
     assert events == ["widget_delete"]
+
+
+@pytest.mark.asyncio
+async def test_project_action_llm_cache_disable_enable_delete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_entry = SimpleNamespace(
+        id=5,
+        is_enabled=True,
+        disabled_reason=None,
+        updated_at=None,
+    )
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    disable_req = _Request(action="llm_cache_disable", item_id="5")
+    disable_req["db"] = _DB(scalar_values=[cache_entry])
+    disable_req["user"] = SimpleNamespace(id=1)
+
+    disable_resp = await _raw_project_action()(disable_req)
+
+    assert disable_resp.status == 200
+    assert disable_resp.headers["HX-Refresh"] == "true"
+    assert cache_entry.is_enabled is False
+    assert cache_entry.disabled_reason == "manual"
+    assert cache_entry.updated_at is not None
+    assert disable_req["db"].commits == 1
+
+    enable_req = _Request(action="llm_cache_enable", item_id="5")
+    enable_req["db"] = _DB(scalar_values=[cache_entry])
+    enable_req["user"] = SimpleNamespace(id=1)
+
+    enable_resp = await _raw_project_action()(enable_req)
+
+    assert enable_resp.status == 200
+    assert enable_resp.headers["HX-Refresh"] == "true"
+    assert cache_entry.is_enabled is True
+    assert cache_entry.disabled_reason is None
+    assert enable_req["db"].commits == 1
+
+    delete_req = _Request(action="llm_cache_delete", item_id="5")
+    delete_req["db"] = _DB(scalar_values=[cache_entry])
+    delete_req["user"] = SimpleNamespace(id=1)
+
+    delete_resp = await _raw_project_action()(delete_req)
+
+    assert delete_resp.status == 200
+    assert delete_resp.headers["HX-Refresh"] == "true"
+    assert delete_req["db"].deleted == [cache_entry]
+    assert delete_req["db"].commits == 1
+    assert events == [
+        "llm_cache_disable",
+        "llm_cache_enable",
+        "llm_cache_delete",
+    ]
+    assert flashes == [
+        ("Запись LLM-кеша отключена", "success"),
+        ("Запись LLM-кеша включена", "success"),
+        ("Запись LLM-кеша удалена", "success"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_project_action_llm_cache_clear(monkeypatch: pytest.MonkeyPatch) -> None:
+    req = _Request(action="llm_cache_clear", item_id="global")
+    req["db"] = _DB()
+    req["user"] = SimpleNamespace(id=1)
+    events = []
+    flashes = []
+
+    async def _event(name, _request):
+        events.append(name)
+
+    async def _flash(_request, message, category="success"):
+        flashes.append((message, category))
+
+    monkeypatch.setattr(project_views, "admin_event", _event)
+    monkeypatch.setattr(project_views, "flash", _flash)
+
+    resp = await _raw_project_action()(req)
+
+    assert resp.status == 200
+    assert resp.headers["HX-Refresh"] == "true"
+    assert req["db"].commits == 1
+    assert events == ["llm_cache_clear"]
+    assert flashes == [("Реестр LLM-кеша очищен", "success")]
 
 
 @pytest.mark.asyncio

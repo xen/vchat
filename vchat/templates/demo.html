@@ -307,20 +307,14 @@
           <ul>
             <li>Скрипт подключается с текущего домена: <code>/widget/&lt;код&gt;</code>.</li>
             <li>Контейнер <code>div#vchat-chat</code> обязателен.</li>
-            <li>Атрибуты <code>data-user-*</code> можно передавать при необходимости.</li>
+            <li>Данные пользователя можно передавать через подписанный <code>data-user-info</code>.</li>
           </ul>
         </section>
       </div>
     </article>
   </main>
 
-  <div
-    id="vchat-chat"
-    data-user-uid="demo-user"
-    data-user-name="Demo User"
-    data-user-email="demo@local.vchat.com"
-    data-demo-system-messages="true"
-  ></div>
+  <div id="vchat-chat" data-demo-system-messages="true"></div>
   <script>
     const loader = document.querySelector("[data-widget-loader]");
     loader?.addEventListener("submit", (event) => {

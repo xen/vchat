@@ -1,0 +1,173 @@
+{% extends "admin.html" %}
+{% block content %}
+
+<div class="flex flex-col gap-6">
+    <div class="flex items-center justify-between gap-4">
+        <h1 class="text-lg font-medium">LLM-кеш</h1>
+    </div>
+
+    <div class="rounded-box border border-base-300 bg-base-100 p-5 text-sm text-base-content/70">
+        <div class="font-medium text-base-content">Что здесь показано</div>
+        <p class="mt-2">
+            Эта страница показывает не активную выдачу ответов из кеша, а реестр строгих кандидатов на кеширование.
+            Запись появляется только после успешного ответа с найденными источниками и техническим отпечатком контекста.
+        </p>
+        <p class="mt-2">
+            Если тот же строгий ключ встречается повторно, система увеличивает счетчики потенциально сэкономленных запросов и токенов.
+            Сырой текст вопроса пользователя здесь не хранится: используется хеш нормализованного вопроса.
+        </p>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-5">
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Записей</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.total_entries }}</div>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Включено</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.enabled_entries }}</div>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Наблюдений</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.observed_total }}</div>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Экономия запросов</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.potential_saved_requests }}</div>
+        </div>
+        <div class="rounded-box border border-base-300 bg-base-100 p-4">
+            <div class="text-sm text-base-content/60">Экономия токенов</div>
+            <div class="mt-1 text-2xl font-medium">{{ stats.potential_saved_tokens }}</div>
+        </div>
+    </div>
+
+    <div class="rounded-box border border-base-300 bg-base-100 p-5">
+        <div class="mb-4 flex items-center justify-between gap-3">
+            <h2 class="font-medium">Последние кандидаты</h2>
+            <span class="text-sm text-base-content/60">Показаны последние 100 записей</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="table table-zebra w-full">
+                <thead>
+                    <tr>
+                        <th class="w-24">Статус</th>
+                        <th>Ключ</th>
+                        <th class="w-32 text-right">Повторы</th>
+                        <th class="w-32 text-right">Токены</th>
+                        <th class="w-44">Модель</th>
+                        <th class="w-40">Последнее наблюдение</th>
+                        <th class="w-32"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in entries %}
+                        {% set scope = entry.source_scope or {} %}
+                        <tr class="align-top">
+                            <td>
+                                {% if entry.is_enabled %}
+                                    <span class="badge badge-success badge-outline">включена</span>
+                                {% else %}
+                                    <span class="badge badge-ghost">отключена</span>
+                                    {% if entry.disabled_reason %}
+                                        <div class="mt-1 text-xs text-base-content/50">{{ entry.disabled_reason }}</div>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="font-mono text-xs break-all">{{ entry.cache_key }}</div>
+                                <div class="mt-1 text-xs text-base-content/60">
+                                    question_hash: <span class="font-mono break-all">{{ entry.question_hash }}</span>
+                                </div>
+                                {% if entry.retrieval_context_hash %}
+                                    <div class="mt-1 text-xs text-base-content/60">
+                                        retrieval_context_hash: <span class="font-mono break-all">{{ entry.retrieval_context_hash }}</span>
+                                    </div>
+                                {% endif %}
+                                <div class="mt-2 flex flex-wrap gap-2 text-xs text-base-content/60">
+                                    <span class="badge badge-outline">чанков: {{ scope.chunks_count or 0 }}</span>
+                                    <span class="badge badge-outline">источников: {{ scope.sources_count or 0 }}</span>
+                                    {% if scope.widget_code %}
+                                        <span class="badge badge-outline">{{ scope.widget_code }}</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="text-right">
+                                <div>{{ entry.observed_count }}</div>
+                                <div class="text-xs text-base-content/50">экономия: {{ entry.potential_saved_requests }}</div>
+                            </td>
+                            <td class="text-right">
+                                <div>{{ entry.tokens }}</div>
+                                <div class="text-xs text-base-content/50">экономия: {{ entry.potential_saved_tokens }}</div>
+                            </td>
+                            <td>
+                                <div>{{ entry.provider or "—" }}</div>
+                                <div class="text-xs text-base-content/60">{{ entry.model or "—" }}</div>
+                            </td>
+                            <td class="text-sm text-base-content/70">
+                                {{ entry.last_seen_at.strftime("%Y-%m-%d %H:%M") if entry.last_seen_at else "—" }}
+                            </td>
+                            <td class="text-right">
+                                <div class="flex justify-end gap-1">
+                                    {% if entry.is_enabled %}
+                                        <button
+                                            type="button"
+                                            class="btn btn-square btn-sm btn-ghost"
+                                            title="Отключить"
+                                            hx-post="{{ url('actions', action='llm_cache_disable', item_id=entry.id) }}"
+                                            hx-swap="none"
+                                        >
+                                            <iconify-icon icon="lucide:pause" class="size-4"></iconify-icon>
+                                        </button>
+                                    {% else %}
+                                        <button
+                                            type="button"
+                                            class="btn btn-square btn-sm btn-ghost"
+                                            title="Включить"
+                                            hx-post="{{ url('actions', action='llm_cache_enable', item_id=entry.id) }}"
+                                            hx-swap="none"
+                                        >
+                                            <iconify-icon icon="lucide:play" class="size-4"></iconify-icon>
+                                        </button>
+                                    {% endif %}
+                                    <button
+                                        type="button"
+                                        class="btn btn-square btn-sm btn-ghost text-error"
+                                        title="Удалить"
+                                        hx-post="{{ url('actions', action='llm_cache_delete', item_id=entry.id) }}"
+                                        hx-swap="none"
+                                        hx-confirm="Удалить запись LLM-кеша?"
+                                    >
+                                        <iconify-icon icon="lucide:trash" class="size-4"></iconify-icon>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-sm text-base-content/60">Кандидатов пока нет.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="w-full p-5">
+        <div class="font-medium text-error">Опасная зона</div>
+        <div class="mt-1 text-sm text-base-content/70">
+            Очистка удалит только реестр LLM-кеша. История чатов, страницы, чанки и триггеры не изменятся.
+        </div>
+        <button
+            type="button"
+            class="btn btn-error btn-outline btn-sm gap-2 mt-4"
+            hx-post="{{ url('actions', action='llm_cache_clear', item_id='global') }}"
+            hx-swap="none"
+            hx-confirm="Очистить весь реестр LLM-кеша?"
+        >
+            <iconify-icon icon="lucide:trash-2" class="size-4"></iconify-icon>
+            Очистить реестр
+        </button>
+    </div>
+</div>
+
+{% endblock %}
