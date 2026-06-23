@@ -47,7 +47,6 @@ Create a real secret from `secret.example.yaml` before applying to a cluster:
 ```bash
 kubectl -n vchat create secret generic vchat-secret \
   --from-literal=DATABASE_URI='postgresql+asyncpg://...' \
-  --from-literal=OPENAI_API_KEY='...' \
   --from-literal=GIGACHAT_API_KEY='...' \
   --from-literal=SECRET_KEY='...' \
   --from-literal=COOKIE_KEY='...' \

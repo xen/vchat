@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     environment:
       POSTGRES_DB: vchat
       POSTGRES_USER: vchat
@@ -12,7 +12,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:8.8-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -76,7 +76,16 @@ services:
     configs:
       - source: local_yaml
         target: /app/local.yaml
-    command: ["celery", "-A", "jobs.celery", "worker", "--loglevel=INFO", "-Q", "celery"]
+    command:
+      [
+        "celery",
+        "-A",
+        "jobs.celery",
+        "worker",
+        "--loglevel=INFO",
+        "-Q",
+        "celery",
+      ]
 
   celery-beat:
     build:
