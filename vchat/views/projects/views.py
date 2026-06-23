@@ -44,6 +44,7 @@ from vchat.views.chat.ai import (
     get_ai_provider_options,
     resolve_ai_settings,
 )
+from vchat.views.chat.sources import enrich_source_payloads
 from vchat.settings import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
 from vchat.widget_state import (
     WIDGET_STATE_DISABLED,
@@ -798,6 +799,11 @@ async def _initial_messages_for_chat(
                 if fresh:
                     src["title"] = fresh
                     src["display_path"] = fresh
+
+    for msg in initial_messages:
+        sources = msg.get("sources") or []
+        if sources:
+            msg["sources"] = await enrich_source_payloads(db, sources)
 
     return initial_messages
 
@@ -3281,6 +3287,14 @@ async def project_chat(request):
     return {
         "project": project,
         "chat": chat,
+        "widget": SimpleNamespace(
+            agent_name="",
+            welcome_messages=list(forms.WIDGET_WELCOME_MESSAGES),
+            waiting_messages=list(forms.WIDGET_WAITING_MESSAGES),
+            error_message=forms.WIDGET_ERROR_MESSAGE,
+            footer_text=forms.WIDGET_FOOTER_TEXT,
+            pinned_messages=[],
+        ),
         "payload": payload,
         "agent_name": "",
         "welcome_message": "",

@@ -308,6 +308,22 @@
         return;
       }
 
+      function sourceSectionTitle(source) {
+        const title = String(source.title || '').trim();
+        const displayPath = String(source.display_path || '').trim();
+        const sectionPath = String(source.section_path || source.header_text || '').trim();
+        if (displayPath && title && displayPath.startsWith(`${title} / `)) {
+          return displayPath.slice(title.length + 3).trim();
+        }
+        if (displayPath && displayPath !== title) {
+          return displayPath;
+        }
+        if (sectionPath && sectionPath !== title) {
+          return sectionPath;
+        }
+        return '';
+      }
+
       const count = unique.length;
       const label = count === 1
         ? '{{ "1 связанная страница" }}'
@@ -341,9 +357,7 @@
         const fallbackTitle = '{{ "Страница" }}';
         const pageTitle = escapeHtml(source.title || source.display_path || `${fallbackTitle} ${index + 1}`);
         const sourceTitle = escapeHtml(source.source_title || '');
-        const sectionTitle = source.section_path && source.section_path !== source.title
-          ? escapeHtml(source.section_path)
-          : '';
+        const sectionTitle = escapeHtml(sourceSectionTitle(source));
         const summary = escapeHtml(source.summary || '');
         const sourceLabel = sourceTitle
           ? `<div class="vchat-source-origin">${sourceTitle}</div>`

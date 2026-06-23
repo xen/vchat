@@ -62,6 +62,7 @@ from vchat.views.triggers.rules import page_trigger_items, trigger_prompt_hash
 from vchat.utils import htmx_required, json, run_task
 
 from .ctx import chat_id_ctx, get_context, user_id_ctx
+from .sources import enrich_source_payloads
 
 # Regex for detecting trivial/greeting messages to skip RAG
 TRIVIAL_PATTERNS = [
@@ -940,6 +941,7 @@ async def stream_cached_trigger_response(
     serializer = URLSafeSerializer(SECRET_KEY)
 
     async with async_session_factory() as db:
+        sources = await enrich_source_payloads(db, sources)
         user_result = await db.execute(
             sa.insert(ChatMsg)
             .values(
@@ -1355,7 +1357,11 @@ async def websocket(request):
                 finish_stage("context_retrieval", stage_started_at)
 
                 used_chunks = context_result.used_chunks
-                sources = context_result.sources
+                async with async_session_factory() as source_db:
+                    sources = await enrich_source_payloads(
+                        source_db,
+                        context_result.sources,
+                    )
                 context_policy = context_result.policy
                 coverage = context_result.coverage
                 messages = [dict(m._asdict()) for m in context_result.messages]

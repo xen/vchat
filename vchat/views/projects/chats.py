@@ -11,6 +11,7 @@ from sqlalchemy.orm import aliased
 
 from vchat.db import async_session_factory
 from vchat.views.chat.guardrails import mask_russian_pii
+from vchat.views.chat.sources import enrich_source_payloads
 from vchat.models import Chat, ChatMsg, Page
 from vchat.settings import config
 from vchat.utils import login_required, meta, paginator
@@ -486,6 +487,11 @@ async def history_detail(request):
             GUARDRAIL_REASON_LABELS.get(rule, rule) for rule in unique_reasons
         ]
         msg.context_sources = _history_message_sources(msg)
+        if msg.context_sources:
+            msg.context_sources = await enrich_source_payloads(
+                request["db"],
+                msg.context_sources,
+            )
         msg.reason_code = None
         if msg.role == "assistant" and msg.full_context:
             try:

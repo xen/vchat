@@ -195,6 +195,11 @@ def _setup_common(
 
     monkeypatch.setattr(chat_views, "generate_suggestions", _fake_generate_suggestions)
 
+    async def _fake_enrich_source_payloads(_db: Any, sources: list[dict[str, Any]]):
+        return sources
+
+    monkeypatch.setattr(chat_views, "enrich_source_payloads", _fake_enrich_source_payloads)
+
     async def _fake_run_task(*args, **kwargs) -> None:
         _ = args, kwargs
 
