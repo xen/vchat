@@ -671,16 +671,13 @@ def mark_page_embedder_failed(
 
     page.status = PageStatus.parsing
     page.status_error = PageStatusError.embedder_failed
-    meta = dict(page.meta or {})
-    meta.pop("error", None)
-    meta.pop("message", None)
-    meta.pop("reason", None)
-    meta.pop("exception_class", None)
-    meta["reason"] = PageStatusError.embedder_failed.value
-    meta["message"] = message or str(exc)
-    meta["error"] = str(exc)
-    meta["exception_class"] = type(exc).__name__
-    page.meta = meta
+    page.patch_meta(
+        remove=("error", "message", "reason", "exception_class"),
+        reason=PageStatusError.embedder_failed.value,
+        message=message or str(exc),
+        error=str(exc),
+        exception_class=type(exc).__name__,
+    )
     session.execute(sa.delete(Chunk).where(Chunk.page_id == page_id))
     update_page_shingles(
         session,
@@ -698,12 +695,11 @@ def mark_page_too_big(session: Session, page_id: int, *, content: str) -> None:
 
     page.status = PageStatus.ready
     page.status_error = PageStatusError.too_big
-    meta = dict(page.meta or {})
-    for key in ("error", "message", "reason", "exception_class"):
-        meta.pop(key, None)
-    meta["reason"] = PageStatusError.too_big.value
-    meta["message"] = document_too_big_message(content)
-    page.meta = meta
+    page.patch_meta(
+        remove=("error", "message", "reason", "exception_class"),
+        reason=PageStatusError.too_big.value,
+        message=document_too_big_message(content),
+    )
     session.execute(sa.delete(Chunk).where(Chunk.page_id == page_id))
     update_page_shingles(
         session,

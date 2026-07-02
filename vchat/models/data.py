@@ -331,6 +331,17 @@ class Page(Base, Created, Updated):
         else:
             self._length = value
 
+    def meta_dict(self) -> dict:
+        return dict(self.meta or {})
+
+    def patch_meta(self, *, remove: tuple[str, ...] = (), **values: Any) -> dict:
+        meta = self.meta_dict()
+        for key in remove:
+            meta.pop(key, None)
+        meta.update(values)
+        self.meta = meta
+        return meta
+
 
 class Chunk(Base, Created, Updated):
     __tablename__ = "chunk"

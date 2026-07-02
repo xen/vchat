@@ -556,7 +556,7 @@ async def _upsert_document(
     document.language = ""
     document.length = len(content)
 
-    meta = dict(document.meta or {})
+    meta = document.meta_dict()
     meta.update(meta_from_fetch)
     meta["raw_content"] = raw_content_meta
     if "doc_type" not in meta:

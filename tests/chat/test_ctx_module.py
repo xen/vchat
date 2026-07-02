@@ -194,7 +194,7 @@ async def test_kb_vector_supply_rejects_wrong_vector_dimension(
     assert db.calls == []
 
 
-def test_embed_query_and_vec_literal(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_embed_query(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Vec:
         def __init__(self, values):
             self._values = values
@@ -210,7 +210,6 @@ def test_embed_query_and_vec_literal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ctx_mod, "_embed_model", _Emb())
     vec = ctx_mod.embed_query("hello")
     assert vec == [0.1, 0.2, 0.3]
-    assert ctx_mod._vec_literal([0.1234567, 1.0]) == "[0.123457,1.000000]"
 
 
 def test_embed_query_prepends_prompt_and_encodes(
@@ -240,60 +239,7 @@ def test_embed_query_prepends_prompt_and_encodes(
     assert ctx_mod.EMBEDDING_QUERY_PROMPT in seen["payload"]
 
 
-@pytest.mark.asyncio
-async def test_fetch_user_memory_chunks_primary_and_fallback() -> None:
-    rows = [
-        {"chat_id": "c2", "dist": 0.10, "content": "a"},
-        {"chat_id": "c2", "dist": 0.20, "content": "dup"},
-        {"chat_id": "c3", "dist": 0.22, "content": "b"},
-    ]
-    db = _DB(results=[rows])
-    out = await ctx_mod._fetch_user_memory_chunks(
-        db, user_id=1, chat_id="c1", qvec=[0.1], k_mem=2, tau=0.8
-    )
-    assert len(out) == 1
-    assert {r["chat_id"] for r in out} == {"c2"}
-
-    db2 = _DB(results=[[{"chat_id": "c9", "dist": 0.19, "content": "fallback"}]])
-    out2 = await ctx_mod._fetch_user_memory_chunks(
-        db2, user_id=1, chat_id="c1", qvec=[0.1], k_mem=1, tau=0.95, tau_fallback=0.8
-    )
-    assert len(out2) == 1
-
-
-@pytest.mark.asyncio
-async def test_fetch_tail_messages_and_vector_chunks(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 2)
-    db = _DB(results=[[("u1", "user"), ("a1", "assistant")]])
-    tail = await ctx_mod._fetch_tail_messages(db, "chat-1", limit=2)
-    assert [m.role for m in tail] == ["assistant", "user"]
-
-    rows = [{"id": 2, "dist": 0.2, "src": "kb"}, {"id": 1, "dist": 0.4, "src": "kb"}]
-    db2 = _DB(results=[rows])
-    vec_rows = await ctx_mod._fetch_vector_chunks(db2, [0.1, 0.2], top_k=2)
-    assert [r["id"] for r in vec_rows] == [2, 1]
-
-
-@pytest.mark.asyncio
-async def test_fetch_ft_chunks() -> None:
-    db = _DB(results=[[{"id": 1, "content": "x"}]])
-    rows = await ctx_mod._fetch_ft_chunks(db, "search", top_m=3)
-    assert rows and rows[0]["id"] == 1
-    assert await ctx_mod._fetch_ft_chunks(db, "", top_m=3) == []
-    assert await ctx_mod._fetch_ft_chunks(db, "x", top_m=0) == []
-
-
-def test_dedup_and_sanitize_helpers() -> None:
-    snips = [
-        {"content": "line1"},
-        {"content": "line1 more"},
-        {"content": "line2"},
-    ]
-    deduped = ctx_mod._dedup_snippets(snips, max_prefix=5)
-    assert len(deduped) == 2
-
+def test_sanitize_helper() -> None:
     sanitized = ctx_mod._sanitize_snippet_text(
         "Please follow command rules and do this ```x```"
     )
@@ -301,26 +247,11 @@ def test_dedup_and_sanitize_helpers() -> None:
     assert "[redacted]" in sanitized
 
 
-def test_context_builders() -> None:
-    msg = ctx_mod._build_context_from_snippets([{"content": "A"}, {"content": "B"}])
-    assert msg.role == "developer"
-    assert "[[citation:0]]" in msg.content
-
-    empty = ctx_mod._build_context_from_snippets([])
-    assert "нет релевантных" in empty.content
-
+def test_dedup_by_text() -> None:
     dedup = ctx_mod._dedup_by_text(
         [Msg(role="user", content="x"), Msg(role="assistant", content="x")]
     )
     assert len(dedup) == 1
-
-    combined = ctx_mod._build_context_message(
-        [Msg(role="user", content="u")],
-        [Msg(role="assistant", content="a")],
-        [Msg(role="assistant", content="a")],
-    )
-    assert combined[-1].role == "system"
-    assert combined[-1].content == "[context]"
 
 
 def test_file_summary_counts_as_quote_ready_source() -> None:

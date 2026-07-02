@@ -1,8 +1,7 @@
-import enum
 import uuid6
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any, ClassVar
+from typing import Any, ClassVar
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, NUMERIC
@@ -10,10 +9,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql.sqltypes import TIMESTAMP
 
 from vchat.db import Base as _Base
-
-
-str_66 = Annotated[str, 66]
-str_42 = Annotated[str, 42]
 
 
 class DateTime_(sa.TypeDecorator):
@@ -56,15 +51,3 @@ class Updated:
 
 def generate_uuid7() -> str:
     return str(uuid6.uuid7())
-
-
-class Enum(enum.Enum):
-    @property
-    def literal_value(self):
-        return sa.literal(self, type_=sa.Enum(self.__class__))
-
-
-class TimeInterval(Enum):
-    minute = 1
-    hour = 60
-    day = 1440

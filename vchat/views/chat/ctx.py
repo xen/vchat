@@ -394,129 +394,8 @@ def text_summarizer(text: str, ratio: float, lang: str | None = None) -> str:
     return trimmed
 
 
-def _vec_literal(values: list[float]) -> str:
-    return "[" + ",".join(f"{float(v):.6f}" for v in values) + "]"
-
-
-async def _fetch_tail_messages(
-    db: AsyncSession, chat_id: str, limit: int = TAIL_MSG_LIMIT
-) -> list[Msg]:
-    return await tail_messages(db=db, chat_id=chat_id, limit=limit)
-
-
-async def _fetch_vector_chunks(
-    db: AsyncSession,
-    query_vec: list[float],
-    top_k: int = VECTOR_TOP_K,
-) -> list[dict[str, Any]]:
-    rows = await kb_vector_supply(db=db, query_vec=query_vec, top_k=top_k)
-    return [
-        {
-            "id": item.id,
-            "content": item.text,
-            "chat_id": item.chat_id,
-            "document_id": item.document_id,
-            "chunk_ix": item.chunk_ix,
-            "dist": item.dist,
-            "src": item.src,
-            "uri": item.uri,
-            "title": item.title,
-            "kind": item.kind,
-            "header_text": item.header_text,
-            "section_path": item.section_path,
-        }
-        for item in rows
-    ]
-
-
-async def _fetch_ft_chunks(
-    db: AsyncSession,
-    query: str,
-    top_m: int = FT_TOP_M,
-) -> list[dict[str, Any]]:
-    rows = await fulltext_supply(db=db, prompt_text=query, top_m=top_m)
-    return [
-        {
-            "id": item.id,
-            "content": item.text,
-            "chat_id": item.chat_id,
-            "document_id": item.document_id,
-            "chunk_ix": item.chunk_ix,
-            "dist": item.dist,
-            "src": item.src,
-            "uri": item.uri,
-            "title": item.title,
-            "kind": item.kind,
-            "header_text": item.header_text,
-            "section_path": item.section_path,
-        }
-        for item in rows
-    ]
-
-
-async def _fetch_user_memory_chunks(
-    db: AsyncSession,
-    *,
-    user_id: int | str,
-    chat_id: str,
-    qvec: list[float],
-    k_mem: int,
-    tau: float,
-    tau_fallback: float | None = None,
-) -> list[dict[str, Any]]:
-    if not user_id or not chat_id or not qvec:
-        return []
-    rows = (await db.execute(sa.text("SELECT 1"))).mappings().all()
-    filtered = [row for row in rows if float(row.get("dist", 1.0)) <= tau]
-    if not filtered and tau_fallback is not None:
-        filtered = [row for row in rows if float(row.get("dist", 1.0)) <= tau_fallback]
-
-    filtered.sort(key=lambda row: float(row.get("dist", 1.0)))
-    filtered = filtered[: max(0, k_mem)]
-
-    best_by_chat: dict[str, dict[str, Any]] = {}
-    for row in filtered:
-        key = str(row.get("chat_id") or "")
-        if not key or key in best_by_chat:
-            continue
-        best_by_chat[key] = dict(row)
-        if len(best_by_chat) >= max(0, k_mem):
-            break
-    return list(best_by_chat.values())
-
-
 def _sanitize_snippet_text(text: str) -> str:
     return sanitize_snippet_text(text)
-
-
-def _dedup_snippets(
-    snippets: list[dict[str, Any]], max_prefix: int = 150
-) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    seen = set()
-    for item in snippets:
-        content = (item.get("content") or "").strip()
-        if not content:
-            continue
-        key = content[:max_prefix].lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(item)
-    return out
-
-
-def _build_context_from_snippets(snippets: list[dict[str, Any]]) -> Msg:
-    if not snippets:
-        return Msg(role="developer", content="[context]\nнет релевантных фрагментов")
-
-    lines = ["[context]"]
-    for idx, item in enumerate(snippets):
-        content = _sanitize_snippet_text(str(item.get("content") or ""))
-        if not content:
-            continue
-        lines.append(f"[[citation:{idx}]] {content}")
-    return Msg(role="developer", content="\n".join(lines))
 
 
 def _dedup_by_text(messages: list[Msg]) -> list[Msg]:
@@ -529,16 +408,6 @@ def _dedup_by_text(messages: list[Msg]) -> list[Msg]:
         seen.add(key)
         out.append(msg)
     return out
-
-
-def _build_context_message(
-    tail_messages_list: list[Msg],
-    memory_messages: list[Msg],
-    snippet_messages: list[Msg],
-) -> list[Msg]:
-    merged = _dedup_by_text([*tail_messages_list, *memory_messages, *snippet_messages])
-    merged.append(Msg(role="system", content="[context]"))
-    return merged
 
 
 def loadrerank():

@@ -366,19 +366,6 @@ def _document_uniqueness_percent(
     return round(unique_ratio * 100)
 
 
-async def _load_document_uniqueness_percent(db: Any, document: Page) -> int | None:
-    if not document.content:
-        return None
-    source_id = document.source_id
-    if source_id is None:
-        return _document_uniqueness_percent(document.content, frozenset())
-
-    boilerplate_hashes = await db.run_sync(
-        lambda sync_db: load_boilerplate_hashes(sync_db, source_id)
-    )
-    return _document_uniqueness_percent(document.content, boilerplate_hashes)
-
-
 def _document_stats_summary(
     document: Page,
     chunk_rows: list[Chunk],
@@ -2530,9 +2517,7 @@ async def project_action(request):
         if not document.source_id or not document.uri:
             raise web.HTTPBadRequest(text="Page cannot be refreshed")
 
-        meta = dict(document.meta or {})
-        meta["force_reprocess_once"] = True
-        document.meta = meta
+        document.patch_meta(force_reprocess_once=True)
         document.updated_at = datetime.now(timezone.utc)
         await db_session.commit()
 
@@ -3644,13 +3629,17 @@ async def file_document(request):
         document.length = len(content)
         document.status = PageStatus.ready if too_big else PageStatus.parsing
         document.status_error = PageStatusError.too_big if too_big else None
-        meta = dict(document.meta or {})
-        for key in ("error", "message", "reason", "exception_class"):
-            meta.pop(key, None)
-        if too_big:
-            meta["reason"] = PageStatusError.too_big.value
-            meta["message"] = document_too_big_message(content)
-        document.meta = meta
+        document.patch_meta(
+            remove=("error", "message", "reason", "exception_class"),
+            **(
+                {
+                    "reason": PageStatusError.too_big.value,
+                    "message": document_too_big_message(content),
+                }
+                if too_big
+                else {}
+            ),
+        )
         document.updated_at = datetime.now(timezone.utc)
         await db_session.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
         await async_update_page_shingles(

@@ -2,31 +2,21 @@ from __future__ import annotations
 
 import mimetypes
 import os
-from typing import TypedDict
 from urllib.parse import urlparse
 
 DEFAULT_DOCUMENT_TYPE = "other"
 
 
-class DocumentTypeInfo(TypedDict):
-    label: str
-    extensions: tuple[str, ...]
-    content_types: tuple[str, ...]
-
-
-DOCUMENT_TYPE_INFO: dict[str, DocumentTypeInfo] = {
+DOCUMENT_TYPE_INFO: dict[str, dict[str, tuple[str, ...]]] = {
     "html": {
-        "label": "HTML document",
         "extensions": (".html", ".htm", ".xhtml", ".shtml"),
         "content_types": ("text/html", "application/xhtml+xml"),
     },
     "markdown": {
-        "label": "Markdown document",
         "extensions": (".md", ".markdown", ".mdown", ".mkd"),
         "content_types": ("text/markdown",),
     },
     "office": {
-        "label": "Office document",
         "extensions": (
             ".doc",
             ".docx",
@@ -55,7 +45,6 @@ DOCUMENT_TYPE_INFO: dict[str, DocumentTypeInfo] = {
         ),
     },
     "audio": {
-        "label": "Audio file",
         "extensions": (
             ".mp3",
             ".wav",
@@ -69,7 +58,6 @@ DOCUMENT_TYPE_INFO: dict[str, DocumentTypeInfo] = {
         "content_types": ("application/ogg",),
     },
     "video": {
-        "label": "Video file",
         "extensions": (".mp4", ".m4v", ".mov", ".avi", ".mkv", ".webm", ".wmv"),
         "content_types": (
             "application/x-mpegurl",
@@ -77,7 +65,6 @@ DOCUMENT_TYPE_INFO: dict[str, DocumentTypeInfo] = {
         ),
     },
     "code": {
-        "label": "Source code",
         "extensions": (
             ".py",
             ".js",
@@ -136,7 +123,6 @@ DOCUMENT_TYPE_INFO: dict[str, DocumentTypeInfo] = {
         ),
     },
     "other": {
-        "label": "Other",
         "extensions": (),
         "content_types": (),
     },

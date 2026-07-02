@@ -13,6 +13,7 @@ from vchat.models.base import (
     DateTime_,
     generate_uuid7,
 )
+from vchat.models.data import Page
 from vchat.views.user import views as user_views
 
 
@@ -21,6 +22,17 @@ def test_models_base_datetime_type_and_uuid() -> None:
     assert dt.process_bind_param("2025-01-01T01:02:03", None).year == 2025
     assert dt.python_type is datetime
     assert isinstance(generate_uuid7(), str)
+
+
+def test_page_patch_meta_reassigns_copy() -> None:
+    page = Page(meta={"old": "keep", "error": "drop"})
+    original_meta = page.meta
+
+    patched = page.patch_meta(remove=("error", "missing"), reason="too_big")
+
+    assert patched == {"old": "keep", "reason": "too_big"}
+    assert page.meta == patched
+    assert page.meta is not original_meta
 
 
 def test_guardrails_reason_detection_branches(monkeypatch: pytest.MonkeyPatch) -> None:
