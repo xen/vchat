@@ -4,6 +4,7 @@ import time
 import traceback
 from collections.abc import Awaitable, Callable
 from collections import namedtuple
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import aiohttp_jinja2
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 RequestHandler = Callable[[web.Request], Awaitable[web.StreamResponse]]
 PUBLIC_WIDGET_CORS_PATHS = {"/api/triggers/resolve"}
+DEFAULT_AUTH_SESSION_IDLE_TIMEOUT_SECONDS = 4 * 60 * 60
 
 
 def _is_public_widget_frame(request: web.Request) -> bool:
@@ -257,6 +259,13 @@ async def auth_middleware(
         if _auth_session_expired(request["auth_session"], auth_session_time):
             request["auth_session"].invalidate()
             return await handler(request)
+        idle_timeout_seconds = int(
+            config.get(
+                "auth_session_idle_timeout_seconds",
+                DEFAULT_AUTH_SESSION_IDLE_TIMEOUT_SECONDS,
+            )
+            or 0
+        )
 
         result = await request["db"].execute(
             sa.select(
@@ -265,6 +274,7 @@ async def auth_middleware(
                 User.name,
                 User.is_active,
                 UserSession.id.label("auth_user_session_id"),
+                UserSession.last_seen_at,
             )
             .join(UserSession, UserSession.user_id == User.id)
             .where(
@@ -276,6 +286,40 @@ async def auth_middleware(
         )
         row = result.first()
         if row:
+            now = datetime.now(timezone.utc)
+            last_seen_at = row.last_seen_at
+            if last_seen_at and last_seen_at.tzinfo is None:
+                last_seen_at = last_seen_at.replace(tzinfo=timezone.utc)
+
+            idle_expired = (
+                idle_timeout_seconds > 0
+                and (
+                    last_seen_at is None
+                    or now - last_seen_at >= timedelta(seconds=idle_timeout_seconds)
+                )
+            )
+
+            session_values: dict[str, Any] = {"updated_at": now}
+            if idle_expired:
+                session_values["revoked_at"] = now
+                session_values["revoked_reason"] = "idle_timeout"
+            else:
+                session_values["last_seen_at"] = now
+
+            await request["db"].execute(
+                sa.update(UserSession)
+                .where(
+                    UserSession.id == row.auth_user_session_id,
+                    UserSession.revoked_at.is_(None),
+                )
+                .values(**session_values)
+            )
+            await request["db"].commit()
+
+            if idle_expired:
+                request["auth_session"].invalidate()
+                return await handler(request)
+
             request["user"] = UserInfo(
                 id=row.id,
                 email=row.email,

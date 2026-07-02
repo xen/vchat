@@ -8,9 +8,9 @@
         <div class="flex items-center justify-between gap-4">
           <a href="{{ url('index') }}">
             <img alt="{{ 'Логотип vchat' }}" class="hidden h-8 dark:inline"
-              src="{{ url_for('static', filename='images/logo/logo-dark.svg') }}" />
+              src="{{ url_for('static_images', filename='logo/logo-dark.svg') }}" />
             <img alt="{{ 'Логотип vchat' }}" class="h-8 dark:hidden"
-              src="{{ url_for('static', filename='images/logo/logo-light.svg') }}" />
+              src="{{ url_for('static_images', filename='logo/logo-light.svg') }}" />
           </a>
           {% from "macros.html" import theme_switcher with context %}
           {{ theme_switcher() }}

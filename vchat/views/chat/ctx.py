@@ -52,7 +52,7 @@ EMBEDDING_QUERY_PROMPT = (
 MAX_SNIPPET_LEN = 2600
 MAX_CONTEXT_SNIPPETS = 6
 MAX_SNIPPETS_PER_SOURCE = 2
-TAIL_MSG_LIMIT = 5
+TAIL_MSG_LIMIT = 20
 VECTOR_TOP_K = 10
 FT_TOP_M = 10
 MAX_LEXICAL_TERMS = 8
@@ -215,6 +215,7 @@ class ContextResult:
     sources: list[dict[str, Any]]
     policy: dict[str, Any]
     coverage: dict[str, Any]
+    query_embedding: list[float]
 
 
 def load_nlp(lang: str):
@@ -405,11 +406,10 @@ async def _fetch_tail_messages(
 
 async def _fetch_vector_chunks(
     db: AsyncSession,
-    chat_id: str,
     query_vec: list[float],
     top_k: int = VECTOR_TOP_K,
 ) -> list[dict[str, Any]]:
-    rows = await vector_supply(db=db, chat_id=chat_id, query_vec=query_vec, top_k=top_k)
+    rows = await kb_vector_supply(db=db, query_vec=query_vec, top_k=top_k)
     return [
         {
             "id": item.id,
@@ -590,9 +590,8 @@ async def tail_messages(
     return [Msg(role=role, content=text) for text, role in reversed(rows)]
 
 
-async def vector_supply(
+async def kb_vector_supply(
     db: AsyncSession,
-    chat_id: str,
     query_vec: list[float],
     *,
     top_k: int = VECTOR_TOP_K,
@@ -601,99 +600,95 @@ async def vector_supply(
     if top_k <= 0:
         return []
 
-    k_chat = max(2, top_k // 2)
-    k_kb = max(2, top_k - k_chat)
+    vec_dim = int(cfg["vec_dim"])
+    if len(query_vec) != vec_dim:
+        raise ValueError(f"query_vec must have {vec_dim} dimensions")
 
-    chat_sql = sa.text(
-        """
-        SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix, c.start_offset, c.end_offset,
-               c.kind, c.header_text, c.section_path, c.entity_terms, c.token_count,
-               c.embedding <=> :qvec AS dist,
-               'chat' AS src,
-               NULL AS uri,
-               NULL AS title,
-               NULL AS source_title,
-               NULL AS summary
-        FROM chunk c
-        WHERE c.chat_id = :chat_id
-          AND c.is_duplicate = false
-          AND c.embedding IS NOT NULL
-          AND c.embedding <=> :qvec <= :max_dist
-        ORDER BY c.embedding <=> :qvec
-        LIMIT :k_chat
-        """
-    ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
+    k_candidates = max(1, top_k * 2)
 
-    kb_sql = sa.text(
+    sql = sa.text(
         """
-        WITH candidates AS (
-            SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix,
+        WITH kb_candidates AS (
+            SELECT c.id, c.text, NULL::varchar AS chat_id, c.page_id AS document_id, c.chunk_ix,
                    c.start_offset, c.end_offset, c.kind, c.header_text,
                    c.section_path, c.entity_terms, c.token_count,
                    c.embedding <=> :qvec AS dist,
-                   'kb' AS src,
+                   'kb'::text AS src,
                    d.uri AS uri,
                    d.title AS title,
                    d.source_id AS source_id
             FROM chunk c
             JOIN page d ON c.page_id = d.id
-            WHERE c.chat_id IS NULL
-              AND c.page_id IS NOT NULL
+            WHERE c.page_id IS NOT NULL
               AND c.is_duplicate = false
               AND c.embedding IS NOT NULL
-              AND c.embedding <=> :qvec <= :max_dist
               AND (d.content_value IS NULL OR d.content_value > 0.1)
               AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
             ORDER BY c.embedding <=> :qvec
-            LIMIT :k_kb
-        )
-        SELECT candidates.id, candidates.text, candidates.chat_id,
-               candidates.document_id, candidates.chunk_ix,
-               candidates.start_offset, candidates.end_offset, candidates.kind,
-               candidates.header_text, candidates.section_path,
-               candidates.entity_terms, candidates.token_count, candidates.dist,
-               candidates.src, candidates.uri, candidates.title,
+            LIMIT :k_candidates
+        ),
+        kb_ranked AS (
+            SELECT *
+            FROM kb_candidates
+            WHERE dist <= :max_dist
+            ORDER BY dist
+            LIMIT :top_k
+        ),
+        kb_enriched AS (
+            SELECT kb_ranked.id, kb_ranked.text, kb_ranked.chat_id,
+               kb_ranked.document_id, kb_ranked.chunk_ix,
+               kb_ranked.start_offset, kb_ranked.end_offset, kb_ranked.kind,
+               kb_ranked.header_text, kb_ranked.section_path,
+               kb_ranked.entity_terms, kb_ranked.token_count, kb_ranked.dist,
+               kb_ranked.src, kb_ranked.uri, kb_ranked.title,
                s.title AS source_title,
                summary_chunk.text AS summary
-        FROM candidates
-        LEFT JOIN source s ON candidates.source_id = s.id
-        LEFT JOIN LATERAL (
-            SELECT sc.text
-            FROM chunk sc
-            WHERE sc.page_id = candidates.document_id
-              AND sc.is_duplicate = false
-              AND sc.kind IN ('section_summary', 'summary', 'file_summary')
-              AND (
-                  sc.section_path IS NOT DISTINCT FROM candidates.section_path
-                  OR sc.kind IN ('summary', 'file_summary')
-              )
-            ORDER BY
-                CASE
-                    WHEN sc.section_path IS NOT DISTINCT FROM candidates.section_path THEN 0
-                    WHEN sc.kind = 'summary' THEN 1
-                    ELSE 2
-                END,
-                sc.id
-            LIMIT 1
-        ) AS summary_chunk ON true
-        ORDER BY candidates.dist
+            FROM kb_ranked
+            LEFT JOIN source s ON kb_ranked.source_id = s.id
+            LEFT JOIN LATERAL (
+                SELECT sc.text
+                FROM chunk sc
+                WHERE sc.page_id = kb_ranked.document_id
+                  AND sc.is_duplicate = false
+                  AND sc.kind IN ('section_summary', 'summary', 'file_summary')
+                  AND (
+                      sc.section_path IS NOT DISTINCT FROM kb_ranked.section_path
+                      OR sc.kind IN ('summary', 'file_summary')
+                  )
+                ORDER BY
+                    CASE
+                        WHEN sc.section_path IS NOT DISTINCT FROM kb_ranked.section_path THEN 0
+                        WHEN sc.kind = 'summary' THEN 1
+                        ELSE 2
+                    END,
+                    sc.id
+                LIMIT 1
+            ) AS summary_chunk ON true
+        )
+        SELECT *
+        FROM kb_enriched
+        ORDER BY dist
+        LIMIT :top_k
         """
-    ).bindparams(sa.bindparam("qvec", type_=Vector(cfg["vec_dim"])))
+    ).bindparams(
+        sa.bindparam("qvec", type_=Vector(vec_dim)),
+        sa.bindparam("k_candidates", type_=sa.Integer()),
+        sa.bindparam("top_k", type_=sa.Integer()),
+        sa.bindparam("max_dist", type_=sa.Float()),
+        sa.bindparam("source_filter_disabled", type_=sa.Boolean()),
+        sa.bindparam("source_ids", type_=sa.ARRAY(sa.Integer())),
+    )
 
     params = {
         "qvec": query_vec,
-        "chat_id": chat_id,
-        "k_chat": k_chat,
-        "k_kb": k_kb,
+        "k_candidates": k_candidates,
+        "top_k": top_k,
         "max_dist": VECTOR_MAX_DIST,
         "source_filter_disabled": allowed_source_ids is None,
         "source_ids": allowed_source_ids or [],
     }
-    chat_rows = (await db.execute(chat_sql, params)).mappings().all()
-    kb_rows = (await db.execute(kb_sql, params)).mappings().all()
-    rows = [Snippet.from_mapping(dict(row)) for row in [*chat_rows, *kb_rows]]
-    rows.sort(key=lambda item: item.dist if item.dist is not None else float("inf"))
-    return rows[:top_k]
+    rows = (await db.execute(sql, params)).mappings().all()
+    return [Snippet.from_mapping(dict(row)) for row in rows]
 
 
 async def fulltext_supply(
@@ -713,7 +708,7 @@ async def fulltext_supply(
     sql = sa.text(
         """
         WITH candidates AS (
-            SELECT c.id, c.text, c.chat_id, c.page_id AS document_id, c.chunk_ix,
+            SELECT c.id, c.text, NULL::varchar AS chat_id, c.page_id AS document_id, c.chunk_ix,
                    c.start_offset, c.end_offset, c.kind, c.header_text,
                    c.section_path, c.entity_terms, c.token_count,
                    NULL::float8 AS dist,
@@ -732,7 +727,8 @@ async def fulltext_supply(
                    ) AS text_rank
             FROM chunk c
             LEFT JOIN page d ON c.page_id = d.id
-            WHERE (
+            WHERE c.page_id IS NOT NULL
+              AND (
                    c.fts @@ websearch_to_tsquery('russian', :q)
                 OR c.fts @@ websearch_to_tsquery('english', :q)
             )
@@ -777,11 +773,12 @@ async def fulltext_supply(
     rows = (
         (
             await db.execute(
-                sql, {"q": query_text, "m": top_m, "table_mode": profile["table_mode"]}
+                sql,
+                {"q": query_text, "m": top_m, "table_mode": profile["table_mode"]}
                 | {
                     "source_filter_disabled": allowed_source_ids is None,
                     "source_ids": allowed_source_ids or [],
-                }
+                },
             )
         )
         .mappings()
@@ -938,9 +935,7 @@ def crossrerank(query: str, snippets: list[Snippet]) -> list[Snippet]:
         ):
             boosted -= RERANK_QUERY_ECHO_PENALTY
 
-        rescored.append(
-            replace(snippet, rerank_score=round(boosted, 6))
-        )
+        rescored.append(replace(snippet, rerank_score=round(boosted, 6)))
 
     rescored.sort(key=lambda item: item.rerank_score or 0.0, reverse=True)
     out: list[Snippet] = []
@@ -1205,14 +1200,13 @@ async def get_context(
     allowed_source_ids: list[int] | None = None,
 ) -> ContextResult:
     profile = queryprofile(prompt)
-    query_vec = embed_query(prompt)
+    query_vec = await asyncio.to_thread(embed_query, prompt)
     tail = await tail_messages(db, chat_id=chat_id, limit=tail_limit)
 
     async with asyncio.TaskGroup() as task_group:
         vector_task = task_group.create_task(
-            vector_supply(
+            kb_vector_supply(
                 db=db,
-                chat_id=chat_id,
                 query_vec=query_vec,
                 top_k=vector_top_k,
                 allowed_source_ids=allowed_source_ids,
@@ -1278,4 +1272,5 @@ async def get_context(
         sources=_build_source_payloads(context_snippets),
         policy=asdict(policy),
         coverage=coverage,
+        query_embedding=query_vec,
     )

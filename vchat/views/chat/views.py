@@ -19,6 +19,7 @@ from itsdangerous import (
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from jobs.documents.content import chunk_text_sha256
 from vchat.views.chat.ai import (
     BaseAIProvider,
     ModelInfo,
@@ -59,9 +60,9 @@ from vchat.models import (
 )
 from vchat.settings import config
 from vchat.views.triggers.rules import page_trigger_items, trigger_prompt_hash
-from vchat.utils import htmx_required, json, run_task
+from vchat.utils import htmx_required, json
 
-from .ctx import chat_id_ctx, get_context, user_id_ctx
+from .ctx import chat_id_ctx, embed_query, get_context, user_id_ctx
 from .sources import enrich_source_payloads
 
 # Regex for detecting trivial/greeting messages to skip RAG
@@ -939,6 +940,7 @@ async def stream_cached_trigger_response(
     sources = _cached_response_sources(full_context)
     suggestions = _cached_response_suggestions(full_context)
     serializer = URLSafeSerializer(SECRET_KEY)
+    user_embedding = await asyncio.to_thread(embed_query, user_text)
 
     async with async_session_factory() as db:
         sources = await enrich_source_payloads(db, sources)
@@ -954,10 +956,12 @@ async def stream_cached_trigger_response(
                 guardrail_triggered=False,
                 guardrail_stage=None,
                 guardrail_reasons=None,
+                embedding=user_embedding,
+                text_hash=chunk_text_sha256(user_text),
             )
             .returning(ChatMsg.id)
         )
-        user_msg_id = user_result.scalar_one()
+        user_result.scalar_one()
 
         assistant_result = await db.execute(
             sa.insert(ChatMsg)
@@ -1006,17 +1010,6 @@ async def stream_cached_trigger_response(
                 }
             )
         )
-
-    await run_task(
-        task="jobs.embedder.tasks.index_chat_message",
-        queue="embeddings",
-        msg_id=user_msg_id,
-    )
-    await run_task(
-        task="jobs.embedder.tasks.index_chat_message",
-        queue="embeddings",
-        msg_id=assistant_msg_id,
-    )
 
 
 async def stream_cached_response_text(
@@ -1098,6 +1091,7 @@ async def websocket(request):
         assistant_text: str,
         reasons: set[str],
         stage: str,
+        user_embedding: list[float],
     ) -> tuple[int, int]:
         payload = json.dumps(
             {
@@ -1119,6 +1113,8 @@ async def websocket(request):
                     guardrail_triggered=True,
                     guardrail_stage=stage,
                     guardrail_reasons=sorted(reasons) or None,
+                    embedding=user_embedding,
+                    text_hash=chunk_text_sha256(user_text),
                 )
                 .returning(ChatMsg.id)
             )
@@ -1303,6 +1299,10 @@ async def websocket(request):
                         assistant_text=GUARDRAIL_USER_MESSAGE,
                         reasons=guardrail_reasons,
                         stage="input",
+                        user_embedding=await asyncio.to_thread(
+                            embed_query,
+                            user_text,
+                        ),
                     )
                     finish_stage("persist_guardrail_messages", stage_started_at)
                     serializer = URLSafeSerializer(SECRET_KEY)
@@ -1478,6 +1478,7 @@ async def websocket(request):
                         assistant_text=GUARDRAIL_USER_MESSAGE,
                         reasons=guardrail_reasons,
                         stage="output",
+                        user_embedding=context_result.query_embedding,
                     )
                     finish_stage("persist_guardrail_messages", stage_started_at)
                     serializer = URLSafeSerializer(SECRET_KEY)
@@ -1519,10 +1520,12 @@ async def websocket(request):
                             guardrail_triggered=False,
                             guardrail_stage=None,
                             guardrail_reasons=None,
+                            embedding=context_result.query_embedding,
+                            text_hash=chunk_text_sha256(user_text),
                         )
                         .returning(ChatMsg.id)
                     )
-                    user_msg_id = res_user.scalar_one()
+                    res_user.scalar_one()
 
                     res_ai = await db.execute(
                         sa.insert(ChatMsg)
@@ -1706,22 +1709,6 @@ async def websocket(request):
                             get_request_id(),
                         )
 
-                # Enqueue Celery-compatible background tasks (shared Redis queue)
-                try:
-                    stage_started_at = time.monotonic()
-                    await run_task(
-                        task="jobs.embedder.tasks.index_chat_message",
-                        queue="embeddings",
-                        msg_id=user_msg_id,
-                    )
-                    await run_task(
-                        task="jobs.embedder.tasks.index_chat_message",
-                        queue="embeddings",
-                        msg_id=assistant_msg_id,
-                    )
-                    finish_stage("enqueue_index_tasks", stage_started_at)
-                except Exception as enq_exc:
-                    logger.warning("run_task failed: %s", enq_exc)
             except GuardrailTripwireTriggered as e:
                 stage, reason = extract_tripwire_details(e)
                 request_status = (
@@ -1739,6 +1726,10 @@ async def websocket(request):
                     assistant_text=GUARDRAIL_USER_MESSAGE,
                     reasons=guardrail_reasons,
                     stage=stage,
+                    user_embedding=await asyncio.to_thread(
+                        embed_query,
+                        user_text,
+                    ),
                 )
                 serializer = URLSafeSerializer(SECRET_KEY)
                 signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")

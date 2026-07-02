@@ -104,6 +104,7 @@ async def test_context_supplies_apply_allowed_source_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db = _DB(results=[[], [], []])
+    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 2)
     monkeypatch.setattr(
         ctx_mod,
         "queryprofile",
@@ -113,9 +114,8 @@ async def test_context_supplies_apply_allowed_source_scope(
         },
     )
 
-    await ctx_mod.vector_supply(
+    await ctx_mod.kb_vector_supply(
         db,
-        chat_id="chat-1",
         query_vec=[0.1, 0.2],
         top_k=4,
         allowed_source_ids=[],
@@ -127,12 +127,71 @@ async def test_context_supplies_apply_allowed_source_scope(
         allowed_source_ids=[7, 8],
     )
 
-    vector_kb_params = db.calls[1][1]
-    fulltext_params = db.calls[2][1]
+    vector_kb_params = db.calls[0][1]
+    fulltext_params = db.calls[1][1]
     assert vector_kb_params["source_filter_disabled"] is False
     assert vector_kb_params["source_ids"] == []
     assert fulltext_params["source_filter_disabled"] is False
     assert fulltext_params["source_ids"] == [7, 8]
+
+
+@pytest.mark.asyncio
+async def test_kb_vector_supply_zero_top_k_skips_db() -> None:
+    db = _DB()
+
+    result = await ctx_mod.kb_vector_supply(
+        db,
+        query_vec=[0.1, 0.2],
+        top_k=0,
+    )
+
+    assert result == []
+    assert db.calls == []
+
+
+@pytest.mark.asyncio
+async def test_kb_vector_supply_uses_knn_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 2)
+    db = _DB(results=[[]])
+
+    await ctx_mod.kb_vector_supply(
+        db,
+        query_vec=[0.1, 0.2],
+        top_k=5,
+        allowed_source_ids=[7],
+    )
+
+    stmt, params = db.calls[0]
+    sql = str(stmt)
+    assert "c.embedding <=> :qvec <= :max_dist" not in sql
+    assert "ORDER BY c.embedding <=> :qvec" in sql
+    assert "WHERE dist <= :max_dist" in sql
+    assert "FROM chat_msg" not in sql
+    assert "UNION ALL" not in sql
+    assert "NULL::varchar AS chat_id" in sql
+    assert params["k_candidates"] == 10
+    assert params["top_k"] == 5
+    assert params["source_filter_disabled"] is False
+    assert params["source_ids"] == [7]
+
+
+@pytest.mark.asyncio
+async def test_kb_vector_supply_rejects_wrong_vector_dimension(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 3)
+    db = _DB()
+
+    with pytest.raises(ValueError, match="query_vec must have 3 dimensions"):
+        await ctx_mod.kb_vector_supply(
+            db,
+            query_vec=[0.1, 0.2],
+            top_k=1,
+        )
+
+    assert db.calls == []
 
 
 def test_embed_query_and_vec_literal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,15 +262,17 @@ async def test_fetch_user_memory_chunks_primary_and_fallback() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_tail_messages_and_vector_chunks() -> None:
+async def test_fetch_tail_messages_and_vector_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 2)
     db = _DB(results=[[("u1", "user"), ("a1", "assistant")]])
     tail = await ctx_mod._fetch_tail_messages(db, "chat-1", limit=2)
     assert [m.role for m in tail] == ["assistant", "user"]
 
-    chat_rows = [{"id": 1, "dist": 0.4, "src": "chat"}]
-    kb_rows = [{"id": 2, "dist": 0.2, "src": "kb"}]
-    db2 = _DB(results=[chat_rows, kb_rows])
-    vec_rows = await ctx_mod._fetch_vector_chunks(db2, "chat-1", [0.1, 0.2], top_k=2)
+    rows = [{"id": 2, "dist": 0.2, "src": "kb"}, {"id": 1, "dist": 0.4, "src": "kb"}]
+    db2 = _DB(results=[rows])
+    vec_rows = await ctx_mod._fetch_vector_chunks(db2, [0.1, 0.2], top_k=2)
     assert [r["id"] for r in vec_rows] == [2, 1]
 
 
@@ -367,8 +428,8 @@ async def test_get_context_sources_match_visible_context_snippets(
         _ = prompt
         return [0.1, 0.2]
 
-    async def _vec(db, chat_id, query_vec, top_k, allowed_source_ids=None):
-        _ = db, chat_id, query_vec, top_k
+    async def _vec(db, query_vec, top_k, allowed_source_ids=None):
+        _ = db, query_vec, top_k
         assert allowed_source_ids is None
         return [
             ctx_mod.Snippet(
@@ -418,7 +479,7 @@ async def test_get_context_sources_match_visible_context_snippets(
 
     monkeypatch.setattr(ctx_mod, "tail_messages", _tail)
     monkeypatch.setattr(ctx_mod, "embed_query", _embed)
-    monkeypatch.setattr(ctx_mod, "vector_supply", _vec)
+    monkeypatch.setattr(ctx_mod, "kb_vector_supply", _vec)
     monkeypatch.setattr(ctx_mod, "fulltext_supply", _ft)
     monkeypatch.setattr(ctx_mod, "crossrerank", _rerank)
     monkeypatch.setattr(ctx_mod, "MAX_CONTEXT_SNIPPET_TOKENS", 4)
@@ -461,8 +522,8 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
         assert "policy" in prompt
         return [0.1, 0.2]
 
-    async def _vec(db, chat_id, query_vec, top_k=10, allowed_source_ids=None):
-        _ = db, chat_id, query_vec, top_k
+    async def _vec(db, query_vec, top_k=10, allowed_source_ids=None):
+        _ = db, query_vec, top_k
         seen_source_scopes.append(("vector", allowed_source_ids))
         return [
             ctx_mod.Snippet(
@@ -516,7 +577,7 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(ctx_mod, "tail_messages", _tail)
     monkeypatch.setattr(ctx_mod, "embed_query", _embed)
-    monkeypatch.setattr(ctx_mod, "vector_supply", _vec)
+    monkeypatch.setattr(ctx_mod, "kb_vector_supply", _vec)
     monkeypatch.setattr(ctx_mod, "fulltext_supply", _ft)
     monkeypatch.setattr(ctx_mod, "crossrerank", _rerank)
 

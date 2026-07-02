@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -167,7 +168,7 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
                 name="User",
                 is_active=True,
                 auth_user_session_id=20,
-                last_seen_at=mw._utcnow(),
+                last_seen_at=datetime.now(timezone.utc),
             )
 
     class FakeDB:

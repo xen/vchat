@@ -122,6 +122,16 @@ def test_client_ip_accepts_forwarded_headers_from_trusted_proxy() -> None:
     assert utils.get_client_ip(req) == "203.0.113.10"
 
 
+def test_client_ip_ignores_invalid_forwarded_header_from_trusted_proxy() -> None:
+    req = _Req(
+        app={CONFIG_KEY: {"trusted_proxy_cidrs": ["127.0.0.1/32"]}},
+        headers={"X-Forwarded-For": "not-an-ip"},
+        remote="127.0.0.1",
+    )
+
+    assert utils.get_client_ip(req) == "127.0.0.1"
+
+
 @pytest.mark.asyncio
 async def test_login_required_redirects_when_unauthorized(
     monkeypatch: pytest.MonkeyPatch,

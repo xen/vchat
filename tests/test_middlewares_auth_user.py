@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import logging
 
 import pytest
-import sqlalchemy as sa
 from aiohttp import web
 from multidict import MultiDict
 from yarl import URL
@@ -224,11 +223,11 @@ async def test_public_widget_cors_handles_trigger_preflight_for_any_origin() -> 
 
 
 def test_local_password_forms_enforce_asvs_length_bounds() -> None:
-    short_login = auth_views.Login(
+    legacy_login = auth_views.Login(
         MultiDict({"email": "user@example.com", "password": "short"}),
         meta={"csrf": False},
     )
-    assert not short_login.validate()
+    assert legacy_login.validate()
 
     long_password = "p" * 128
     login = auth_views.Login(
@@ -236,6 +235,30 @@ def test_local_password_forms_enforce_asvs_length_bounds() -> None:
         meta={"csrf": False},
     )
     assert login.validate()
+
+    password_change = auth_views.PasswordChange(
+        MultiDict(
+            {
+                "current_password": "short",
+                "password": "long-enough-password",
+                "confirm": "long-enough-password",
+            }
+        ),
+        meta={"csrf": False},
+    )
+    assert password_change.validate()
+
+    short_new_password = auth_views.PasswordChange(
+        MultiDict(
+            {
+                "current_password": "short",
+                "password": "short",
+                "confirm": "short",
+            }
+        ),
+        meta={"csrf": False},
+    )
+    assert not short_new_password.validate()
 
     too_long = "p" * 129
     add_form = admin_views.UserAdd(
@@ -284,7 +307,6 @@ async def test_flash_and_force_https_middlewares() -> None:
 @pytest.mark.asyncio
 async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> None:
     statements = []
-    now = datetime(2026, 7, 2, 12, 0, tzinfo=timezone.utc)
 
     class _ExecuteResult:
         def first(self):
@@ -294,7 +316,7 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
                 name="User Seven",
                 is_active=True,
                 auth_user_session_id=17,
-                last_seen_at=datetime(2026, 7, 2, 11, 59, tzinfo=timezone.utc),
+                last_seen_at=datetime.now(timezone.utc) - timedelta(minutes=1),
             )
 
     class _DB:
@@ -320,7 +342,6 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
     monkeypatch.setattr(mdw.time, "time", lambda: 120)
-    monkeypatch.setattr(mdw, "_utcnow", lambda: now)
 
     request = _Request(path="/dashboard")
     db = _DB()
@@ -348,7 +369,6 @@ async def test_auth_middleware_invalidates_idle_user_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     statements = []
-    now = datetime(2026, 7, 2, 12, 0, tzinfo=timezone.utc)
 
     class _ExecuteResult:
         def first(self):
@@ -358,7 +378,7 @@ async def test_auth_middleware_invalidates_idle_user_session(
                 name="User Seven",
                 is_active=True,
                 auth_user_session_id=17,
-                last_seen_at=datetime(2026, 7, 2, 7, 59, tzinfo=timezone.utc),
+                last_seen_at=datetime.now(timezone.utc) - timedelta(hours=5),
             )
 
     class _DB:
@@ -386,7 +406,6 @@ async def test_auth_middleware_invalidates_idle_user_session(
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
     monkeypatch.setattr(mdw.time, "time", lambda: 120)
-    monkeypatch.setattr(mdw, "_utcnow", lambda: now)
 
     request = _Request(
         path="/dashboard",
@@ -542,6 +561,9 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
         def validate(self):
             return True
 
+        def add_email_error(self, message):
+            self.email.errors.append(message)
+
     class _Record:
         def scalar(self):
             return SimpleNamespace(
@@ -637,6 +659,18 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     assert created_session["session_id"] == db.added[0].session_id
     assert isinstance(created_session["login_at"], int)
 
+    created_session.clear()
+    request_next = _Request(
+        method="POST",
+        app=_App({CONFIG_KEY: {}, REDIS_KEY: _Redis()}, router=login_router),
+        post_data={"email": "user@example.com", "password": "pass"},
+        query={"next": "/sessions/"},
+    )
+    request_next["db"] = db
+    with pytest.raises(web.HTTPFound) as exc:
+        await login_fn(request_next)
+    assert str(exc.value.location) == "/sessions/"
+
     class _LogoutSession(dict):
         def invalidate(self):
             self["done"] = True
@@ -654,8 +688,8 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(web.HTTPFound) as exc:
         await logout_fn(request2)
     assert str(exc.value.location) == "/login/"
-    assert exc.value.headers["Clear-Site-Data"] == auth_views.CLEAR_SITE_DATA_VALUE
-    assert db.commits == 1
+    assert exc.value.headers["Clear-Site-Data"] == '"cache", "storage"'
+    assert db.commits == 3
 
 
 @pytest.mark.asyncio
@@ -769,6 +803,9 @@ async def test_login_ldap_rejects_inactive_existing_user(
         def validate(self):
             return True
 
+        def add_email_error(self, message):
+            self.email.errors.append(message)
+
     class _Record:
         def scalar(self):
             return SimpleNamespace(
@@ -851,6 +888,9 @@ async def test_login_ldap_rejects_existing_local_user(
 
         def validate(self):
             return True
+
+        def add_email_error(self, message):
+            self.email.errors.append(message)
 
     class _Record:
         def scalar(self):
@@ -968,7 +1008,9 @@ async def test_authenticate_ldap_escapes_search_filter_email(
         "email": "user*)(mail=*)@example.com",
         "name": "LDAP User",
     }
-    escaped_filter = r"(&(mail=user\2A\29\28mail=\2A\29@example.com)(memberOf=cn=vchat))"
+    escaped_filter = (
+        r"(&(mail=user\2A\29\28mail=\2A\29@example.com)(memberOf=cn=vchat))"
+    )
     assert ("filter_exp", escaped_filter) in calls
     assert (
         "credentials",
@@ -1252,6 +1294,9 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
         def validate(self):
             return True
 
+        def add_email_error(self, message):
+            self.email.errors.append(message)
+
     class _Record:
         def scalar(self):
             return SimpleNamespace(
@@ -1342,6 +1387,9 @@ async def test_login_wrong_password_sets_lockout_after_failure_limit(
         def validate(self):
             return True
 
+        def add_email_error(self, message):
+            self.email.errors.append(message)
+
     class _Record:
         def scalar(self):
             return SimpleNamespace(
@@ -1370,7 +1418,7 @@ async def test_login_wrong_password_sets_lockout_after_failure_limit(
 
         async def incr(self, key):
             assert key == "auth:login_failures:user@example.com"
-            return auth_views.LOGIN_FAILURE_LIMIT
+            return 10
 
         async def expire(self, key, ttl):
             _ = key, ttl
@@ -1413,7 +1461,7 @@ async def test_login_wrong_password_sets_lockout_after_failure_limit(
     assert isinstance(payload, dict)
     assert (
         ("auth:login_lockout:user@example.com", "1"),
-        {"ex": auth_views.LOGIN_LOCKOUT_SECONDS},
+        {"ex": 15 * 60},
     ) in redis.set_calls
     assert events == ["user_login_failed"]
 
@@ -1436,6 +1484,9 @@ async def test_login_redis_lock_blocks_parallel_checks(
 
         def validate(self):
             return True
+
+        def add_email_error(self, message):
+            self.email.errors.append(message)
 
     redis_calls = {}
 

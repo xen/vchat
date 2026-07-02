@@ -4,6 +4,7 @@ import html
 import logging
 import os
 import uuid
+from ipaddress import ip_address, ip_network
 from math import ceil
 from datetime import datetime
 from functools import wraps
@@ -173,6 +174,58 @@ DELAY_PROTECTION = 5
 
 logger = logging.getLogger()
 
+CLIENT_IP_HEADERS = ("CF-Connecting-IP", "X-Real-IP", "X-Forwarded-For")
+
+
+def get_request_peer_ip(request: web.Request) -> str | None:
+    remote = (getattr(request, "remote", None) or "").strip()
+    if remote:
+        return remote
+
+    peername = (
+        request.transport.get_extra_info("peername")
+        if getattr(request, "transport", None)
+        else None
+    )
+    if isinstance(peername, tuple) and peername:
+        return str(peername[0])
+    return None
+
+
+def is_trusted_proxy_peer(
+    peer_ip: str | None, trusted_proxy_cidrs
+) -> bool:
+    if not peer_ip:
+        return False
+    peer = ip_address(peer_ip)
+    return any(
+        peer in ip_network(value, strict=False)
+        for raw_value in trusted_proxy_cidrs
+        if (value := str(raw_value).strip())
+    )
+
+
+def get_client_ip(request: web.Request) -> str | None:
+    peer_ip = get_request_peer_ip(request)
+    request_config = request.app.get(CONFIG_KEY, {}) if hasattr(request, "app") else {}
+    trusted_proxy_cidrs = request_config.get("trusted_proxy_cidrs") or []
+
+    if not is_trusted_proxy_peer(peer_ip, trusted_proxy_cidrs):
+        return peer_ip
+
+    for header_name in CLIENT_IP_HEADERS:
+        forwarded_value = (request.headers.get(header_name) or "").strip()
+        if forwarded_value:
+            candidate = forwarded_value.split(",", 1)[0].strip()
+            if candidate:
+                try:
+                    ip_address(candidate)
+                except ValueError:
+                    continue
+                return candidate
+
+    return peer_ip
+
 
 def to_str(item: Optional[str]) -> str:
     if isinstance(item, str):
@@ -271,10 +324,7 @@ async def admin_event(event_name: str, request) -> None:
     user = request.get("user")
     user_id = getattr(user, "id", None)
     user_email = getattr(user, "email", None) or "anonymous"
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    ip_address = (
-        forwarded_for.split(",", 1)[0].strip() if forwarded_for else request.remote
-    ) or None
+    ip_address = get_client_ip(request)
 
     from vchat.models import AdminEvent
 

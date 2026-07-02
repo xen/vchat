@@ -6,23 +6,7 @@ from urllib.parse import urlsplit
 
 from aiohttp import web
 
-
-def extract_client_ip(request: web.Request) -> str | None:
-    forwarded = (
-        request.headers.get("CF-Connecting-IP")
-        or request.headers.get("X-Real-IP")
-        or request.headers.get("X-Forwarded-For")
-    )
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-        return ip or None
-
-    peername = (
-        request.transport.get_extra_info("peername") if request.transport else None
-    )
-    if isinstance(peername, tuple) and peername:
-        return str(peername[0])
-    return None
+from vchat.utils import get_client_ip
 
 
 def infer_device_type(user_agent: str | None) -> str:
@@ -78,7 +62,7 @@ def merge_chat_meta(
     client_meta = dict(client_meta or {})
 
     updates = {
-        "ip_address": extract_client_ip(request),
+        "ip_address": get_client_ip(request),
         "user_agent": user_agent or None,
         "browser": infer_browser(user_agent),
         "device_type": infer_device_type(user_agent),

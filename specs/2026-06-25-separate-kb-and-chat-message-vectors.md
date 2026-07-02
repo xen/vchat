@@ -44,8 +44,9 @@
 2. Убрать из `chunk` поля, относящиеся к сообщениям:
    `chat_id`, `msg_id`.
 3. Вектора сообщений сохраняются в конкретном поле таблицы `chat_msg`.
-4. Chat-vector ветка retrieval остается, но читает embeddings из `chat_msg`, а
-   не из `chunk`.
+4. Chat-vector ветка retrieval не используется в основном RAG path: история
+   чата передается через `tail_messages`, а vector search обращается только к
+   KB chunks.
 
 ## Proposed Schema
 
@@ -92,7 +93,8 @@
 4. Retrieval behavior
    - Оставить `tail_messages` как источник истории чата.
    - KB vector search должен обращаться только к `chunk`.
-   - Chat vector search должен читать `chat_msg.embedding`.
+   - Chat vector search по `chat_msg.embedding` не нужен для embedded widget
+     path без отдельного продуктового решения.
 
 5. Tests and cleanup
    - Обновить тесты под новые модели и SQL.
@@ -115,8 +117,8 @@
 - Retrieval tests:
   - KB vector/full-text retrieval возвращает прежние source payloads;
   - RAG context использует `tail_messages`;
-  - проверить, используется ли chat semantic retrieval реально; если да, он
-    читает `chat_msg.embedding`, а не `chunk`.
+  - vector retrieval не читает `chat_msg` и не конкурирует с KB chunks за
+    candidate slots.
 - Diff checks:
   - `rg -n "msg_id|chat_id" jobs vchat | rg "\\bChunk\\b|\\bchunk\\b"`
     не показывает смешивания chat-полей с page chunks.
@@ -146,5 +148,6 @@
 
 ## Resolved Decisions
 
-- Chat semantic retrieval сохраняется как существующая ветка retrieval и читает
-  `chat_msg.embedding`.
+- Chat semantic retrieval не используется в основном RAG path. Для виджетного
+  чата память диалога обеспечивает `tail_messages`; KB retrieval остается
+  vector/full-text/rerank по `chunk`.

@@ -1,0 +1,107 @@
+{% extends "admin.html" %}
+{% set page_title = "Активные сессии" %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="text-lg font-medium">{{ 'Активные сессии' }}</h1>
+    <form method="POST" action="{{ url('sessions_action') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="revoke_other">
+      <button type="submit" class="btn btn-sm btn-outline">{{ 'Завершить остальные' }}</button>
+    </form>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body p-0">
+      <div class="overflow-x-auto">
+        <table class="table w-full">
+          <thead>
+            <tr>
+              <th>{{ 'Создана' }}</th>
+              <th>{{ 'Последняя активность' }}</th>
+              <th>{{ 'IP' }}</th>
+              <th>{{ 'User-Agent' }}</th>
+              <th>{{ 'Статус' }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in sessions %}
+            <tr class="hover">
+              <td>{{ item.created_at }}</td>
+              <td>{{ item.last_seen_at or '—' }}</td>
+              <td>{{ item.ip_address or '—' }}</td>
+              <td class="max-w-xl truncate">{{ item.user_agent or '—' }}</td>
+              <td>
+                {% if item.revoked_at %}
+                  <span class="badge badge-ghost">{{ 'Завершена' }}</span>
+                {% elif item.session_id == current_session_id %}
+                  <span class="badge badge-success">{{ 'Текущая' }}</span>
+                {% else %}
+                  <span class="badge badge-info">{{ 'Активна' }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center text-base-content/60 py-8">
+                {{ 'Сессии не найдены' }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title text-base">{{ 'Сменить локальный пароль' }}</h2>
+        <form method="POST" action="{{ url('sessions_action') }}" class="grid gap-3">
+          {{ password_form.csrf_token }}
+          <input type="hidden" name="action" value="change_password">
+          <div>
+            <label class="label"><span class="label-text">{{ 'Текущий пароль' }}</span></label>
+            {{ password_form.current_password(class="input input-bordered w-full", autocomplete="current-password") }}
+            {% for error in password_form.current_password.errors %}
+              <p class="mt-1 text-xs text-error">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div>
+            <label class="label"><span class="label-text">{{ 'Новый пароль' }}</span></label>
+            {{ password_form.password(class="input input-bordered w-full", autocomplete="new-password") }}
+            {% for error in password_form.password.errors %}
+              <p class="mt-1 text-xs text-error">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div>
+            <label class="label"><span class="label-text">{{ 'Подтверждение' }}</span></label>
+            {{ password_form.confirm(class="input input-bordered w-full", autocomplete="new-password") }}
+            {% for error in password_form.confirm.errors %}
+              <p class="mt-1 text-xs text-error">{{ error }}</p>
+            {% endfor %}
+          </div>
+          <div>
+            <button type="submit" class="btn btn-primary btn-sm">{{ 'Сменить пароль' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card bg-base-100 shadow">
+      <div class="card-body">
+        <h2 class="card-title text-base">{{ 'Завершить все сессии' }}</h2>
+        <form method="POST" action="{{ url('sessions_action') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="revoke_all">
+          <button type="submit" class="btn btn-error btn-outline btn-sm">
+            {{ 'Завершить все и выйти' }}
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

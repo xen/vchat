@@ -18,7 +18,15 @@ FINAL_REPORT = ROOT / "docs" / "11_combined_report_updated.md"
 EXTERNAL_EVIDENCE = ROOT / "docs" / "asvs_external_evidence_package.md"
 EXTERNAL_MANIFEST = ROOT / "docs" / "asvs_external_evidence_manifest.json"
 EXPECTED_TOTAL_ROWS = 253
-BLOCKING_STATUSES = {"Missing", "Partial", "TBD"}
+BLOCKING_STATUSES = {
+    "Missing",
+    "Partial",
+    "TBD",
+    "Не покрыто",
+    "Частично",
+    "Не проверено",
+}
+ACCEPTED_EXTERNAL_STATUSES = {"Accepted external", "Принято внешне"}
 ASVS_ID_RE = re.compile(r"`(v5\.0\.0-\d+(?:\.\d+)*)`")
 ALLOWED_EXTERNAL_DISPOSITIONS = {
     "pending_external",
@@ -187,32 +195,32 @@ def render_external_status_report() -> str:
         1 for control in manifest_controls.values() if control["evidence_files"]
     )
     lines = [
-        "# ASVS External Evidence Status",
+        "# Статус внешних доказательств ASVS",
         "",
-        "Generated from `docs/asvs_external_evidence_manifest.json`.",
-        "Regenerate with `venv/bin/python bin/asvs-checklist-verify.py --write-external-status docs/asvs_external_evidence_status.md`.",
+        "Сгенерировано из `docs/asvs_external_evidence_manifest.json`.",
+        "Перегенерировать: `venv/bin/python bin/asvs-checklist-verify.py --write-external-status docs/asvs_external_evidence_status.md`.",
         "",
-        "## Summary",
+        "## Сводка",
         "",
-        f"- External controls: {len(manifest_controls)}",
-        f"- Controls with attached evidence files: {attached}",
+        f"- Внешних контролей: {len(manifest_controls)}",
+        f"- Контролей с приложенными файлами доказательств: {attached}",
     ]
     if not manifest_controls:
-        lines.append("- No blocking external evidence controls remain for application-code scope.")
+        lines.append("- Блокирующих внешних доказательств для области кода приложения не осталось.")
     for disposition, count in sorted(dispositions.items()):
         lines.append(f"- `{disposition}`: {count}")
     lines.extend(
         [
             "",
-            "Strict close command:",
+            "Строгая финальная команда:",
             "",
             "```bash",
             "venv/bin/python bin/asvs-checklist-verify.py --require-external-evidence",
             "```",
             "",
-            "## Controls",
+            "## Контроли",
             "",
-            "| ASVS ID | Owner | Area | Disposition | Required artifacts | Evidence files |",
+            "| ASVS ID | Владелец | Область | Решение | Требуемые артефакты | Файлы доказательств |",
             "| --- | --- | --- | --- | --- | --- |",
         ]
     )
@@ -225,7 +233,7 @@ def render_external_status_report() -> str:
             f"- `{markdown_escape(str(item))}`" for item in control["evidence_files"]
         )
         if not evidence_files:
-            evidence_files = "_none attached_"
+            evidence_files = "_не приложены_"
         lines.append(
             "| "
             + " | ".join(
@@ -242,8 +250,8 @@ def render_external_status_report() -> str:
         )
     if not manifest_controls:
         lines.append(
-            "| _none_ | _none_ | _none_ | _none_ | "
-            "No blocking external evidence controls remain for application-code scope. | _none_ |"
+            "| _нет_ | _нет_ | _нет_ | _нет_ | "
+            "Блокирующих внешних доказательств для области кода приложения не осталось. | _нет_ |"
         )
     lines.append("")
     return "\n".join(lines)
@@ -283,7 +291,7 @@ def verify(*, require_external_evidence: bool = False) -> str:
         raise AssertionError(f"blocking ASVS statuses remain: {blockers}")
 
     accepted_external = {
-        row.id for row in checklist_rows.values() if row.status == "Accepted external"
+        row.id for row in checklist_rows.values() if row.status in ACCEPTED_EXTERNAL_STATUSES
     }
     external_ids = external_per_row_ids(EXTERNAL_EVIDENCE)
     if accepted_external != external_ids:

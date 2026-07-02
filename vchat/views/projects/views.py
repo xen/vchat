@@ -70,6 +70,7 @@ from vchat.models import (
     ApiClient,
     WidgetIntegration,
     User,
+    UserSession,
 )
 from vchat.models.data import api_client_source
 from vchat.models.source_config import CrawlerRule, SourceConfig
@@ -155,6 +156,31 @@ __all__ = [
     "file_document",
     "source_sitemaps",
 ]
+
+
+async def _revoke_user_sessions(
+    request,
+    db_session,
+    *,
+    where_clause,
+    reason: str,
+    event_name: str,
+) -> web.Response:
+    now = datetime.now(timezone.utc)
+    await db_session.execute(
+        sa.update(UserSession)
+        .where(where_clause, UserSession.revoked_at.is_(None))
+        .values(
+            revoked_at=now,
+            revoked_reason=reason,
+            updated_at=now,
+        )
+    )
+    await db_session.commit()
+    await admin_event(event_name, request)
+    response = web.Response(text="ok")
+    response.headers["HX-Refresh"] = "true"
+    return response
 
 
 async def _api_client_list_context(
@@ -1926,6 +1952,12 @@ async def project_action(request):
     action = request.match_info.get("action")
 
     if action == "user_create":
+        admin_user_create_enabled = request.app[CONFIG_KEY].get(
+            "admin_user_create_enabled", True
+        )
+        if not admin_user_create_enabled:
+            raise web.HTTPForbidden(text="User creation is disabled")
+
         session = await get_session(request)
         data = await request.post()
         form = UserAdd(data, meta={"csrf_context": session})
@@ -1944,6 +1976,7 @@ async def project_action(request):
                     "add_form": form,
                     "total_users": len(users),
                     "current_user_id": request["user"].id,
+                    "admin_user_create_enabled": admin_user_create_enabled,
                 },
                 status=400,
             )
@@ -1963,6 +1996,7 @@ async def project_action(request):
                     "add_form": form,
                     "total_users": len(users),
                     "current_user_id": request["user"].id,
+                    "admin_user_create_enabled": admin_user_create_enabled,
                 },
                 status=400,
             )
@@ -2013,6 +2047,31 @@ async def project_action(request):
             "admin/user_password_modal.html",
             request,
             {"form": form, "target_user": user_obj},
+        )
+
+    if action == "user_revoke_sessions":
+        target_user_id = int(item_id)
+        user_obj = await db_session.scalar(
+            sa.select(User).where(User.id == target_user_id)
+        )
+        if not user_obj:
+            raise web.HTTPNotFound()
+
+        return await _revoke_user_sessions(
+            request,
+            db_session,
+            where_clause=UserSession.user_id == target_user_id,
+            reason="admin_revoke",
+            event_name="user_sessions_revoke",
+        )
+
+    if action == "user_revoke_all_sessions":
+        return await _revoke_user_sessions(
+            request,
+            db_session,
+            where_clause=sa.true(),
+            reason="admin_revoke_all",
+            event_name="user_sessions_revoke_all",
         )
 
     if action == "user_delete":
@@ -3032,140 +3091,6 @@ async def project_stats(request):
         or 0
     )
 
-    source_docs_query = (
-        sa.select(
-            Source.id,
-            Source.title,
-            sa.func.count(Page.id).label("doc_count"),
-            sa.func.coalesce(sa.func.sum(Page._length), 0).label("data_volume"),
-        )
-        .select_from(Source)
-        .outerjoin(Page, Page.source_id == Source.id)
-        .group_by(Source.id, Source.title)
-        .order_by(Source.title)
-    )
-    source_docs_res = (await db.execute(source_docs_query)).all()
-
-    metadata_policy_reason_expr = Page.meta["index_policy_reason"].as_string()
-    source_metadata_policy_query = (
-        sa.select(
-            Page.source_id,
-            metadata_policy_reason_expr.label("reason"),
-            sa.func.count(Page.id).label("doc_count"),
-        )
-        .where(Page.meta["index_policy"].as_string() == "metadata_only")
-        .group_by(Page.source_id, metadata_policy_reason_expr)
-    )
-    source_metadata_policy_res = (await db.execute(source_metadata_policy_query)).all()
-
-    source_chunks_query = (
-        sa.select(
-            Source.id,
-            sa.func.count(Chunk.id).label("chunk_count"),
-            sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label(
-                "chunk_storage"
-            ),
-        )
-        .select_from(Source)
-        .outerjoin(Page, Page.source_id == Source.id)
-        .outerjoin(Chunk, Chunk.page_id == Page.id)
-        .group_by(Source.id)
-    )
-    source_chunks_res = (await db.execute(source_chunks_query)).all()
-    files_docs_row = (
-        await db.execute(
-            sa.select(
-                sa.func.count(Page.id).label("doc_count"),
-                sa.func.coalesce(sa.func.sum(Page._length), 0).label("data_volume"),
-            ).where(Page.source_id.is_(None))
-        )
-    ).one()
-    files_chunks_row = (
-        await db.execute(
-            sa.select(
-                sa.func.count(Chunk.id).label("chunk_count"),
-                sa.func.coalesce(sa.func.sum(sa.func.length(Chunk.text)), 0).label(
-                    "chunk_storage"
-                ),
-            )
-            .select_from(Page)
-            .outerjoin(Chunk, Chunk.page_id == Page.id)
-            .where(Page.source_id.is_(None))
-        )
-    ).one()
-
-    chunks_by_source = {row.id: row for row in source_chunks_res}
-    metadata_policy_by_source: dict[int | None, list[dict[str, int | str]]] = {}
-    for row in source_metadata_policy_res:
-        metadata_policy_by_source.setdefault(row.source_id, []).append(
-            {
-                "reason": row.reason or "unknown",
-                "doc_count": int(row.doc_count or 0),
-            }
-        )
-    for reasons in metadata_policy_by_source.values():
-        reasons.sort(key=lambda item: (-int(item["doc_count"]), str(item["reason"])))
-
-    source_stats = []
-    total_docs = 0
-    total_data_volume = 0
-    total_chunks = 0
-    total_chunk_storage = 0
-    total_metadata_only_docs = 0
-
-    for row in source_docs_res:
-        chunk_data = chunks_by_source.get(row.id)
-        chunk_count = chunk_data.chunk_count if chunk_data else 0
-        chunk_storage = chunk_data.chunk_storage if chunk_data else 0
-        metadata_policy_reasons = metadata_policy_by_source.get(row.id, [])
-        metadata_only_count = sum(
-            int(item["doc_count"]) for item in metadata_policy_reasons
-        )
-        source_stats.append(
-            {
-                "id": row.id,
-                "title": row.title,
-                "doc_count": row.doc_count,
-                "data_volume": row.data_volume,
-                "chunk_count": chunk_count,
-                "chunk_storage": chunk_storage,
-                "metadata_only_count": metadata_only_count,
-                "metadata_policy_reasons": metadata_policy_reasons,
-            }
-        )
-        total_docs += row.doc_count
-        total_data_volume += row.data_volume
-        total_chunks += chunk_count
-        total_chunk_storage += chunk_storage
-        total_metadata_only_docs += metadata_only_count
-
-    files_doc_count = int(files_docs_row.doc_count or 0)
-    files_data_volume = int(files_docs_row.data_volume or 0)
-    files_chunk_count = int(files_chunks_row.chunk_count or 0)
-    files_chunk_storage = int(files_chunks_row.chunk_storage or 0)
-    files_metadata_policy_reasons = metadata_policy_by_source.get(None, [])
-    files_metadata_only_count = sum(
-        int(item["doc_count"]) for item in files_metadata_policy_reasons
-    )
-    if files_doc_count > 0:
-        source_stats.append(
-            {
-                "id": None,
-                "title": "Файлы",
-                "doc_count": files_doc_count,
-                "data_volume": files_data_volume,
-                "chunk_count": files_chunk_count,
-                "chunk_storage": files_chunk_storage,
-                "metadata_only_count": files_metadata_only_count,
-                "metadata_policy_reasons": files_metadata_policy_reasons,
-            }
-        )
-        total_docs += files_doc_count
-        total_data_volume += files_data_volume
-        total_chunks += files_chunk_count
-        total_chunk_storage += files_chunk_storage
-        total_metadata_only_docs += files_metadata_only_count
-
     return {
         "labels": labels,
         "data_chats": data_chats,
@@ -3182,12 +3107,6 @@ async def project_stats(request):
         "total_tokens": sum(data_tokens),
         "pending_embeddings": pending_embeddings,
         "token_breakdown": token_breakdown,
-        "source_stats": source_stats,
-        "total_docs": total_docs,
-        "total_data_volume": total_data_volume,
-        "total_chunks": total_chunks,
-        "total_chunk_storage": total_chunk_storage,
-        "total_metadata_only_docs": total_metadata_only_docs,
     }
 
 

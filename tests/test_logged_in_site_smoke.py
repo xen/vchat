@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -61,9 +62,18 @@ NO_FOLLOW_REDIRECTS = {
 }
 
 SMOKE_CHAT_USER_UID = "site-smoke-test"
+MIN_LOGGED_IN_SITE_PAGE_COUNT = 20
 
 ROUTE_QUERY_STRINGS = {
     "project_chat": f"?user_uid={SMOKE_CHAT_USER_UID}",
+}
+
+TEXT_RESPONSE_TYPES = {
+    "application/javascript",
+    "application/json",
+    "application/problem+json",
+    "application/xhtml+xml",
+    "application/xml",
 }
 
 
@@ -93,6 +103,7 @@ class _FakeRedis:
 @dataclass(frozen=True)
 class _SmokeFixtures:
     user_id: int
+    session_id: str
     source_id: int | None
     document_id: int | None
     chat_id: str | None
@@ -133,8 +144,39 @@ def _upsert_smoke_user() -> int:
         ).scalar_one()
 
 
+def _create_smoke_auth_session(user_id: int) -> str:
+    session_id = f"site-smoke-{secrets.token_hex(16)}"
+    engine = create_sync_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "DELETE FROM user_session "
+                "WHERE user_id = :user_id AND user_agent = :user_agent"
+            ),
+            {"user_id": user_id, "user_agent": "site-smoke-test"},
+        )
+        conn.execute(
+            sa.text(
+                "INSERT INTO user_session "
+                "(user_id, session_id, ip_address, user_agent, last_seen_at, "
+                "revoked_at, revoked_reason, created_at, updated_at) "
+                "VALUES "
+                "(:user_id, :session_id, :ip_address, :user_agent, now(), "
+                "NULL, NULL, now(), now())"
+            ),
+            {
+                "user_id": user_id,
+                "session_id": session_id,
+                "ip_address": "127.0.0.1",
+                "user_agent": "site-smoke-test",
+            },
+        )
+    return session_id
+
+
 def _load_smoke_fixtures() -> _SmokeFixtures:
     user_id = _upsert_smoke_user()
+    session_id = _create_smoke_auth_session(user_id)
     engine = create_sync_engine()
     with engine.connect() as conn:
         source_id = conn.execute(
@@ -160,6 +202,7 @@ def _load_smoke_fixtures() -> _SmokeFixtures:
 
     return _SmokeFixtures(
         user_id=user_id,
+        session_id=session_id,
         source_id=source_id,
         document_id=document_id,
         chat_id=chat_id,
@@ -177,7 +220,7 @@ def _delete_smoke_chats() -> None:
         )
 
 
-def _logged_in_cookie(user_id: int) -> str:
+def _logged_in_cookie(user_id: int, session_id: str) -> str:
     storage = EncryptedCookieStorage(
         config["cookie_key"],
         cookie_name=config["cookie_name"],
@@ -188,6 +231,7 @@ def _logged_in_cookie(user_id: int) -> str:
     )
     session = Session(None, data=None, new=True, max_age=storage.max_age)
     session["user_id"] = user_id
+    session["session_id"] = session_id
     session["login_at"] = int(time.time())
     response = web.Response()
     storage.save_cookie(
@@ -249,6 +293,48 @@ def _site_page_urls(app: web.Application, fixtures: _SmokeFixtures) -> list[tupl
     return urls
 
 
+def _can_decode_response(response: Any) -> bool:
+    content_type = response.content_type or ""
+    return content_type.startswith("text/") or content_type in TEXT_RESPONSE_TYPES
+
+
+@pytest.mark.asyncio
+async def test_public_entry_pages_do_not_return_500(
+    aiohttp_client: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(app_mod, "validate_multiprocess_setup", lambda: None)
+    monkeypatch.setattr(app_mod, "redis_from_url", lambda _url: _FakeRedis())
+    monkeypatch.setitem(config, "enable_https_middleware", False)
+    monkeypatch.setitem(config, "cookie_domain", None)
+    monkeypatch.setitem(config, "cookie_secure", False)
+
+    app = await app_mod.create_app()
+    app.on_startup.clear()
+    client = await aiohttp_client(app)
+
+    failures: list[str] = []
+    for url in ("/", "/login/"):
+        response = await client.get(url, allow_redirects=True)
+        body = ""
+        if _can_decode_response(response):
+            body = await response.text(errors="replace")
+        else:
+            await response.read()
+        if response.status >= 500:
+            failures.append(f"{url} -> {response.status}\n{body[:1000]}")
+        elif body and (
+            "Traceback (most recent call last)" in body
+            or "Internal Server Error" in body
+        ):
+            failures.append(
+                f"{url} returned traceback text with status {response.status}\n"
+                f"{body[:1000]}"
+            )
+
+    assert failures == [], "\n\n".join(failures)
+
+
 @pytest.mark.asyncio
 async def test_logged_in_site_pages_do_not_return_500(
     aiohttp_client: Any,
@@ -266,7 +352,12 @@ async def test_logged_in_site_pages_do_not_return_500(
     app.on_startup.clear()
     client = await aiohttp_client(app)
     client.session.cookie_jar.update_cookies(
-        {config["cookie_name"]: _logged_in_cookie(fixtures.user_id)},
+        {
+            config["cookie_name"]: _logged_in_cookie(
+                fixtures.user_id,
+                fixtures.session_id,
+            )
+        },
         response_url=client.make_url("/"),
     )
 
@@ -274,16 +365,36 @@ async def test_logged_in_site_pages_do_not_return_500(
     failures: list[str] = []
     try:
         for route_name, url in _site_page_urls(app, fixtures):
-            response = await client.get(
-                url,
-                allow_redirects=route_name not in NO_FOLLOW_REDIRECTS,
+            try:
+                response = await client.get(
+                    url,
+                    allow_redirects=route_name not in NO_FOLLOW_REDIRECTS,
+                )
+            except Exception as exc:
+                failures.append(f"{route_name} {url} raised {type(exc).__name__}: {exc}")
+                continue
+
+            body = ""
+            if _can_decode_response(response):
+                body = await response.text(errors="replace")
+            else:
+                await response.read()
+
+            checked.append(
+                f"{route_name} {url} -> {response.status} {response.content_type}"
             )
-            body = await response.text()
-            checked.append(f"{route_name} {url} -> {response.status}")
             if response.status >= 500:
                 failures.append(f"{route_name} {url} -> {response.status}\n{body[:1000]}")
+            elif body and (
+                "Traceback (most recent call last)" in body
+                or "Internal Server Error" in body
+            ):
+                failures.append(
+                    f"{route_name} {url} returned traceback text with status "
+                    f"{response.status}\n{body[:1000]}"
+                )
     finally:
         _delete_smoke_chats()
 
     assert failures == [], "\n\n".join(failures)
-    assert checked
+    assert len(checked) >= MIN_LOGGED_IN_SITE_PAGE_COUNT, "\n".join(checked)

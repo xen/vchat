@@ -96,6 +96,8 @@ def setup_routes(app: web.Application) -> None:
     # auth
     add("*", "/login/", auth.login, name="login")
     add("*", "/login/ldap/", auth.login_ldap, name="login_ldap")
+    add("GET", "/sessions/", auth.sessions, name="sessions")
+    add("POST", "/sessions/", auth.sessions_action, name="sessions_action")
     add("*", "/logout/", auth.logout, name="logout")
 
     # admin

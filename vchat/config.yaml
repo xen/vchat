@@ -22,6 +22,9 @@ session_max_age_seconds: 2592000
 # Optional application-side session TTL from successful login time.
 # Set to 0 to disable. When enabled, sessions without login timestamp expire.
 auth_session_time: 0
+# Sliding server-side auth session idle timeout from the last user request.
+# 14400 = 4 hours. Set to 0 only for local development diagnostics.
+auth_session_idle_timeout_seconds: 14400
 
 # Storages
 redis_uri: redis://localhost:6379/30
@@ -57,6 +60,9 @@ allowed_origins:
   - "https://www.vchat.com"
   - "https://vchat.com"
   - "https://local.vchat.com"
+# CIDR ranges of reverse proxies whose forwarded client-IP headers are trusted.
+# Keep empty unless the deployment ingress/proxy source ranges are known.
+trusted_proxy_cidrs: []
 media_prefix: "/media"
 media_root: "media"
 post_per_page: 10
@@ -102,6 +108,9 @@ gigachat_api_key: ""
 # Authentication methods: at least one must be enabled
 auth_basic_enabled: true
 auth_ldap_enabled: false
+# Allows administrators to create local users from the admin UI.
+# Disable in environments where users are provisioned only through LDAP/AD.
+admin_user_create_enabled: true
 ldap_server: "ldap://ldap.example.com:389"
 ldap_use_ssl: false
 ldap_bind_dn: ""
