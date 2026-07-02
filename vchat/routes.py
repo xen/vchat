@@ -2,7 +2,6 @@ from pathlib import Path
 
 from aiohttp import web
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo, SwaggerUiSettings
-from yarl import URL
 
 from vchat.views.metrics import metrics_handler
 from .views import frontend
@@ -217,13 +216,3 @@ def setup_routes(app: web.Application) -> None:
     # static files
     _add_static_build_routes(app)
 
-
-def to_path(url: URL, *, has_trailing_slash: bool = True) -> str:
-    """Convert URL instance into string path, suitable for aiohttp.web router.
-
-    When `has_trailing_slash` is `True` - append trailing slash for URL, if it not
-    already appended.
-    """
-    if url.parts[-1]:
-        url = url / "" if has_trailing_slash else url
-    return url.human_repr()

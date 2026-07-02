@@ -30,11 +30,9 @@ def test_project_settings_normalize_merge_and_getters(
     assert merged["project.title"] == "Demo"
     assert "project.model" not in merged
 
-    app = {SETTINGS_KEY: {"a": "1", "bad_int": "x", "json": "[1]", "bad_json": "{"}}
+    app = {SETTINGS_KEY: {"a": "1", "json": "[1]", "bad_json": "{"}}
     assert ps.get_setting(app, "a") == "1"
     assert ps.get_setting(app, "missing", "d") == "d"
-    assert ps.get_setting_int(app, "a", 5) == 1
-    assert ps.get_setting_int(app, "bad_int", 5) == 5
     assert ps.get_setting_json(app, "json", []) == [1]
     with pytest.raises(msgspec.DecodeError):
         ps.get_setting_json(app, "bad_json", [9])

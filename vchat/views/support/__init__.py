@@ -1,1 +1,0 @@
-# Support admin views removed.

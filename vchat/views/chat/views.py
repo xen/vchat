@@ -492,9 +492,6 @@ SYSTEM_PROMPT = f"""## Роль и цель
 4. Если можно помочь пользователю продвинуться дальше, предложи следующий шаг.
 """
 
-# Tools configuration - empty for now (tools.py removed)
-TOOLS = []
-
 GUARDRAIL_USER_MESSAGE = "Извините, я не могу дать корректный ответ на этот запрос."
 
 # --- Redis (optional) support for background tasks ---
@@ -1422,8 +1419,6 @@ async def websocket(request):
 
                         elif event_type == "assistant_message":
                             assistant_message = event.get("message")
-                        # Tool calls are disabled for now
-                        # Skip tool_call events since TOOLS list is empty
                     finish_stage("ai_stream", stage_started_at)
 
                     if assistant_message is None:

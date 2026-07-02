@@ -52,16 +52,6 @@ def get_setting(app, key: str, default: str | None = None) -> str | None:
     return default
 
 
-def get_setting_int(app, key: str, default: int = 0) -> int:
-    raw = get_setting(app, key)
-    if raw is None:
-        return default
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return default
-
-
 def get_setting_json(app, key: str, default: Any):
     raw = get_setting(app, key)
     if raw is None or raw == "":

@@ -12,7 +12,7 @@ from aiohttp.test_utils import make_mocked_request
 
 from vchat.settings import CONFIG_KEY, REDIS_KEY
 import vchat.middlewares as mw
-from vchat.routes import setup_routes, to_path
+from vchat.routes import setup_routes
 from vchat.views import health
 
 
@@ -273,9 +273,6 @@ def test_get_middlewares_and_routes() -> None:
         app.router["actions"].url_for(action="x", item_id="1").human_repr()
         == "/actions/x/1"
     )
-
-    assert to_path(app.router["login"].url_for()) == "/login/"
-    assert to_path(app.router["users"].url_for(), has_trailing_slash=False) == "/users"
 
 
 class HealthDB:

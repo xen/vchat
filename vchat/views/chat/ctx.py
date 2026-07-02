@@ -116,7 +116,6 @@ lang_models = {"en": "en_core_web_sm", "ru": "ru_core_news_sm"}
 _nlps: dict[str, Any] = {}
 _embed_model: Any | None = None
 _rerank_model: Any | None = None
-nlps = _nlps
 
 
 @dataclass(frozen=True)
@@ -370,28 +369,6 @@ def embed_query(text: str) -> list[float]:
 def token_count(text: str, model: str = "gpt-4o-mini") -> int:
     encoding = tiktoken.encoding_for_model(model)
     return len(encoding.encode(text or ""))
-
-
-def text_summarizer(text: str, ratio: float, lang: str | None = None) -> str:
-    source = (text or "").strip()
-    if not source:
-        return ""
-    target = max(1, int(len(source) * max(0.0, min(1.0, ratio))))
-
-    nlp = nlps.get(lang or "")
-    if callable(nlp):
-        doc = nlp(source)
-        sentences = [
-            getattr(sent, "text", "").strip() for sent in getattr(doc, "sents", [])
-        ]
-        summary = " ".join(part for part in sentences if part).strip()
-        if summary:
-            source = summary
-
-    trimmed = source[: min(len(source), max(1, target))].strip()
-    if len(source) > len(trimmed):
-        return (trimmed[:200].rstrip() + " …") if trimmed else "…"
-    return trimmed
 
 
 def _sanitize_snippet_text(text: str) -> str:

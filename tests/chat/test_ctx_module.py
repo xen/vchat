@@ -54,38 +54,6 @@ def test_detect_lang(monkeypatch: pytest.MonkeyPatch) -> None:
     assert ctx_mod.detect_lang("x") is None
 
 
-def test_text_summarizer_fallback_for_unknown_lang() -> None:
-    text = "a" * 250
-    out = ctx_mod.text_summarizer(text, 0.5, lang="de")
-    assert out.endswith(" …")
-    assert len(out) <= 203
-
-
-def test_text_summarizer_with_fake_nlp(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Sent:
-        def __init__(self, text):
-            self.text = text
-            self._words = [SimpleNamespace(text=w) for w in text.split()]
-
-        def __iter__(self):
-            return iter(self._words)
-
-    class _Doc:
-        def __init__(self):
-            self._tokens = [
-                SimpleNamespace(text=t) for t in "alpha beta alpha gamma".split()
-            ]
-            self.sents = [_Sent("alpha beta"), _Sent("gamma")]
-
-        def __iter__(self):
-            return iter(self._tokens)
-
-    monkeypatch.setitem(ctx_mod.lang_models, "en", "fake")
-    monkeypatch.setitem(ctx_mod.nlps, "en", lambda text: _Doc())
-    out = ctx_mod.text_summarizer("any", 0.5, lang="en")
-    assert isinstance(out, str)
-
-
 def test_token_count_and_trim_messages(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Enc:
         def encode(self, text):
