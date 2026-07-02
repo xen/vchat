@@ -484,17 +484,10 @@ def _is_external_uri(uri: str | None, current_netloc: str | None) -> bool:
 def _is_ignored_link_status(
     status: str | None, status_error: str | None = None
 ) -> bool:
-    return (status or "") in {"blocked", "auth_required"} or (status_error or "") in {
-        PageStatusError.excluded_ignored.value,
-        PageStatusError.excluded_robots.value,
-        PageStatusError.excluded_rules.value,
-        PageStatusError.excluded_auth.value,
-        PageStatusError.duplicate_content.value,
-        PageStatusError.no_content.value,
-        PageStatusError.low_content.value,
-        PageStatusError.too_big.value,
-        PageStatusError.redirect.value,
-    }
+    status_error_value = getattr(status_error, "value", status_error)
+    return (status or "") in {"blocked", "auth_required"} or (
+        status_error_value or ""
+    ) in EXCLUDED_INDEX_STATUS_ERRORS
 
 
 def _is_ignored_document(document: Page | Any) -> bool:

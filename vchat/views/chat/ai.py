@@ -242,31 +242,11 @@ def get_provider(provider_id: str) -> BaseAIProvider:
     raise ValueError(f"Unknown AI provider '{provider_id}'")
 
 
-def get_provider_choices() -> list[tuple[str, str]]:
-    return [(provider.id, provider.title) for provider in list_ai_providers()]
-
-
-def get_models_for_provider(provider_id: str) -> list[dict[str, str]]:
-    provider = get_provider(provider_id)
-    return [model.__dict__ for model in provider.models]
-
-
-def get_model_choices(provider_id: str) -> list[tuple[str, str]]:
-    provider = get_provider(provider_id)
-    return [(model.id, model.label) for model in provider.models]
-
-
 def get_default_provider_id() -> str:
     providers = list_ai_providers()
     if not providers:
         raise RuntimeError("No AI providers configured")
     return providers[0].id
-
-
-def get_default_model_id(provider_id: str | None = None) -> str:
-    target_id = provider_id or get_default_provider_id()
-    provider = get_provider(target_id)
-    return provider.models[0].id
 
 
 def resolve_ai_settings(
@@ -276,19 +256,6 @@ def resolve_ai_settings(
     provider = get_provider(provider_id)
     model = provider.get_model(model_id)
     return provider, model
-
-
-def is_provider_available(provider_id: str) -> bool:
-    try:
-        get_provider(provider_id)
-        return True
-    except ValueError:
-        return False
-
-
-def is_model_available(provider_id: str, model_id: str) -> bool:
-    provider = get_provider(provider_id)
-    return any(model.id == model_id for model in provider.models)
 
 
 DEFAULT_OPENAI_MODEL = OpenAIProvider._models[0].id

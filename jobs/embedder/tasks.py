@@ -144,13 +144,7 @@ def make_embed_vectors(texts: list[str]) -> list[List[float]]:
 
 
 def normalized_chunk_text_expr(column):
-    return sa.func.btrim(
-        sa.func.translate(
-            column,
-            CHUNK_TEXT_HASH_IGNORED_CHARS,
-            "",
-        )
-    )
+    return sa.func.btrim(sa.func.translate(column, CHUNK_TEXT_HASH_IGNORED_CHARS, ""))
 
 
 def apply_embedding_to_matching_kb_chunks(

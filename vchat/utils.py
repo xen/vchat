@@ -1,23 +1,17 @@
-import asyncio
-import base64
 import html
 import logging
-import os
 import uuid
 from ipaddress import ip_address, ip_network
 from math import ceil
 from datetime import datetime
 from functools import wraps
 from html.parser import HTMLParser
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 from urllib.parse import urlencode, urlparse
 
-import markdown
 import msgspec
-import redis.asyncio as aioredis
-import sqlalchemy as sa
 from aiohttp import web
-from aiohttp.abc import AbstractCookieJar, AbstractView
+from aiohttp.abc import AbstractView
 from aiohttp_session import get_session
 from itsdangerous import (
     BadSignature,
@@ -31,7 +25,6 @@ from yarl import URL
 
 from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
 from vchat.settings import config
-from vchat.tracing import REQUEST_ID_HEADER, get_request_id
 
 
 class _MsgSpecJSON:
@@ -166,9 +159,6 @@ def json_response(
         content_type=content_type,
     )
 
-
-REDIS_URL = config.get("redis_uri")
-CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "celery")
 
 DELAY_PROTECTION = 5
 
@@ -382,29 +372,6 @@ def protect_timed(value, salt=None):
     return serializer_timed.dumps(value, salt)
 
 
-class DummyJar(AbstractCookieJar):
-    def __init__(self, loop=None):
-        super().__init__(loop=loop)
-
-    def update_cookies(self, cookies, response_url=None):
-        pass
-
-    def filter_cookies(self, request_url):
-        return None
-
-    def clear_domain(self, domain):
-        pass
-
-    def __iter__(self):
-        raise StopIteration
-
-    def __len__(self):
-        return 0
-
-    def clear(self, predicate=None):
-        return
-
-
 def make_full_url(request, endpoint, **kwargs):
     """
     Is used to generate full url for external usage
@@ -576,124 +543,3 @@ def paginator(
         "range_start": range_start,
         "range_end": range_end,
     }
-
-
-async def run_command(command):
-    process = await asyncio.create_subprocess_shell(
-        command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    stdout, stderr = await process.communicate()
-    return process.returncode, stdout.decode(), stderr.decode()
-
-
-async def get_all_users(db_session):
-    from vchat.models import User
-
-    users = await db_session.execute(sa.select(User).where(User.is_active.is_(True)))
-    return users.scalars().fetchall()
-
-
-md_extensions = [
-    "markdown.extensions.admonition",
-    "markdown.extensions.footnotes",
-    "pymdownx.tasklist",
-    "pymdownx.highlight",
-    "markdown.extensions.meta",
-    "markdown.extensions.tables",
-    "pymdownx.details",
-    "pymdownx.keys",
-    "pymdownx.magiclink",
-    "pymdownx.smartsymbols",
-    "pymdownx.striphtml",
-]
-md_config = {
-    "pymdownx.highlight": {"linenums": False},
-    "pymdownx.keys": {
-        "separator": "＋",
-        "key_map": {"osx-del": "Delete", "osx-return": "Return"},
-    },
-}
-
-md = markdown.Markdown(
-    extensions=md_extensions, extension_configs=md_config, output_format="html5"
-)
-
-
-def convert_to_html(text: str) -> Tuple[str, dict]:
-    """Convert markdown to html and return metadata"""
-    return md.convert(text), {**getattr(md, "Meta", {})}
-
-
-# --- Redis (optional) support for background tasks ---
-redis = aioredis.from_url(REDIS_URL, decode_responses=True)
-
-
-async def run_task(task: str, queue: str | None = None, **kwargs) -> str:
-    """
-    Push a background task description into Redis list queue.
-    A minimal, portable format that can be consumed by any worker process.
-    Returns the task id.
-    """
-
-    queue_name = queue or CELERY_DEFAULT_QUEUE
-
-    # Celery/kombu envelope
-    task_id = str(uuid.uuid4())
-    body_list = [
-        [],  # args (we use kwargs only)
-        kwargs or {},  # kwargs
-        {  # embed
-            "callbacks": None,
-            "errbacks": None,
-            "chain": None,
-            "chord": None,
-        },
-    ]
-    body_json = json.dumps(body_list, ensure_ascii=False).encode("utf-8")
-    body_b64 = base64.b64encode(body_json).decode("ascii")
-    task_headers = {
-        "lang": "py",
-        "task": task,
-        "id": task_id,
-        "argsrepr": "()",
-        "kwargsrepr": json.dumps(kwargs, ensure_ascii=False),
-        "origin": os.uname().nodename if hasattr(os, "uname") else "vchat",
-        "ignore_result": False,
-        "retries": 0,
-        "timelimit": [None, None],
-        "root_id": task_id,
-        "parent_id": None,
-        "group": None,
-        "group_index": None,
-        "replaced_task_nesting": 0,
-        "stamped_headers": None,
-        "stamps": {},
-        "eta": None,
-        "expires": None,
-        "shadow": None,
-    }
-    request_id = get_request_id()
-    if request_id:
-        task_headers[REQUEST_ID_HEADER.lower()] = request_id
-
-    envelope = {
-        "body": body_b64,
-        "content-encoding": "utf-8",
-        "content-type": "application/json",
-        "headers": task_headers,
-        "properties": {
-            "correlation_id": task_id,
-            "reply_to": str(uuid.uuid4()),
-            "delivery_mode": 2,
-            "delivery_info": {"exchange": "", "routing_key": queue_name},
-            "priority": 0,
-            "body_encoding": "base64",
-            "delivery_tag": str(uuid.uuid4()),
-        },
-    }
-
-    payload = json.dumps(envelope, ensure_ascii=False)
-
-    print(f"Enqueue task {task}: {payload}")
-    await redis.lpush(queue_name, payload)
-    return task_id

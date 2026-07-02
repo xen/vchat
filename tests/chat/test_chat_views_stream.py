@@ -13,6 +13,7 @@ from itsdangerous import BadSignature
 from vchat.settings import SIGNER_KEY
 from vchat.views.chat.guardrails import GuardrailDecision
 from vchat.models.source_config import SourceConfig
+from vchat.llm_cache import cache_candidate_payload
 from vchat.views.triggers.rules import trigger_key
 from vchat.views.chat import views as chat_views
 
@@ -486,7 +487,7 @@ def test_suggestions_prompt_appends_structured_context_block() -> None:
 
 
 def test_cache_candidate_payload_marks_strict_rag_answer_candidate() -> None:
-    payload = chat_views._cache_candidate_payload(
+    payload = cache_candidate_payload(
         user_text="  Как подать заявку?  ",
         used_chunks=[
             {
@@ -532,7 +533,7 @@ def test_cache_candidate_payload_rejects_risky_answers(
     messages_count: int,
     reason_code: str,
 ) -> None:
-    payload = chat_views._cache_candidate_payload(
+    payload = cache_candidate_payload(
         user_text="Как подать заявку?",
         used_chunks=used_chunks,
         context_policy={"reason_code": reason_code},

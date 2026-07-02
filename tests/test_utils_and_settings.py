@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 import json as pyjson
+from types import SimpleNamespace
 import os
 import subprocess
 import sys
@@ -17,12 +17,7 @@ from vchat import settings
 from vchat import utils
 from vchat.views.chat.meta import merge_chat_meta, validate_source_page_url
 from vchat.views.chat.ai import (
-    get_default_model_id,
-    get_model_choices,
-    get_models_for_provider,
     get_provider,
-    is_model_available,
-    is_provider_available,
     resolve_ai_settings,
 )
 
@@ -217,21 +212,7 @@ def test_merge_chat_meta_does_not_trust_forwarded_ip_from_untrusted_peer() -> No
     assert meta["ip_address"] == "127.0.0.1"
 
 
-@pytest.mark.asyncio
-async def test_run_task_enqueues_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    redis = _Redis()
-    monkeypatch.setattr(utils, "redis", redis)
-    monkeypatch.setattr(utils, "json", pyjson)
-    task_id = await utils.run_task("jobs.crawler.tasks.index_document", doc_id=77)
-    assert task_id
-    assert any(call[0] == "lpush" for call in redis.calls)
-    assert "index_document" in redis.queue[0]
-
-
-def test_convert_to_html_and_to_str() -> None:
-    html, meta = utils.convert_to_html("# Title\n\nText")
-    assert "<h1>Title</h1>" in html
-    assert isinstance(meta, dict)
+def test_to_str() -> None:
     assert utils.to_str(["a", "b"]) == "ab"
     assert utils.to_str(None) == "None"
 
@@ -246,11 +227,6 @@ def test_ai_provider_functions() -> None:
     assert default_provider.id == settings.config["chat_provider"]
     assert default_model.id == settings.config["chat_model"]
     assert get_provider("openai").id == "openai"
-    assert is_provider_available("openai") is True
-    assert is_model_available("openai", "gpt-4o-mini") is True
-    assert get_models_for_provider("openai")
-    assert get_model_choices("openai")
-    assert get_default_model_id("openai")
 
 
 def test_settings_yaml_load_and_validation() -> None:

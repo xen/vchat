@@ -162,12 +162,6 @@ PAGE_SHINGLE_INSERT_BATCH_SIZE = max(
 _BOILERPLATE_HASH_CACHE: dict[int, frozenset[int]] = {}
 
 
-def _blocked_reason_to_page_status_error(blocked_reason: str) -> str | PageStatusError:
-    if blocked_reason == "robots_txt":
-        return PageStatusError.excluded_robots
-    return blocked_reason
-
-
 def mark_blocked_source_pages_ready(
     session: Session,
     *,
@@ -183,7 +177,11 @@ def mark_blocked_source_pages_ready(
         )
         .values(
             status=PageStatus.ready,
-            status_error=_blocked_reason_to_page_status_error(blocked_reason),
+            status_error=(
+                PageStatusError.excluded_robots
+                if blocked_reason == "robots_txt"
+                else blocked_reason
+            ),
             last_crawled_at=datetime.now(timezone.utc),
         )
     )
@@ -521,13 +519,7 @@ def chunk_text_hash(text: str) -> str:
 
 
 def normalized_chunk_text_expr(column):
-    return sa.func.btrim(
-        sa.func.translate(
-            column,
-            CHUNK_TEXT_HASH_IGNORED_CHARS,
-            "",
-        )
-    )
+    return sa.func.btrim(sa.func.translate(column, CHUNK_TEXT_HASH_IGNORED_CHARS, ""))
 
 
 def reuse_existing_chunk_embeddings(session: Session, *, page_id: int) -> int:

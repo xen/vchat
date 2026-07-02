@@ -184,7 +184,6 @@ _CODE_CONTENT_SUFFIXES = (
 __all__ = [
     "DOCUMENT_TYPE_INFO",
     "guess_document_type",
-    "get_document_type_label",
 ]
 
 
@@ -235,17 +234,6 @@ def guess_document_type(uri: str | None = None, content_type: str | None = None)
             return _EXTENSION_TO_TYPE[base]
 
     return DEFAULT_DOCUMENT_TYPE
-
-
-def get_document_type_label(doc_type: str) -> str:
-    """Return a human-readable label for a document type."""
-
-    info = DOCUMENT_TYPE_INFO.get(doc_type)
-    if info:
-        return info["label"]
-    if not doc_type:
-        return DOCUMENT_TYPE_INFO[DEFAULT_DOCUMENT_TYPE]["label"]
-    return doc_type.replace("_", " ").title()
 
 
 def _extract_extension(uri: str) -> str:

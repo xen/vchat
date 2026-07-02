@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import base64
-import json as pyjson
-import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -11,7 +8,6 @@ from aiohttp import web
 from vchat import settings, utils
 from vchat.views import metrics
 from vchat.utils import json_response
-from vchat.tracing import request_id_ctx
 from jobs.documents import types as document_types
 from vchat.views.projects.page_status import PageStatus
 from vchat.views.chat import ai as ai_providers
@@ -29,10 +25,6 @@ def test_document_types_guess_and_labels() -> None:
         document_types.guess_document_type(content_type="application/vnd.custom+json")
         == "code"
     )
-    assert document_types.get_document_type_label("office") == "Office document"
-    assert document_types.get_document_type_label("") == "Other"
-    assert document_types.get_document_type_label("custom_type") == "Custom Type"
-
 
 def test_json_response_uses_msgspec_compatible_body() -> None:
     response = json_response({"status": PageStatus.ready}, status=202)
@@ -70,9 +62,6 @@ def test_ai_providers_and_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert resolved_provider.id == "openai"
     assert resolved_model.id == model.id
-    assert ai_providers.is_provider_available("openai") is True
-    assert ai_providers.is_model_available("openai", model.id) is True
-
 
 @pytest.mark.asyncio
 async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,7 +112,7 @@ async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> No
     assert b"vchat_chat_context_chunks" in response.body
 
 
-def test_utils_json_to_str_meta_and_convert() -> None:
+def test_utils_json_to_str_and_meta() -> None:
     payload = {"a": 1, "b": [1, 2]}
     dumped = utils.json.dumps(payload)
     assert isinstance(dumped, str)
@@ -137,10 +126,6 @@ def test_utils_json_to_str_meta_and_convert() -> None:
     assert m.title == "T"
     assert m.description == "de"
     assert "Meta title='T'" in repr(m)
-
-    html, meta = utils.convert_to_html("# H")
-    assert "<h1" in html
-    assert isinstance(meta, dict)
 
 
 @pytest.mark.asyncio
@@ -227,26 +212,12 @@ async def test_flash_admin_event_login_required_and_make_url(
     assert "a=b" in str(full)
 
 
-def test_protect_dummyjar_and_paginator() -> None:
+def test_protect_and_paginator() -> None:
     token = utils.protect({"a": 1}, salt="s")
     assert utils.serializer.loads(token, b"s") == {"a": 1}
 
     token_timed = utils.protect_timed("v", salt="x")
     assert utils.serializer_timed.loads(token_timed, salt=b"x") == "v"
-
-    class _ConcreteDummyJar(utils.DummyJar):
-        @property
-        def quote_cookie(self):  # pragma: no cover - required by abstract base
-            return True
-
-    loop = asyncio.new_event_loop()
-    try:
-        jar = _ConcreteDummyJar(loop=loop)
-    finally:
-        loop.close()
-    assert len(jar) == 0
-    with pytest.raises(StopIteration):
-        list(jar)
 
     pagination = utils.paginator(101, page=3, per_page=10)
     assert pagination["page"] == 3
@@ -268,39 +239,3 @@ def test_protect_dummyjar_and_paginator() -> None:
     )
     assert current["query"] == {"page": "10"}
     assert current["href"] == "/items?page=10"
-
-
-@pytest.mark.asyncio
-async def test_run_command_and_run_task(monkeypatch: pytest.MonkeyPatch) -> None:
-    code, stdout, stderr = await utils.run_command("printf hi")
-    assert code == 0
-    assert stdout == "hi"
-    assert stderr == ""
-
-    class FakeRedis:
-        def __init__(self):
-            self.items = []
-
-        async def lpush(self, q: str, payload: str):
-            self.items.append((q, payload))
-
-    fake_redis = FakeRedis()
-    monkeypatch.setattr(utils, "json", pyjson)
-    monkeypatch.setattr(utils, "redis", fake_redis)
-    monkeypatch.setattr(utils, "CELERY_DEFAULT_QUEUE", "q")
-
-    token = request_id_ctx.set("req-queue-1")
-    try:
-        task_id = await utils.run_task("jobs.embedder.tasks.index", msg_id=12)
-    finally:
-        request_id_ctx.reset(token)
-    assert isinstance(task_id, str)
-    assert fake_redis.items
-
-    queue_name, payload = fake_redis.items[0]
-    assert queue_name == "q"
-    envelope = pyjson.loads(payload)
-    assert envelope["headers"]["x-request-id"] == "req-queue-1"
-    body = base64.b64decode(envelope["body"]).decode("utf-8")
-    decoded = pyjson.loads(body)
-    assert decoded[1]["msg_id"] == 12

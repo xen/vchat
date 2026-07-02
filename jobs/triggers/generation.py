@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import logging
-import time
-import uuid
 from typing import Any
 
 import requests
 from pydantic import BaseModel, Field, ValidationError
 
-from vchat.views.chat.oauth import _normalize_basic_auth, _parse_expires_at, _Token
+from vchat.views.chat.oauth import get_gigachat_access_token_sync
 from vchat.models import Page
 from vchat.settings import config
 from vchat.tracing import request_id_headers
@@ -18,7 +16,6 @@ TRIGGER_GENERATION_LIMIT = 10
 TRIGGER_CONTENT_CHARS = 8000
 
 logger = logging.getLogger(__name__)
-_gigachat_token_cache: _Token | None = None
 
 
 class TriggerGenerationResponse(BaseModel):
@@ -88,91 +85,6 @@ def generate_trigger_texts_for_page(page: Page) -> list[str]:
     return parse_generated_trigger_texts(raw)
 
 
-def _get_gigachat_access_token_sync(
-    *,
-    basic_auth_key: str,
-    oauth_url: str | None = None,
-    scope: str | None = None,
-    verify_ssl_certs: bool | None = None,
-    oauth_timeout_seconds: float | None = None,
-) -> str:
-    global _gigachat_token_cache
-    now = time.time()
-    margin = 30.0
-    if (
-        _gigachat_token_cache is not None
-        and (_gigachat_token_cache.expires_at - now) > margin
-    ):
-        return _gigachat_token_cache.access_token
-
-    resolved_oauth_url = (oauth_url or config.get("gigachat_oauth_url") or "").strip()
-    if not resolved_oauth_url:
-        resolved_oauth_url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
-
-    resolved_scope = (scope or config.get("gigachat_scope") or "").strip()
-    if not resolved_scope:
-        resolved_scope = "GIGACHAT_API_PERS"
-
-    if verify_ssl_certs is None:
-        verify_ssl_certs = bool(config.get("gigachat_verify_ssl_certs", True))
-
-    if oauth_timeout_seconds is None:
-        oauth_timeout_seconds = float(
-            config.get("gigachat_oauth_timeout_seconds", 15.0)
-        )
-
-    auth_header = _normalize_basic_auth(basic_auth_key)
-    if not auth_header:
-        raise RuntimeError("Missing GigaChat authorization key (Basic)")
-
-    resp = requests.post(
-        resolved_oauth_url,
-        headers={
-            **request_id_headers(),
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-            "RqUID": str(uuid.uuid4()),
-            "Authorization": auth_header,
-        },
-        data={"scope": resolved_scope},
-        verify=bool(verify_ssl_certs),
-        timeout=float(oauth_timeout_seconds),
-    )
-    if resp.status_code >= 400:
-        logger.error(
-            "GigaChat OAuth failed: status=%s url=%s body=%s",
-            resp.status_code,
-            resolved_oauth_url,
-            (resp.text or "").strip()[:1000],
-        )
-        raise RuntimeError(
-            f"GigaChat OAuth error {resp.status_code}: {resp.text.strip() or 'empty response'}"
-        )
-
-    payload = resp.json()
-    if not isinstance(payload, dict):
-        raise RuntimeError("GigaChat OAuth returned unexpected payload")
-
-    access_token = (
-        payload.get("access_token")
-        or payload.get("accessToken")
-        or payload.get("token")
-    )
-    if not isinstance(access_token, str) or not access_token.strip():
-        raise RuntimeError("GigaChat OAuth did not return access_token")
-
-    now = time.time()
-    expires_at = _parse_expires_at(payload, now=now)
-    if expires_at is None:
-        expires_at = now + 25 * 60
-
-    _gigachat_token_cache = _Token(
-        access_token=access_token.strip(),
-        expires_at=float(expires_at),
-    )
-    return _gigachat_token_cache.access_token
-
-
 def request_trigger_generation(
     provider: BaseAIProvider,
     model: ModelInfo,
@@ -196,7 +108,7 @@ def request_trigger_generation(
     timeout_seconds = 30.0
     verify_ssl = True
     if provider.id == "gigachat":
-        api_key = _get_gigachat_access_token_sync(
+        api_key = get_gigachat_access_token_sync(
             basic_auth_key=api_key,
             oauth_timeout_seconds=float(
                 config.get("gigachat_oauth_timeout_seconds", 15.0)

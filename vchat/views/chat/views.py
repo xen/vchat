@@ -46,7 +46,7 @@ from vchat.views.chat.oauth import get_gigachat_access_token
 from vchat.utils import json_response
 from vchat.logging import log_json
 from vchat.llm_cache import (
-    cache_candidate_payload as _build_cache_candidate_payload,
+    cache_candidate_payload,
     record_chat_answer_cache_candidate,
 )
 from vchat.views.metrics import record_chat_request
@@ -125,25 +125,6 @@ def extract_total_tokens(usage_data: Any) -> int:
     if isinstance(nested, dict):
         return extract_total_tokens(nested)
     return 0
-
-
-def _cache_candidate_payload(
-    *,
-    user_text: str,
-    used_chunks: list[dict[str, Any]],
-    context_policy: dict[str, Any],
-    request_status: str,
-    guardrail_blocked: bool,
-    messages_count: int,
-) -> dict[str, Any]:
-    return _build_cache_candidate_payload(
-        user_text=user_text,
-        used_chunks=used_chunks,
-        context_policy=context_policy,
-        request_status=request_status,
-        guardrail_blocked=guardrail_blocked,
-        messages_count=messages_count,
-    )
 
 
 def _user_message_count(messages: list[dict[str, Any]]) -> int:
@@ -1668,7 +1649,7 @@ async def websocket(request):
                         await db.execute(stmt)
                         await db.commit()
 
-                cache_candidate_fields = _cache_candidate_payload(
+                cache_candidate_fields = cache_candidate_payload(
                     user_text=user_text,
                     used_chunks=used_chunks,
                     context_policy=context_policy,
@@ -1793,7 +1774,7 @@ async def websocket(request):
                     len(part.encode("utf-8")) for part in prompt_text_parts
                 )
                 prompt_chars = sum(len(part) for part in prompt_text_parts)
-                cache_candidate_fields = _cache_candidate_payload(
+                cache_candidate_fields = cache_candidate_payload(
                     user_text=user_text,
                     used_chunks=used_chunks,
                     context_policy=context_policy,

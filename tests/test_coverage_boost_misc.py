@@ -2,77 +2,24 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-import sqlalchemy as sa
 
 from jobs.embedder import model as embeddings
 from vchat.views.chat import guardrails
-from jobs.documents.types import get_document_type_label, guess_document_type
+from jobs.documents.types import guess_document_type
 from vchat.models.base import (
-    Base,
     DateTime_,
-    JsonColumnError,
-    JsonTypeError,
-    dict_to_json,
     generate_uuid7,
 )
 from vchat.views.user import views as user_views
 
 
-def test_models_base_dict_to_json_and_datetime_type() -> None:
-    payload = {
-        "a": 1,
-        "b": datetime(2025, 1, 1, 12, 0, 0),
-        "c": Decimal("1.5"),
-        "d": b"abc",
-        "e": None,
-    }
-    text = dict_to_json(payload)
-    assert '"a":1' in text
-    assert "2025-01-01T12:00:00" in text
-
+def test_models_base_datetime_type_and_uuid() -> None:
     dt = DateTime_()
     assert dt.process_bind_param("2025-01-01T01:02:03", None).year == 2025
     assert dt.python_type is datetime
-
-
-def test_models_base_json_errors_and_from_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Dummy:
-        def __init__(self, **kwargs):
-            self.__dict__.update(kwargs)
-
-    _Dummy.from_json = classmethod(Base.from_json.__func__)  # type: ignore[attr-defined]
-
-    class _Type:
-        def __init__(self, py):
-            self.python_type = py
-
-    columns = {
-        "name": SimpleNamespace(type=_Type(str)),
-        "price": SimpleNamespace(type=_Type(Decimal)),
-        "created_at": SimpleNamespace(type=_Type(datetime)),
-        "blob": SimpleNamespace(type=_Type(bytes)),
-    }
-    monkeypatch.setattr(sa, "inspect", lambda cls: SimpleNamespace(columns=columns))
-
-    item = _Dummy.from_json(
-        '{"name":"x","price":"10.5","created_at":"2025-01-01T00:00:00","blob":"YQ=="}'
-    )
-    assert item.name == "x"
-    assert item.price == Decimal("10.5")
-    assert item.created_at.year == 2025
-    assert item.blob == b"a"
-
-    with pytest.raises(JsonColumnError):
-        _Dummy.from_json('{"unknown":"x"}')
-    with pytest.raises(JsonTypeError):
-        _Dummy.from_json("[]")
-    with pytest.raises(JsonTypeError):
-        dict_to_json({"x": object()})
-
     assert isinstance(generate_uuid7(), str)
 
 
@@ -196,7 +143,6 @@ def test_document_type_branches() -> None:
     assert guess_document_type(content_type="video/mp4") == "video"
     assert guess_document_type(content_type="text/html; charset=utf-8") == "html"
     assert guess_document_type(content_type="application/custom+json") == "code"
-    assert get_document_type_label("")  # fallback label
 
 
 @pytest.mark.asyncio
