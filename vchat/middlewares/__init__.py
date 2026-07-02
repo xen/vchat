@@ -16,7 +16,7 @@ from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
 from vchat.settings import CONFIG_KEY, REDIS_KEY
 from vchat.db import async_session_factory
-from vchat.models import User
+from vchat.models import User, UserSession
 from vchat.tracing import (
     REQUEST_ID_HEADER,
     generate_request_id,
@@ -58,6 +58,16 @@ async def request_id_middleware(
 
 
 @web.middleware
+async def reject_trace_middleware(
+    request: web.Request,
+    handler: RequestHandler,
+) -> web.StreamResponse:
+    if request.method == "TRACE":
+        raise web.HTTPMethodNotAllowed(request.method, ("GET", "HEAD", "OPTIONS"))
+    return await handler(request)
+
+
+@web.middleware
 async def meta_middleware(request: web.Request, handler) -> web.StreamResponse:
     request["meta"] = Meta()
     return await handler(request)
@@ -92,7 +102,13 @@ async def error_middleware(
     try:
         return await handler(request)
     except web.HTTPException as ex:
-        if ex.status == 404:
+        if ex.status == 403:
+            logger.warning(
+                "Forbidden (%s %s)",
+                request.method,
+                request.rel_url,
+            )
+        elif ex.status == 404:
             logger.warning("Not Found (%s %s)", request.method, request.rel_url)
         elif ex.status == 500:
             logger.error("Server Error", exc_info=True)
@@ -143,6 +159,9 @@ async def security_headers_middleware(
         "Permissions-Policy",
         "camera=(), microphone=(), geolocation=(), payment=()",
     )
+    if not request.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault("Pragma", "no-cache")
     csp_parts = [
         "default-src 'self'",
         "base-uri 'self'",
@@ -228,6 +247,11 @@ async def auth_middleware(
 
     user_id = request["auth_session"].get("user_id")
     if user_id is not None:
+        session_id = request["auth_session"].get("session_id")
+        if not session_id:
+            request["auth_session"].invalidate()
+            return await handler(request)
+
         config = request.app.get(CONFIG_KEY, {})
         auth_session_time = int(config.get("auth_session_time", 0) or 0)
         if _auth_session_expired(request["auth_session"], auth_session_time):
@@ -235,9 +259,19 @@ async def auth_middleware(
             return await handler(request)
 
         result = await request["db"].execute(
-            sa.select(User.id, User.email, User.name, User.is_active).where(
+            sa.select(
+                User.id,
+                User.email,
+                User.name,
+                User.is_active,
+                UserSession.id.label("auth_user_session_id"),
+            )
+            .join(UserSession, UserSession.user_id == User.id)
+            .where(
                 User.id == user_id,
                 User.is_active.is_(True),
+                UserSession.session_id == session_id,
+                UserSession.revoked_at.is_(None),
             )
         )
         row = result.first()
@@ -248,6 +282,7 @@ async def auth_middleware(
                 name=row.name,
                 is_active=row.is_active,
             )
+            request["auth_user_session_id"] = row.auth_user_session_id
         else:
             request["auth_session"].invalidate()
         if request["db"].in_transaction():
@@ -337,6 +372,7 @@ def get_middlewares(config):
         # Origin Policy
         public_widget_cors_middleware,
         access_control_middleware,
+        reject_trace_middleware,
         request_id_middleware,
         security_headers_middleware,
         # First, normalize request path, which may result in redirect

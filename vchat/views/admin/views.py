@@ -11,6 +11,10 @@ from vchat.settings import CONFIG_KEY
 from vchat.settings import config
 from vchat.models import AdminEvent, ApiClient, Source, User
 from vchat.models.data import api_client_source
+from vchat.password_policy import (
+    MAX_LOCAL_PASSWORD_LENGTH,
+    MIN_LOCAL_PASSWORD_LENGTH,
+)
 from vchat.utils import login_required, meta, paginator
 from vchat.views.api.views import decrypt_client_secret
 
@@ -36,7 +40,11 @@ class UserAdd(AdminCSRFBase):
     password = PasswordField(
         "Пароль",
         [
-            validators.Length(min=6, max=35, message="Длина от 6 до 35 символов"),
+            validators.Length(
+                min=MIN_LOCAL_PASSWORD_LENGTH,
+                max=MAX_LOCAL_PASSWORD_LENGTH,
+                message="Длина от 12 до 128 символов",
+            ),
             validators.DataRequired(message="Обязательное поле"),
         ],
         render_kw={"placeholder": "Пароль"},
@@ -47,7 +55,11 @@ class UserPasswordEdit(AdminCSRFBase):
     password = PasswordField(
         "Новый пароль",
         [
-            validators.Length(min=6, max=35, message="Длина от 6 до 35 символов"),
+            validators.Length(
+                min=MIN_LOCAL_PASSWORD_LENGTH,
+                max=MAX_LOCAL_PASSWORD_LENGTH,
+                message="Длина от 12 до 128 символов",
+            ),
             validators.EqualTo("confirm", message="Пароли должны совпадать"),
             validators.DataRequired(message="Обязательное поле"),
         ],

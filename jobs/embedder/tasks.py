@@ -6,7 +6,7 @@ from typing import Any, List
 import numpy as np
 import redis
 import sqlalchemy as sa
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from jobs.celery import app
@@ -19,7 +19,6 @@ from jobs.embedder.model import (
 from jobs.embedder.chunking import (
     EMBEDDING_MAX_SEQ_LENGTH,
     EmbedderDocumentError,
-    chunk_text_word_window,
 )
 from jobs.embedder.queue import (
     PENDING_CHUNKS_BATCH_SIZE,
@@ -31,7 +30,7 @@ from jobs.documents.content import (
     chunk_text_sha256,
     normalize_chunk_text_for_hash,
 )
-from vchat.models import ChatMsg, Chunk, Page
+from vchat.models import Chunk, Page
 from vchat.views.projects.page_status import PageStatus
 from vchat.settings import config
 
@@ -168,7 +167,6 @@ def apply_embedding_to_matching_kb_chunks(
     matching_chunk_ids = (
         sa.select(Chunk.id)
         .where(
-            Chunk.chat_id.is_(None),
             Chunk.page_id.isnot(None),
             Chunk.embedding.is_(None),
             Chunk.is_duplicate.is_(False),
@@ -473,54 +471,6 @@ def run_pending_chunk_batch(
 
     remaining = 1 if pending_chunks_remain(session) else 0
     return processed, remaining
-
-
-@app.task(name="jobs.embedder.tasks.index_chat_message", queue="embeddings")
-def index_chat_message(msg_id: int):
-    engine = create_sync_engine()
-    try:
-        with Session(bind=engine) as session:
-            stmt = select(ChatMsg).where(ChatMsg.id == msg_id)
-            msg = session.scalar(stmt)
-
-            if not msg:
-                logging.warning("ChatMsg %s not found", msg_id)
-                return
-
-            text = msg.text or ""
-            chunks = chunk_text_word_window(text)
-
-            session.execute(delete(Chunk).where(Chunk.msg_id == msg_id))
-
-            if not chunks:
-                logging.info("No content to index for ChatMsg %s", msg_id)
-                session.commit()
-                return
-
-            for c in chunks:
-                vec = make_embed_vector(c.text)
-                chunk = Chunk(
-                    chat_id=msg.chat_id,
-                    user_uid=msg.user_uid,
-                    msg_id=msg.id,
-                    page_id=None,
-                    chunk_ix=c.index,
-                    start_offset=c.start,
-                    end_offset=c.end,
-                    kind="text",
-                    header_text=None,
-                    section_path=None,
-                    entity_terms=None,
-                    token_count=c.token_count,
-                    text=c.text,
-                    embedding=vec,
-                )
-                session.add(chunk)
-
-            session.commit()
-            logging.info("Indexed ChatMsg %s into %d chunks", msg_id, len(chunks))
-    finally:
-        engine.dispose()
 
 
 @app.task(name="jobs.embedder.tasks.pending_chunks", queue="embeddings")

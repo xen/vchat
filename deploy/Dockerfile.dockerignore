@@ -15,3 +15,7 @@ frontend/dist
 frontend_chat/dist
 local.yaml
 docs
+specs
+tests
+data/*
+!data/.placeholder

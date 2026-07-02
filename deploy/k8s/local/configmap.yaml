@@ -4,22 +4,21 @@ metadata:
   name: vchat-config
 data:
   local.yaml: |
-    mode: production
-    public_url: "https://vchat.example.com"
-    public_cdn: "https://vchat.example.com"
+    mode: stage
+    public_url: "http://localhost:9080"
+    public_cdn: "http://localhost:9080"
     allowed_origins:
-      - "https://vchat.example.com"
-    trusted_proxy_cidrs: []
-    cookie_domain: "vchat.example.com"
-    cookie_secure: true
-    enable_https_middleware: true
-    auth_session_idle_timeout_seconds: 14400
+      - "http://localhost:9080"
+    cookie_domain: "localhost"
+    cookie_secure: false
+    enable_https_middleware: false
 
     redis_uri: "redis://redis.vchat.svc.cluster.local:6379/30"
     database_uri: !env "$DATABASE_URI"
     celery_redis_uri: "redis://redis.vchat.svc.cluster.local:6379/"
     celery_broker_db: 31
     celery_backend_db: 32
+    celery_worker_concurrency: 1
 
     log_format: "json"
     openai_api_key: !env "$OPENAI_API_KEY"

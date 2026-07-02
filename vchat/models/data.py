@@ -40,6 +40,12 @@ chat_role_enum = ENUM(
 
 class ChatMsg(Base):
     __tablename__ = "chat_msg"
+    __table_args__ = (
+        sa.CheckConstraint(
+            "role <> 'user' OR char_length(text) <= 4000",
+            name="ck_chat_msg_user_text_max_4000",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
     text: Mapped[str] = mapped_column(sa.Text, nullable=False)
@@ -73,6 +79,12 @@ class ChatMsg(Base):
     guardrail_reasons: Mapped[list[str] | None] = mapped_column(
         sa.ARRAY(sa.String()),
         nullable=True,
+    )
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
+    text_hash: Mapped[str | None] = mapped_column(
+        sa.String(64),
+        nullable=True,
+        index=True,
     )
 
 
@@ -324,19 +336,7 @@ class Chunk(Base, Created, Updated):
     __tablename__ = "chunk"
 
     id: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
-    chat_id: Mapped[str | None] = mapped_column(
-        sa.String(36),
-        ForeignKey("chat.id", ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-    )
     user_uid: Mapped[str] = mapped_column(sa.String(256), nullable=False, index=True)
-    msg_id: Mapped[int | None] = mapped_column(
-        sa.Integer,
-        ForeignKey("chat_msg.id"),
-        nullable=True,
-        index=True,
-    )
     page_id: Mapped[int | None] = mapped_column(
         sa.Integer,
         ForeignKey("page.id", ondelete="CASCADE"),

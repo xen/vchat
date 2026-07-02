@@ -24,6 +24,10 @@ _RESERVED_LOG_RECORD_ATTRS = frozenset(
 ) | {"message", "asctime"}
 
 
+def _sanitize_log_text(value: Any) -> str:
+    return str(value).replace("\r", "\\r").replace("\n", "\\n")
+
+
 def _normalize_level_name(level: int | str | None, default: str = "INFO") -> str:
     if level is None:
         return default
@@ -43,7 +47,7 @@ class JsonLogFormatter(logging.Formatter):
             ).isoformat(),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": _sanitize_log_text(record.getMessage()),
         }
         request_id = get_request_id()
         if request_id:
@@ -51,7 +55,7 @@ class JsonLogFormatter(logging.Formatter):
 
         for key, value in record.__dict__.items():
             if key not in _RESERVED_LOG_RECORD_ATTRS and not key.startswith("_"):
-                payload[key] = value
+                payload[key] = _sanitize_log_text(value) if isinstance(value, str) else value
 
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
@@ -66,15 +70,17 @@ class PlainLogFormatter(logging.Formatter):
         extras = []
         request_id = get_request_id()
         if request_id:
-            extras.append(f"request_id={request_id!r}")
+            extras.append(f"request_id={_sanitize_log_text(request_id)!r}")
         for key, value in record.__dict__.items():
             if key not in _RESERVED_LOG_RECORD_ATTRS and not key.startswith("_"):
-                extras.append(f"{key}={value!r}")
+                safe_value = _sanitize_log_text(value) if isinstance(value, str) else value
+                extras.append(f"{key}={safe_value!r}")
 
         extras_text = f" {' '.join(extras)}" if extras else ""
+        message_text = _sanitize_log_text(record.getMessage())
         message = (
             f"{self.formatTime(record, self.datefmt)} "
-            f"[{record.levelname}] {record.name}: {record.getMessage()}{extras_text}"
+            f"[{record.levelname}] {record.name}: {message_text}{extras_text}"
         )
 
         if record.exc_info:

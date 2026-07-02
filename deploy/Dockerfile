@@ -29,16 +29,22 @@ RUN apt-get update \
         ca-certificates \
         curl \
         git \
+        libldap2-dev \
         libpq5 \
+        libsasl2-dev \
         libyaml-0-2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements/requirements.txt requirements/requirements.txt
 COPY requirements/req_linux.txt requirements/req_linux.txt
+ARG INSTALL_LINUX_EXTRAS=true
 RUN python -m venv /app/venv \
-    && /app/venv/bin/python -m pip install --upgrade pip uv \
-    && /app/venv/bin/uv pip sync requirements/requirements.txt --link-mode=copy \
-    && /app/venv/bin/uv pip install -r requirements/req_linux.txt --link-mode=copy
+    && /app/venv/bin/python -m pip install --no-cache-dir --upgrade pip uv \
+    && /app/venv/bin/uv pip sync requirements/requirements.txt --link-mode=copy --index-strategy unsafe-best-match --no-cache \
+    && if [ "${INSTALL_LINUX_EXTRAS}" = "true" ]; then /app/venv/bin/uv pip install -r requirements/req_linux.txt --link-mode=copy --index-strategy unsafe-best-match --no-cache; fi \
+    && apt-mark manual ca-certificates curl libldap-2.5-0 libpq5 libsasl2-2 libyaml-0-2 \
+    && apt-get purge -y --auto-remove build-essential git libldap2-dev libsasl2-dev \
+    && rm -rf /root/.cache/uv
 
 COPY . .
 COPY --from=frontend /src/frontend/dist frontend/dist
@@ -49,8 +55,8 @@ RUN if [ "${DOWNLOAD_MODELS}" = "true" ]; then python entry.py --model; fi
 
 RUN groupadd --system --gid 10001 vchat \
     && useradd --system --uid 10001 --gid vchat --home-dir /app --shell /usr/sbin/nologin vchat \
-    && mkdir -p /tmp/prometheus_multiproc \
-    && chown -R vchat:vchat /app /tmp/prometheus_multiproc
+    && mkdir -p /app/data/models /tmp/prometheus_multiproc \
+    && chown -R vchat:vchat /app/data /tmp/prometheus_multiproc
 
 USER vchat
 EXPOSE 9080

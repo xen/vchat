@@ -1,5 +1,5 @@
 from .base import Created, Updated, Base
-from .user import User
+from .user import User, UserSession
 from .data import (
     Chat,
     ChatMsg,
@@ -23,6 +23,7 @@ __all__ = [
     "Created",
     "Updated",
     "User",
+    "UserSession",
     "Chat",
     "ChatMsg",
     "ApiClient",

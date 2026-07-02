@@ -536,7 +536,6 @@ def reuse_existing_chunk_embeddings(session: Session, *, page_id: int) -> int:
             sa.select(Chunk)
             .where(
                 Chunk.page_id == page_id,
-                Chunk.chat_id.is_(None),
                 Chunk.embedding.is_(None),
                 Chunk.is_duplicate.is_(False),
                 Chunk.text_hash.isnot(None),
@@ -557,7 +556,6 @@ def reuse_existing_chunk_embeddings(session: Session, *, page_id: int) -> int:
         embedding = session.execute(
             sa.select(Chunk.embedding)
             .where(
-                Chunk.chat_id.is_(None),
                 Chunk.page_id.isnot(None),
                 Chunk.id != chunk.id,
                 Chunk.embedding.isnot(None),
@@ -581,7 +579,6 @@ def mark_duplicate_page_chunks(session: Session, *, page_id: int) -> int:
             sa.select(Chunk)
             .where(
                 Chunk.page_id == page_id,
-                Chunk.chat_id.is_(None),
                 Chunk.text_hash.isnot(None),
             )
             .order_by(Chunk.id.asc())
@@ -596,7 +593,6 @@ def mark_duplicate_page_chunks(session: Session, *, page_id: int) -> int:
     canonical_rows = session.execute(
         sa.select(Chunk.text_hash, Chunk.id)
         .where(
-            Chunk.chat_id.is_(None),
             Chunk.page_id == page_id,
             Chunk.text_hash.in_(text_hashes),
             Chunk.is_duplicate.is_(False),
@@ -779,9 +775,7 @@ def materialize_page_chunks(
     for chunk_data in chunks:
         session.add(
             Chunk(
-                chat_id=None,
                 user_uid=user_uid,
-                msg_id=None,
                 page_id=page.id,
                 chunk_ix=chunk_data.index,
                 start_offset=chunk_data.start,
