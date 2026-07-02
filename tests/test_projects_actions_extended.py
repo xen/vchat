@@ -1252,6 +1252,55 @@ async def test_project_documents_csv_marks_excluded_as_ignored() -> None:
 
 
 @pytest.mark.asyncio
+async def test_project_documents_csv_neutralizes_formula_cells() -> None:
+    from vchat.views.projects.page_status import PageStatus
+
+    req = _Request(action="noop")
+    req["db"] = _DB(
+        execute_rows=[
+            [
+                (
+                    7,
+                    "=HYPERLINK(\"https://evil.test\")",
+                    "+https://example.com/a",
+                    PageStatus.ready,
+                    None,
+                    "@Source",
+                    "\tSource URI",
+                    123,
+                    2,
+                ),
+                (
+                    8,
+                    "\rTitle",
+                    "-https://example.com/b",
+                    PageStatus.ready,
+                    None,
+                    "\nSource",
+                    "https://example.com",
+                    0,
+                    0,
+                ),
+            ]
+        ]
+    )
+    req["user"] = SimpleNamespace(id=1)
+
+    raw = project_views.project_documents_csv.__wrapped__
+    resp = await raw(req)
+    payload = _csv_rows(resp.text)
+
+    assert payload[0]["title"].startswith("'=")
+    assert payload[0]["uri"].startswith("'+")
+    assert payload[0]["source"].startswith("'@")
+    assert payload[1]["uri"].startswith("'-")
+    assert payload[1]["source"].startswith("'\n")
+    assert payload[0]["id"] == "7"
+    assert payload[0]["size_bytes"] == "123"
+    assert project_views._neutralize_csv_cell("\rTitle") == "'\rTitle"
+
+
+@pytest.mark.asyncio
 async def test_project_files_json_serializes_rows() -> None:
     doc = SimpleNamespace(
         id=8,

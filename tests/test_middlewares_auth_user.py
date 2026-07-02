@@ -105,6 +105,77 @@ async def test_debug_access_control_header_middleware_sets_cors_headers() -> Non
 
 
 @pytest.mark.asyncio
+async def test_security_headers_middleware_sets_browser_headers() -> None:
+    async def _handler(_request):
+        return web.Response(text="ok")
+
+    request = _Request(headers={"X-Forwarded-Proto": "https"})
+    request.scheme = "https"
+    response = await mdw.security_headers_middleware(
+        request,
+        _handler,
+    )
+
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "camera=()" in response.headers["Permissions-Policy"]
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert "frame-ancestors 'self'" in response.headers["Content-Security-Policy"]
+    assert response.headers["Strict-Transport-Security"].startswith("max-age=")
+
+
+@pytest.mark.asyncio
+async def test_security_headers_allow_public_widget_iframe() -> None:
+    async def _handler(_request):
+        return web.Response(text="ok")
+
+    request = _Request(path="/chat/widget/widget-code")
+    request.scheme = "https"
+    response = await mdw.security_headers_middleware(request, _handler)
+
+    assert "X-Frame-Options" not in response.headers
+    assert "frame-ancestors" not in response.headers["Content-Security-Policy"]
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+
+@pytest.mark.asyncio
+async def test_public_widget_cors_allows_trigger_resolution_for_any_origin() -> None:
+    async def _handler(_request):
+        return web.Response(text="ok")
+
+    request = _Request(
+        path="/api/triggers/resolve",
+        headers={"Origin": "https://customer.example"},
+    )
+    response = await mdw.public_widget_cors_middleware(request, _handler)
+
+    assert response.text == "ok"
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert "Access-Control-Allow-Credentials" not in response.headers
+    assert response.headers["Vary"] == "Origin"
+
+
+@pytest.mark.asyncio
+async def test_public_widget_cors_handles_trigger_preflight_for_any_origin() -> None:
+    async def _handler(_request):
+        raise AssertionError("preflight must not reach the route handler")
+
+    request = _Request(
+        path="/api/triggers/resolve",
+        method="OPTIONS",
+        headers={
+            "Origin": "https://customer.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    response = await mdw.public_widget_cors_middleware(request, _handler)
+
+    assert response.status == 200
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert response.headers["Access-Control-Allow-Methods"] == "GET, OPTIONS"
+
+
+@pytest.mark.asyncio
 async def test_flash_and_force_https_middlewares() -> None:
     class _Redis:
         async def lrange(self, key, _start, _end):
@@ -716,6 +787,52 @@ def test_get_middlewares_uses_configured_session_max_age(
 
     assert middlewares
     assert captured["max_age"] == 7200
+    assert captured["httponly"] is True
+    assert captured["samesite"] == "Lax"
+
+
+def test_get_middlewares_uses_configured_cors_origins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def _cors_middleware(**kwargs):
+        captured.update(kwargs)
+
+        async def _middleware(request, handler):
+            return await handler(request)
+
+        return _middleware
+
+    class _Storage:
+        def __init__(self, *ignored_args, **ignored_kwargs):
+            pass
+
+    def _session_middleware(ignored_storage):
+        async def _middleware(request, handler):
+            return await handler(request)
+
+        return _middleware
+
+    monkeypatch.setattr(mdw, "cors_middleware", _cors_middleware)
+    monkeypatch.setattr(mdw, "EncryptedCookieStorage", _Storage)
+    monkeypatch.setattr(mdw, "session_middleware", _session_middleware)
+
+    mdw.get_middlewares(
+        {
+            "allowed_origins": ["https://local.vchat.com"],
+            "public_url": "https://local.vchat.com",
+            "cookie_key": "cookie-key",
+            "cookie_name": "USER",
+            "cookie_domain": ".vchat.com",
+            "cookie_secure": True,
+            "session_max_age_seconds": 7200,
+            "enable_https_middleware": False,
+        }
+    )
+
+    assert captured["allow_all"] is False
+    assert captured["origins"] == ("https://local.vchat.com",)
 
 
 @pytest.mark.asyncio

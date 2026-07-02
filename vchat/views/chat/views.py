@@ -24,7 +24,7 @@ from vchat.views.chat.ai import (
     ModelInfo,
     resolve_ai_settings,
 )
-from vchat.settings import SIGNER_KEY
+from vchat.settings import CONFIG_KEY, SIGNER_KEY
 from vchat.tracing import (
     REQUEST_ID_HEADER,
     generate_request_id,
@@ -1050,7 +1050,35 @@ def make_websocket_response(request) -> web.WebSocketResponse:
     return ws
 
 
+def _normalize_origin(value: str | None) -> str:
+    return (value or "").strip().lower().rstrip("/")
+
+
+def _websocket_origin_allowed(request) -> bool:
+    origin = _normalize_origin(getattr(request, "headers", {}).get("Origin"))
+    if not origin:
+        return True
+
+    app = getattr(request, "app", {})
+    config = app.get(CONFIG_KEY, app.get("config", {}))
+    allowed = {
+        _normalize_origin(item)
+        for item in (config.get("allowed_origins") or [])
+        if item
+    }
+    public_url = _normalize_origin(config.get("public_url"))
+    if public_url:
+        allowed.add(public_url)
+
+    if origin in allowed:
+        return True
+    return False
+
+
 async def websocket(request):
+    if not _websocket_origin_allowed(request):
+        raise web.HTTPForbidden(text="WebSocket origin is not allowed")
+
     ws = make_websocket_response(request)
     await ws.prepare(request)
 

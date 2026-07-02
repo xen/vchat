@@ -16,7 +16,40 @@ from .views.projects import views as projects
 from .views.user import views as user
 
 
-STATIC_PATH = Path(__file__).parent.parent / "static"
+FRONTEND_DIST_PATH = Path(__file__).parent.parent / "frontend" / "dist"
+FRONTEND_CHAT_DIST_PATH = Path(__file__).parent.parent / "frontend_chat" / "dist"
+
+
+async def _static_favicon(request: web.Request) -> web.FileResponse:
+    return web.FileResponse(FRONTEND_DIST_PATH / "favicon.ico")
+
+
+def _add_static_build_routes(app: web.Application) -> None:
+    app.router.add_get(
+        "/static/favicon.ico", _static_favicon, name="static_favicon_ico"
+    )
+    frontend_dirs = (
+        "assets",
+        "audio",
+        "favicon",
+        "fonts",
+        "images",
+        "js",
+        "mail",
+    )
+    for dirname in frontend_dirs:
+        app.router.add_static(
+            f"/static/{dirname}/",
+            path=(FRONTEND_DIST_PATH / dirname).absolute(),
+            name=f"static_{dirname}",
+            follow_symlinks=False,
+        )
+    app.router.add_static(
+        "/static/chat/",
+        path=FRONTEND_CHAT_DIST_PATH.absolute(),
+        name="static_chat",
+        follow_symlinks=False,
+    )
 
 
 def setup_routes(app: web.Application) -> None:
@@ -180,12 +213,7 @@ def setup_routes(app: web.Application) -> None:
     )
 
     # static files
-    app.router.add_static(
-        "/static/",
-        path=STATIC_PATH.absolute(),
-        name="static",
-        follow_symlinks=True,
-    )
+    _add_static_build_routes(app)
 
 
 def to_path(url: URL, *, has_trailing_slash: bool = True) -> str:

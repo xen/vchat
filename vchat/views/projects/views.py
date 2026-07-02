@@ -2749,6 +2749,14 @@ DOCUMENTS_CSV_FIELDS = (
     "chunk_count",
 )
 
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
+def _neutralize_csv_cell(value: Any) -> Any:
+    if not isinstance(value, str) or not value.startswith(CSV_FORMULA_PREFIXES):
+        return value
+    return f"'{value}"
+
 
 def _documents_csv_response(rows: list[dict[str, Any]]) -> web.Response:
     buffer = io.StringIO(newline="")
@@ -2756,7 +2764,13 @@ def _documents_csv_response(rows: list[dict[str, Any]]) -> web.Response:
         buffer, fieldnames=DOCUMENTS_CSV_FIELDS, lineterminator="\n"
     )
     writer.writeheader()
-    writer.writerows(rows)
+    writer.writerows(
+        {
+            field: _neutralize_csv_cell(row.get(field, ""))
+            for field in DOCUMENTS_CSV_FIELDS
+        }
+        for row in rows
+    )
     return web.Response(text=buffer.getvalue(), content_type="text/csv")
 
 

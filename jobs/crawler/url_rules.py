@@ -3,6 +3,34 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
+URL_RULE_MAX_REGEX_LENGTH = 256
+UNSUPPORTED_URL_RULE_REGEX_TOKENS = (
+    "(?=",
+    "(?!",
+    "(?<=",
+    "(?<!",
+    "(?P=",
+    "(?(",
+)
+BACKREFERENCE_RE = re.compile(r"\\[1-9]")
+NESTED_REPEAT_RE = re.compile(r"\([^)]*[*+{][^)]*\)[*+{]")
+
+
+def safe_compile_url_rule_pattern(value: str) -> re.Pattern[str] | None:
+    pattern = (value or "").strip()
+    if not pattern:
+        return None
+    if len(pattern) > URL_RULE_MAX_REGEX_LENGTH:
+        return None
+    if any(token in pattern for token in UNSUPPORTED_URL_RULE_REGEX_TOKENS):
+        return None
+    if BACKREFERENCE_RE.search(pattern) or NESTED_REPEAT_RE.search(pattern):
+        return None
+    try:
+        return re.compile(pattern)
+    except re.error:
+        return None
+
 
 def ignored_query_params(rules: list[dict] | None) -> set[str]:
     return {
@@ -18,12 +46,9 @@ def allowed_url_patterns(rules: list[dict] | None) -> list[re.Pattern[str]]:
         if rule.get("type") != "regex":
             continue
         value = (rule.get("value") or "").strip()
-        if not value:
-            continue
-        try:
-            patterns.append(re.compile(value))
-        except re.error:
-            continue
+        compiled = safe_compile_url_rule_pattern(value)
+        if compiled is not None:
+            patterns.append(compiled)
     return patterns
 
 

@@ -2014,7 +2014,7 @@ def _discover_sitemaps_from_robots(
         robots_url,
         headers=headers,
         timeout=15,
-        allow_redirects=True,
+        allow_redirects=False,
         stream=True,
     ) as resp:
         if resp.status_code != 200:
@@ -2052,7 +2052,7 @@ def _probe_common_sitemaps(source_uri: str) -> list[str]:
             url,
             headers=headers,
             timeout=15,
-            allow_redirects=True,
+            allow_redirects=False,
             stream=True,
         ) as resp:
             if resp.status_code != 200:

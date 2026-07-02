@@ -2,13 +2,17 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import ipaddress
 import secrets
+import socket
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import sqlalchemy as sa
-from aiohttp import ClientSession, ClientTimeout, web
+from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
+from aiohttp.abc import AbstractResolver
+from aiohttp.resolver import DefaultResolver
 from cryptography.fernet import Fernet
 
 from vchat.settings import CONFIG_KEY, REDIS_KEY, config
@@ -262,6 +266,62 @@ def _redirect_target_allowed(current_url: str, target_url: str) -> bool:
     return _hosts_within_same_domain(current.hostname, target.hostname)
 
 
+def _address_allowed_for_fetch(
+    address: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> bool:
+    if isinstance(address, ipaddress.IPv4Address) and address.packed[-1] in {0, 255}:
+        return False
+    return address.is_global and not address.is_multicast
+
+
+def _resolve_fetch_addresses(
+    hostname: str,
+) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    infos = socket.getaddrinfo(hostname, None)
+    addresses = []
+    for info in infos:
+        host = info[4][0]
+        addresses.append(ipaddress.ip_address(host.split("%", 1)[0]))
+    return addresses
+
+
+class _ValidatingFetchResolver(AbstractResolver):
+    def __init__(self, resolver: AbstractResolver | None = None) -> None:
+        self._resolver = resolver or DefaultResolver()
+
+    async def resolve(
+        self,
+        host: str,
+        port: int = 0,
+        family: socket.AddressFamily = socket.AF_INET,
+    ) -> list[dict[str, Any]]:
+        rows = await self._resolver.resolve(host, port, family)
+        addresses = [
+            ipaddress.ip_address(str(row["host"]).split("%", 1)[0])
+            for row in rows
+        ]
+        if not addresses or not all(
+            _address_allowed_for_fetch(addr) for addr in addresses
+        ):
+            raise web.HTTPForbidden(text="URL target is not allowed")
+        return rows
+
+    async def close(self) -> None:
+        await self._resolver.close()
+
+
+async def _ensure_fetch_target_allowed(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise web.HTTPForbidden(text="URL target is not allowed")
+
+    addresses = await asyncio.to_thread(_resolve_fetch_addresses, parsed.hostname)
+    if not addresses or not all(
+        _address_allowed_for_fetch(addr) for addr in addresses
+    ):
+        raise web.HTTPForbidden(text="URL target is not allowed")
+
+
 def _pick_source_for_host(host: str, source_rows: list[tuple[int, str]]) -> int | None:
     host = _normalize_host(host)
     # Prefer exact host match, then parent-domain match.
@@ -285,9 +345,13 @@ async def _fetch_url_content(
             or DEFAULT_RAW_CONTENT_MAX_BYTES
         )
     timeout = ClientTimeout(total=20)
-    async with ClientSession(timeout=timeout) as client:
+    async with ClientSession(
+        timeout=timeout,
+        connector=TCPConnector(resolver=_ValidatingFetchResolver()),
+    ) as client:
         current_url = url
         for _ in range(5):
+            await _ensure_fetch_target_allowed(current_url)
             async with client.get(
                 current_url,
                 allow_redirects=False,
@@ -302,6 +366,7 @@ async def _fetch_url_content(
                         raise web.HTTPForbidden(
                             text="Redirect target domain is not allowed"
                         )
+                    await _ensure_fetch_target_allowed(redirect_url)
                     current_url = redirect_url
                     continue
 
@@ -381,8 +446,12 @@ async def _get_source_hosts(
 async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
     """Return: (status_code, redirect_location, final_status_if_followed)."""
     timeout = ClientTimeout(total=20)
-    async with ClientSession(timeout=timeout) as client:
+    async with ClientSession(
+        timeout=timeout,
+        connector=TCPConnector(resolver=_ValidatingFetchResolver()),
+    ) as client:
         current_url = url
+        await _ensure_fetch_target_allowed(current_url)
         async with client.get(
             current_url,
             allow_redirects=False,
@@ -398,6 +467,7 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
 
             current_url = first_redirect_url
             for _ in range(5):
+                await _ensure_fetch_target_allowed(current_url)
                 async with client.get(
                     current_url,
                     allow_redirects=False,
@@ -413,6 +483,7 @@ async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
                         raise web.HTTPForbidden(
                             text="Redirect target domain is not allowed"
                         )
+                    await _ensure_fetch_target_allowed(redirect_url)
                     current_url = redirect_url
             raise web.HTTPBadGateway(text="Too many redirects")
 

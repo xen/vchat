@@ -677,6 +677,53 @@ class TestSitemapLimits:
         assert status_code == 413
         assert body is None
 
+    def test_discover_sitemaps_from_robots_does_not_follow_redirects(
+        self, monkeypatch
+    ):
+        from jobs.crawler import tasks as crawler_tasks
+
+        calls = []
+
+        def fake_get(*args, **kwargs):
+            calls.append(kwargs)
+            return _FakeCrawlerResponse(
+                status_code=302,
+                headers={"Location": "https://private.example.com/robots.txt"},
+            )
+
+        monkeypatch.setattr(crawler_tasks.requests, "get", fake_get)
+
+        sitemap_urls, crawl_delay, body = crawler_tasks._discover_sitemaps_from_robots(
+            "https://example.com"
+        )
+
+        assert sitemap_urls == []
+        assert crawl_delay is None
+        assert body is None
+        assert calls[0]["allow_redirects"] is False
+        assert calls[0]["stream"] is True
+
+    def test_probe_common_sitemaps_does_not_follow_redirects(self, monkeypatch):
+        from jobs.crawler import tasks as crawler_tasks
+
+        calls = []
+
+        def fake_get(*args, **kwargs):
+            calls.append(kwargs)
+            return _FakeCrawlerResponse(
+                status_code=302,
+                headers={"Location": "https://private.example.com/sitemap.xml"},
+            )
+
+        monkeypatch.setattr(crawler_tasks.requests, "get", fake_get)
+
+        discovered = crawler_tasks._probe_common_sitemaps("https://example.com")
+
+        assert discovered == []
+        assert calls
+        assert all(call["allow_redirects"] is False for call in calls)
+        assert all(call["stream"] is True for call in calls)
+
     def test_parse_sitemap_rejects_more_than_max_entries(self, monkeypatch):
         from jobs.crawler import tasks as crawler_tasks
 

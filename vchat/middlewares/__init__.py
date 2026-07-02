@@ -31,6 +31,11 @@ from .https import https_middleware
 logger = logging.getLogger(__name__)
 
 RequestHandler = Callable[[web.Request], Awaitable[web.StreamResponse]]
+PUBLIC_WIDGET_CORS_PATHS = {"/api/triggers/resolve"}
+
+
+def _is_public_widget_frame(request: web.Request) -> bool:
+    return request.path.startswith("/chat/widget/")
 
 
 @web.middleware
@@ -123,6 +128,64 @@ async def debug_access_control_header_middleware(
     response.headers["Access-Control-Expose-Headers"] = (
         "upload-length, upload-metadata, upload-offset, location, x-request-id"
     )
+    return response
+
+
+@web.middleware
+async def security_headers_middleware(
+    request: web.Request,
+    handler: RequestHandler,
+) -> web.StreamResponse:
+    response = await handler(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=()",
+    )
+    csp_parts = [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "form-action 'self'",
+        "img-src 'self' data: https:",
+        "font-src 'self' data:",
+        "style-src 'self' 'unsafe-inline'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+        "connect-src 'self' https: wss:",
+        "frame-src 'self'",
+    ]
+    if not _is_public_widget_frame(request):
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        csp_parts.insert(3, "frame-ancestors 'self'")
+    response.headers.setdefault("Content-Security-Policy", "; ".join(csp_parts))
+    if request.scheme == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+    return response
+
+
+@web.middleware
+async def public_widget_cors_middleware(
+    request: web.Request,
+    handler: RequestHandler,
+) -> web.StreamResponse:
+    if request.path not in PUBLIC_WIDGET_CORS_PATHS:
+        return await handler(request)
+
+    origin = request.headers.get("Origin")
+    if request.method == "OPTIONS" and "Access-Control-Request-Method" in request.headers:
+        response: web.StreamResponse = web.Response(text="")
+    else:
+        response = await handler(request)
+
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "accept, content-type, origin"
+        response.headers["Vary"] = "Origin"
     return response
 
 
@@ -259,7 +322,7 @@ def get_middlewares(config):
 
     access_control_middleware = (
         cors_middleware(
-            allow_all=True,
+            allow_all=False,
             origins=origins,
             # allow_credentials=True,
             allow_methods=CORS_METHODS,
@@ -272,8 +335,10 @@ def get_middlewares(config):
 
     middlewares = (
         # Origin Policy
+        public_widget_cors_middleware,
         access_control_middleware,
         request_id_middleware,
+        security_headers_middleware,
         # First, normalize request path, which may result in redirect
         normalize_path_middleware(append_slash=True, merge_slashes=True),
         # After, enable error middleware to catch all errors from any code below
@@ -287,6 +352,8 @@ def get_middlewares(config):
                 secure=config["cookie_secure"],
                 max_age=int(config["session_max_age_seconds"]),
                 path="/",
+                httponly=True,
+                samesite="Lax",
             )
         ),
         meta_middleware,

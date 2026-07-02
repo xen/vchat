@@ -779,6 +779,12 @@ class TestUrlNormalization:
         assert url_allowed_by_rules("https://example.com/course/step1", rules) is True
         assert url_allowed_by_rules("https://example.com/blog/post", rules) is False
 
+    def test_url_allowed_by_rules_rejects_expensive_regex_filters(self):
+        from jobs.crawler.url_rules import url_allowed_by_rules
+
+        rules = [{"type": "regex", "value": r"^(a+)+$"}]
+        assert url_allowed_by_rules("aaaaaaaaaaaaaaaaaaaaaaaa!", rules) is True
+
 
 # ---------------------------------------------------------------------------
 # TestCrawlRunCreation

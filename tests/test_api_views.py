@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
@@ -635,10 +636,31 @@ class _FakeFetchClient:
         return self.responses[url]
 
 
+class _FakeResolver:
+    def __init__(self, rows):
+        self.rows = rows
+        self.closed = False
+
+    async def resolve(self, host, port=0, family=0):
+        return self.rows
+
+    async def close(self):
+        self.closed = True
+
+
+def _allow_fetch_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        api_views,
+        "_resolve_fetch_addresses",
+        lambda hostname: [ipaddress.ip_address("93.184.216.34")],
+    )
+
+
 @pytest.mark.asyncio
 async def test_fetch_url_content_follows_same_domain_redirects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _allow_fetch_hosts(monkeypatch)
     client = _FakeFetchClient(
         {
             "https://allowed.com/a": _FakeFetchResponse(
@@ -654,7 +676,7 @@ async def test_fetch_url_content_follows_same_domain_redirects(
             ),
         }
     )
-    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
 
     body, content_type, raw_body, _headers = await api_views._fetch_url_content(
         "https://allowed.com/a"
@@ -673,6 +695,7 @@ async def test_fetch_url_content_follows_same_domain_redirects(
 async def test_fetch_url_content_blocks_cross_domain_redirect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _allow_fetch_hosts(monkeypatch)
     client = _FakeFetchClient(
         {
             "https://allowed.com/a": _FakeFetchResponse(
@@ -687,7 +710,7 @@ async def test_fetch_url_content_blocks_cross_domain_redirect(
             ),
         }
     )
-    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
 
     with pytest.raises(web.HTTPForbidden):
         await api_views._fetch_url_content("https://allowed.com/a")
@@ -696,9 +719,55 @@ async def test_fetch_url_content_blocks_cross_domain_redirect(
 
 
 @pytest.mark.asyncio
+async def test_fetch_url_content_blocks_same_domain_private_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _resolve(hostname):
+        if hostname == "private.allowed.com":
+            return [ipaddress.ip_address("10.0.0.10")]
+        return [ipaddress.ip_address("93.184.216.34")]
+
+    monkeypatch.setattr(api_views, "_resolve_fetch_addresses", _resolve)
+    client = _FakeFetchClient(
+        {
+            "https://allowed.com/a": _FakeFetchResponse(
+                url="https://allowed.com/a",
+                status=302,
+                headers={"Location": "https://private.allowed.com/private"},
+            ),
+            "https://private.allowed.com/private": _FakeFetchResponse(
+                url="https://private.allowed.com/private",
+                status=200,
+                body=b"secret",
+            ),
+        }
+    )
+    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
+
+    with pytest.raises(web.HTTPForbidden):
+        await api_views._fetch_url_content("https://allowed.com/a")
+
+    assert client.requests == [("https://allowed.com/a", False)]
+
+
+@pytest.mark.asyncio
+async def test_ensure_fetch_target_allowed_propagates_dns_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_gaierror(hostname):
+        raise api_views.socket.gaierror("dns unavailable")
+
+    monkeypatch.setattr(api_views, "_resolve_fetch_addresses", _raise_gaierror)
+
+    with pytest.raises(api_views.socket.gaierror):
+        await api_views._ensure_fetch_target_allowed("https://allowed.com/a")
+
+
+@pytest.mark.asyncio
 async def test_fetch_url_content_rejects_oversized_content_length(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _allow_fetch_hosts(monkeypatch)
     client = _FakeFetchClient(
         {
             "https://allowed.com/a": _FakeFetchResponse(
@@ -709,7 +778,7 @@ async def test_fetch_url_content_rejects_oversized_content_length(
             ),
         }
     )
-    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
 
     with pytest.raises(web.HTTPRequestEntityTooLarge):
         await api_views._fetch_url_content("https://allowed.com/a", max_bytes=5)
@@ -719,6 +788,7 @@ async def test_fetch_url_content_rejects_oversized_content_length(
 async def test_fetch_url_content_rejects_chunked_body_over_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _allow_fetch_hosts(monkeypatch)
     client = _FakeFetchClient(
         {
             "https://allowed.com/a": _FakeFetchResponse(
@@ -728,7 +798,7 @@ async def test_fetch_url_content_rejects_chunked_body_over_limit(
             ),
         }
     )
-    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
 
     with pytest.raises(web.HTTPRequestEntityTooLarge):
         await api_views._fetch_url_content("https://allowed.com/a", max_bytes=5)
@@ -738,6 +808,7 @@ async def test_fetch_url_content_rejects_chunked_body_over_limit(
 async def test_resolve_url_state_blocks_cross_domain_redirect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _allow_fetch_hosts(monkeypatch)
     client = _FakeFetchClient(
         {
             "https://allowed.com/a": _FakeFetchResponse(
@@ -752,12 +823,22 @@ async def test_resolve_url_state_blocks_cross_domain_redirect(
             ),
         }
     )
-    monkeypatch.setattr(api_views, "ClientSession", lambda timeout: client)
+    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
 
     with pytest.raises(web.HTTPForbidden):
         await api_views._resolve_url_state("https://allowed.com/a")
 
     assert client.requests == [("https://allowed.com/a", False)]
+
+
+@pytest.mark.asyncio
+async def test_validating_fetch_resolver_rejects_private_connect_address() -> None:
+    resolver = api_views._ValidatingFetchResolver(
+        _FakeResolver([{"host": "10.0.0.10"}])
+    )
+
+    with pytest.raises(web.HTTPForbidden):
+        await resolver.resolve("allowed.com", 443)
 
 
 @pytest.mark.asyncio

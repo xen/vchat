@@ -792,6 +792,8 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert 'aria-label="Upvote"' not in rendered
     assert 'aria-label="Downvote"' not in rendered
     assert "bubble.textContent = text;" in rendered
+    assert "bubble.textContent = String(message || defaultErrorMessage || '');" in rendered
+    assert "bubble.innerHTML = String(message || defaultErrorMessage || '');" not in rendered
     assert "window.vchatRenderAssistantMarkdown(rawText)" in rendered
     assert "window.vchatRenderAssistantMarkdown(text)" in rendered
     assert "marked.parse" not in rendered

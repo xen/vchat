@@ -532,7 +532,7 @@
 
       const bubble = document.createElement('div');
       bubble.className = 'chat-bubble chat-bubble-error text-error-content';
-      bubble.innerHTML = String(message || defaultErrorMessage || '');
+      bubble.textContent = String(message || defaultErrorMessage || '');
       if (requestId) {
         const requestIdEl = document.createElement('div');
         requestIdEl.className = 'mt-2 text-xs opacity-70';

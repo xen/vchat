@@ -87,10 +87,18 @@ class _FakeWs:
 
 
 class _WebsocketRequest(dict[str, Any]):
-    def __init__(self, *, payload: str, app: dict[str, Any] | None = None, **items: Any):
+    def __init__(
+        self,
+        *,
+        payload: str,
+        app: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        **items: Any,
+    ):
         super().__init__(items)
         self.match_info = {"payload": payload}
         self.app = app or {}
+        self.headers = headers or {}
 
 
 class _FakeSession:
@@ -130,6 +138,29 @@ def test_make_websocket_response_sets_request_id_header_with_real_aiohttp() -> N
     ws = chat_views.make_websocket_response(request)
 
     assert ws.headers[chat_views.REQUEST_ID_HEADER] == "rid-1"
+
+
+def test_websocket_origin_policy_uses_configured_origins() -> None:
+    request = _WebsocketRequest(
+        payload="signed",
+        app={
+            "config": {
+                "allowed_origins": ["https://local.vchat.com"],
+                "public_url": "https://www.vchat.com",
+            }
+        },
+        headers={"Origin": "https://local.vchat.com"},
+    )
+    assert chat_views._websocket_origin_allowed(request)
+
+    request.headers = {"Origin": "https://evil.example"}
+    assert not chat_views._websocket_origin_allowed(request)
+
+    request.headers = {"Origin": "http://local.vchat.com"}
+    assert not chat_views._websocket_origin_allowed(request)
+
+    request.headers = {"Origin": "https://local.vchat.com:444"}
+    assert not chat_views._websocket_origin_allowed(request)
 
 
 class _RowsSessionFactory:
