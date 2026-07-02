@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
+import logging
 
 import pytest
 import sqlalchemy as sa
 from aiohttp import web
+from multidict import MultiDict
 from yarl import URL
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY
+from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
 import vchat.middlewares as mdw
+from vchat.views.admin import views as admin_views
 from vchat.views.auth import views as auth_views
 from vchat.views.user import views as user_views
 
@@ -52,6 +56,12 @@ class _Route:
         return URL(value)
 
 
+class _Signer:
+    def loads(self, token, max_age=86400):
+        _ = token, max_age
+        return 5
+
+
 @pytest.mark.asyncio
 async def test_meta_middleware_and_handle_error(
     monkeypatch: pytest.MonkeyPatch,
@@ -92,6 +102,28 @@ async def test_error_middleware_http_exception(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
+async def test_error_middleware_logs_forbidden(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _handler(_request):
+        raise web.HTTPForbidden()
+
+    async def _handle_error(_request, code=403):
+        return web.Response(text=f"e{code}", status=code)
+
+    monkeypatch.setattr(mdw, "handle_error", _handle_error)
+    request = _Request(path="/admin/secret", method="POST")
+    request.rel_url = "/admin/secret"
+
+    with caplog.at_level(logging.WARNING, logger=mdw.logger.name):
+        response = await mdw.error_middleware(request, _handler)
+
+    assert response.status == 403
+    assert "Forbidden (POST /admin/secret)" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_debug_access_control_header_middleware_sets_cors_headers() -> None:
     async def _handler(_request):
         return web.Response(text="ok")
@@ -118,10 +150,26 @@ async def test_security_headers_middleware_sets_browser_headers() -> None:
 
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
     assert "camera=()" in response.headers["Permissions-Policy"]
     assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
     assert "frame-ancestors 'self'" in response.headers["Content-Security-Policy"]
     assert response.headers["Strict-Transport-Security"].startswith("max-age=")
+
+
+@pytest.mark.asyncio
+async def test_security_headers_middleware_does_not_disable_static_cache() -> None:
+    async def _handler(_request):
+        return web.Response(text="ok")
+
+    request = _Request(path="/static/js/widget.js")
+    request.scheme = "http"
+    response = await mdw.security_headers_middleware(request, _handler)
+
+    assert "Cache-Control" not in response.headers
+    assert "Pragma" not in response.headers
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
 
 
 @pytest.mark.asyncio
@@ -175,6 +223,34 @@ async def test_public_widget_cors_handles_trigger_preflight_for_any_origin() -> 
     assert response.headers["Access-Control-Allow-Methods"] == "GET, OPTIONS"
 
 
+def test_local_password_forms_enforce_asvs_length_bounds() -> None:
+    short_login = auth_views.Login(
+        MultiDict({"email": "user@example.com", "password": "short"}),
+        meta={"csrf": False},
+    )
+    assert not short_login.validate()
+
+    long_password = "p" * 128
+    login = auth_views.Login(
+        MultiDict({"email": "user@example.com", "password": long_password}),
+        meta={"csrf": False},
+    )
+    assert login.validate()
+
+    too_long = "p" * 129
+    add_form = admin_views.UserAdd(
+        MultiDict({"email": "admin@example.com", "password": too_long}),
+        meta={"csrf": False},
+    )
+    assert not add_form.validate()
+
+    edit_form = admin_views.UserPasswordEdit(
+        MultiDict({"password": long_password, "confirm": long_password}),
+        meta={"csrf": False},
+    )
+    assert edit_form.validate()
+
+
 @pytest.mark.asyncio
 async def test_flash_and_force_https_middlewares() -> None:
     class _Redis:
@@ -208,6 +284,7 @@ async def test_flash_and_force_https_middlewares() -> None:
 @pytest.mark.asyncio
 async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> None:
     statements = []
+    now = datetime(2026, 7, 2, 12, 0, tzinfo=timezone.utc)
 
     class _ExecuteResult:
         def first(self):
@@ -216,12 +293,20 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
                 email="u@example.com",
                 name="User Seven",
                 is_active=True,
+                auth_user_session_id=17,
+                last_seen_at=datetime(2026, 7, 2, 11, 59, tzinfo=timezone.utc),
             )
 
     class _DB:
+        def __init__(self):
+            self.commits = 0
+
         async def execute(self, stmt):
             statements.append(stmt)
             return _ExecuteResult()
+
+        async def commit(self):
+            self.commits += 1
 
         def in_transaction(self):
             return False
@@ -231,10 +316,11 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
             self["invalidated"] = True
 
     async def _get_session(_request):
-        return _Session(user_id=7, login_at=100)
+        return _Session(user_id=7, session_id="session-7", login_at=100)
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
     monkeypatch.setattr(mdw.time, "time", lambda: 120)
+    monkeypatch.setattr(mdw, "_utcnow", lambda: now)
 
     request = _Request(path="/dashboard")
     db = _DB()
@@ -245,8 +331,82 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
 
     resp = await mdw.auth_middleware(request, _handler)
     assert resp.text == "u@example.com"
+    assert request["auth_user_session_id"] == 17
     compiled = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
     assert "users.is_active IS true" in compiled
+    assert "user_session.session_id = 'session-7'" in compiled
+    assert "user_session.revoked_at IS NULL" in compiled
+    touch = str(statements[1].compile(compile_kwargs={"literal_binds": True}))
+    assert "UPDATE user_session SET" in touch
+    assert "last_seen_at=" in touch
+    assert "user_session.id = 17" in touch
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_auth_middleware_invalidates_idle_user_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    statements = []
+    now = datetime(2026, 7, 2, 12, 0, tzinfo=timezone.utc)
+
+    class _ExecuteResult:
+        def first(self):
+            return SimpleNamespace(
+                id=7,
+                email="u@example.com",
+                name="User Seven",
+                is_active=True,
+                auth_user_session_id=17,
+                last_seen_at=datetime(2026, 7, 2, 7, 59, tzinfo=timezone.utc),
+            )
+
+    class _DB:
+        def __init__(self):
+            self.commits = 0
+
+        async def execute(self, stmt):
+            statements.append(stmt)
+            return _ExecuteResult()
+
+        async def commit(self):
+            self.commits += 1
+
+        def in_transaction(self):
+            return False
+
+    class _Session(dict):
+        def invalidate(self):
+            self["invalidated"] = True
+
+    session = _Session(user_id=7, session_id="session-7", login_at=100)
+
+    async def _get_session(_request):
+        return session
+
+    monkeypatch.setattr(mdw, "get_session", _get_session)
+    monkeypatch.setattr(mdw.time, "time", lambda: 120)
+    monkeypatch.setattr(mdw, "_utcnow", lambda: now)
+
+    request = _Request(
+        path="/dashboard",
+        app=_App({CONFIG_KEY: {"auth_session_idle_timeout_seconds": 4 * 60 * 60}}),
+    )
+    db = _DB()
+    request["db"] = db
+
+    async def _handler(req):
+        assert req["user"] is None
+        return web.Response(text="anonymous")
+
+    resp = await mdw.auth_middleware(request, _handler)
+    assert resp.text == "anonymous"
+    assert session["invalidated"] is True
+    revoke = str(statements[1].compile(compile_kwargs={"literal_binds": True}))
+    assert "UPDATE user_session SET" in revoke
+    assert "revoked_reason='idle_timeout'" in revoke
+    assert "user_session.id = 17" in revoke
+    assert db.commits == 1
 
 
 @pytest.mark.asyncio
@@ -262,7 +422,7 @@ async def test_auth_middleware_invalidates_expired_auth_session(
         def invalidate(self):
             self["invalidated"] = True
 
-    session = _Session(user_id=7, login_at=100)
+    session = _Session(user_id=7, session_id="session-7", login_at=100)
 
     async def _get_session(_request):
         return session
@@ -342,7 +502,7 @@ async def test_auth_middleware_invalidates_inactive_user_session(
         def invalidate(self):
             self["invalidated"] = True
 
-    session = _Session(user_id=7, login_at=100)
+    session = _Session(user_id=7, session_id="session-7", login_at=100)
 
     async def _get_session(_request):
         return session
@@ -362,6 +522,7 @@ async def test_auth_middleware_invalidates_inactive_user_session(
     assert session["invalidated"] is True
     compiled = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
     assert "users.is_active IS true" in compiled
+    assert "user_session.session_id = 'session-7'" in compiled
 
 
 @pytest.mark.asyncio
@@ -393,17 +554,45 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
             )
 
     class _DB:
+        def __init__(self):
+            self.added = []
+            self.commits = 0
+            self.executed = []
+
         async def execute(self, stmt):
-            _ = stmt
+            self.executed.append(stmt)
             return _Record()
 
+        def add(self, obj):
+            self.added.append(obj)
+
+        async def flush(self):
+            pass
+
+        async def commit(self):
+            self.commits += 1
+
     class _Redis:
+        def __init__(self):
+            self.expired = []
+
         async def exists(self, _key):
             return 0
 
         async def set(self, *args, **kwargs):
             _ = args, kwargs
             return True
+
+        async def incr(self, key):
+            assert key == "auth:login_failures:user@example.com"
+            return 1
+
+        async def expire(self, key, ttl):
+            self.expired.append((key, ttl))
+            return True
+
+        async def delete(self, _key):
+            return 1
 
     login_router = {"index": _Route("/"), "login": _Route("/login/")}
     request = _Request(
@@ -417,6 +606,12 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     async def _get_session(_request):
         return {}
+
+    events = []
+
+    async def _admin_event(event, req):
+        _ = req
+        events.append(event)
 
     created_session = {}
 
@@ -439,6 +634,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     assert str(exc.value.location) == "/"
     assert request["user"].id == 5
     assert created_session["user_id"] == 5
+    assert created_session["session_id"] == db.added[0].session_id
     assert isinstance(created_session["login_at"], int)
 
     class _LogoutSession(dict):
@@ -446,7 +642,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
             self["done"] = True
 
     async def _logout_session(_request):
-        return _LogoutSession()
+        return _LogoutSession(user_id=5, session_id="session-5")
 
     monkeypatch.setattr(auth_views, "get_session", _logout_session)
     logout_fn = auth_views.logout.__wrapped__.__wrapped__
@@ -454,9 +650,105 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
         method="GET", app=_App({CONFIG_KEY: {}}, router={"login": _Route("/login/")})
     )
     request2["user"] = SimpleNamespace(id=5)
+    request2["db"] = db
     with pytest.raises(web.HTTPFound) as exc:
         await logout_fn(request2)
     assert str(exc.value.location) == "/login/"
+    assert exc.value.headers["Clear-Site-Data"] == auth_views.CLEAR_SITE_DATA_VALUE
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_sessions_action_revoke_other_requires_signed_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Session(dict):
+        def invalidate(self):
+            self["invalidated"] = True
+
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            raise AssertionError("missing csrf must stop before mutation")
+
+    session = _Session(user_id=5, session_id="current-session")
+
+    async def _get_session(_request):
+        return session
+
+    monkeypatch.setattr(auth_views, "get_session", _get_session)
+
+    request = _Request(
+        method="POST",
+        app=_App(
+            {SIGNER_KEY: _Signer()},
+            router={"sessions": _Route("/sessions/"), "login": _Route("/login/")},
+        ),
+        post_data={"action": "revoke_other"},
+    )
+    request["db"] = _DB()
+    request["user"] = SimpleNamespace(id=5, is_active=True)
+
+    with pytest.raises(web.HTTPForbidden):
+        await auth_views.sessions_action.__wrapped__.__wrapped__(request)
+
+
+@pytest.mark.asyncio
+async def test_sessions_action_revoke_other_keeps_current_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    statements = []
+
+    class _Session(dict):
+        def invalidate(self):
+            self["invalidated"] = True
+
+    class _DB:
+        def __init__(self):
+            self.commits = 0
+
+        async def execute(self, stmt):
+            statements.append(stmt)
+            return SimpleNamespace(rowcount=2)
+
+        async def commit(self):
+            self.commits += 1
+
+    session = _Session(user_id=5, session_id="current-session")
+
+    async def _get_session(_request):
+        return session
+
+    events = []
+
+    async def _admin_event(event, req):
+        _ = req
+        events.append(event)
+
+    monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views, "admin_event", _admin_event)
+
+    db = _DB()
+    request = _Request(
+        method="POST",
+        app=_App(
+            {SIGNER_KEY: _Signer()},
+            router={"sessions": _Route("/sessions/"), "login": _Route("/login/")},
+        ),
+        post_data={"action": "revoke_other", "csrf_token": "ok"},
+    )
+    request["db"] = db
+    request["user"] = SimpleNamespace(id=5, is_active=True)
+
+    with pytest.raises(web.HTTPFound) as exc:
+        await auth_views.sessions_action.__wrapped__.__wrapped__(request)
+
+    assert str(exc.value.location) == "/sessions/"
+    assert db.commits == 1
+    assert events == ["user_session_revoke_other"]
+    compiled = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "user_session.user_id = 5" in compiled
+    assert "user_session.session_id != 'current-session'" in compiled
 
 
 @pytest.mark.asyncio
@@ -493,11 +785,22 @@ async def test_login_ldap_rejects_inactive_existing_user(
             return _Record()
 
     class _Redis:
+        def __init__(self):
+            self.expired = []
+
         async def exists(self, _key):
             return 0
 
         async def set(self, *args, **kwargs):
             _ = args, kwargs
+            return True
+
+        async def incr(self, key):
+            assert key == "auth:login_failures:user@example.com"
+            return 1
+
+        async def expire(self, key, ttl):
+            self.expired.append((key, ttl))
             return True
 
     async def _get_session(_request):
@@ -972,6 +1275,14 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
             _ = args, kwargs
             return True
 
+        async def incr(self, key):
+            assert key == "auth:login_failures:user@example.com"
+            return 1
+
+        async def expire(self, key, ttl):
+            _ = key, ttl
+            return True
+
     delays = []
 
     async def _sleep(seconds):
@@ -979,6 +1290,12 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
 
     async def _get_session(_request):
         return {}
+
+    events = []
+
+    async def _admin_event(event, req):
+        _ = req
+        events.append(event)
 
     request = _Request(
         method="POST",
@@ -992,6 +1309,7 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(auth_views, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views, "admin_event", _admin_event)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
     monkeypatch.setattr(
         auth_views.password_context, "verify", lambda raw, hashed: False
@@ -1001,7 +1319,103 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
     payload = await login_fn(request)
     assert isinstance(payload, dict)
     assert delays == [3]
+    assert events == ["user_login_failed"]
     assert payload["form"].email.errors
+
+
+@pytest.mark.asyncio
+async def test_login_wrong_password_sets_lockout_after_failure_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Field:
+        def __init__(self, data):
+            self.data = data
+            self.errors = []
+
+    class _Form:
+        def __init__(self, data, meta):
+            _ = meta
+            self.email = _Field(data.get("email", "user@example.com"))
+            self.password = _Field(data.get("password", "wrong"))
+            self.csrf_token = _Field("csrf")
+
+        def validate(self):
+            return True
+
+    class _Record:
+        def scalar(self):
+            return SimpleNamespace(
+                id=5,
+                is_active=True,
+                password="hash",
+                email="user@example.com",
+                is_ldap=False,
+            )
+
+    class _DB:
+        async def execute(self, stmt):
+            _ = stmt
+            return _Record()
+
+    class _Redis:
+        def __init__(self):
+            self.set_calls = []
+
+        async def exists(self, _key):
+            return 0
+
+        async def set(self, *args, **kwargs):
+            self.set_calls.append((args, kwargs))
+            return True
+
+        async def incr(self, key):
+            assert key == "auth:login_failures:user@example.com"
+            return auth_views.LOGIN_FAILURE_LIMIT
+
+        async def expire(self, key, ttl):
+            _ = key, ttl
+            return True
+
+    redis = _Redis()
+
+    async def _sleep(_seconds):
+        return None
+
+    async def _get_session(_request):
+        return {}
+
+    events = []
+
+    async def _admin_event(event, req):
+        _ = req
+        events.append(event)
+
+    request = _Request(
+        method="POST",
+        app=_App(
+            {CONFIG_KEY: {}, REDIS_KEY: redis},
+            router={"index": _Route("/"), "login": _Route("/login/")},
+        ),
+        post_data={"email": "user@example.com", "password": "wrong"},
+    )
+    request["db"] = _DB()
+
+    monkeypatch.setattr(auth_views, "Login", _Form)
+    monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views, "admin_event", _admin_event)
+    monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
+    monkeypatch.setattr(
+        auth_views.password_context, "verify", lambda raw, hashed: False
+    )
+
+    payload = await auth_views.login.__wrapped__.__wrapped__(request)
+
+    assert isinstance(payload, dict)
+    assert (
+        ("auth:login_lockout:user@example.com", "1"),
+        {"ex": auth_views.LOGIN_LOCKOUT_SECONDS},
+    ) in redis.set_calls
+    assert events == ["user_login_failed"]
 
 
 @pytest.mark.asyncio
@@ -1052,6 +1466,12 @@ async def test_login_redis_lock_blocks_parallel_checks(
     async def _get_session(_request):
         return {}
 
+    events = []
+
+    async def _admin_event(event, req):
+        _ = req
+        events.append(event)
+
     request = _Request(
         method="POST",
         app=_App(
@@ -1064,6 +1484,7 @@ async def test_login_redis_lock_blocks_parallel_checks(
 
     monkeypatch.setattr(auth_views, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
+    monkeypatch.setattr(auth_views, "admin_event", _admin_event)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
 
     login_fn = auth_views.login.__wrapped__.__wrapped__
@@ -1072,3 +1493,4 @@ async def test_login_redis_lock_blocks_parallel_checks(
     assert delays == []
     assert payload["form"].email.errors
     assert redis_calls["exists_key"] == "auth:login_check_lock:user@example.com"
+    assert events == ["user_login_rate_limited"]

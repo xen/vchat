@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "instructions": "No ASVS rows currently have status Accepted external. This manifest is intentionally empty for application-code scope. Deployment recommendations remain documented in docs/asvs_external_evidence_package.md.",
+  "allowed_dispositions": [
+    "pending_external",
+    "evidence_attached",
+    "risk_accepted",
+    "not_applicable_external"
+  ],
+  "controls": []
+}

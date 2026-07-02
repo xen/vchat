@@ -57,6 +57,17 @@ async def test_error_middleware_paths(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_reject_trace_middleware_blocks_trace() -> None:
+    req = make_mocked_request("TRACE", "/")
+
+    async def _handler(_request):
+        return web.Response(text="ok")
+
+    with pytest.raises(web.HTTPMethodNotAllowed):
+        await mw.reject_trace_middleware(req, _handler)
+
+
+@pytest.mark.asyncio
 async def test_debug_access_control_header_middleware() -> None:
     req = make_mocked_request("GET", "/")
 
@@ -155,19 +166,27 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
                 email="u@example",
                 name="User",
                 is_active=True,
+                auth_user_session_id=20,
+                last_seen_at=mw._utcnow(),
             )
 
     class FakeDB:
         def __init__(self) -> None:
+            self.commits = 0
             self.rollbacks = 0
-            self._in_transaction = True
+            self._in_transaction = False
+            self.statements = []
 
         async def execute(self, stmt):
-            assert isinstance(stmt, sa.sql.Select)
+            self.statements.append(stmt)
             return FakeExecResult()
 
         def in_transaction(self) -> bool:
             return self._in_transaction
+
+        async def commit(self) -> None:
+            self.commits += 1
+            self._in_transaction = False
 
         async def rollback(self) -> None:
             self.rollbacks += 1
@@ -179,7 +198,7 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
         def invalidate(self):
             self.invalidated = True
 
-    session = FakeAuthSession(user_id=10, login_at=100)
+    session = FakeAuthSession(user_id=10, session_id="session-10", login_at=100)
 
     async def _get_session(_request):
         return session
@@ -196,7 +215,9 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
 
     resp = await mw.auth_middleware(req, _handler)
     assert resp.text == "u@example"
-    assert req["db"].rollbacks == 1
+    assert isinstance(req["db"].statements[0], sa.sql.Select)
+    assert req["db"].commits == 1
+    assert req["db"].rollbacks == 0
 
     class FakeRedis:
         async def lrange(self, *_args):

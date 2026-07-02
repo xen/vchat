@@ -253,13 +253,11 @@ async def test_live_websocket_user_mentions_document_gets_recommendations_and_so
             ],
             policy={},
             coverage={},
+            query_embedding=[0.1, 0.2],
         )
 
-    async def _run_task_noop(*args, **kwargs) -> None:
-        _ = args, kwargs
-
     monkeypatch.setattr(chat_views, "get_context", _context)
-    monkeypatch.setattr(chat_views, "run_task", _run_task_noop)
+    monkeypatch.setattr(chat_views, "embed_query", lambda text: [0.1, 0.2])
 
     request = _make_request()
     await chat_views.websocket(request)

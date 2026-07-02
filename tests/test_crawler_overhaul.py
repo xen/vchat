@@ -1851,7 +1851,6 @@ class TestChunkTextDeduplication:
         first = SimpleNamespace(
             id=1,
             page_id=10,
-            chat_id=None,
             text_hash="same",
             is_duplicate=False,
             duplicate_of_chunk_id=None,
@@ -1860,7 +1859,6 @@ class TestChunkTextDeduplication:
         second = SimpleNamespace(
             id=2,
             page_id=10,
-            chat_id=None,
             text_hash="same",
             is_duplicate=False,
             duplicate_of_chunk_id=None,
@@ -1902,7 +1900,6 @@ class TestChunkTextDeduplication:
         chunk = SimpleNamespace(
             id=2,
             page_id=20,
-            chat_id=None,
             text="\u200b  shared text \ufeff",
             text_hash=chunk_text_hash("shared text"),
             embedding=None,

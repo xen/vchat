@@ -11,10 +11,6 @@ from vchat.settings import CONFIG_KEY
 from vchat.settings import config
 from vchat.models import AdminEvent, ApiClient, Source, User
 from vchat.models.data import api_client_source
-from vchat.password_policy import (
-    MAX_LOCAL_PASSWORD_LENGTH,
-    MIN_LOCAL_PASSWORD_LENGTH,
-)
 from vchat.utils import login_required, meta, paginator
 from vchat.views.api.views import decrypt_client_secret
 
@@ -41,8 +37,8 @@ class UserAdd(AdminCSRFBase):
         "Пароль",
         [
             validators.Length(
-                min=MIN_LOCAL_PASSWORD_LENGTH,
-                max=MAX_LOCAL_PASSWORD_LENGTH,
+                min=12,
+                max=128,
                 message="Длина от 12 до 128 символов",
             ),
             validators.DataRequired(message="Обязательное поле"),
@@ -56,8 +52,8 @@ class UserPasswordEdit(AdminCSRFBase):
         "Новый пароль",
         [
             validators.Length(
-                min=MIN_LOCAL_PASSWORD_LENGTH,
-                max=MAX_LOCAL_PASSWORD_LENGTH,
+                min=12,
+                max=128,
                 message="Длина от 12 до 128 символов",
             ),
             validators.EqualTo("confirm", message="Пароли должны совпадать"),
@@ -223,6 +219,9 @@ async def user_list(request):
         "add_form": add_form,
         "total_users": len(users),
         "current_user_id": request["user"].id,
+        "admin_user_create_enabled": request.app[CONFIG_KEY].get(
+            "admin_user_create_enabled", True
+        ),
     }
 
 

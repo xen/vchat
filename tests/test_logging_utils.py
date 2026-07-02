@@ -82,6 +82,32 @@ def test_plain_log_formatter_outputs_text_with_extra_fields() -> None:
     assert "http_status=200" in output
 
 
+def test_log_formatters_escape_newlines_in_untrusted_fields() -> None:
+    json_stream = io.StringIO()
+    json_handler = logging.StreamHandler(json_stream)
+    json_handler.setFormatter(JsonLogFormatter())
+
+    plain_stream = io.StringIO()
+    plain_handler = logging.StreamHandler(plain_stream)
+    plain_handler.setFormatter(PlainLogFormatter(datefmt="%Y-%m-%d %H:%M:%S"))
+
+    logger = logging.getLogger("tests.log_injection")
+    logger.handlers = [json_handler, plain_handler]
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+
+    logger.info("event\nforged", extra={"url": "https://example.test/\r\nnext"})
+
+    payload = json.loads(json_stream.getvalue())
+    assert payload["message"] == "event\\nforged"
+    assert payload["url"] == "https://example.test/\\r\\nnext"
+
+    plain_output = plain_stream.getvalue().strip()
+    assert "event\\nforged" in plain_output
+    assert "https://example.test/\\\\r\\\\nnext" in plain_output
+    assert "event\nforged" not in plain_output
+
+
 def test_configure_logging_uses_text_formatter_by_default() -> None:
     root = logging.getLogger()
     original_handlers = root.handlers[:]

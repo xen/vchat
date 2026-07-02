@@ -741,15 +741,15 @@ async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(vchat_utils, "get_session", _fake_get_session)
     monkeypatch.setattr(admin_views, "UserAdd", lambda meta=None: {"meta": meta})
 
+    app = _FakeApp(router=_FakeRouter({"login": _FakeRouterItem("/login/")}))
+    app[CONFIG_KEY] = {"admin_user_create_enabled": False}
     request = _FakeRequest(
         {
             "db": SimpleNamespace(),
             "user": SimpleNamespace(id=1),
             "auth_session": {"user_id": 1},
             "path": "/users/",
-            "app": SimpleNamespace(
-                router=_FakeRouter({"login": _FakeRouterItem("/login/")})
-            ),
+            "app": app,
         }
     )
     raw_user_list = admin_views.user_list.__wrapped__.__wrapped__.__wrapped__
@@ -757,6 +757,7 @@ async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -
     assert context["total_users"] == 2
     assert context["current_user_id"] == 1
     assert context["add_form"]["meta"] is not None
+    assert context["admin_user_create_enabled"] is False
 
 
 @pytest.mark.asyncio

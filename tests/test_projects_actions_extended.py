@@ -83,6 +83,7 @@ class _Request(dict):
         self.match_info = {"action": action, "item_id": item_id}
         self.method = method
         self.headers = headers if headers is not None else {"X-CSRFToken": "ok"}
+        self.remote = "127.0.0.1"
         self._post_data = post_data or {}
 
     async def post(self):
@@ -157,6 +158,55 @@ async def test_project_action_rejects_missing_csrf() -> None:
     req["user"] = SimpleNamespace(id=1)
     with pytest.raises(web.HTTPForbidden):
         await _raw_project_action()(req)
+
+
+@pytest.mark.asyncio
+async def test_project_action_user_create_respects_disabled_config() -> None:
+    db = _DB()
+    req = _Request(
+        action="user_create",
+        post_data={"email": "new@example.com", "password": "long-enough-password"},
+    )
+    req.app[CONFIG_KEY]["admin_user_create_enabled"] = False
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+
+    with pytest.raises(web.HTTPForbidden):
+        await _raw_project_action()(req)
+
+    assert db.added == []
+    assert db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_project_action_revoke_user_sessions() -> None:
+    target_user = SimpleNamespace(id=7)
+    db = _DB(scalar_values=[target_user])
+    req = _Request(action="user_revoke_sessions", item_id="7")
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+
+    response = await _raw_project_action()(req)
+
+    assert response.status == 200
+    assert response.headers["HX-Refresh"] == "true"
+    assert db.commits == 2
+    assert db.added[-1].event_name == "user_sessions_revoke"
+
+
+@pytest.mark.asyncio
+async def test_project_action_revoke_all_user_sessions() -> None:
+    db = _DB()
+    req = _Request(action="user_revoke_all_sessions", item_id="global")
+    req["db"] = db
+    req["user"] = SimpleNamespace(id=1)
+
+    response = await _raw_project_action()(req)
+
+    assert response.status == 200
+    assert response.headers["HX-Refresh"] == "true"
+    assert db.commits == 2
+    assert db.added[-1].event_name == "user_sessions_revoke_all"
 
 
 @pytest.mark.asyncio

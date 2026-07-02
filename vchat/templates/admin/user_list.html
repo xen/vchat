@@ -5,9 +5,25 @@
 <div class="space-y-6">
   <div class="flex items-center justify-between">
     <h1 class="text-lg font-medium">{{ 'Пользователи' }}</h1>
-    <button type="button" class="btn btn-primary btn-sm" onclick="add_user_modal.showModal()">
-      {{ 'Добавить пользователя' }}
-    </button>
+    <div class="inline-flex items-center gap-2">
+      <button
+        type="button"
+        class="btn btn-warning btn-outline btn-sm"
+        hx-post="{{ url('actions', action='user_revoke_all_sessions', item_id='global') }}"
+        hx-swap="none"
+        hx-confirm="{{ 'Завершить все активные сессии всех пользователей?' }}"
+      >
+        {{ 'Завершить все сессии' }}
+      </button>
+      <button
+        type="button"
+        class="btn btn-primary btn-sm"
+        onclick="add_user_modal.showModal()"
+        {% if not admin_user_create_enabled %}disabled title="{{ 'Добавление пользователей отключено конфигурацией' }}"{% endif %}
+      >
+        {{ 'Добавить пользователя' }}
+      </button>
+    </div>
   </div>
 
   <div class="card bg-base-100 shadow">
@@ -47,6 +63,14 @@
                     onclick="user_password_modal.showModal()"
                   >
                     {{ 'Сменить пароль' }}
+                  </button>
+                  <button
+                    class="btn btn-xs btn-warning btn-outline"
+                    hx-post="{{ url('actions', action='user_revoke_sessions', item_id=user.id) }}"
+                    hx-swap="none"
+                    hx-confirm="{{ 'Завершить все активные сессии пользователя?' }}"
+                  >
+                    {{ 'Сессии' }}
                   </button>
                   <button
                     class="btn btn-xs btn-error btn-outline"
@@ -99,7 +123,13 @@
         {% endif %}
       </div>
       <div class="sm:col-span-2 modal-action mt-1">
-        <button type="submit" class="btn btn-primary btn-sm">{{ 'Добавить' }}</button>
+        <button
+          type="submit"
+          class="btn btn-primary btn-sm"
+          {% if not admin_user_create_enabled %}disabled title="{{ 'Добавление пользователей отключено конфигурацией' }}"{% endif %}
+        >
+          {{ 'Добавить' }}
+        </button>
         <button type="button" class="btn btn-ghost btn-sm" onclick="add_user_modal.close()">{{ 'Отмена' }}</button>
       </div>
     </form>

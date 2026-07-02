@@ -37,6 +37,14 @@ def _extract_insert_values(stmt: Any) -> dict[str, Any]:
     return values
 
 
+def _assert_user_message_has_embedding(state: dict[str, Any]) -> None:
+    user_insert = next(
+        item for item in state["chat_msg_inserts"] if item["role"] == "user"
+    )
+    assert user_insert["embedding"] == [0.1, 0.2]
+    assert user_insert["text_hash"]
+
+
 class _FakeSession:
     def __init__(self, state: dict[str, Any]) -> None:
         self._state = state
@@ -200,10 +208,7 @@ def _setup_common(
 
     monkeypatch.setattr(chat_views, "enrich_source_payloads", _fake_enrich_source_payloads)
 
-    async def _fake_run_task(*args, **kwargs) -> None:
-        _ = args, kwargs
-
-    monkeypatch.setattr(chat_views, "run_task", _fake_run_task)
+    monkeypatch.setattr(chat_views, "embed_query", lambda text: [0.1, 0.2])
     monkeypatch.setattr(
         chat_views,
         "build_generation_context",
@@ -264,6 +269,7 @@ async def test_websocket_blocks_input_by_guardrail(
         "passport_ru",
         "input_blocked",
     }
+    _assert_user_message_has_embedding(state)
 
     assert metrics_calls
     assert metrics_calls[-1]["status"] == "guardrail_blocked_input"
@@ -311,6 +317,7 @@ async def test_websocket_blocks_output_by_guardrail(
             sources=[],
             policy={},
             coverage={},
+            query_embedding=[0.1, 0.2],
         )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):
@@ -343,6 +350,7 @@ async def test_websocket_blocks_output_by_guardrail(
         "output_blocked",
         "phone_number_ru",
     }
+    _assert_user_message_has_embedding(state)
 
     assert metrics_calls
     assert metrics_calls[-1]["status"] == "guardrail_blocked_output"
@@ -386,6 +394,7 @@ async def test_websocket_no_guardrail_for_regular_message(
             sources=[],
             policy={},
             coverage={},
+            query_embedding=[0.1, 0.2],
         )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):
@@ -417,6 +426,7 @@ async def test_websocket_no_guardrail_for_regular_message(
     assert assistant_insert["guardrail_triggered"] is False
     assert assistant_insert["guardrail_stage"] is None
     assert assistant_insert["guardrail_reasons"] is None
+    _assert_user_message_has_embedding(state)
 
     assert metrics_calls
     assert metrics_calls[-1]["status"] == "ok"
@@ -478,6 +488,7 @@ async def test_websocket_returns_document_recommendations_and_sources(
             ],
             policy={},
             coverage={},
+            query_embedding=[0.1, 0.2],
         )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):
@@ -602,6 +613,7 @@ async def test_websocket_deduplicates_source_links_for_same_document(
             ],
             policy={},
             coverage={},
+            query_embedding=[0.1, 0.2],
         )
 
     async def _stream(messages: list[dict[str, Any]], ctx: Any):

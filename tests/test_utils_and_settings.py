@@ -78,7 +78,10 @@ async def test_flash_and_admin_event(monkeypatch: pytest.MonkeyPatch) -> None:
             return None
 
     req = _Req(
-        app={REDIS_KEY: redis},
+        app={
+            REDIS_KEY: redis,
+            CONFIG_KEY: {"trusted_proxy_cidrs": ["127.0.0.1/32"]},
+        },
         headers={"X-Forwarded-For": "10.0.0.1, 10.0.0.2"},
         remote="127.0.0.1",
     )
@@ -97,6 +100,26 @@ async def test_flash_and_admin_event(monkeypatch: pytest.MonkeyPatch) -> None:
     req.path = "/files/10"
     await utils.admin_event("file_update", req)
     assert db_added[1].event_name == "file_update @ /files/10"
+
+
+def test_client_ip_ignores_forwarded_headers_from_untrusted_peer() -> None:
+    req = _Req(
+        app={CONFIG_KEY: {"trusted_proxy_cidrs": ["10.0.0.0/24"]}},
+        headers={"X-Forwarded-For": "203.0.113.10, 10.0.0.2"},
+        remote="127.0.0.1",
+    )
+
+    assert utils.get_client_ip(req) == "127.0.0.1"
+
+
+def test_client_ip_accepts_forwarded_headers_from_trusted_proxy() -> None:
+    req = _Req(
+        app={CONFIG_KEY: {"trusted_proxy_cidrs": ["127.0.0.1/32"]}},
+        headers={"X-Forwarded-For": "203.0.113.10, 10.0.0.2"},
+        remote="127.0.0.1",
+    )
+
+    assert utils.get_client_ip(req) == "203.0.113.10"
 
 
 @pytest.mark.asyncio
@@ -169,6 +192,19 @@ def test_merge_chat_meta_stores_validated_source_page_url() -> None:
         next_meta["source_page_url"]
         == "https://navigator.vbudushee.ru/demo?age=8-10"
     )
+
+
+def test_merge_chat_meta_does_not_trust_forwarded_ip_from_untrusted_peer() -> None:
+    req = _Req(
+        app={CONFIG_KEY: {"trusted_proxy_cidrs": []}},
+        headers={"X-Forwarded-For": "203.0.113.50", "User-Agent": "Mozilla/5.0"},
+        remote="127.0.0.1",
+    )
+    req.transport = None
+
+    meta = merge_chat_meta({}, req, {})
+
+    assert meta["ip_address"] == "127.0.0.1"
 
 
 @pytest.mark.asyncio

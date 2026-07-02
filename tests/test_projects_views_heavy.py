@@ -528,30 +528,6 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
                     SimpleNamespace(provider="openai", model="gpt-4o-mini", tokens=100)
                 ]
             ),
-            _Resp(
-                all_rows=[
-                    SimpleNamespace(
-                        id=1, type="site", title="Main", doc_count=7, data_volume=70
-                    )
-                ]
-            ),
-            _Resp(
-                all_rows=[
-                    SimpleNamespace(
-                        source_id=1,
-                        reason="csv_statistical_dump",
-                        doc_count=2,
-                    ),
-                    SimpleNamespace(
-                        source_id=None,
-                        reason="large_downloadable_document",
-                        doc_count=1,
-                    ),
-                ]
-            ),
-            _Resp(all_rows=[SimpleNamespace(id=1, chunk_count=9, chunk_storage=90)]),
-            _Resp(one_row=SimpleNamespace(doc_count=1, data_volume=10)),
-            _Resp(one_row=SimpleNamespace(chunk_count=2, chunk_storage=20)),
         ],
         scalar_results=[3, 4],
     )
@@ -564,19 +540,10 @@ async def test_project_stats_aggregates(monkeypatch: pytest.MonkeyPatch) -> None
     assert "project" not in payload
     assert payload["total_users"] == 3
     assert payload["pending_embeddings"] == 4
-    assert payload["total_docs"] == 8
-    assert payload["total_chunks"] == 11
     assert payload["total_tokens"] >= 100
-    assert payload["total_metadata_only_docs"] == 3
-    assert payload["source_stats"]
-    assert payload["source_stats"][0]["metadata_only_count"] == 2
-    assert payload["source_stats"][0]["metadata_policy_reasons"] == [
-        {"reason": "csv_statistical_dump", "doc_count": 2}
-    ]
-    assert payload["source_stats"][1]["metadata_only_count"] == 1
-    assert payload["source_stats"][1]["metadata_policy_reasons"] == [
-        {"reason": "large_downloadable_document", "doc_count": 1}
-    ]
+    assert "source_stats" not in payload
+    assert not db.execute_results
+    assert not db.scalar_results
 
 
 @pytest.mark.asyncio

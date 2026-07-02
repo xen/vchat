@@ -14,6 +14,7 @@ data:
     cookie_secure: true
     enable_https_middleware: true
     auth_session_idle_timeout_seconds: 14400
+    admin_user_create_enabled: true
 
     redis_uri: "redis://redis.vchat.svc.cluster.local:6379/30"
     database_uri: !env "$DATABASE_URI"
