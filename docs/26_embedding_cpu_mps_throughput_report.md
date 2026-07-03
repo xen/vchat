@@ -162,7 +162,7 @@ embedding операций и несколько часов. Скрипт уже
 ## Область замера и определения
 
 - Модель: `deepvk/USER-bge-m3`
-- Путь модели: `data/models/user-bge-m3`
+- Путь модели: `models/user-bge-m3`
 - Локальный runtime: macOS arm64, Python `3.11.11`, PyTorch `2.6.0`
 - Серверный runtime: Linux x86_64, PyTorch `2.6.0+cpu`
 - Измеренные устройства: локально `cpu` и `mps`, на серверах `cpu`

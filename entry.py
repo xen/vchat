@@ -115,7 +115,8 @@ if args.model:
 
     embedding_model_id = config["embedding_model_id"]
     embedding_model_dir = config["embedding_model_dir"]
-    reranker_model_id = config.get("reranker_model_id", "BAAI/bge-reranker-v2-m3")
+    reranker_model_id = config["reranker_model_id"]
+    reranker_model_dir = config["reranker_model_dir"]
 
     logging.info("Downloading embedding model %s", embedding_model_id)
     snapshot_download(
@@ -126,6 +127,7 @@ if args.model:
     logging.info("Downloading reranker model %s", reranker_model_id)
     snapshot_download(
         repo_id=reranker_model_id,
+        local_dir=reranker_model_dir,
         ignore_patterns=[
             "onnx/*",
             "openvino/*",

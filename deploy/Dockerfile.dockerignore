@@ -19,3 +19,4 @@ specs
 tests
 data/*
 !data/.placeholder
+models/*

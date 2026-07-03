@@ -12,12 +12,6 @@ docker build -f deploy/Dockerfile -t vchat:local .
 ```
 
 The image creates `/app/venv` and runs all Python commands from that virtualenv.
-For production embedder images without a runtime model volume, bake the models
-into the image:
-
-```bash
-docker build -f deploy/Dockerfile --build-arg DOWNLOAD_MODELS=true -t vchat:prod .
-```
 
 ## Local compose smoke test
 
@@ -26,9 +20,8 @@ docker compose -f deploy/compose.yaml up --build
 ```
 
 Compose uses ephemeral Postgres and Redis containers and writes `local.yaml` into
-the app containers through a Compose config. It does not mount `media/` or
-`data/models/`. The compose smoke test runs with `mode: stage`; production
-deployments must set real security keys.
+the app containers through a Compose config. The compose smoke test runs with
+`mode: stage`; production deployments must set real security keys.
 
 ## Kubernetes settings
 

@@ -336,7 +336,7 @@ Notion link: n/a
 
 ### Зафиксированное решение
 
-В `automaton` `make setup` уже выкачивает embedding и rerank models через `entry.py --model`.
+В `automaton` `make setup` уже выкачивает embedding и rerank models.
 Такой же паттерн нужно сделать обязательным в `vchat`.
 
 ### Требования для `vchat`

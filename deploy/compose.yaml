@@ -13,7 +13,7 @@ services:
 
   redis:
     image: redis:8.8-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--databases", "64"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -108,8 +108,6 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-      args:
-        DOWNLOAD_MODELS: ${DOWNLOAD_MODELS:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully

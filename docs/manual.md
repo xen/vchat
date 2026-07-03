@@ -683,16 +683,6 @@ docker run --rm --entrypoint sh vchat:verify -c \
   'test ! -d .git && test ! -d docs && test ! -d specs && test ! -d tests && test ! -f local.yaml'
 ```
 
-Если во время выполнения не используется volume для моделей, запекайте модели в
-образ:
-
-```bash
-docker build \
-  -f deploy/Dockerfile \
-  --build-arg DOWNLOAD_MODELS=true \
-  -t registry.example.com/vchat:<TAG> .
-```
-
 Образ создает `/app/venv`, запускается от UID/GID `10001` и не требует записи в
 директорию приложения. Манифесты Kubernetes монтируют доступный для записи
 `emptyDir` только в `/tmp`.
@@ -839,9 +829,10 @@ Kubernetes `Secret` и стандартных библиотеках Python. В 
 | `celery_worker_concurrency` | Параллелизм обычного рабочего процесса Celery | Учитывайте запросы CPU/RAM в deployment |
 | `celery_worker_max_tasks_per_child` | Перезапуск child-процессов Celery | Помогает ограничить накопление памяти |
 | `celery_worker_max_memory_per_child_kb` | Ограничение памяти child-процесса Celery | Согласуйте с лимитом памяти pod |
-| `embedding_model_id` | Идентификатор модели Hugging Face для embeddings | При `DOWNLOAD_MODELS=true` модель скачивается в образ |
-| `embedding_model_dir` | Путь к модели embeddings | Без тома времени выполнения модель должна быть внутри образа |
-| `reranker_model_id` | Идентификатор модели Hugging Face reranker | Тоже скачивается при `entry.py --model` |
+| `embedding_model_id` | Идентификатор модели Hugging Face для embeddings | Используется при сборке образа |
+| `embedding_model_dir` | Путь к модели embeddings внутри образа | Должен указывать на каталог `models/` |
+| `reranker_model_id` | Идентификатор модели Hugging Face reranker | Используется при сборке образа |
+| `reranker_model_dir` | Путь к модели reranker внутри образа | Должен указывать на каталог `models/` |
 | `embedding_worker_instances` | Количество embedder worker внутри pod | В Kubernetes обычно задавайте `EMBEDDER_INSTANCES=1` и масштабируйте pods |
 | `embedding_worker_cpu_reserve` | Резерв CPU для автоматического режима embedder | Не используйте auto при жестких лимитах pod без проверки |
 | `log_format` | Формат логов | Для Kubernetes/Grafana Loki обычно `json` |

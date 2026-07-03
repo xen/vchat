@@ -103,6 +103,7 @@ frontend_chat/build
 
 # media
 media
+models/
 docs/word
 data/
 tmp/

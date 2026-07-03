@@ -63,7 +63,7 @@ CONTEXT_SAFETY_MARGIN = 1024
 SOURCE_SUMMARY_MAX_CHARS = 240
 RERANK_LIMIT = 48
 RRF_K = 60
-RERANK_MODEL = cfg.get("reranker_model_id", "BAAI/bge-reranker-v2-m3")
+RERANK_MODEL = cfg["reranker_model_dir"]
 QUOTE_CONTEXT_KINDS = {"text", "summary", "section_summary", "file_summary"}
 COVERAGE_CONTEXT_KINDS = {
     "table",

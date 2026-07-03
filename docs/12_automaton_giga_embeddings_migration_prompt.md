@@ -54,7 +54,7 @@ Notion link: n/a
    - новый embedding model;
    - текущий rerank model.
 
-6. Если warming делается через `entry.py --model`, то этот path должен прогревать уже новый embedding model.
+6. Warming должен прогревать уже новый embedding model.
 
 7. Проверить, что первый пользовательский запрос не пытается скачать embedding model лениво.
 

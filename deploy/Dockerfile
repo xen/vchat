@@ -18,6 +18,7 @@ FROM python:3.11-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    HF_HOME=/app/models/huggingface \
     PATH="/app/venv/bin:${PATH}" \
     PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus_multiproc
 
@@ -50,15 +51,15 @@ COPY . .
 COPY --from=frontend /src/frontend/dist frontend/dist
 COPY --from=frontend-chat /src/frontend_chat/dist frontend_chat/dist
 
-ARG DOWNLOAD_MODELS=false
-RUN if [ "${DOWNLOAD_MODELS}" = "true" ]; then python entry.py --model; fi
-
-RUN groupadd --system --gid 10001 vchat \
-    && useradd --system --uid 10001 --gid vchat --home-dir /app --shell /usr/sbin/nologin vchat \
-    && mkdir -p /app/data/models /tmp/prometheus_multiproc \
-    && chown -R vchat:vchat /app/data /tmp/prometheus_multiproc
+RUN groupadd --gid 10001 vchat \
+    && useradd --uid 10001 --gid vchat --home-dir /app --shell /usr/sbin/nologin --no-create-home vchat \
+    && mkdir -p /app/models /tmp/prometheus_multiproc \
+    && chown vchat:vchat /app/models /tmp/prometheus_multiproc
 
 USER vchat
+
+RUN python entry.py --model
+
 EXPOSE 9080
 
 CMD ["python", "entry.py", "--host", "0.0.0.0", "--port", "9080"]
