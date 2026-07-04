@@ -2,7 +2,7 @@ import asyncio
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from typing import Any, List, Optional
 import aiohttp_jinja2
 
@@ -16,7 +16,6 @@ from itsdangerous import (
     BadSignature,
     URLSafeSerializer,
 )
-from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from jobs.documents.content import chunk_text_sha256
@@ -24,8 +23,9 @@ from vchat.views.chat.ai import (
     BaseAIProvider,
     ModelInfo,
     resolve_ai_settings,
+    suggested_actions_from_payload,
 )
-from vchat.settings import CONFIG_KEY, SIGNER_KEY
+from vchat.settings import SIGNER_KEY
 from vchat.tracing import (
     REQUEST_ID_HEADER,
     generate_request_id,
@@ -33,7 +33,7 @@ from vchat.tracing import (
     request_id_ctx,
     request_id_headers,
 )
-from vchat.views.projects.forms import DEFAULT_SUGGESTIONS_PROMPT, WIDGET_ERROR_MESSAGE
+from vchat.views.projects.forms import WIDGET_ERROR_MESSAGE
 from vchat.views.chat.meta import merge_chat_meta
 from vchat.db import async_session_factory
 from vchat.views.chat.guardrails import (
@@ -42,7 +42,6 @@ from vchat.views.chat.guardrails import (
     extract_tripwire_details,
     get_guardrails_client,
 )
-from vchat.views.chat.oauth import get_gigachat_access_token
 from vchat.utils import json_response
 from vchat.logging import log_json
 from vchat.llm_cache import (
@@ -58,11 +57,17 @@ from vchat.models import (
     TriggerResponseCache,
     WidgetIntegration,
 )
-from vchat.settings import config
+from vchat.settings import cfg
 from vchat.views.triggers.rules import page_trigger_items, trigger_prompt_hash
 from vchat.utils import htmx_required, json
 
-from .ctx import chat_id_ctx, embed_query, get_context, user_id_ctx
+from .ctx import (
+    RequestEmbeddingTimeoutError,
+    chat_id_ctx,
+    embed_query_async,
+    get_context,
+    user_id_ctx,
+)
 from .sources import enrich_source_payloads
 
 # Regex for detecting trivial/greeting messages to skip RAG
@@ -143,9 +148,17 @@ class GenerationContext:
     provider: BaseAIProvider
     model: ModelInfo
     system_prompt: str
+    suggestions_provider: BaseAIProvider | None = None
+    suggestions_model: ModelInfo | None = None
     suggestions_enabled: bool = True
-    suggestions_prompt: str = DEFAULT_SUGGESTIONS_PROMPT
+    suggestions_prompt: str = ""
     error_message: str = WIDGET_ERROR_MESSAGE
+
+    def __post_init__(self) -> None:
+        if self.suggestions_provider is None:
+            self.suggestions_provider = self.provider
+        if self.suggestions_model is None:
+            self.suggestions_model = self.model
 
     @property
     def provider_id(self) -> str:
@@ -155,16 +168,30 @@ class GenerationContext:
     def model_id(self) -> str:
         return self.model.id
 
+    @property
+    def suggestions_provider_id(self) -> str:
+        if self.suggestions_provider is None:
+            return self.provider_id
+        return self.suggestions_provider.id
+
+    @property
+    def suggestions_model_id(self) -> str:
+        if self.suggestions_model is None:
+            return self.model_id
+        return self.suggestions_model.id
+
     def request_meta(self) -> dict[str, Any]:
         return self.provider.request_meta()
 
 
 def build_generation_context(
-    app, widget: WidgetIntegration | None = None
+    widget: WidgetIntegration | None = None,
 ) -> GenerationContext:
-    provider_id = config.get("chat_provider")
-    model_id = config.get("chat_model")
-    provider, model = resolve_ai_settings(provider_id, model_id)
+    provider, model = resolve_ai_settings(cfg.chat_provider, cfg.chat_model)
+    suggestions_provider, suggestions_model = resolve_ai_settings(
+        cfg.chat_suggestions_provider,
+        cfg.chat_suggestions_model,
+    )
     custom_prompt = (widget.system_prompt if widget is not None else "") or ""
     system_prompt = (
         "\n\n".join([custom_prompt, ANSWER_FORMAT_POLICY])
@@ -174,7 +201,7 @@ def build_generation_context(
     suggestions_enabled = widget.suggestions_enabled if widget is not None else True
     suggestions_prompt = (
         (widget.suggestions_prompt if widget is not None else "") or ""
-    ).strip() or DEFAULT_SUGGESTIONS_PROMPT
+    ).strip()
     error_message = (
         (getattr(widget, "error_message", "") if widget is not None else "") or ""
     ).strip() or WIDGET_ERROR_MESSAGE
@@ -182,131 +209,11 @@ def build_generation_context(
         provider,
         model,
         system_prompt,
+        suggestions_provider=suggestions_provider,
+        suggestions_model=suggestions_model,
         suggestions_enabled=suggestions_enabled,
         suggestions_prompt=suggestions_prompt,
         error_message=error_message,
-    )
-
-
-class SuggestedActionsPayload(BaseModel):
-    actions: list[str] = Field(default_factory=list)
-
-    @field_validator("actions")
-    @classmethod
-    def normalize_actions(cls, actions: list[Any]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for raw_action in actions:
-            if not isinstance(raw_action, str):
-                continue
-            action = raw_action.strip()
-            if not action:
-                continue
-            if len(action) > 180:
-                action = action[:177].rstrip() + "..."
-            key = action.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            normalized.append(action)
-            if len(normalized) >= 3:
-                break
-        return normalized
-
-
-def _suggested_actions_schema() -> dict[str, Any]:
-    schema = SuggestedActionsPayload.model_json_schema()
-    schema["required"] = ["actions"]
-    schema["additionalProperties"] = False
-    actions_schema = schema.get("properties", {}).get("actions")
-    if isinstance(actions_schema, dict):
-        actions_schema["maxItems"] = 3
-    return {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "suggested_actions",
-            "strict": True,
-            "schema": schema,
-        },
-    }
-
-
-def _suggested_actions_from_payload(payload: Any) -> list[str]:
-    if isinstance(payload, list):
-        payload = {"actions": payload}
-    elif (
-        isinstance(payload, dict)
-        and "actions" not in payload
-        and "follow_ups" in payload
-    ):
-        payload = {"actions": payload.get("follow_ups")}
-    try:
-        parsed = SuggestedActionsPayload.model_validate(payload)
-    except ValidationError:
-        return []
-    return parsed.actions
-
-
-def _truncate_middle(text: str, max_chars: int) -> str:
-    if len(text) <= max_chars:
-        return text
-    head = max_chars // 2
-    tail = max_chars - head
-    return f"{text[:head].rstrip()}\n...\n{text[-tail:].lstrip()}"
-
-
-def _format_suggestion_sources(sources: list[dict[str, Any]]) -> str:
-    lines: list[str] = []
-    for index, source in enumerate(sources[:5], start=1):
-        title = str(source.get("title") or source.get("uri") or "").strip()
-        uri = str(source.get("uri") or "").strip()
-        if not title and not uri:
-            continue
-        if uri and uri != title:
-            lines.append(f"{index}. {title} — {uri}")
-        else:
-            lines.append(f"{index}. {title or uri}")
-    return "\n".join(lines) or "Источники не использовались."
-
-
-SUGGESTIONS_PROMPT_CONTEXT_TEMPLATE = """Верни только JSON-объект:
-{"actions": ["Короткая подсказка", "Короткая подсказка"]}
-
-Последний вопрос пользователя:
-{{user_question}}
-
-Финальный ответ ассистента:
-{{assistant_answer}}
-
-Использованные источники:
-{{sources}}
-"""
-
-
-def _render_suggestions_prompt(
-    *,
-    template: str,
-    user_text: str,
-    assistant_text: str,
-    sources: list[dict[str, Any]],
-) -> str:
-    max_context_chars = int(config.get("chat_suggestions_max_context_chars", 3000))
-    values = {
-        "{{user_question}}": _truncate_middle(user_text, max_context_chars),
-        "{{assistant_answer}}": _truncate_middle(assistant_text, max_context_chars),
-        "{{sources}}": _truncate_middle(
-            _format_suggestion_sources(sources),
-            max_context_chars,
-        ),
-    }
-    rendered = template
-    for marker, value in values.items():
-        rendered = rendered.replace(marker, value)
-    context_prompt = SUGGESTIONS_PROMPT_CONTEXT_TEMPLATE
-    for marker, value in values.items():
-        context_prompt = context_prompt.replace(marker, value)
-    return "\n\n".join(
-        part.strip() for part in [rendered, context_prompt] if part.strip()
     )
 
 
@@ -338,97 +245,34 @@ async def generate_suggestions(
     Generate 3 short, relevant follow-up actions/questions for the user.
     Uses a lightweight call to a fast model.
     """
-    if not ctx.suggestions_enabled or not getattr(ctx.provider, "supports_chat", True):
-        return []
-    request_meta = ctx.request_meta()
-    api_key = request_meta.get("api_key")
-    base_url = request_meta.get("base_url")
-    if ctx.provider_id == "openai":
-        api_key = api_key or OPENAI_API_KEY
-        base_url = base_url or OPENAI_BASE_URL
-    model = ctx.model_id or OPENAI_MODEL
-    if not api_key:
-        return []
-
-    rendered_prompt = _render_suggestions_prompt(
-        template=ctx.suggestions_prompt or DEFAULT_SUGGESTIONS_PROMPT,
-        user_text=user_text,
-        assistant_text=assistant_text,
-        sources=sources,
-    )
-    prompt = [{"role": "user", "content": rendered_prompt}]
-
     try:
-        async with aiohttp.ClientSession() as session:
-            request_timeout_seconds = 10.0
-            ssl = True
-            if ctx.provider_id == "gigachat":
-                api_key = await get_gigachat_access_token(
-                    session,
-                    basic_auth_key=api_key,
-                )
-                request_timeout_seconds = GIGACHAT_SUGGEST_TIMEOUT_SECONDS
-                ssl = bool(config.get("gigachat_verify_ssl_certs", True))
-
-            request_payload: dict[str, Any] = {
-                "model": model,
-                "messages": prompt,
-                "max_tokens": 250,
-                "temperature": 0.2,
-                "response_format": _suggested_actions_schema(),
-            }
-
-            async with session.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    **request_id_headers(),
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=request_payload,
-                timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),
-                ssl=ssl,
-            ) as resp:
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    logger.warning(
-                        "Failed to generate suggestions: provider=%s model=%s status=%s detail=%s",
-                        ctx.provider_id,
-                        model,
-                        resp.status,
-                        (error_text or "").strip()[:500],
-                    )
-                    return []
-
-                data = await resp.json()
-                content = data["choices"][0]["message"]["content"]
-                # Clean up potential markdown code blocks
-                content = content.strip()
-                if content.startswith("```"):
-                    content = content.strip("`json \n")
-                try:
-                    suggestions = _suggested_actions_from_payload(json.loads(content))
-                    if suggestions:
-                        return suggestions
-                except ValueError:
-                    logger.warning(
-                        "Suggestion payload is not valid JSON array: provider=%s model=%s payload=%s",
-                        ctx.provider_id,
-                        model,
-                        content[:300],
-                    )
+        if ctx.suggestions_provider is None:
+            raise RuntimeError("suggestions provider is not configured")
+        return await ctx.suggestions_provider.request_chat_completion(
+            ctx=ctx,
+            user_text=user_text,
+            assistant_text=assistant_text,
+            sources=sources,
+        )
+    except aiohttp.ClientResponseError as e:
+        logger.warning(
+            "Failed to generate suggestions: provider=%s model=%s status=%s detail=%s",
+            ctx.suggestions_provider_id,
+            ctx.suggestions_model_id,
+            e.status,
+            (e.message or "").strip()[:500],
+        )
     except asyncio.TimeoutError:
         logger.warning(
-            "Failed to generate suggestions due to timeout: provider=%s model=%s timeout_seconds=%s",
-            ctx.provider_id,
-            model,
-            request_timeout_seconds,
+            "Failed to generate suggestions due to timeout: provider=%s model=%s",
+            ctx.suggestions_provider_id,
+            ctx.suggestions_model_id,
         )
     except Exception as e:
         logger.warning(
             "Failed to generate suggestions: provider=%s model=%s error=%s",
-            ctx.provider_id,
-            model,
+            ctx.suggestions_provider_id,
+            ctx.suggestions_model_id,
             e,
         )
 
@@ -438,21 +282,7 @@ async def generate_suggestions(
 logger = logging.getLogger("vchat.chat")
 request_logger = logging.getLogger("vchat.chat.requests")
 
-# Configuration from settings
-OPENAI_API_KEY = config.get("openai_api_key")
-OPENAI_BASE_URL = config.get("openai_base_url", "https://api.openai.com/v1")
-OPENAI_MODEL = config.get("openai_model", "gpt-4o-mini")
-CHAT_RESPONSE_MAX_TOKENS = int(config.get("chat_response_max_tokens", 900))
 USER_CHAT_MESSAGE_MAX_CHARS = 4000
-GIGACHAT_REQUEST_TIMEOUT_SECONDS = float(
-    config.get("gigachat_request_timeout_seconds", 60.0)
-)
-GIGACHAT_SUGGEST_TIMEOUT_SECONDS = float(
-    config.get("gigachat_suggest_timeout_seconds", 10.0)
-)
-REDIS_URL = config.get("redis_uri", "redis://localhost:6379/3")
-SECRET_KEY = config.get("secret_key")
-CELERY_DEFAULT_QUEUE = config.get("celery_default_queue", "celery")
 
 # System prompt for chat
 SYSTEM_PROMPT = f"""## Роль и цель
@@ -495,7 +325,7 @@ SYSTEM_PROMPT = f"""## Роль и цель
 GUARDRAIL_USER_MESSAGE = "Извините, я не могу дать корректный ответ на этот запрос."
 
 # --- Redis (optional) support for background tasks ---
-redis = aioredis.from_url(REDIS_URL, decode_responses=True)
+redis = aioredis.from_url(cfg.redis_uri, decode_responses=True)
 
 
 def _is_guardrail_blocked(reasons: set[str]) -> bool:
@@ -515,17 +345,17 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
     api_key = provider_meta.get("api_key")
     base_url = provider_meta.get("base_url")
     if provider_id == "openai":
-        api_key = api_key or OPENAI_API_KEY
-        base_url = base_url or OPENAI_BASE_URL
+        api_key = api_key or cfg.openai_api_key
+        base_url = base_url or cfg.openai_base_url
     if not api_key:
         raise web.HTTPBadRequest(text="Missing API key for selected provider")
     if not base_url:
         raise web.HTTPBadRequest(text="Missing base URL for selected provider")
 
-    model = ctx.model_id or OPENAI_MODEL
+    model = ctx.model_id or cfg.openai_model
     current_system_prompt = ctx.system_prompt or SYSTEM_PROMPT
-    model_max_tokens = getattr(ctx.model, "max_tokens", CHAT_RESPONSE_MAX_TOKENS)
-    max_response_tokens = min(CHAT_RESPONSE_MAX_TOKENS, model_max_tokens)
+    model_max_tokens = getattr(ctx.model, "max_tokens", cfg.chat_response_max_tokens)
+    max_response_tokens = min(cfg.chat_response_max_tokens, model_max_tokens)
     guardrails_client = (
         get_guardrails_client(api_key=api_key, base_url=base_url)
         if provider_id == "openai"
@@ -616,15 +446,8 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                         existing["function"]["arguments"] += func_args
     else:
         async with aiohttp.ClientSession() as session:
-            request_timeout_seconds = 60.0
-            ssl = True
             if provider_id == "gigachat":
-                api_key = await get_gigachat_access_token(
-                    session,
-                    basic_auth_key=api_key,
-                )
-                request_timeout_seconds = GIGACHAT_REQUEST_TIMEOUT_SECONDS
-                ssl = bool(config.get("gigachat_verify_ssl_certs", True))
+                api_key = await ctx.provider.chat_completion_bearer_token(session)
 
             try:
                 async with session.post(
@@ -645,8 +468,18 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                         "max_tokens": max_response_tokens,
                         "stream_options": {"include_usage": True},
                     },
-                    timeout=aiohttp.ClientTimeout(total=request_timeout_seconds),
-                    ssl=ssl,
+                    timeout=aiohttp.ClientTimeout(
+                        total=(
+                            cfg.gigachat_request_timeout_seconds
+                            if provider_id == "gigachat"
+                            else 60.0
+                        )
+                    ),
+                    ssl=(
+                        cfg.gigachat_verify_ssl_certs
+                        if provider_id == "gigachat"
+                        else True
+                    ),
                 ) as resp:
                     if resp.status >= 400:
                         error_text = await resp.text()
@@ -734,7 +567,11 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                     "Provider request timeout: provider=%s model=%s timeout_seconds=%s",
                     provider_id,
                     model,
-                    request_timeout_seconds,
+                    (
+                        cfg.gigachat_request_timeout_seconds
+                        if provider_id == "gigachat"
+                        else 60.0
+                    ),
                 )
                 raise
             except aiohttp.ClientError:
@@ -805,7 +642,7 @@ def _cached_response_suggestions(full_context: str) -> list[str]:
         return []
     payload = json.loads(full_context)
     if isinstance(payload, dict):
-        return _suggested_actions_from_payload(payload.get("suggested_actions") or [])
+        return suggested_actions_from_payload(payload.get("suggested_actions") or [])
     return []
 
 
@@ -917,8 +754,8 @@ async def stream_cached_trigger_response(
     full_context = cached_response.full_context or ""
     sources = _cached_response_sources(full_context)
     suggestions = _cached_response_suggestions(full_context)
-    serializer = URLSafeSerializer(SECRET_KEY)
-    user_embedding = await asyncio.to_thread(embed_query, user_text)
+    serializer = URLSafeSerializer(cfg.secret_key)
+    user_embedding = await embed_query_async(user_text)
 
     async with async_session_factory() as db:
         sources = await enrich_source_payloads(db, sources)
@@ -1030,14 +867,9 @@ def _websocket_origin_allowed(request) -> bool:
     if not origin:
         return True
 
-    app = getattr(request, "app", {})
-    config = app.get(CONFIG_KEY, app.get("config", {}))
-    allowed = {
-        _normalize_origin(item)
-        for item in (config.get("allowed_origins") or [])
-        if item
-    }
-    public_url = _normalize_origin(config.get("public_url"))
+    allowed_origins = cfg.allowed_origins if cfg.allowed_origins else []
+    allowed = {_normalize_origin(item) for item in allowed_origins if item}
+    public_url = _normalize_origin(cfg.public_url)
     if public_url:
         allowed.add(public_url)
 
@@ -1046,82 +878,63 @@ def _websocket_origin_allowed(request) -> bool:
     return False
 
 
-async def websocket(request):
-    if not _websocket_origin_allowed(request):
-        raise web.HTTPForbidden(text="WebSocket origin is not allowed")
+@dataclass
+class WebsocketSession:
+    user_id: Any
+    chat_id: str
+    widget: WidgetIntegration | None = None
 
-    ws = make_websocket_response(request)
-    await ws.prepare(request)
 
-    serializer = URLSafeSerializer(SECRET_KEY)
-    suggestion_tasks: set[asyncio.Task[None]] = set()
+@dataclass
+class IncomingChatMessage:
+    text: str
+    trigger_page_id: int | None = None
+    trigger_key: str | None = None
 
-    def cleanup_suggestion_task(completed: asyncio.Task[None]) -> None:
-        suggestion_tasks.discard(completed)
-        try:
-            completed.result()
-        except Exception as exc:
-            logger.warning("Suggested actions task failed: %s", exc)
 
-    async def persist_guardrail_messages(
-        *,
-        user_text: str,
-        assistant_text: str,
-        reasons: set[str],
-        stage: str,
-        user_embedding: list[float],
-    ) -> tuple[int, int]:
-        payload = json.dumps(
-            {
-                "policy": {"reason_code": f"guardrail_blocked_{stage}"},
-                "guardrail_stage": stage,
-                "guardrail_reasons": sorted(reasons),
-            }
+@dataclass
+class ChatRequestStats:
+    started_at: float = dataclass_field(default_factory=time.monotonic)
+    stage_durations_ms: dict[str, float] = dataclass_field(default_factory=dict)
+    first_content_ms: float | None = None
+
+    def finish_stage(self, name: str, started_at: float) -> None:
+        self.stage_durations_ms[name] = round(
+            (time.monotonic() - started_at) * 1000,
+            3,
         )
-        async with async_session_factory() as db:
-            res_user = await db.execute(
-                sa.insert(ChatMsg)
-                .values(
-                    text=user_text,
-                    role="user",
-                    full_context=payload,
-                    chat_id=chat_id_ctx.get(),
-                    user_uid=str(user_id_ctx.get()),
-                    created_at=sa.func.now(),
-                    guardrail_triggered=True,
-                    guardrail_stage=stage,
-                    guardrail_reasons=sorted(reasons) or None,
-                    embedding=user_embedding,
-                    text_hash=chunk_text_sha256(user_text),
-                )
-                .returning(ChatMsg.id)
+
+    def mark_first_content(self) -> None:
+        if self.first_content_ms is None:
+            self.first_content_ms = round(
+                (time.monotonic() - self.started_at) * 1000,
+                3,
             )
-            user_msg_id = res_user.scalar_one()
 
-            res_ai = await db.execute(
-                sa.insert(ChatMsg)
-                .values(
-                    text=assistant_text,
-                    role="assistant",
-                    full_context=payload,
-                    chat_id=chat_id_ctx.get(),
-                    user_uid=str(user_id_ctx.get()),
-                    created_at=sa.func.now(),
-                    used_chunks=[],
-                    tokens=0,
-                    provider=assistant_provider,
-                    model=assistant_model,
-                    guardrail_triggered=True,
-                    guardrail_stage=stage,
-                    guardrail_reasons=sorted(reasons) or None,
-                )
-                .returning(ChatMsg.id)
-            )
-            assistant_msg_id = res_ai.scalar_one()
-            await db.commit()
 
-        return user_msg_id, assistant_msg_id
+@dataclass
+class ChatProcessingState:
+    request_status: str = "ok"
+    assistant_provider: str | None = None
+    assistant_model: str | None = None
+    total_tokens: int = 0
+    used_chunks: List[dict] = dataclass_field(default_factory=list)
+    total_content: str = ""
+    messages: List[dict] = dataclass_field(default_factory=list)
+    context_policy: dict[str, Any] = dataclass_field(default_factory=dict)
+    coverage: dict[str, Any] = dataclass_field(default_factory=dict)
 
+
+def load_chat_generation_context(widget: WidgetIntegration | None):
+    if widget is not None:
+        return build_generation_context(widget)
+    return build_generation_context()
+
+
+async def load_websocket_session(
+    request, ws: web.WebSocketResponse
+) -> WebsocketSession | None:
+    serializer = URLSafeSerializer(cfg.secret_key)
     try:
         payload = request.match_info.get("payload")
         signed_payload = serializer.loads(payload, salt="vchat", max_age=3600)
@@ -1130,18 +943,18 @@ async def websocket(request):
             3,
         }:
             await ws.close(code=1008)
-            return ws
+            return None
         user_id, chat_id = signed_payload[0], signed_payload[1]
         widget_code = signed_payload[2] if len(signed_payload) == 3 else None
         if not isinstance(chat_id, str) or not chat_id:
             await ws.close(code=1008)
-            return ws
+            return None
 
         async with async_session_factory() as db:
             exists = await db.scalar(sa.select(Chat.id).where(Chat.id == chat_id))
             if not exists:
                 await ws.close(code=1008)
-                return ws
+                return None
             widget = None
             if widget_code:
                 widget = await db.scalar(
@@ -1151,677 +964,888 @@ async def websocket(request):
                 )
                 if widget is None:
                     await ws.close(code=1008)
-                    return ws
+                    return None
 
         user_id_ctx.set(user_id)
         chat_id_ctx.set(chat_id)
+        return WebsocketSession(user_id=user_id, chat_id=chat_id, widget=widget)
     except (BadSignature, ValueError, TypeError):
-        # Policy Violation https://www.rfc-editor.org/rfc/rfc6455#section-7.4.1
         await ws.close(code=1008)
-        return ws
+        return None
+
+
+def parse_incoming_chat_message(request, raw_text: str) -> IncomingChatMessage | None:
+    if not raw_text:
+        return None
+
+    if not raw_text.lstrip().startswith("{"):
+        return IncomingChatMessage(text=raw_text)
 
     try:
-        gen_context = (
-            build_generation_context(request.app, widget)
-            if widget is not None
-            else build_generation_context(request.app)
+        parsed_payload = json.loads(raw_text)
+    except ValueError:
+        parsed_payload = None
+
+    if not (
+        isinstance(parsed_payload, dict)
+        and parsed_payload.get("type") == "trigger_prompt"
+    ):
+        return IncomingChatMessage(text=raw_text)
+
+    user_text = str(parsed_payload.get("text") or "")
+    raw_page_token = parsed_payload.get("page_token")
+    raw_trigger_key = parsed_payload.get("trigger_key")
+    if not raw_page_token or not raw_trigger_key:
+        return IncomingChatMessage(text=user_text)
+
+    trigger_page_id = load_signed_trigger_page_id(request.app, str(raw_page_token))
+    trigger_key = str(raw_trigger_key) if trigger_page_id is not None else None
+    return IncomingChatMessage(
+        text=user_text,
+        trigger_page_id=trigger_page_id,
+        trigger_key=trigger_key,
+    )
+
+
+async def send_chat_error(
+    ws: web.WebSocketResponse,
+    *,
+    error: str,
+    content: str,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    payload = {"ok": False, "error": error, "content": content}
+    if extra:
+        payload.update(extra)
+    await ws.send_json(with_request_id(payload))
+
+
+async def persist_guardrail_messages(
+    *,
+    user_text: str,
+    assistant_text: str,
+    reasons: set[str],
+    stage: str,
+    user_embedding: list[float],
+    assistant_provider: str | None,
+    assistant_model: str | None,
+) -> tuple[int, int]:
+    payload = json.dumps(
+        {
+            "policy": {"reason_code": f"guardrail_blocked_{stage}"},
+            "guardrail_stage": stage,
+            "guardrail_reasons": sorted(reasons),
+        }
+    )
+    async with async_session_factory() as db:
+        res_user = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=user_text,
+                role="user",
+                full_context=payload,
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                guardrail_triggered=True,
+                guardrail_stage=stage,
+                guardrail_reasons=sorted(reasons) or None,
+                embedding=user_embedding,
+                text_hash=chunk_text_sha256(user_text),
+            )
+            .returning(ChatMsg.id)
         )
-        await redis.sadd("active_chats", chat_id_ctx.get())
+        user_msg_id = res_user.scalar_one()
+
+        res_ai = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=assistant_text,
+                role="assistant",
+                full_context=payload,
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                used_chunks=[],
+                tokens=0,
+                provider=assistant_provider,
+                model=assistant_model,
+                guardrail_triggered=True,
+                guardrail_stage=stage,
+                guardrail_reasons=sorted(reasons) or None,
+            )
+            .returning(ChatMsg.id)
+        )
+        assistant_msg_id = res_ai.scalar_one()
+        await db.commit()
+
+    return user_msg_id, assistant_msg_id
+
+
+async def send_guardrail_response(
+    ws: web.WebSocketResponse,
+    *,
+    assistant_msg_id: int,
+) -> None:
+    signed_msg_id = URLSafeSerializer(cfg.secret_key).dumps(
+        assistant_msg_id, salt="chat_msg"
+    )
+    await ws.send_json(
+        with_request_id(
+            {
+                "ok": True,
+                "content": GUARDRAIL_USER_MESSAGE,
+                "partial": False,
+                "sources": [],
+                "msg_id": assistant_msg_id,
+                "signed_msg_id": signed_msg_id,
+                "guardrail": True,
+            }
+        )
+    )
+
+
+async def persist_and_send_guardrail_response(
+    ws: web.WebSocketResponse,
+    *,
+    user_text: str,
+    reasons: set[str],
+    stage: str,
+    user_embedding: list[float],
+    assistant_provider: str | None,
+    assistant_model: str | None,
+) -> None:
+    _, assistant_msg_id = await persist_guardrail_messages(
+        user_text=user_text,
+        assistant_text=GUARDRAIL_USER_MESSAGE,
+        reasons=reasons,
+        stage=stage,
+        user_embedding=user_embedding,
+        assistant_provider=assistant_provider,
+        assistant_model=assistant_model,
+    )
+    await send_guardrail_response(ws, assistant_msg_id=assistant_msg_id)
+
+
+async def publish_chat_monitor_message(
+    *,
+    role: str,
+    content: str,
+    partial: bool | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "role": role,
+        "content": content,
+        "timestamp": time.time(),
+    }
+    if partial is not None:
+        payload["partial"] = partial
+    await redis.publish(
+        f"chat_monitor:{chat_id_ctx.get()}",
+        json.dumps(payload),
+    )
+
+
+async def retrieve_chat_context(
+    *,
+    user_text: str,
+    gen_context: GenerationContext,
+    widget: WidgetIntegration | None,
+):
+    skip_rag = is_trivial_query(user_text)
+    async with async_session_factory() as ctx_db:
+        chat_id = chat_id_ctx.get()
+        if chat_id is None:
+            raise RuntimeError("chat_id context is not set")
+        context_kwargs = {
+            "db": ctx_db,
+            "chat_id": chat_id,
+            "prompt": user_text,
+            "provider": gen_context.provider,
+            "model": gen_context.model,
+            "vector_top_k": 0 if skip_rag else 10,
+            "ft_top_m": 0 if skip_rag else 10,
+        }
+        if widget is not None:
+            context_kwargs["allowed_source_ids"] = []
+        return await get_context(**context_kwargs)
+
+
+async def enrich_context_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async with async_session_factory() as source_db:
+        return await enrich_source_payloads(source_db, sources)
+
+
+async def stream_assistant_response(
+    *,
+    ws: web.WebSocketResponse,
+    messages: list[dict[str, Any]],
+    gen_context: GenerationContext,
+    stats: ChatRequestStats,
+    state: ChatProcessingState,
+    guardrail_reasons: set[str],
+) -> None:
+    assistant_message: Optional[dict] = None
+
+    async for event in ai_chat_stream(messages, gen_context):
+        event_type = event.get("event")
+        if event_type == "content":
+            delta = event.get("data", "")
+            if not delta:
+                continue
+            stats.mark_first_content()
+            state.total_content += delta
+            await ws.send_json(
+                with_request_id(
+                    {
+                        "ok": True,
+                        "content": delta,
+                        "partial": True,
+                    }
+                )
+            )
+            await publish_chat_monitor_message(
+                role="assistant",
+                content=delta,
+                partial=True,
+            )
+        elif event_type == "usage":
+            parsed_total_tokens = extract_total_tokens(event.get("usage", {}))
+            if parsed_total_tokens > 0:
+                state.total_tokens = max(state.total_tokens, parsed_total_tokens)
+        elif event_type == "guardrail":
+            reason = (event.get("reason") or "unknown").strip().lower()
+            if reason:
+                guardrail_reasons.add(reason)
+        elif event_type == "assistant_message":
+            assistant_message = event.get("message")
+
+    if assistant_message is None:
+        raise RuntimeError("Assistant response missing from stream")
+    messages.append(assistant_message)
+
+
+async def persist_chat_exchange(
+    *,
+    user_text: str,
+    state: ChatProcessingState,
+    query_embedding: list[float],
+    sources: list[dict[str, Any]],
+    guardrail_reasons: set[str],
+) -> tuple[int, dict[str, Any]]:
+    full_context_payload = _assistant_full_context_payload(
+        context_policy=state.context_policy,
+        coverage=state.coverage,
+        sources=sources,
+    )
+    async with async_session_factory() as db:
+        res_user = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=user_text,
+                role="user",
+                full_context="",
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                guardrail_triggered=False,
+                guardrail_stage=None,
+                guardrail_reasons=None,
+                embedding=query_embedding,
+                text_hash=chunk_text_sha256(user_text),
+            )
+            .returning(ChatMsg.id)
+        )
+        res_user.scalar_one()
+
+        res_ai = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=state.total_content,
+                role="assistant",
+                full_context=json.dumps(
+                    full_context_payload,
+                    ensure_ascii=False,
+                ),
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                used_chunks=state.used_chunks,
+                tokens=state.total_tokens,
+                provider=state.assistant_provider,
+                model=state.assistant_model,
+                guardrail_triggered=_is_guardrail_blocked(guardrail_reasons),
+                guardrail_stage=(
+                    "stream" if _is_guardrail_blocked(guardrail_reasons) else None
+                ),
+                guardrail_reasons=(
+                    sorted(guardrail_reasons) if guardrail_reasons else None
+                ),
+            )
+            .returning(ChatMsg.id)
+        )
+        assistant_msg_id = res_ai.scalar_one()
+        await db.commit()
+    return assistant_msg_id, full_context_payload
+
+
+async def send_final_chat_response(
+    ws: web.WebSocketResponse,
+    *,
+    assistant_msg_id: int,
+    sources: list[dict[str, Any]],
+    coverage: dict[str, Any],
+    context_policy: dict[str, Any],
+) -> None:
+    signed_msg_id = URLSafeSerializer(cfg.secret_key).dumps(
+        assistant_msg_id, salt="chat_msg"
+    )
+    await ws.send_json(
+        with_request_id(
+            {
+                "ok": True,
+                "content": "",
+                "partial": False,
+                "sources": sources,
+                "coverage": coverage,
+                "policy": context_policy,
+                "reason_code": context_policy.get("reason_code"),
+                "msg_id": assistant_msg_id,
+                "signed_msg_id": signed_msg_id,
+            }
+        )
+    )
+
+
+def schedule_suggested_actions(
+    *,
+    ws: web.WebSocketResponse,
+    suggestion_tasks: set[asyncio.Task[None]],
+    user_text: str,
+    assistant_msg_id: int,
+    assistant_text: str,
+    sources: list[dict[str, Any]],
+    gen_context: GenerationContext,
+    full_context_payload: dict[str, Any],
+) -> None:
+    if (
+        not gen_context.suggestions_enabled
+        or gen_context.suggestions_provider is None
+        or not gen_context.suggestions_provider.supports_chat
+    ):
+        return
+
+    async def suggest_and_send_actions() -> None:
+        suggestions = await generate_suggestions(
+            user_text=user_text,
+            assistant_text=assistant_text,
+            sources=sources,
+            ctx=gen_context,
+        )
+        if not suggestions:
+            return
+        await save_chat_message_suggestions(
+            assistant_msg_id=assistant_msg_id,
+            suggestions=suggestions,
+            full_context_payload=full_context_payload,
+        )
+        try:
+            await ws.send_json(
+                with_request_id(
+                    {
+                        "type": "suggested_actions",
+                        "actions": suggestions,
+                        "msg_id": assistant_msg_id,
+                    }
+                )
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to send suggested actions: msg_id=%s error=%s",
+                assistant_msg_id,
+                exc,
+            )
+
+    suggestion_tasks.add(asyncio.create_task(suggest_and_send_actions()))
+
+
+async def save_trigger_response_cache(
+    *,
+    incoming: IncomingChatMessage,
+    state: ChatProcessingState,
+    sources: list[dict[str, Any]],
+) -> None:
+    if (
+        incoming.trigger_page_id is None
+        or not incoming.trigger_key
+        or not state.total_content
+        or not await validate_trigger_cache_request(
+            page_id=incoming.trigger_page_id,
+            trigger_key=incoming.trigger_key,
+            user_text=incoming.text,
+        )
+    ):
+        return
+
+    trigger_full_context = json.dumps(
+        {
+            "policy": state.context_policy,
+            "coverage": state.coverage,
+            "sources": sources,
+        },
+        ensure_ascii=False,
+    )
+    stmt = pg_insert(TriggerResponseCache).values(
+        page_id=incoming.trigger_page_id,
+        trigger_key=incoming.trigger_key,
+        prompt_hash=trigger_prompt_hash(incoming.text),
+        response_text=state.total_content,
+        full_context=trigger_full_context,
+        used_chunks=state.used_chunks,
+        tokens=state.total_tokens,
+        provider=state.assistant_provider,
+        model=state.assistant_model,
+    )
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_trigger_response_cache_page_trigger_prompt",
+        set_={
+            "response_text": stmt.excluded.response_text,
+            "full_context": stmt.excluded.full_context,
+            "used_chunks": stmt.excluded.used_chunks,
+            "provider": stmt.excluded.provider,
+            "model": stmt.excluded.model,
+            "tokens": stmt.excluded.tokens,
+            "updated_at": sa.func.now(),
+        },
+    )
+    async with async_session_factory() as db:
+        await db.execute(stmt)
+        await db.commit()
+
+
+async def record_cache_candidate(
+    *,
+    user_text: str,
+    state: ChatProcessingState,
+    guardrail_blocked: bool,
+    widget: WidgetIntegration | None,
+    sources: list[dict[str, Any]],
+) -> None:
+    cache_candidate_fields = cache_candidate_payload(
+        user_text=user_text,
+        used_chunks=state.used_chunks,
+        context_policy=state.context_policy,
+        request_status=state.request_status,
+        guardrail_blocked=guardrail_blocked,
+        messages_count=_user_message_count(state.messages),
+    )
+    if not (
+        cache_candidate_fields["cache_candidate"]
+        and cache_candidate_fields["cache_retrieval_context_hash"]
+    ):
+        return
+
+    try:
+        async with async_session_factory() as db:
+            await record_chat_answer_cache_candidate(
+                db,
+                question_hash=cache_candidate_fields["cache_question_hash"],
+                retrieval_context_hash=cache_candidate_fields[
+                    "cache_retrieval_context_hash"
+                ],
+                provider=state.assistant_provider,
+                model=state.assistant_model,
+                widget_code=(widget.code if widget is not None else None),
+                context_policy=state.context_policy,
+                coverage=state.coverage,
+                sources=sources,
+                used_chunks=state.used_chunks,
+                answer_text=state.total_content,
+                tokens=state.total_tokens,
+            )
+            await db.commit()
+    except Exception:
+        logger.exception(
+            "Failed to record LLM cache candidate: request_id=%s",
+            get_request_id(),
+        )
+
+
+def log_chat_request_result(
+    *,
+    user_text: str,
+    state: ChatProcessingState,
+    stats: ChatRequestStats,
+    guardrail_reasons: set[str],
+) -> None:
+    guardrail_blocked = _is_guardrail_blocked(guardrail_reasons)
+    prompt_text_parts = [
+        str(message.get("content") or "")
+        for message in state.messages
+        if isinstance(message, dict)
+    ] or [user_text]
+    prompt_bytes = sum(len(part.encode("utf-8")) for part in prompt_text_parts)
+    prompt_chars = sum(len(part) for part in prompt_text_parts)
+    cache_candidate_fields = cache_candidate_payload(
+        user_text=user_text,
+        used_chunks=state.used_chunks,
+        context_policy=state.context_policy,
+        request_status=state.request_status,
+        guardrail_blocked=guardrail_blocked,
+        messages_count=_user_message_count(state.messages),
+    )
+    log_json(
+        request_logger,
+        "chat_user_request",
+        provider=state.assistant_provider,
+        model=state.assistant_model,
+        tokens=state.total_tokens,
+        chunks_count=len(state.used_chunks),
+        response_size=len(state.total_content.encode("utf-8")),
+        response_chars=len(state.total_content),
+        guardrail_status=("blocked" if guardrail_blocked else "passed"),
+        guardrail_triggered=guardrail_blocked,
+        guardrail_reasons=(sorted(guardrail_reasons) if guardrail_reasons else []),
+        prompt_chars=prompt_chars,
+        prompt_bytes=prompt_bytes,
+        user_prompt_chars=len(user_text),
+        user_prompt_bytes=len(user_text.encode("utf-8")),
+        messages_count=len(state.messages),
+        first_content_ms=stats.first_content_ms,
+        stage_durations_ms=stats.stage_durations_ms,
+        status=state.request_status,
+        chat_id=chat_id_ctx.get(None),
+        user_id=str(user_id_ctx.get(None)),
+        **cache_candidate_fields,
+    )
+
+
+def record_chat_request_metrics(
+    *,
+    state: ChatProcessingState,
+    stats: ChatRequestStats,
+    guardrail_reasons: set[str],
+) -> None:
+    try:
+        record_chat_request(
+            provider=state.assistant_provider,
+            model=state.assistant_model,
+            tokens=state.total_tokens,
+            status=state.request_status,
+            guardrail_reasons=guardrail_reasons,
+            duration_seconds=time.monotonic() - stats.started_at,
+            context_chunks=len(state.used_chunks),
+        )
+    except Exception as metrics_exc:
+        logger.warning("Failed to record chat metrics: %s", metrics_exc)
+
+
+async def handle_chat_message(
+    *,
+    ws: web.WebSocketResponse,
+    incoming: IncomingChatMessage,
+    widget: WidgetIntegration | None,
+    suggestion_tasks: set[asyncio.Task[None]],
+) -> None:
+    request_id_token = request_id_ctx.set(generate_request_id())
+    stats = ChatRequestStats()
+    state = ChatProcessingState()
+    guardrail_reasons: set[str] = set()
+    sources: list[dict[str, Any]] = []
+
+    try:
+        stage_started_at = time.monotonic()
+        gen_context = load_chat_generation_context(widget)
+        stats.finish_stage("generation_context", stage_started_at)
+        state.assistant_provider = gen_context.provider_id
+        state.assistant_model = gen_context.model_id
+
+        stage_started_at = time.monotonic()
+        input_guardrails = await check_input_guardrails(
+            text=incoming.text,
+            provider=gen_context.provider,
+        )
+        stats.finish_stage("input_guardrails", stage_started_at)
+        guardrail_reasons.update(input_guardrails.reasons)
+        if not input_guardrails.allowed:
+            state.request_status = "guardrail_blocked_input"
+            stage_started_at = time.monotonic()
+            await persist_and_send_guardrail_response(
+                ws,
+                user_text=incoming.text,
+                reasons=guardrail_reasons,
+                stage="input",
+                user_embedding=await embed_query_async(incoming.text),
+                assistant_provider=state.assistant_provider,
+                assistant_model=state.assistant_model,
+            )
+            stats.finish_stage("persist_and_send_guardrail_response", stage_started_at)
+            return
+
+        if incoming.trigger_page_id is not None and incoming.trigger_key:
+            stage_started_at = time.monotonic()
+            trigger_cache_allowed = await validate_trigger_cache_request(
+                page_id=incoming.trigger_page_id,
+                trigger_key=incoming.trigger_key,
+                user_text=incoming.text,
+            )
+            stats.finish_stage("trigger_cache_validate", stage_started_at)
+            if trigger_cache_allowed:
+                stage_started_at = time.monotonic()
+                cached_response = await load_trigger_response_cache(
+                    page_id=incoming.trigger_page_id,
+                    trigger_key=incoming.trigger_key,
+                    user_text=incoming.text,
+                )
+                stats.finish_stage("trigger_cache_load", stage_started_at)
+                if cached_response is not None:
+                    stage_started_at = time.monotonic()
+                    await stream_cached_trigger_response(
+                        ws=ws,
+                        cached_response=cached_response,
+                        user_text=incoming.text,
+                    )
+                    stats.finish_stage("trigger_cache_stream", stage_started_at)
+                    return
+
+        stage_started_at = time.monotonic()
+        await publish_chat_monitor_message(role="user", content=incoming.text)
+        stats.finish_stage("redis_publish_user", stage_started_at)
+
+        stage_started_at = time.monotonic()
+        context_result = await retrieve_chat_context(
+            user_text=incoming.text,
+            gen_context=gen_context,
+            widget=widget,
+        )
+        stats.finish_stage("context_retrieval", stage_started_at)
+
+        state.used_chunks = context_result.used_chunks
+        sources = await enrich_context_sources(context_result.sources)
+        state.context_policy = context_result.policy
+        state.coverage = context_result.coverage
+        state.messages = [dict(m._asdict()) for m in context_result.messages]
+
+        stage_started_at = time.monotonic()
+        await stream_assistant_response(
+            ws=ws,
+            messages=state.messages,
+            gen_context=gen_context,
+            stats=stats,
+            state=state,
+            guardrail_reasons=guardrail_reasons,
+        )
+        stats.finish_stage("ai_stream", stage_started_at)
+
+        stage_started_at = time.monotonic()
+        output_guardrails = await check_output_guardrails(
+            text=state.total_content,
+            provider=gen_context.provider,
+        )
+        stats.finish_stage("output_guardrails", stage_started_at)
+        guardrail_reasons.update(output_guardrails.reasons)
+        if not output_guardrails.allowed:
+            state.request_status = "guardrail_blocked_output"
+            stage_started_at = time.monotonic()
+            await persist_and_send_guardrail_response(
+                ws,
+                user_text=incoming.text,
+                reasons=guardrail_reasons,
+                stage="output",
+                user_embedding=context_result.query_embedding,
+                assistant_provider=state.assistant_provider,
+                assistant_model=state.assistant_model,
+            )
+            stats.finish_stage("persist_and_send_guardrail_response", stage_started_at)
+            return
+
+        stage_started_at = time.monotonic()
+        assistant_msg_id, full_context_payload = await persist_chat_exchange(
+            user_text=incoming.text,
+            state=state,
+            query_embedding=context_result.query_embedding,
+            sources=sources,
+            guardrail_reasons=guardrail_reasons,
+        )
+        stats.finish_stage("persist_messages", stage_started_at)
+
+        stage_started_at = time.monotonic()
+        await send_final_chat_response(
+            ws,
+            assistant_msg_id=assistant_msg_id,
+            sources=sources,
+            coverage=state.coverage,
+            context_policy=state.context_policy,
+        )
+        stats.finish_stage("send_final_response", stage_started_at)
+
+        stage_started_at = time.monotonic()
+        schedule_suggested_actions(
+            ws=ws,
+            suggestion_tasks=suggestion_tasks,
+            user_text=incoming.text,
+            assistant_msg_id=assistant_msg_id,
+            assistant_text=state.total_content,
+            sources=sources,
+            gen_context=gen_context,
+            full_context_payload=full_context_payload,
+        )
+        await asyncio.sleep(0)
+        stats.finish_stage("schedule_suggestions", stage_started_at)
+
+        await save_trigger_response_cache(
+            incoming=incoming,
+            state=state,
+            sources=sources,
+        )
+        await record_cache_candidate(
+            user_text=incoming.text,
+            state=state,
+            guardrail_blocked=False,
+            widget=widget,
+            sources=sources,
+        )
+    except GuardrailTripwireTriggered as e:
+        stage, reason = extract_tripwire_details(e)
+        state.request_status = (
+            "guardrail_blocked_output"
+            if stage == "output"
+            else "guardrail_blocked_input"
+        )
+        guardrail_reasons.add("guardrail_tripwire")
+        guardrail_reasons.add(reason)
+        guardrail_reasons.add(
+            "output_blocked" if stage == "output" else "input_blocked"
+        )
+        await persist_and_send_guardrail_response(
+            ws,
+            user_text=incoming.text,
+            reasons=guardrail_reasons,
+            stage=stage,
+            user_embedding=await embed_query_async(incoming.text),
+            assistant_provider=state.assistant_provider,
+            assistant_model=state.assistant_model,
+        )
+    except aiohttp.ClientResponseError as e:
+        state.request_status = "provider_http_error"
+        if e.status in {400, 403, 422}:
+            guardrail_reasons.add("provider_block")
+        gen_context = load_chat_generation_context(widget)
+        await send_chat_error(
+            ws,
+            error="provider_response_error",
+            content=gen_context.error_message,
+        )
+    except (asyncio.TimeoutError, aiohttp.ClientError):
+        state.request_status = "provider_connection_error"
+        gen_context = load_chat_generation_context(widget)
+        await send_chat_error(
+            ws,
+            error="provider_connection_error",
+            content=gen_context.error_message,
+        )
+    except RequestEmbeddingTimeoutError:
+        state.request_status = "request_embedding_timeout"
+        logger.warning(
+            "Request embedding queue timeout: request_id=%s", get_request_id()
+        )
+        gen_context = load_chat_generation_context(widget)
+        await send_chat_error(
+            ws,
+            error="request_embedding_timeout",
+            content=gen_context.error_message,
+        )
+    except Exception:
+        state.request_status = "internal_error"
+        logger.exception("Chat request failed: request_id=%s", get_request_id())
+        gen_context = load_chat_generation_context(widget)
+        await send_chat_error(
+            ws,
+            error="internal_error",
+            content=gen_context.error_message,
+        )
+    finally:
+        log_chat_request_result(
+            user_text=incoming.text,
+            state=state,
+            stats=stats,
+            guardrail_reasons=guardrail_reasons,
+        )
+        record_chat_request_metrics(
+            state=state,
+            stats=stats,
+            guardrail_reasons=guardrail_reasons,
+        )
+        request_id_ctx.reset(request_id_token)
+
+
+async def websocket(request):
+    if not _websocket_origin_allowed(request):
+        raise web.HTTPForbidden(text="WebSocket origin is not allowed")
+
+    ws = make_websocket_response(request)
+    await ws.prepare(request)
+
+    session = await load_websocket_session(request, ws)
+    if session is None:
+        return ws
+
+    suggestion_tasks: set[asyncio.Task[None]] = set()
+
+    def cleanup_suggestion_task(completed: asyncio.Task[None]) -> None:
+        suggestion_tasks.discard(completed)
+        try:
+            completed.result()
+        except Exception as exc:
+            logger.warning("Suggested actions task failed: %s", exc)
+
+    try:
+        gen_context = load_chat_generation_context(session.widget)
+        await redis.sadd("active_chats", session.chat_id)
 
         while True:
             msg = await ws.receive()
             if msg.type == web.WSMsgType.ERROR:
-                print("ws connection closed with exception %s" % ws.exception())
+                logger.warning("WebSocket closed with exception: %s", ws.exception())
                 break
-
-            user_text = ""
-            messages: list[dict[str, Any]] = []
-            trigger_page_id: int | None = None
-            trigger_key: str | None = None
-            if msg.type == web.WSMsgType.TEXT:
-                if msg.data.strip().lower() == "ping":
-                    await ws.send_str("pong")
-                    continue
-                raw_user_text = msg.data
-                if raw_user_text.lstrip().startswith("{"):
-                    try:
-                        parsed_payload = json.loads(raw_user_text)
-                    except ValueError:
-                        parsed_payload = None
-                    if (
-                        isinstance(parsed_payload, dict)
-                        and parsed_payload.get("type") == "trigger_prompt"
-                    ):
-                        user_text = str(parsed_payload.get("text") or "")
-                        raw_page_token = parsed_payload.get("page_token")
-                        raw_trigger_key = parsed_payload.get("trigger_key")
-                        if raw_page_token and raw_trigger_key:
-                            trigger_page_id = load_signed_trigger_page_id(
-                                request.app, str(raw_page_token)
-                            )
-                            if trigger_page_id is not None:
-                                trigger_key = str(raw_trigger_key)
-                    else:
-                        user_text = raw_user_text
-                else:
-                    user_text = raw_user_text
-
-            if not user_text:
+            if msg.type != web.WSMsgType.TEXT:
                 continue
 
-            if len(user_text) > USER_CHAT_MESSAGE_MAX_CHARS:
-                request_id = generate_request_id()
-                request_id_token = request_id_ctx.set(request_id)
-                await ws.send_json(
-                    with_request_id(
-                        {
-                            "ok": False,
-                            "error": "message_too_long",
-                            "content": gen_context.error_message,
-                            "limit": USER_CHAT_MESSAGE_MAX_CHARS,
-                        }
-                    )
+            raw_user_text = msg.data
+            if raw_user_text.strip().lower() == "ping":
+                await ws.send_str("pong")
+                continue
+
+            incoming = parse_incoming_chat_message(request, raw_user_text)
+            if incoming is None or not incoming.text:
+                continue
+
+            if len(incoming.text) > USER_CHAT_MESSAGE_MAX_CHARS:
+                request_id_token = request_id_ctx.set(generate_request_id())
+                await send_chat_error(
+                    ws,
+                    error="message_too_long",
+                    content=gen_context.error_message,
+                    extra={"limit": USER_CHAT_MESSAGE_MAX_CHARS},
                 )
                 request_id_ctx.reset(request_id_token)
                 continue
 
-            request_id = generate_request_id()
-            request_id_token = request_id_ctx.set(request_id)
-            request_started_at = time.monotonic()
-            stage_durations_ms: dict[str, float] = {}
-            first_content_ms: float | None = None
-
-            def finish_stage(name: str, started_at: float) -> None:
-                stage_durations_ms[name] = round(
-                    (time.monotonic() - started_at) * 1000,
-                    3,
-                )
-
-            assistant_provider = None
-            assistant_model = None
-            guardrail_reasons: set[str] = set()
-            request_status = "ok"
-            total_tokens = 0
-            used_chunks: List[dict] = []
-            total_content = ""
-            messages: List[dict] = []
-            try:
-                assistant_message: Optional[dict] = None
-                pending_tool_results: List[dict] = []
-                sources: List[dict] = []
-                context_policy: dict[str, Any] = {}
-                coverage: dict[str, Any] = {}
-
-                stage_started_at = time.monotonic()
-                gen_context = (
-                    build_generation_context(request.app, widget)
-                    if widget is not None
-                    else build_generation_context(request.app)
-                )
-                finish_stage("generation_context", stage_started_at)
-                assistant_provider = gen_context.provider_id
-                assistant_model = gen_context.model_id
-
-                stage_started_at = time.monotonic()
-                input_guardrails = await check_input_guardrails(
-                    text=user_text,
-                    provider=gen_context.provider,
-                )
-                finish_stage("input_guardrails", stage_started_at)
-                guardrail_reasons.update(input_guardrails.reasons)
-                if not input_guardrails.allowed:
-                    request_status = "guardrail_blocked_input"
-                    stage_started_at = time.monotonic()
-                    _, assistant_msg_id = await persist_guardrail_messages(
-                        user_text=user_text,
-                        assistant_text=GUARDRAIL_USER_MESSAGE,
-                        reasons=guardrail_reasons,
-                        stage="input",
-                        user_embedding=await asyncio.to_thread(
-                            embed_query,
-                            user_text,
-                        ),
-                    )
-                    finish_stage("persist_guardrail_messages", stage_started_at)
-                    serializer = URLSafeSerializer(SECRET_KEY)
-                    signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
-                    stage_started_at = time.monotonic()
-                    await ws.send_json(
-                        with_request_id(
-                            {
-                                "ok": True,
-                                "content": GUARDRAIL_USER_MESSAGE,
-                                "partial": False,
-                                "sources": [],
-                                "msg_id": assistant_msg_id,
-                                "signed_msg_id": signed_msg_id,
-                                "guardrail": True,
-                            }
-                        )
-                    )
-                    finish_stage("send_guardrail_response", stage_started_at)
-                    continue
-
-                if trigger_page_id is not None and trigger_key:
-                    stage_started_at = time.monotonic()
-                    trigger_cache_allowed = await validate_trigger_cache_request(
-                        page_id=trigger_page_id,
-                        trigger_key=trigger_key,
-                        user_text=user_text,
-                    )
-                    finish_stage("trigger_cache_validate", stage_started_at)
-                    if trigger_cache_allowed:
-                        stage_started_at = time.monotonic()
-                        cached_response = await load_trigger_response_cache(
-                            page_id=trigger_page_id,
-                            trigger_key=trigger_key,
-                            user_text=user_text,
-                        )
-                        finish_stage("trigger_cache_load", stage_started_at)
-                        if cached_response is not None:
-                            stage_started_at = time.monotonic()
-                            await stream_cached_trigger_response(
-                                ws=ws,
-                                cached_response=cached_response,
-                                user_text=user_text,
-                            )
-                            finish_stage("trigger_cache_stream", stage_started_at)
-                            continue
-
-                stage_started_at = time.monotonic()
-                await redis.publish(
-                    f"chat_monitor:{chat_id_ctx.get()}",
-                    json.dumps(
-                        {
-                            "role": "user",
-                            "content": user_text,
-                            "timestamp": time.time(),
-                        }
-                    ),
-                )
-                finish_stage("redis_publish_user", stage_started_at)
-
-                skip_rag = is_trivial_query(user_text)
-
-                stage_started_at = time.monotonic()
-                async with async_session_factory() as ctx_db:
-                    chat_id = chat_id_ctx.get()
-                    if chat_id is None:
-                        raise RuntimeError("chat_id context is not set")
-                    context_kwargs = {
-                        "db": ctx_db,
-                        "chat_id": chat_id,
-                        "prompt": user_text,
-                        "provider": gen_context.provider,
-                        "model": gen_context.model,
-                        "vector_top_k": 0 if skip_rag else 10,
-                        "ft_top_m": 0 if skip_rag else 10,
-                    }
-                    if widget is not None:
-                        context_kwargs["allowed_source_ids"] = []
-                    context_result = await get_context(**context_kwargs)
-                finish_stage("context_retrieval", stage_started_at)
-
-                used_chunks = context_result.used_chunks
-                async with async_session_factory() as source_db:
-                    sources = await enrich_source_payloads(
-                        source_db,
-                        context_result.sources,
-                    )
-                context_policy = context_result.policy
-                coverage = context_result.coverage
-                messages = [dict(m._asdict()) for m in context_result.messages]
-
-                while True:
-                    stage_started_at = time.monotonic()
-                    async for event in ai_chat_stream(messages, gen_context):
-                        event_type = event.get("event")
-                        if event_type == "content":
-                            delta = event.get("data", "")
-                            if delta:
-                                if first_content_ms is None:
-                                    first_content_ms = round(
-                                        (time.monotonic() - request_started_at) * 1000,
-                                        3,
-                                    )
-                                total_content += delta
-                                await ws.send_json(
-                                    with_request_id(
-                                        {
-                                            "ok": True,
-                                            "content": delta,
-                                            "partial": True,
-                                        }
-                                    )
-                                )
-                                # Publish assistant partial message
-                                await redis.publish(
-                                    f"chat_monitor:{chat_id_ctx.get()}",
-                                    json.dumps(
-                                        {
-                                            "role": "assistant",
-                                            "content": delta,
-                                            "partial": True,
-                                            "timestamp": time.time(),
-                                        }
-                                    ),
-                                )
-
-                        elif event_type == "usage":
-                            usage_data = event.get("usage", {})
-                            parsed_total_tokens = extract_total_tokens(usage_data)
-                            if parsed_total_tokens > 0:
-                                total_tokens = max(total_tokens, parsed_total_tokens)
-                        elif event_type == "guardrail":
-                            reason = (event.get("reason") or "unknown").strip().lower()
-                            if reason:
-                                guardrail_reasons.add(reason)
-
-                        elif event_type == "assistant_message":
-                            assistant_message = event.get("message")
-                    finish_stage("ai_stream", stage_started_at)
-
-                    if assistant_message is None:
-                        raise RuntimeError("Assistant response missing from stream")
-
-                    messages.append(assistant_message)
-
-                    if not pending_tool_results:
-                        break
-
-                    for tool_call in pending_tool_results:
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call.get("id"),
-                                "name": tool_call.get("name"),
-                                "content": tool_call.get("result"),
-                            }
-                        )
-
-                stage_started_at = time.monotonic()
-                output_guardrails = await check_output_guardrails(
-                    text=total_content,
-                    provider=gen_context.provider,
-                )
-                finish_stage("output_guardrails", stage_started_at)
-                guardrail_reasons.update(output_guardrails.reasons)
-                if not output_guardrails.allowed:
-                    request_status = "guardrail_blocked_output"
-                    stage_started_at = time.monotonic()
-                    _, assistant_msg_id = await persist_guardrail_messages(
-                        user_text=user_text,
-                        assistant_text=GUARDRAIL_USER_MESSAGE,
-                        reasons=guardrail_reasons,
-                        stage="output",
-                        user_embedding=context_result.query_embedding,
-                    )
-                    finish_stage("persist_guardrail_messages", stage_started_at)
-                    serializer = URLSafeSerializer(SECRET_KEY)
-                    signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
-                    stage_started_at = time.monotonic()
-                    await ws.send_json(
-                        with_request_id(
-                            {
-                                "ok": True,
-                                "content": GUARDRAIL_USER_MESSAGE,
-                                "partial": False,
-                                "sources": [],
-                                "msg_id": assistant_msg_id,
-                                "signed_msg_id": signed_msg_id,
-                                "guardrail": True,
-                            }
-                        )
-                    )
-                    finish_stage("send_guardrail_response", stage_started_at)
-                    continue
-
-                # Save both messages after stream completes
-                stage_started_at = time.monotonic()
-                full_context_payload = _assistant_full_context_payload(
-                    context_policy=context_policy,
-                    coverage=coverage,
-                    sources=sources,
-                )
-                async with async_session_factory() as db:
-                    res_user = await db.execute(
-                        sa.insert(ChatMsg)
-                        .values(
-                            text=user_text,
-                            role="user",
-                            full_context="",
-                            chat_id=chat_id_ctx.get(),
-                            user_uid=str(user_id_ctx.get()),
-                            created_at=sa.func.now(),
-                            guardrail_triggered=False,
-                            guardrail_stage=None,
-                            guardrail_reasons=None,
-                            embedding=context_result.query_embedding,
-                            text_hash=chunk_text_sha256(user_text),
-                        )
-                        .returning(ChatMsg.id)
-                    )
-                    res_user.scalar_one()
-
-                    res_ai = await db.execute(
-                        sa.insert(ChatMsg)
-                        .values(
-                            text=total_content,
-                            role="assistant",
-                            full_context=json.dumps(
-                                full_context_payload,
-                                ensure_ascii=False,
-                            ),
-                            chat_id=chat_id_ctx.get(),
-                            user_uid=str(user_id_ctx.get()),
-                            created_at=sa.func.now(),
-                            used_chunks=used_chunks,
-                            tokens=total_tokens,
-                            provider=assistant_provider,
-                            model=assistant_model,
-                            guardrail_triggered=_is_guardrail_blocked(
-                                guardrail_reasons
-                            ),
-                            guardrail_stage=(
-                                "stream"
-                                if _is_guardrail_blocked(guardrail_reasons)
-                                else None
-                            ),
-                            guardrail_reasons=(
-                                sorted(guardrail_reasons) if guardrail_reasons else None
-                            ),
-                        )
-                        .returning(ChatMsg.id)
-                    )
-                    assistant_msg_id = res_ai.scalar_one()
-
-                    await db.commit()
-                finish_stage("persist_messages", stage_started_at)
-
-                # Send completion signal with sources AND message ID
-                # We need to send this AFTER commit to ensure ID exists
-                serializer = URLSafeSerializer(SECRET_KEY)
-                signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
-
-                stage_started_at = time.monotonic()
-                await ws.send_json(
-                    with_request_id(
-                        {
-                            "ok": True,
-                            "content": "",
-                            "partial": False,
-                            "sources": sources,
-                            "coverage": coverage,
-                            "policy": context_policy,
-                            "reason_code": context_policy.get("reason_code"),
-                            "msg_id": assistant_msg_id,
-                            "signed_msg_id": signed_msg_id,
-                        }
-                    )
-                )
-                finish_stage("send_final_response", stage_started_at)
-
-                stage_started_at = time.monotonic()
-                async def suggest_and_send_actions() -> None:
-                    suggestions = await generate_suggestions(
-                        user_text=user_text,
-                        assistant_text=total_content,
-                        sources=sources,
-                        ctx=gen_context,
-                    )
-                    if not suggestions:
-                        return
-                    await save_chat_message_suggestions(
-                        assistant_msg_id=assistant_msg_id,
-                        suggestions=suggestions,
-                        full_context_payload=full_context_payload,
-                    )
-                    try:
-                        await ws.send_json(
-                            with_request_id(
-                                {
-                                    "type": "suggested_actions",
-                                    "actions": suggestions,
-                                    "msg_id": assistant_msg_id,
-                                }
-                            )
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to send suggested actions: msg_id=%s error=%s",
-                            assistant_msg_id,
-                            exc,
-                        )
-
-                suggestion_task = asyncio.create_task(suggest_and_send_actions())
-                suggestion_tasks.add(suggestion_task)
-                suggestion_task.add_done_callback(cleanup_suggestion_task)
-                await asyncio.sleep(0)
-                finish_stage("schedule_suggestions", stage_started_at)
-
-                if (
-                    trigger_page_id is not None
-                    and trigger_key
-                    and total_content
-                    and await validate_trigger_cache_request(
-                        page_id=trigger_page_id,
-                        trigger_key=trigger_key,
-                        user_text=user_text,
-                    )
-                ):
-                    trigger_full_context = json.dumps(
-                        {
-                            "policy": context_policy,
-                            "coverage": coverage,
-                            "sources": sources,
-                        },
-                        ensure_ascii=False,
-                    )
-                    stmt = pg_insert(TriggerResponseCache).values(
-                        page_id=trigger_page_id,
-                        trigger_key=trigger_key,
-                        prompt_hash=trigger_prompt_hash(user_text),
-                        response_text=total_content,
-                        full_context=trigger_full_context,
-                        used_chunks=used_chunks,
-                        tokens=total_tokens,
-                        provider=assistant_provider,
-                        model=assistant_model,
-                    )
-                    stmt = stmt.on_conflict_do_update(
-                        constraint="uq_trigger_response_cache_page_trigger_prompt",
-                        set_={
-                            "response_text": stmt.excluded.response_text,
-                            "full_context": stmt.excluded.full_context,
-                            "used_chunks": stmt.excluded.used_chunks,
-                            "provider": stmt.excluded.provider,
-                            "model": stmt.excluded.model,
-                            "tokens": stmt.excluded.tokens,
-                            "updated_at": sa.func.now(),
-                        },
-                    )
-                    async with async_session_factory() as db:
-                        await db.execute(stmt)
-                        await db.commit()
-
-                cache_candidate_fields = cache_candidate_payload(
-                    user_text=user_text,
-                    used_chunks=used_chunks,
-                    context_policy=context_policy,
-                    request_status=request_status,
-                    guardrail_blocked=False,
-                    messages_count=_user_message_count(messages),
-                )
-                if (
-                    cache_candidate_fields["cache_candidate"]
-                    and cache_candidate_fields["cache_retrieval_context_hash"]
-                ):
-                    try:
-                        async with async_session_factory() as db:
-                            await record_chat_answer_cache_candidate(
-                                db,
-                                question_hash=cache_candidate_fields[
-                                    "cache_question_hash"
-                                ],
-                                retrieval_context_hash=cache_candidate_fields[
-                                    "cache_retrieval_context_hash"
-                                ],
-                                provider=assistant_provider,
-                                model=assistant_model,
-                                widget_code=(
-                                    widget.code if widget is not None else None
-                                ),
-                                context_policy=context_policy,
-                                coverage=coverage,
-                                sources=sources,
-                                used_chunks=used_chunks,
-                                answer_text=total_content,
-                                tokens=total_tokens,
-                            )
-                            await db.commit()
-                    except Exception:
-                        logger.exception(
-                            "Failed to record LLM cache candidate: request_id=%s",
-                            get_request_id(),
-                        )
-
-            except GuardrailTripwireTriggered as e:
-                stage, reason = extract_tripwire_details(e)
-                request_status = (
-                    "guardrail_blocked_output"
-                    if stage == "output"
-                    else "guardrail_blocked_input"
-                )
-                guardrail_reasons.add("guardrail_tripwire")
-                guardrail_reasons.add(reason)
-                guardrail_reasons.add(
-                    "output_blocked" if stage == "output" else "input_blocked"
-                )
-                _, assistant_msg_id = await persist_guardrail_messages(
-                    user_text=user_text,
-                    assistant_text=GUARDRAIL_USER_MESSAGE,
-                    reasons=guardrail_reasons,
-                    stage=stage,
-                    user_embedding=await asyncio.to_thread(
-                        embed_query,
-                        user_text,
-                    ),
-                )
-                serializer = URLSafeSerializer(SECRET_KEY)
-                signed_msg_id = serializer.dumps(assistant_msg_id, salt="chat_msg")
-                await ws.send_json(
-                    with_request_id(
-                        {
-                            "ok": True,
-                            "content": GUARDRAIL_USER_MESSAGE,
-                            "partial": False,
-                            "sources": [],
-                            "msg_id": assistant_msg_id,
-                            "signed_msg_id": signed_msg_id,
-                            "guardrail": True,
-                        }
-                    )
-                )
-            except aiohttp.ClientResponseError as e:
-                request_status = "provider_http_error"
-                if e.status in {400, 403, 422}:
-                    guardrail_reasons.add("provider_block")
-                await ws.send_json(
-                    with_request_id(
-                        {
-                            "ok": False,
-                            "error": "provider_response_error",
-                            "content": gen_context.error_message,
-                        }
-                    )
-                )
-            except (asyncio.TimeoutError, aiohttp.ClientError):
-                request_status = "provider_connection_error"
-                await ws.send_json(
-                    with_request_id(
-                        {
-                            "ok": False,
-                            "error": "provider_connection_error",
-                            "content": gen_context.error_message,
-                        }
-                    )
-                )
-            except Exception:
-                request_status = "internal_error"
-                logger.exception("Chat request failed: request_id=%s", get_request_id())
-                await ws.send_json(
-                    with_request_id(
-                        {
-                            "ok": False,
-                            "error": "internal_error",
-                            "content": gen_context.error_message,
-                        }
-                    )
-                )
-            finally:
-                guardrail_blocked = _is_guardrail_blocked(guardrail_reasons)
-                prompt_text_parts = [
-                    str(message.get("content") or "")
-                    for message in messages
-                    if isinstance(message, dict)
-                ] or [user_text]
-                prompt_bytes = sum(
-                    len(part.encode("utf-8")) for part in prompt_text_parts
-                )
-                prompt_chars = sum(len(part) for part in prompt_text_parts)
-                cache_candidate_fields = cache_candidate_payload(
-                    user_text=user_text,
-                    used_chunks=used_chunks,
-                    context_policy=context_policy,
-                    request_status=request_status,
-                    guardrail_blocked=guardrail_blocked,
-                    messages_count=_user_message_count(messages),
-                )
-                log_json(
-                    request_logger,
-                    "chat_user_request",
-                    provider=assistant_provider,
-                    model=assistant_model,
-                    tokens=total_tokens,
-                    chunks_count=len(used_chunks),
-                    response_size=len(total_content.encode("utf-8")),
-                    response_chars=len(total_content),
-                    guardrail_status=("blocked" if guardrail_blocked else "passed"),
-                    guardrail_triggered=guardrail_blocked,
-                    guardrail_reasons=(
-                        sorted(guardrail_reasons) if guardrail_reasons else []
-                    ),
-                    prompt_chars=prompt_chars,
-                    prompt_bytes=prompt_bytes,
-                    user_prompt_chars=len(user_text),
-                    user_prompt_bytes=len(user_text.encode("utf-8")),
-                    messages_count=len(messages),
-                    first_content_ms=first_content_ms,
-                    stage_durations_ms=stage_durations_ms,
-                    status=request_status,
-                    chat_id=chat_id_ctx.get(None),
-                    user_id=str(user_id_ctx.get(None)),
-                    **cache_candidate_fields,
-                )
-                try:
-                    record_chat_request(
-                        provider=assistant_provider,
-                        model=assistant_model,
-                        tokens=total_tokens,
-                        status=request_status,
-                        guardrail_reasons=guardrail_reasons,
-                        duration_seconds=time.monotonic() - request_started_at,
-                        context_chunks=len(used_chunks),
-                    )
-                except Exception as metrics_exc:
-                    logger.warning("Failed to record chat metrics: %s", metrics_exc)
-                request_id_ctx.reset(request_id_token)
+            before = set(suggestion_tasks)
+            await handle_chat_message(
+                ws=ws,
+                incoming=incoming,
+                widget=session.widget,
+                suggestion_tasks=suggestion_tasks,
+            )
+            for task in suggestion_tasks - before:
+                task.add_done_callback(cleanup_suggestion_task)
     except Exception as e:
-        logger.error(f"Websocket exception: {e}")
+        logger.error("Websocket exception: %s", e)
     finally:
         await ws.close()
         try:
-            await redis.srem("active_chats", chat_id_ctx.get())
+            await redis.srem("active_chats", session.chat_id)
         except Exception as e:
             logger.error("Failed to remove chat from active_chats in Redis: %s", e)
     return ws
@@ -1833,7 +1857,7 @@ async def chat_actions(request):
     item_id = request.match_info.get("item_id")
     csrf_chat_id = request["csrf_chat_id"]
 
-    serializer = URLSafeSerializer(SECRET_KEY)
+    serializer = URLSafeSerializer(cfg.secret_key)
 
     if action == "session":
         try:

@@ -16,6 +16,10 @@ from vchat.views.chat.guardrails import GuardrailDecision
 from vchat.models.source_config import SourceConfig
 from vchat.llm_cache import cache_candidate_payload
 from vchat.views.triggers.rules import trigger_key
+from vchat.views.chat.ai import (
+    render_suggestions_prompt,
+    suggested_actions_response_format,
+)
 from vchat.views.chat import views as chat_views
 
 
@@ -28,9 +32,19 @@ class _WsMessage:
 @dataclass
 class _FakeProvider:
     id: str = "openai"
+    supports_chat: bool = True
 
     def request_meta(self) -> dict[str, Any]:
         return {"api_key": "k", "base_url": "https://api.example.local/v1"}
+
+
+@dataclass
+class _FakeGigaChatProvider(_FakeProvider):
+    id: str = "gigachat"
+
+    async def chat_completion_bearer_token(self, session: Any) -> str:
+        _ = session
+        return "access-token"
 
 
 @dataclass
@@ -45,6 +59,16 @@ class _FakeCtx:
     model: _FakeModel
     system_prompt: str = "sys"
     error_message: str = "User-safe error"
+    suggestions_provider: _FakeProvider | None = None
+    suggestions_model: _FakeModel | None = None
+    suggestions_enabled: bool = True
+    suggestions_prompt: str = ""
+
+    def __post_init__(self) -> None:
+        if self.suggestions_provider is None:
+            self.suggestions_provider = self.provider
+        if self.suggestions_model is None:
+            self.suggestions_model = self.model
 
     @property
     def provider_id(self) -> str:
@@ -424,14 +448,17 @@ def test_build_generation_context_appends_answer_format_policy_to_custom_prompt(
     monkeypatch.setattr(
         chat_views,
         "resolve_ai_settings",
-        lambda provider_id, model_id: (_FakeProvider(provider_id), _FakeModel(model_id)),
+        lambda provider_id, model_id: (
+            _FakeProvider(provider_id),
+            _FakeModel(model_id),
+        ),
     )
 
     ctx = chat_views.build_generation_context(
         SimpleNamespace(
             system_prompt="Custom system prompt",
             suggestions_enabled=True,
-            suggestions_prompt=chat_views.DEFAULT_SUGGESTIONS_PROMPT,
+            suggestions_prompt="Custom suggestions prompt",
             error_message="Custom error",
         ),
     )
@@ -439,6 +466,42 @@ def test_build_generation_context_appends_answer_format_policy_to_custom_prompt(
     assert ctx.system_prompt.startswith("Custom system prompt\n\n")
     assert chat_views.ANSWER_FORMAT_POLICY in ctx.system_prompt
     assert ctx.error_message == "Custom error"
+
+
+def test_build_generation_context_uses_separate_suggestions_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_views.cfg, "chat_provider", "openai")
+    monkeypatch.setattr(chat_views.cfg, "chat_model", "gpt-4o")
+    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_provider", "gigachat")
+    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_model", "GigaChat-2")
+    monkeypatch.setattr(
+        chat_views,
+        "resolve_ai_settings",
+        lambda provider_id, model_id: (
+            _FakeProvider(provider_id),
+            _FakeModel(model_id),
+        ),
+    )
+
+    ctx = chat_views.build_generation_context()
+
+    assert ctx.provider_id == "openai"
+    assert ctx.model_id == "gpt-4o"
+    assert ctx.suggestions_provider_id == "gigachat"
+    assert ctx.suggestions_model_id == "GigaChat-2"
+
+
+def test_build_generation_context_requires_suggestions_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_views.cfg, "chat_provider", "openai")
+    monkeypatch.setattr(chat_views.cfg, "chat_model", "gpt-4o")
+    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_provider", "")
+    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_model", "")
+
+    with pytest.raises(ValueError):
+        chat_views.build_generation_context()
 
 
 def test_build_chat_completion_messages_normalizes_developer_role() -> None:
@@ -459,7 +522,7 @@ def test_build_chat_completion_messages_normalizes_developer_role() -> None:
 
 
 def test_suggested_actions_schema_is_strict() -> None:
-    response_format = chat_views._suggested_actions_schema()
+    response_format = suggested_actions_response_format()
     schema = response_format["json_schema"]["schema"]
 
     assert response_format["type"] == "json_schema"
@@ -470,16 +533,16 @@ def test_suggested_actions_schema_is_strict() -> None:
 
 
 def test_suggestions_prompt_appends_structured_context_block() -> None:
-    rendered = chat_views._render_suggestions_prompt(
-        template=chat_views.DEFAULT_SUGGESTIONS_PROMPT,
+    prompt_template = "Сгенерируй короткие следующие действия."
+    rendered = render_suggestions_prompt(
+        template=prompt_template,
         user_text="Что дальше?",
         assistant_text="Можно открыть раздел с правилами.",
         sources=[{"title": "Правила", "uri": "https://example.test/rules"}],
     )
 
-    assert "Верни только JSON-объект" not in chat_views.DEFAULT_SUGGESTIONS_PROMPT
-    assert "{{user_question}}" not in chat_views.DEFAULT_SUGGESTIONS_PROMPT
-    assert "Верни только JSON-объект" in rendered
+    assert "{{user_question}}" not in prompt_template
+    assert "Верни только JSON-объект" not in rendered
     assert "Что дальше?" in rendered
     assert "Можно открыть раздел с правилами." in rendered
     assert "Правила" in rendered
@@ -736,9 +799,7 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
             return _Resp(status=self.status)
 
     session = _Session(status=200)
-    monkeypatch.setattr(
-        chat_views.aiohttp, "ClientSession", lambda: session
-    )
+    monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: session)
     events = [
         event
         async for event in chat_views.ai_chat_stream(
@@ -758,7 +819,9 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
         {"role": "system", "content": "sys\n\n[context]\nctx"},
         {"role": "user", "content": "x"},
     ]
-    assert session.posts[0]["json"]["max_tokens"] == settings.cfg.chat_response_max_tokens
+    assert (
+        session.posts[0]["json"]["max_tokens"] == settings.cfg.chat_response_max_tokens
+    )
     assert all(message["role"] != "developer" for message in posted_messages)
 
     monkeypatch.setattr(
@@ -779,10 +842,6 @@ async def test_ai_chat_stream_passes_gigachat_ssl_setting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, Any] = {}
-
-    async def _token(*args, **kwargs):
-        _ = args, kwargs
-        return "access-token"
 
     class _Resp:
         status = 200
@@ -821,14 +880,13 @@ async def test_ai_chat_stream_passes_gigachat_ssl_setting(
             return _Resp()
 
     monkeypatch.setattr(chat_views.cfg, "gigachat_verify_ssl_certs", False)
-    monkeypatch.setattr(chat_views, "get_gigachat_access_token", _token)
     monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: _Session())
 
     events = [
         event
         async for event in chat_views.ai_chat_stream(
             [{"role": "user", "content": "x"}],
-            _FakeCtx(_FakeProvider(id="gigachat"), _FakeModel(id="GigaChat-Pro")),
+            _FakeCtx(_FakeGigaChatProvider(), _FakeModel(id="GigaChat-2-Pro")),
         )
     ]
 

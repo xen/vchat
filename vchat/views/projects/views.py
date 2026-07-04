@@ -3187,7 +3187,7 @@ async def project_integration(request):
         widget.error_message = forms.WIDGET_ERROR_MESSAGE
         widget.footer_text = forms.WIDGET_FOOTER_TEXT
         widget.system_prompt = forms.DEFAULT_SYSTEM_PROMPT
-        widget.suggestions_prompt = forms.DEFAULT_SUGGESTIONS_PROMPT
+        widget.suggestions_prompt = form.suggestions_prompt.default
         widget.trigger_templates = list(DEFAULT_TRIGGER_TEMPLATES)
         await _assign_new_widget_code(request["db"], widget)
         request["db"].add(widget)

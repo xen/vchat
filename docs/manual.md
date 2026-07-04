@@ -493,7 +493,9 @@ sitemap.
 
 ```yaml
 chat_provider: "gigachat"
-chat_model: "GigaChat"
+chat_model: "GigaChat-2-Pro"
+chat_suggestions_provider: "gigachat"
+chat_suggestions_model: "GigaChat-2"
 gigachat_api_key: "ВСТАВЬТЕ_BASIC_КЛЮЧ"
 gigachat_base_url: "https://gigachat.devices.sberbank.ru/api/v1"
 gigachat_oauth_url: "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
@@ -509,6 +511,43 @@ gigachat_verify_ssl_certs: true
 | HTTP 401 или 403                            | Корректен ли Basic-ключ                           |
 | Таймаут                                     | Доступен ли `gigachat_oauth_url` из среды запуска |
 | Ошибка SSL                                  | Установлены ли доверенные сертификаты             |
+
+### 10.1. Выбор моделей
+
+В проекте используются две независимые пары настроек моделей:
+
+| Ключ | Комментарий |
+| ---- | ----------- |
+| `chat_provider` | Провайдер для основного ответа пользователю. |
+| `chat_model` | Модель для основного ответа пользователю. Выбирается по требованиям к качеству, договорному контуру и допустимой стоимости. |
+| `chat_suggestions_provider` | Провайдер для коротких подсказок продолжения диалога. Может отличаться от основного провайдера. |
+| `chat_suggestions_model` | Модель для подсказок. Обычно должна быть легче и дешевле основной модели, потому что задача ограничена генерацией 2-3 коротких действий. |
+
+Обе пары должны быть заданы явно. Приложение не подставляет модель ответа в
+настройки подсказок и не выбирает первую доступную модель при ошибке в имени.
+Если провайдер или модель указаны неверно, конфигурацию нужно исправить до
+запуска.
+
+Для основного ответа выбирайте модель по требованиям проекта: качеству ответа,
+договорному контуру и допустимой стоимости. Для подсказок продолжения диалога
+используйте более легкую модель, потому что задача короткая: нужно предложить
+2-3 следующих вопроса или действия на основе уже готового ответа и источников.
+
+Рекомендуемая настройка для подсказок:
+
+```yaml
+chat_suggestions_provider: "gigachat"
+chat_suggestions_model: "GigaChat-2"
+```
+
+`GigaChat-2` соответствует модели GigaChat 2 Lite. По документации Сбера это
+быстрая и легкая модель для рутинных задач с контекстным окном 128000 токенов и
+стоимостью ниже, чем у Pro/Max:
+https://developers.sber.ru/docs/ru/gigachat/models/gigachat-2-lite
+
+Не используйте id моделей первого поколения `GigaChat`, `GigaChat-Pro` и
+`GigaChat-Max`: по документации Сбера они недоступны и заменены на
+`GigaChat-2`, `GigaChat-2-Pro` и `GigaChat-2-Max`.
 
 ## 11. Источники и индексация
 
@@ -835,6 +874,8 @@ Kubernetes `Secret` и стандартных библиотеках Python. В 
 | `log_format`                            | Формат логов                                     | Для Kubernetes/Grafana Loki обычно `json`                                         |
 | `chat_provider`                         | Провайдер LLM                                    | Для GigaChat ставьте `gigachat`                                                   |
 | `chat_model`                            | Модель LLM                                       | Должна соответствовать договорной модели промышленного контура                    |
+| `chat_suggestions_provider`             | Провайдер LLM для подсказок                      | Для легких подсказок ставьте `gigachat`                                           |
+| `chat_suggestions_model`                | Модель LLM для подсказок                         | Рекомендуется `GigaChat-2`                                                        |
 | `gigachat_verify_ssl_certs`             | Проверка SSL GigaChat                            | В промышленном контуре оставляйте `true`                                          |
 | `auth_basic_enabled`                    | Локальный логин/пароль                           | В промышленном контуре часто должен быть `false`                                  |
 | `auth_ldap_enabled`                     | Вход через LDAP                                  | Включите, если вход идет через AD/LDAP                                            |
@@ -1368,7 +1409,7 @@ celery_broker_db: 31
 celery_backend_db: 32
 
 chat_provider: "gigachat"
-chat_model: "GigaChat"
+chat_model: "GigaChat-2-Pro"
 gigachat_api_key: "CHANGE_ME"
 gigachat_verify_ssl_certs: true
 

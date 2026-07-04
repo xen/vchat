@@ -83,8 +83,10 @@ class AppConfig(BaseModel):
     allowed_origins: list[str] = Field(default_factory=list)
     trusted_proxy_cidrs: list[str] = Field(default_factory=list)
 
-    chat_provider: str = "openai"
-    chat_model: str = "gpt-4o-mini"
+    chat_provider: str = "gigachat"
+    chat_model: str = "GigaChat-2-Pro"
+    chat_suggestions_provider: str = "gigachat"
+    chat_suggestions_model: str = "GigaChat-2"
     chat_response_max_tokens: int = Field(900, ge=1)
     chat_suggestions_max_context_chars: int = Field(3000, ge=1)
     openai_api_key: str = ""
@@ -95,12 +97,12 @@ class AppConfig(BaseModel):
     gigachat_api_key: str = ""
     gigachat_base_url: str = "https://gigachat.devices.sberbank.ru/api/v1"
     gigachat_oauth_url: str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
-    gigachat_scope: str = "GIGACHAT_API_PERS"
+    gigachat_scope: str = "GIGACHAT_API_CORP"
     gigachat_verify_ssl_certs: bool = True
     gigachat_oauth_timeout_seconds: float = Field(15.0, gt=0)
     gigachat_request_timeout_seconds: float = Field(60.0, gt=0)
     gigachat_suggest_timeout_seconds: float = Field(10.0, gt=0)
-    gigachat_test_model: str = "GigaChat-Pro"
+    gigachat_test_model: str = "GigaChat-2-Pro"
     gigachat_test_question: str | None = None
     gigachat_models: list[str | dict[str, Any]] = Field(default_factory=list)
 

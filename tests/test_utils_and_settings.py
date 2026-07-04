@@ -206,8 +206,7 @@ def test_merge_chat_meta_stores_validated_source_page_url() -> None:
         {"source_page_url": "javascript:sendall_cookies_to_evil_host()"},
     )
     assert (
-        next_meta["source_page_url"]
-        == "https://navigator.vbudushee.ru/demo?age=8-10"
+        next_meta["source_page_url"] == "https://navigator.vbudushee.ru/demo?age=8-10"
     )
 
 
@@ -242,6 +241,8 @@ def test_ai_provider_functions() -> None:
     assert default_provider.id == settings.cfg.chat_provider
     assert default_model.id == settings.cfg.chat_model
     assert get_provider("openai").id == "openai"
+    with pytest.raises(ValueError):
+        resolve_ai_settings("openai", "missing-model")
 
 
 def test_settings_yaml_load_and_validation() -> None:
@@ -450,10 +451,7 @@ def test_crawler_queue_collector_uses_broker_db_and_default_and_embeddings_queue
     )
 
     families = list(metrics.CrawlerQueueCollector().collect())
-    samples = {
-        family.name: family.samples[0].value
-        for family in families
-    }
+    samples = {family.name: family.samples[0].value for family in families}
 
     assert calls[0] == "url=redis://example/42,decode=False"
     assert calls[1:] == [

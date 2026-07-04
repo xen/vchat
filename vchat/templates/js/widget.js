@@ -466,6 +466,7 @@
 
   function loadTriggers() {
     var resolveUrl = new URL(widgetOrigin() + triggerResolvePath);
+    resolveUrl.searchParams.append("code", widgetCode);
     resolveUrl.searchParams.append("url", sourcePageUrl);
     resolveUrl.searchParams.append("title", document.title || "");
     fetch(resolveUrl.toString(), { mode: "cors", credentials: "omit" })

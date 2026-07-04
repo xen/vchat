@@ -104,6 +104,7 @@ class _FakeRedis:
 @dataclass
 class _FakeProvider:
     id: str = "openai"
+    supports_chat: bool = True
 
     def request_meta(self) -> dict[str, Any]:
         return {}
@@ -118,6 +119,16 @@ class _FakeModel:
 class _FakeContext:
     provider: _FakeProvider
     model: _FakeModel
+    suggestions_provider: _FakeProvider | None = None
+    suggestions_model: _FakeModel | None = None
+    suggestions_enabled: bool = True
+    error_message: str = "User-safe error"
+
+    def __post_init__(self) -> None:
+        if self.suggestions_provider is None:
+            self.suggestions_provider = self.provider
+        if self.suggestions_model is None:
+            self.suggestions_model = self.model
 
     @property
     def provider_id(self) -> str:
@@ -127,11 +138,21 @@ class _FakeContext:
     def model_id(self) -> str:
         return self.model.id
 
+    @property
+    def suggestions_provider_id(self) -> str:
+        return (
+            self.suggestions_provider.id
+            if self.suggestions_provider
+            else self.provider_id
+        )
+
+    @property
+    def suggestions_model_id(self) -> str:
+        return self.suggestions_model.id if self.suggestions_model else self.model_id
+
 
 def _make_request() -> Any:
-    payload = URLSafeSerializer(cfg.secret_key).dumps(
-        [1, "chat-1"], salt="vchat"
-    )
+    payload = URLSafeSerializer(cfg.secret_key).dumps([1, "chat-1"], salt="vchat")
     return type(
         "Request",
         (),
@@ -207,7 +228,9 @@ def _setup_common(
     async def _fake_enrich_source_payloads(_db: Any, sources: list[dict[str, Any]]):
         return sources
 
-    monkeypatch.setattr(chat_views, "enrich_source_payloads", _fake_enrich_source_payloads)
+    monkeypatch.setattr(
+        chat_views, "enrich_source_payloads", _fake_enrich_source_payloads
+    )
 
     async def _embed_query_async(_text: str) -> list[float]:
         return [0.1, 0.2]

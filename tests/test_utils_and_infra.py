@@ -26,6 +26,7 @@ def test_document_types_guess_and_labels() -> None:
         == "code"
     )
 
+
 def test_json_response_uses_msgspec_compatible_body() -> None:
     response = json_response({"status": PageStatus.ready}, status=202)
 
@@ -55,13 +56,14 @@ def test_ai_providers_and_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
     openai = ai_providers.get_provider("openai")
     assert openai.request_meta()["api_key"] == "k"
     assert openai.request_meta()["base_url"] == "https://example.test/v1"
-    model = openai.get_model(None)
+    model = openai.get_model("gpt-4o-mini")
     assert model.id
     resolved_provider, resolved_model = ai_providers.resolve_ai_settings(
         "openai", model.id
     )
     assert resolved_provider.id == "openai"
     assert resolved_model.id == model.id
+
 
 @pytest.mark.asyncio
 async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> None:

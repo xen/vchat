@@ -18,7 +18,7 @@ from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
 
 from vchat.views.chat.ai import BaseAIProvider
-from vchat.settings import config
+from vchat.settings import cfg
 
 logger = logging.getLogger("vchat.views.chat.guardrails")
 
@@ -136,12 +136,8 @@ class GuardrailDecision:
     message: str | None = None
 
 
-def _enabled(key: str, default: bool = True) -> bool:
-    return bool(config.get(key, default))
-
-
 def get_guardrails_client(*, api_key: str, base_url: str) -> Any | None:
-    if not _enabled("openai_guardrails_enabled", True):
+    if not cfg.openai_guardrails_enabled:
         return None
 
     global _cached_client, _cached_key
@@ -365,8 +361,9 @@ async def check_input_guardrails(
     text: str,
     provider: BaseAIProvider,
 ) -> GuardrailDecision:
+    del provider
     decision = GuardrailDecision()
-    if not _enabled("guardrails_ru_pii_enabled", True):
+    if not cfg.guardrails_ru_pii_enabled:
         return decision
 
     reasons = detect_russian_pii_reasons(text)
@@ -384,8 +381,9 @@ async def check_output_guardrails(
     text: str,
     provider: BaseAIProvider,
 ) -> GuardrailDecision:
+    del provider
     decision = GuardrailDecision()
-    if not _enabled("guardrails_ru_pii_enabled", True):
+    if not cfg.guardrails_ru_pii_enabled:
         return decision
 
     reasons = detect_russian_pii_reasons(text)

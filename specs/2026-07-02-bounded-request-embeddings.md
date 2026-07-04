@@ -8,6 +8,110 @@ Web backend должен выполнять локальный embedding encode 
 текущий контракт сохранения пользовательских сообщений, RAG-контекста и
 guardrail-веток.
 
+## Status 2026-07-03
+
+Состояние: задача **не реализована**, находится на этапе планирования и
+исследования runtime-модели.
+
+Что уже зафиксировано:
+
+- Принято базовое ограничение для backend process: не рассчитывать на
+  параллельные `SentenceTransformer.encode()` внутри одного process как на
+  способ масштабирования throughput.
+- Основной безопасный кандидат для первой реализации: локальный bounded helper
+  с `max_workers=1`, semaphore `1`, ограниченным ожиданием и явным
+  backpressure.
+- Перенос request embeddings в текущую document embedder очередь не считается
+  дефолтным решением: сначала нужен стенд, доказывающий выигрыш по latency,
+  памяти и устойчивости.
+- Серверное решение не должно опираться на MPS/GPU.
+- Отдельно от этой задачи уже убран vector search по `chat_msg`: RAG теперь
+  берет хвост чата (`TAIL_MSG_LIMIT = 20`) и ищет вектором только по KB через
+  `kb_vector_supply`. Это уменьшает объем request-path vector retrieval, но не
+  решает проблему самого query embedding encode.
+
+Текущий кодовый факт:
+
+- `embed_query()` остается синхронной низкоуровневой функцией в
+  `vchat/views/chat/ctx.py`.
+- Прямые request-path вызовы `asyncio.to_thread(embed_query, ...)` все еще есть
+  в `get_context()` и в `vchat/views/chat/views.py` для cached trigger response
+  и guardrail persistence.
+- Единой `embed_query_async()` / bounded helper пока нет.
+- Dedicated `ThreadPoolExecutor(max_workers=1)`, semaphore, queue timeout и
+  наблюдаемость ожидания пока не добавлены.
+- Регрессионных тестов на `max_active_encode == 1` и queue timeout пока нет.
+- Benchmark/harness для сравнения direct/thread/process режимов пока не
+  создан.
+
+Следующий правильный шаг: начать с Iterations 1-3 как исследовательской части,
+а не сразу менять request path. Минимальный deliverable следующего шага:
+
+- точная инвентаризация всех request-path encode вызовов;
+- маленький benchmark/harness для direct sync, dedicated thread `1`, thread
+  `>1` как негативного сценария и нескольких backend-like processes;
+- отчет по p50/p95, RSS, `max_active_encode`, ошибкам и поведению event loop;
+- только после этого - bounded helper и перевод request path.
+
+## Status 2026-07-04
+
+Состояние: исследовательский стенд реализован и прогнан на
+`root@bear.infraforecast.com`; bounded helper и метрики в backend request path
+реализованы.
+
+Артефакты:
+
+- Код стенда: `data/embedder-test/embedder_request_bench.py`.
+- Скопированные результаты: `data/embedder-test/bear-vchat_embedder_request_bench_20260703_192102/results/`.
+- Отчет: `docs/30_request_embedding_runtime_benchmark.md`.
+
+Измеренный runtime:
+
+- Host: `bear.infraforecast.com`, AMD Ryzen Threadripper 2950X, 16 physical
+  cores / 32 logical threads, 125 GiB RAM.
+- Model: `deepvk/USER-bge-m3`.
+- Request text size: до `4000` символов.
+- Server runtime был временным и изолированным под
+  `/root/vchat_embedder_request_bench_20260703_192102`; после копирования
+  результатов он удален с сервера.
+
+Ключевые выводы:
+
+- Один `encode()` steady-state становится быстрее при увеличении PyTorch
+  intra-op threads: `torch_threads=16` дал около `1.4s p50` на одном process.
+- Один backend worker с `Semaphore(1)`, `queue_timeout=20s`,
+  `torch_threads=16` работает до `concurrency=12`; на `concurrency=16`
+  появились первые `503`.
+- Два backend workers за nginx дают больше capacity, но каждая копия модели
+  стоит около `1.8 GB RSS`, а CPU contention увеличивает per-request encode до
+  `~2.7s`.
+- Для двух workers `concurrency=12` - крайняя рабочая зона (`p95 ~16s`),
+  `concurrency=16` - degrade zone (`p95 ~22s`), `concurrency=24` - точка
+  массового отказа.
+- Nginx `least_conn` и `round_robin` на двух одинаковых workers дали почти
+  одинаковое распределение; `least_conn` остается предпочтительным для реальных
+  запросов разной длительности.
+- Stability-run `2 workers / concurrency=8 / 160 requests` не показал runaway
+  memory leak: после прогрева RSS вышел на плато около `3.6 GB` на два workers,
+  последние 10 samples изменились примерно на `0.2 MB`.
+
+Рекомендуемый первый runtime contract для реализации:
+
+- `embed_query_async(text)` внутри backend process реализован в
+  `vchat/views/chat/ctx.py`.
+- `ThreadPoolExecutor(max_workers=1)` и `Semaphore(1)` включены через
+  `request_embedding_executor_workers` и `request_embedding_concurrency`.
+- queue timeout `20s` задается через
+  `request_embedding_queue_timeout_seconds`.
+- no silent fallback: при timeout используется
+  `RequestEmbeddingTimeoutError`, websocket получает явный
+  `request_embedding_timeout`.
+- Prometheus metrics добавлены: queue wait, encode time, inflight, timeout
+  counter.
+- Runtime default: `1` backend worker для простоты; `2` workers за nginx
+  `least_conn` только если нужен дополнительный capacity и допустима память
+  `~3.6 GB` под две модели.
+
 ## Context
 
 - `vchat/views/chat/ctx.py`: `embed_query()`, `_get_embed_model()`,
@@ -30,12 +134,12 @@ guardrail-веток.
 ## Current Behavior
 
 - `embed_query()` синхронно вызывает локальную embedding-модель.
-- Часть request path вызывает `embed_query()` через `asyncio.to_thread()`, чтобы
-  не блокировать event loop.
-- `asyncio.to_thread()` использует default executor процесса и не задает
-  доменный лимит конкурентного embedding encode.
-- При нескольких одновременных запросах один web process может одновременно
-  выполнять несколько `model.encode()` на одной тяжелой локальной модели.
+- Request path вызывает `embed_query_async()`, который использует локальный
+  limiter, dedicated executor и timeout ожидания.
+- Прямые `asyncio.to_thread(embed_query, ...)` из `vchat/views/chat/*` удалены.
+- При нескольких одновременных запросах один web process выполняет только один
+  активный `model.encode()`; остальные запросы ждут локальный limiter или
+  получают `request_embedding_timeout`.
 - Для document embedder уже закреплена другая модель capacity: внутри worker
   concurrency равен `1`, а CPU масштабируется несколькими отдельными worker
   processes. На сервере нельзя рассчитывать на MPS/GPU; несколько параллельных

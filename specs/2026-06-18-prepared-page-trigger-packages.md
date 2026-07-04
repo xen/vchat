@@ -82,7 +82,7 @@ GET /api/triggers/resolve?url=<current_url>&title=<document.title>
 ### Generic triggers
 
 Если для страницы нет готовых page triggers, используется список базовых generic
-триггеров. Они формируются через `render_default_triggers(...)` и подставляют
+триггеров. Они формируются через `render_triggers(...)` и подставляют
 `title` текущей страницы. Этот fallback должен сохраниться.
 
 Пример ответа, когда найден только generic fallback:

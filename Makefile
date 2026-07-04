@@ -43,20 +43,20 @@ ensure-pip: venv/bin/activate ## ensure bundled pip is available inside the venv
 	. venv/bin/activate && python -m ensurepip --upgrade
 
 pip-compile: ensure-pip  ## compile dependencies
-	. venv/bin/activate && pip-compile --generate-hashes -v --unsafe-package pip requirements/requirements.in -o requirements/requirements.txt
-	. venv/bin/activate && pip-compile --generate-hashes -v --unsafe-package pip requirements/dev.in -o requirements/dev.txt
+	. venv/bin/activate && pip-compile --generate-hashes --reuse-hashes -v --unsafe-package pip requirements/requirements.in -o requirements/requirements.txt
+	. venv/bin/activate && pip-compile --generate-hashes --reuse-hashes -v --unsafe-package pip requirements/dev.in -o requirements/dev.txt
 
 pip-linux: ## compile dependencies inside Linux container so darwin-only wheel dependencies (ocrmac etc.) are skipped
 	docker build -t pusk-pip-compile -f docker/pip-compile.Dockerfile .
 	docker run --rm -v $(PWD):/workspace -w /workspace pusk-pip-compile sh -c "\
-		pip-compile --generate-hashes --unsafe-package pip requirements/requirements.in -o requirements/requirements.txt && \
-		pip-compile --generate-hashes --unsafe-package pip requirements/dev.in -o requirements/dev.txt"
+		pip-compile --generate-hashes --reuse-hashes --unsafe-package pip requirements/requirements.in -o requirements/requirements.txt && \
+		pip-compile --generate-hashes --reuse-hashes --unsafe-package pip requirements/dev.in -o requirements/dev.txt"
 	make setup
 
 autoupgrade: ensure-pip ## upgrade dependencies
 	. venv/bin/activate && pre-commit autoupdate
-	. venv/bin/activate && pip-compile --upgrade --generate-hashes -v --allow-unsafe requirements/requirements.in -o requirements/requirements.txt
-	. venv/bin/activate && pip-compile --upgrade --generate-hashes -v --allow-unsafe requirements/dev.in -o requirements/dev.txt
+	. venv/bin/activate && pip-compile --upgrade --reuse-hashes --generate-hashes -v --allow-unsafe requirements/requirements.in -o requirements/requirements.txt
+	. venv/bin/activate && pip-compile --upgrade --reuse-hashes --generate-hashes -v --allow-unsafe requirements/dev.in -o requirements/dev.txt
 
 # Celery and tasks
 celery: venv/bin/activate ## start celery (default queue + beat)

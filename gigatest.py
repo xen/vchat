@@ -4,7 +4,7 @@ import sys
 
 import aiohttp
 
-from vchat.views.chat.oauth import get_gigachat_access_token
+from vchat.views.chat.ai import GigaChatProvider
 from vchat.settings import cfg
 
 logger = logging.getLogger("gigatest")
@@ -40,13 +40,11 @@ async def main() -> None:
         cfg.gigachat_request_timeout_seconds,
     )
 
+    provider = GigaChatProvider()
     async with aiohttp.ClientSession() as session:
         try:
-            access_token = await get_gigachat_access_token(
-                session,
-                basic_auth_key=basic_key,
-            )
-            logger.info("OAuth token received successfully")
+            access_token = await provider.chat_completion_bearer_token(session)
+            logger.info("GigaChat access token received successfully")
 
             async with session.get(
                 f"{base_url}/models",

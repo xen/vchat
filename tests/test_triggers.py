@@ -7,7 +7,6 @@ from jobs.triggers.generation import (
     request_trigger_generation,
 )
 from vchat.views.chat import ai as chat_ai
-from vchat.views.chat import oauth as chat_oauth
 from vchat.views.chat.ai import GigaChatProvider
 from vchat.views.triggers.rules import (
     TriggerPatternError,
@@ -184,7 +183,7 @@ def test_request_trigger_generation_passes_gigachat_ssl_setting(
         "https://gigachat.example.local/api/v1",
     )
     provider = GigaChatProvider()
-    model = SimpleNamespace(id="GigaChat-Pro")
+    model = SimpleNamespace(id="GigaChat-2-Pro")
 
     class _Resp:
         def __init__(self, payload, *, status_code=200, text=""):
@@ -204,9 +203,8 @@ def test_request_trigger_generation_passes_gigachat_ssl_setting(
         )
 
     monkeypatch.setattr(chat_ai.cfg, "gigachat_verify_ssl_certs", False)
-    monkeypatch.setattr(chat_oauth, "_token_cache", None)
+    monkeypatch.setattr(chat_ai, "_gigachat_token_cache", None)
     monkeypatch.setattr(chat_ai.requests, "post", _post)
-    monkeypatch.setattr(chat_oauth.requests, "post", _post)
 
     raw = request_trigger_generation(
         provider,

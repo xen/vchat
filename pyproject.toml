@@ -16,6 +16,7 @@ urls = { Homepage = "https://www.vchat.com" }
 include = ["vchat*", "jobs*"]
 
 [tool.ruff.lint]
+extend-select = ["ARG001"]
 ignore = ["E712", "E402"]
 
 [tool.ty.environment]

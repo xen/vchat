@@ -5,20 +5,30 @@ import contextvars
 import json
 import logging
 import re
+import time
 from collections import namedtuple
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 import pycld2 as cld2
 import sqlalchemy as sa
 import tiktoken
+import torch
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vchat.views.chat.ai import BaseAIProvider, ModelInfo
-from jobs.embedder.model import load_embedding_model
+from jobs.embedder.model import load_embedding_model, resolve_torch_backend
 from vchat.models import ChatMsg
-from vchat.settings import config
+from vchat.settings import cfg
+from vchat.views.metrics import (
+    record_request_embedding_encode,
+    record_request_embedding_queue_wait,
+    record_request_embedding_timeout,
+    request_embedding_finished,
+    request_embedding_started,
+)
 
 Msg = namedtuple("Msg", ["role", "content"])
 
@@ -44,7 +54,6 @@ RERANK_QUERY_ECHO_PENALTY = 0.20
 RERANK_DOC_MIN_RATIO_TO_BEST = 0.55
 
 logger = logging.getLogger(__name__)
-cfg = config
 
 EMBEDDING_QUERY_PROMPT = (
     "Instruct: Дан вопрос, необходимо найти абзац текста с ответом\nQuery: "
@@ -63,7 +72,6 @@ CONTEXT_SAFETY_MARGIN = 1024
 SOURCE_SUMMARY_MAX_CHARS = 240
 RERANK_LIMIT = 48
 RRF_K = 60
-RERANK_MODEL = cfg["reranker_model_dir"]
 QUOTE_CONTEXT_KINDS = {"text", "summary", "section_summary", "file_summary"}
 COVERAGE_CONTEXT_KINDS = {
     "table",
@@ -116,6 +124,12 @@ lang_models = {"en": "en_core_web_sm", "ru": "ru_core_news_sm"}
 _nlps: dict[str, Any] = {}
 _embed_model: Any | None = None
 _rerank_model: Any | None = None
+_request_embed_executor: ThreadPoolExecutor | None = None
+_request_embed_semaphore: asyncio.Semaphore | None = None
+
+
+class RequestEmbeddingTimeoutError(RuntimeError):
+    """Raised when request-path embedding waits too long in the local queue."""
 
 
 @dataclass(frozen=True)
@@ -366,6 +380,69 @@ def embed_query(text: str) -> list[float]:
     return emb[0].tolist()
 
 
+async def embed_query_async(text: str) -> list[float]:
+    global _request_embed_executor
+    global _request_embed_semaphore
+
+    if _request_embed_semaphore is not None:
+        semaphore = _request_embed_semaphore
+    else:
+        semaphore = asyncio.Semaphore(cfg.request_embedding_concurrency)
+        _request_embed_semaphore = semaphore
+
+    queue_started_at = time.monotonic()
+
+    try:
+        await asyncio.wait_for(
+            semaphore.acquire(),
+            timeout=cfg.request_embedding_queue_timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        waited = time.monotonic() - queue_started_at
+        record_request_embedding_timeout()
+        record_request_embedding_queue_wait(waited)
+        logger.warning(
+            "Request embedding queue timeout after %.3fs",
+            waited,
+        )
+        raise RequestEmbeddingTimeoutError(
+            f"request embedding queue timeout after {waited:.3f}s"
+        ) from exc
+
+    wait_seconds = time.monotonic() - queue_started_at
+    record_request_embedding_queue_wait(wait_seconds)
+    if wait_seconds >= cfg.request_embedding_queue_warn_seconds:
+        logger.warning("Request embedding waited %.3fs in local queue", wait_seconds)
+
+    request_embedding_started()
+    encode_started_at = time.monotonic()
+    try:
+        torch.set_num_threads(cfg.request_embedding_torch_threads)
+        if _request_embed_executor is not None:
+            executor = _request_embed_executor
+        else:
+            executor = ThreadPoolExecutor(
+                max_workers=cfg.request_embedding_executor_workers,
+                thread_name_prefix="request-embedding",
+            )
+            _request_embed_executor = executor
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            executor,
+            embed_query,
+            text,
+        )
+    finally:
+        encode_seconds = time.monotonic() - encode_started_at
+        try:
+            record_request_embedding_encode(encode_seconds)
+        finally:
+            try:
+                request_embedding_finished()
+            finally:
+                semaphore.release()
+
+
 def token_count(text: str, model: str = "gpt-4o-mini") -> int:
     encoding = tiktoken.encoding_for_model(model)
     return len(encoding.encode(text or ""))
@@ -391,23 +468,23 @@ def loadrerank():
     global _rerank_model
     if _rerank_model is not None:
         return _rerank_model
-    import sys
-
     import torch
     from sentence_transformers import CrossEncoder  # type: ignore[import]
 
-    forced = cfg.get("reranker_device", "").strip().lower()
-    if forced:
-        device = forced
-    elif sys.platform == "darwin" and torch.backends.mps.is_available():
-        device = "mps"
-    elif sys.platform.startswith("linux") and torch.cuda.is_available():
+    if cfg.reranker_device != "auto":
+        device = resolve_torch_backend(
+            cfg.reranker_device,
+            purpose="Reranker",
+        )
+    elif torch.cuda.is_available():
         device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
     else:
         device = "cpu"
 
     _rerank_model = CrossEncoder(
-        RERANK_MODEL,
+        "models/reranker",
         device=device,
         max_length=512,
         local_files_only=True,
@@ -446,9 +523,8 @@ async def kb_vector_supply(
     if top_k <= 0:
         return []
 
-    vec_dim = int(cfg["vec_dim"])
-    if len(query_vec) != vec_dim:
-        raise ValueError(f"query_vec must have {vec_dim} dimensions")
+    if len(query_vec) != cfg.vec_dim:
+        raise ValueError(f"query_vec must have {cfg.vec_dim} dimensions")
 
     k_candidates = max(1, top_k * 2)
 
@@ -517,7 +593,7 @@ async def kb_vector_supply(
         LIMIT :top_k
         """
     ).bindparams(
-        sa.bindparam("qvec", type_=Vector(vec_dim)),
+        sa.bindparam("qvec", type_=Vector(cfg.vec_dim)),
         sa.bindparam("k_candidates", type_=sa.Integer()),
         sa.bindparam("top_k", type_=sa.Integer()),
         sa.bindparam("max_dist", type_=sa.Float()),
@@ -1046,7 +1122,7 @@ async def get_context(
     allowed_source_ids: list[int] | None = None,
 ) -> ContextResult:
     profile = queryprofile(prompt)
-    query_vec = await asyncio.to_thread(embed_query, prompt)
+    query_vec = await embed_query_async(prompt)
     tail = await tail_messages(db, chat_id=chat_id, limit=tail_limit)
 
     async with asyncio.TaskGroup() as task_group:
