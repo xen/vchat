@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ipaddress
 from types import SimpleNamespace
-from urllib.parse import urlparse
 
 import msgspec
 import pytest
@@ -12,7 +10,6 @@ from pydantic import ValidationError
 from vchat.settings import REDIS_KEY
 from vchat.settings import cfg
 from vchat.views.api import views as api_views
-from jobs.documents.content import content_sha256
 from vchat.views.projects.page_status import PageStatus
 
 
@@ -91,20 +88,20 @@ class _FakeRequest(dict):
         return self.query
 
 
-class _FakeDocument:
+class _FakePage:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
     def meta_dict(self):
         return dict(self.meta or {})
 
-    @property
-    def hash_value(self):
-        return self._hash
-
-    @hash_value.setter
-    def hash_value(self, value):
-        self._hash = content_sha256(value)
+    def patch_meta(self, *, remove=(), **values):
+        meta = self.meta_dict()
+        for key in remove:
+            meta.pop(key, None)
+        meta.update(values)
+        self.meta = meta
+        return meta
 
 
 class _FakeRedis:
@@ -132,6 +129,14 @@ def _auth_ok(monkeypatch: pytest.MonkeyPatch) -> None:
         return SimpleNamespace(client_id="vchat_test")
 
     monkeypatch.setattr(api_views, "_authenticate_update_request", _authenticate)
+
+
+class _TaskRecorder:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def delay(self, *args):
+        self.calls.append(args)
 
 
 def _signed_payload(secret: str, **overrides) -> dict[str, str]:
@@ -199,11 +204,6 @@ def test_host_helpers() -> None:
     assert api_views._is_host_allowed("example.com", hosts) is True
     assert api_views._is_host_allowed("sub.example.com", hosts) is True
     assert api_views._is_host_allowed("evil.com", hosts) is False
-
-    rows = [(10, "example.com"), (11, "docs.example.org")]
-    assert api_views._pick_source_for_host("example.com", rows) == 10
-    assert api_views._pick_source_for_host("sub.docs.example.org", rows) == 11
-    assert api_views._pick_source_for_host("nope.local", rows) is None
 
 
 @pytest.mark.asyncio
@@ -331,209 +331,20 @@ async def test_get_source_hosts_filters_invalid_urls() -> None:
     db = _FakeDB(
         rows=[(1, "https://example.com/sitemap.xml"), (2, "not a url"), (3, None)]
     )
-    req = _FakeRequest(db=db)
-    result = await api_views._get_source_hosts(req)
+    req = _FakeRequest(db)
+    result = await api_views._get_source_hosts(req, SimpleNamespace(id=7))
     assert result == [(1, "example.com")]
 
 
 @pytest.mark.asyncio
 async def test_get_source_hosts_uses_client_sources_only() -> None:
-    req = _FakeRequest(
-        db=_FakeDB(rows=[(1, "https://allowed.com/docs"), (2, "not a url")])
-    )
+    db = _FakeDB(rows=[(1, "https://allowed.com/docs"), (2, "not a url")])
+    req = _FakeRequest(db)
     client = SimpleNamespace(id=7)
 
     result = await api_views._get_source_hosts(req, client)
 
     assert result == [(1, "allowed.com")]
-
-
-@pytest.mark.asyncio
-async def test_upsert_document_creates_and_indexes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db = _FakeDB(scalar_value=None)
-    req = _FakeRequest(db=db)
-
-    async def _extract_content(url: str):
-        assert urlparse(url).scheme in {"http", "https"}
-        return (
-            "content",
-            {"content_type": "text/html"},
-            "Doc title",
-            b"<html>content</html>",
-            "text/html",
-        )
-
-    delayed = []
-
-    def _schedule(doc_id):
-        delayed.append(doc_id)
-        return True
-
-    monkeypatch.setattr(api_views, "_extract_content", _extract_content)
-    monkeypatch.setattr(api_views, "schedule_index_document", _schedule)
-    monkeypatch.setattr(api_views, "guess_document_type", lambda url, ct: "html")
-
-    status, _doc_id = await api_views._upsert_document(
-        req,
-        source_id=1,
-        url="https://example.com/a",
-        discover_source="vchat_test",
-    )
-    assert status == "indexed"
-    assert db.added
-    created_doc = db.added[0]
-    assert created_doc.title == "Doc title"
-    assert created_doc.raw_content == b"<html>content</html>"
-    assert created_doc.raw_content_size == len(b"<html>content</html>")
-    assert created_doc.raw_content_type == "text/html"
-    assert created_doc.meta["doc_type"] == "html"
-    assert created_doc.discover_by == "api"
-    assert created_doc.discover_source == "vchat_test"
-    assert created_doc.status == PageStatus.parsing
-    assert not hasattr(created_doc, "index_status")
-    assert db.commits == 1
-    assert db.refresh_count == 1
-    assert delayed
-
-
-@pytest.mark.asyncio
-async def test_upsert_document_skips_reindex_for_unchanged_content(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    document = _FakeDocument(
-        id=12,
-        source_id=1,
-        uri="https://example.com/a",
-        content="same",
-        _hash=content_sha256("same"),
-        meta={"doc_type": "html"},
-        title="Doc title",
-    )
-    db = _FakeDB(scalar_value=document)
-    req = _FakeRequest(db=db)
-
-    async def _extract_content(url: str):
-        assert urlparse(url).scheme in {"http", "https"}
-        return (
-            "same",
-            {"content_type": "text/html"},
-            "Doc title",
-            b"<html>same</html>",
-            "text/html",
-        )
-
-    delayed = []
-
-    async def _has_chunks(db, doc_id):
-        _ = db, doc_id
-        return True
-
-    monkeypatch.setattr(api_views, "_extract_content", _extract_content)
-    monkeypatch.setattr(
-        api_views,
-        "schedule_index_document",
-        lambda doc_id: delayed.append(doc_id) or True,
-    )
-    monkeypatch.setattr(api_views, "guess_document_type", lambda url, ct: "html")
-    monkeypatch.setattr(api_views, "async_document_has_chunks", _has_chunks)
-
-    status, doc_id = await api_views._upsert_document(
-        req, source_id=1, url="https://example.com/a"
-    )
-    assert status == "indexed"
-    assert doc_id == 12
-    assert document.status == PageStatus.ready
-    assert not hasattr(document, "index_status")
-    assert db.commits == 1
-    assert db.refresh_count == 1
-    assert delayed == []
-
-
-@pytest.mark.asyncio
-async def test_upsert_document_skips_reindex_for_near_duplicate_content(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    previous_content = "\n".join(
-        [
-            "# Title",
-            "Body line 1",
-            "Body line 2",
-            "Body line 3",
-            "Published: 2026-05-29",
-        ]
-    )
-    new_content = "\n".join(
-        [
-            "# Title",
-            "Body line 1",
-            "Body line 2",
-            "Body line 3",
-            "Published: 2026-05-30",
-        ]
-    )
-    document = _FakeDocument(
-        id=13,
-        source_id=1,
-        uri="https://example.com/a",
-        content=previous_content,
-        _hash=content_sha256(previous_content),
-        meta={"doc_type": "html"},
-        title="Doc title",
-        status="indexed",
-        language="",
-        length=len(previous_content),
-    )
-    db = _FakeDB(scalar_value=document)
-    req = _FakeRequest(db=db)
-
-    async def _extract_content(url: str):
-        assert urlparse(url).scheme in {"http", "https"}
-        return (
-            new_content,
-            {"content_type": "text/html"},
-            "Doc title",
-            b"<html>new</html>",
-            "text/html",
-        )
-
-    delayed = []
-
-    async def _has_chunks(db, doc_id):
-        _ = db, doc_id
-        return True
-
-    monkeypatch.setattr(api_views, "_extract_content", _extract_content)
-    monkeypatch.setattr(
-        api_views,
-        "schedule_index_document",
-        lambda doc_id: delayed.append(doc_id) or True,
-    )
-    monkeypatch.setattr(api_views, "guess_document_type", lambda url, ct: "html")
-    monkeypatch.setattr(api_views, "async_document_has_chunks", _has_chunks)
-
-    status, doc_id = await api_views._upsert_document(
-        req, source_id=1, url="https://example.com/a"
-    )
-    assert status == "indexed"
-    assert doc_id == 13
-    assert document.content == new_content
-    assert document.hash_value == content_sha256(new_content)
-    assert document.status == PageStatus.ready
-    assert not hasattr(document, "index_status")
-    assert delayed == []
-
-
-@pytest.mark.asyncio
-async def test_delete_document_by_url() -> None:
-    docs = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
-    db = _FakeDB(rows=docs)
-    req = _FakeRequest(db=db)
-    deleted = await api_views._delete_document_by_url(req, "https://example.com/x")
-    assert deleted == 2
-    assert len(db.deleted) == 2
-    assert db.commits == 1
 
 
 @pytest.mark.asyncio
@@ -551,424 +362,94 @@ async def test_update_document_missing_or_invalid_url(
 
 
 @pytest.mark.asyncio
-async def test_update_document_domain_forbidden(
+async def test_update_document_creates_page_and_queues_crawl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = _FakeDB()
+    req = _FakeRequest(db, query={"url": "https://allowed.com/a"})
+    _auth_ok(monkeypatch)
+    task = _TaskRecorder()
+    monkeypatch.setattr(api_views, "crawl_page_task", task)
+
+    async def _hosts(_request, _client):
+        return [(55, "allowed.com")]
+
+    monkeypatch.setattr(api_views, "_get_source_hosts", _hosts)
+
+    resp = await api_views.update_document(req)
+    payload = _json(resp)
+    assert resp.status == 202
+    assert payload["action"] == "queued"
+    assert len(db.added) == 1
+    created = db.added[0]
+    assert created.id == 1
+    assert created.uri == "https://allowed.com/a"
+    assert created.source_id == 55
+    assert created.status == PageStatus.crawler
+    assert created.status_error is None
+    assert created.discover_by == "api"
+    assert created.discover_source == "vchat_test"
+    assert created.meta["force_reprocess_once"] is True
+    assert created._hash == ""
+    assert db.commits == 1
+    assert task.calls == [(1,)]
+
+
+@pytest.mark.asyncio
+async def test_update_document_requeues_existing_page_for_crawl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    page = _FakePage(
+        id=42,
+        source_id=1,
+        uri="https://allowed.com/a",
+        status=PageStatus.ready,
+        status_error="http_4xx",
+        discover_by=None,
+        discover_source=None,
+        meta={"error": "old", "doc_type": "html"},
+    )
+    db = _FakeDB(scalar_value=page)
+    req = _FakeRequest(db, query={"url": "https://allowed.com/a"})
+    _auth_ok(monkeypatch)
+    task = _TaskRecorder()
+    monkeypatch.setattr(api_views, "crawl_page_task", task)
+
+    async def _hosts(_request, _client):
+        return [(7, "allowed.com")]
+
+    monkeypatch.setattr(api_views, "_get_source_hosts", _hosts)
+
+    resp = await api_views.update_document(req)
+
+    assert resp.status == 202
+    assert db.added == []
+    assert page.source_id == 7
+    assert page.status == PageStatus.crawler
+    assert page.status_error is None
+    assert page.discover_by == "api"
+    assert page.discover_source == "vchat_test"
+    assert page.meta == {"doc_type": "html", "force_reprocess_once": True}
+    assert db.commits == 1
+    assert task.calls == [(42,)]
+
+
+@pytest.mark.asyncio
+async def test_update_document_rejects_forbidden_domain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db = _FakeDB()
     req = _FakeRequest(db, query={"url": "https://forbidden.example.com/a"})
     _auth_ok(monkeypatch)
+    task = _TaskRecorder()
+    monkeypatch.setattr(api_views, "crawl_page_task", task)
 
-    async def _hosts(request, client):
-        _ = request, client
+    async def _hosts(_request, _client):
         return [(1, "allowed.com")]
 
     monkeypatch.setattr(api_views, "_get_source_hosts", _hosts)
+
     resp = await api_views.update_document(req)
+
     assert resp.status == 403
-    assert "Domain is not allowed" in resp.text
-
-
-@pytest.mark.asyncio
-async def test_update_document_404_deletes(monkeypatch: pytest.MonkeyPatch) -> None:
-    db = _FakeDB()
-    req = _FakeRequest(db, query={"url": "https://allowed.com/a"})
-    _auth_ok(monkeypatch)
-
-    async def _hosts(request, client):
-        _ = request, client
-        return [(1, "allowed.com")]
-
-    async def _state(url):
-        _ = url
-        return 404, None, 404
-
-    monkeypatch.setattr(api_views, "_get_source_hosts", _hosts)
-    monkeypatch.setattr(api_views, "_resolve_url_state", _state)
-    called = []
-
-    async def _delete(request, url):
-        called.append((request, url))
-        return 1
-
-    monkeypatch.setattr(api_views, "_delete_document_by_url", _delete)
-    resp = await api_views.update_document(req)
-    payload = _json(resp)
-    assert resp.status == 200
-    assert payload["action"] == "deleted"
-    assert called
-
-
-@pytest.mark.asyncio
-async def test_update_document_redirect_forbidden_target(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db = _FakeDB()
-    req = _FakeRequest(db, query={"url": "https://allowed.com/a"})
-    _auth_ok(monkeypatch)
-
-    async def _hosts(request, client):
-        _ = request, client
-        return [(1, "allowed.com")]
-
-    async def _state(url):
-        _ = url
-        return 302, "https://evil.com/redirected", 200
-
-    monkeypatch.setattr(api_views, "_get_source_hosts", _hosts)
-    monkeypatch.setattr(api_views, "_resolve_url_state", _state)
-    resp = await api_views.update_document(req)
-    assert resp.status == 403
-
-
-def test_redirect_target_policy_stays_within_current_domain() -> None:
-    assert api_views._redirect_target_allowed(
-        "https://allowed.com/a",
-        "https://allowed.com/b",
-    )
-    assert api_views._redirect_target_allowed(
-        "https://allowed.com/a",
-        "https://www.allowed.com/b",
-    )
-    assert api_views._redirect_target_allowed(
-        "https://docs.allowed.com/a",
-        "https://allowed.com/b",
-    )
-    assert not api_views._redirect_target_allowed(
-        "https://allowed.com/a",
-        "https://evil.com/b",
-    )
-    assert not api_views._redirect_target_allowed(
-        "https://allowed.com/a",
-        "javascript:alert(1)",
-    )
-
-
-class _FakeFetchContent:
-    def __init__(self, chunks: list[bytes]) -> None:
-        self._chunks = chunks
-
-    async def iter_chunked(self, _size: int):
-        for chunk in self._chunks:
-            yield chunk
-
-
-class _FakeFetchResponse:
-    def __init__(
-        self,
-        *,
-        url: str,
-        status: int,
-        headers: dict[str, str] | None = None,
-        body: bytes = b"",
-        chunks: list[bytes] | None = None,
-    ) -> None:
-        self.url = url
-        self.status = status
-        self.headers = headers or {}
-        self.charset = "utf-8"
-        self.content = _FakeFetchContent(chunks if chunks is not None else [body])
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        _ = exc_type, exc, tb
-        return False
-
-    def raise_for_status(self):
-        if self.status >= 400:
-            raise AssertionError(f"unexpected status {self.status}")
-
-
-class _FakeFetchClient:
-    def __init__(self, responses: dict[str, _FakeFetchResponse]) -> None:
-        self.responses = responses
-        self.requests: list[tuple[str, bool]] = []
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        _ = exc_type, exc, tb
-        return False
-
-    def get(self, url, *, allow_redirects, headers):
-        _ = headers
-        self.requests.append((url, allow_redirects))
-        return self.responses[url]
-
-
-class _FakeResolver:
-    def __init__(self, rows):
-        self.rows = rows
-        self.closed = False
-
-    async def resolve(self, host, port=0, family=0):
-        return self.rows
-
-    async def close(self):
-        self.closed = True
-
-
-def _allow_fetch_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        api_views,
-        "_resolve_fetch_addresses",
-        lambda hostname: [ipaddress.ip_address("93.184.216.34")],
-    )
-
-
-@pytest.mark.asyncio
-async def test_fetch_url_content_follows_same_domain_redirects(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _allow_fetch_hosts(monkeypatch)
-    client = _FakeFetchClient(
-        {
-            "https://allowed.com/a": _FakeFetchResponse(
-                url="https://allowed.com/a",
-                status=302,
-                headers={"Location": "/b"},
-            ),
-            "https://allowed.com/b": _FakeFetchResponse(
-                url="https://allowed.com/b",
-                status=200,
-                headers={"Content-Type": "text/html"},
-                body=b"<html>ok</html>",
-            ),
-        }
-    )
-    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
-
-    body, content_type, raw_body, _headers = await api_views._fetch_url_content(
-        "https://allowed.com/a"
-    )
-
-    assert body == "<html>ok</html>"
-    assert content_type == "text/html"
-    assert raw_body == b"<html>ok</html>"
-    assert client.requests == [
-        ("https://allowed.com/a", False),
-        ("https://allowed.com/b", False),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_fetch_url_content_blocks_cross_domain_redirect(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _allow_fetch_hosts(monkeypatch)
-    client = _FakeFetchClient(
-        {
-            "https://allowed.com/a": _FakeFetchResponse(
-                url="https://allowed.com/a",
-                status=302,
-                headers={"Location": "https://evil.com/private"},
-            ),
-            "https://evil.com/private": _FakeFetchResponse(
-                url="https://evil.com/private",
-                status=200,
-                body=b"secret",
-            ),
-        }
-    )
-    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
-
-    with pytest.raises(web.HTTPForbidden):
-        await api_views._fetch_url_content("https://allowed.com/a")
-
-    assert client.requests == [("https://allowed.com/a", False)]
-
-
-@pytest.mark.asyncio
-async def test_fetch_url_content_blocks_same_domain_private_redirect(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def _resolve(hostname):
-        if hostname == "private.allowed.com":
-            return [ipaddress.ip_address("10.0.0.10")]
-        return [ipaddress.ip_address("93.184.216.34")]
-
-    monkeypatch.setattr(api_views, "_resolve_fetch_addresses", _resolve)
-    client = _FakeFetchClient(
-        {
-            "https://allowed.com/a": _FakeFetchResponse(
-                url="https://allowed.com/a",
-                status=302,
-                headers={"Location": "https://private.allowed.com/private"},
-            ),
-            "https://private.allowed.com/private": _FakeFetchResponse(
-                url="https://private.allowed.com/private",
-                status=200,
-                body=b"secret",
-            ),
-        }
-    )
-    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
-
-    with pytest.raises(web.HTTPForbidden):
-        await api_views._fetch_url_content("https://allowed.com/a")
-
-    assert client.requests == [("https://allowed.com/a", False)]
-
-
-@pytest.mark.asyncio
-async def test_ensure_fetch_target_allowed_propagates_dns_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def _raise_gaierror(_hostname):
-        raise api_views.socket.gaierror("dns unavailable")
-
-    monkeypatch.setattr(api_views, "_resolve_fetch_addresses", _raise_gaierror)
-
-    with pytest.raises(api_views.socket.gaierror):
-        await api_views._ensure_fetch_target_allowed("https://allowed.com/a")
-
-
-@pytest.mark.asyncio
-async def test_fetch_url_content_rejects_oversized_content_length(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _allow_fetch_hosts(monkeypatch)
-    client = _FakeFetchClient(
-        {
-            "https://allowed.com/a": _FakeFetchResponse(
-                url="https://allowed.com/a",
-                status=200,
-                headers={"Content-Length": "6"},
-                body=b"ok",
-            ),
-        }
-    )
-    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
-    monkeypatch.setattr(api_views.cfg, "raw_content_max_bytes", 5)
-
-    with pytest.raises(web.HTTPRequestEntityTooLarge):
-        await api_views._fetch_url_content("https://allowed.com/a")
-
-
-@pytest.mark.asyncio
-async def test_fetch_url_content_rejects_chunked_body_over_limit(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _allow_fetch_hosts(monkeypatch)
-    client = _FakeFetchClient(
-        {
-            "https://allowed.com/a": _FakeFetchResponse(
-                url="https://allowed.com/a",
-                status=200,
-                chunks=[b"123", b"456"],
-            ),
-        }
-    )
-    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
-    monkeypatch.setattr(api_views.cfg, "raw_content_max_bytes", 5)
-
-    with pytest.raises(web.HTTPRequestEntityTooLarge):
-        await api_views._fetch_url_content("https://allowed.com/a")
-
-
-@pytest.mark.asyncio
-async def test_resolve_url_state_blocks_cross_domain_redirect(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _allow_fetch_hosts(monkeypatch)
-    client = _FakeFetchClient(
-        {
-            "https://allowed.com/a": _FakeFetchResponse(
-                url="https://allowed.com/a",
-                status=302,
-                headers={"Location": "https://evil.com/private"},
-            ),
-            "https://evil.com/private": _FakeFetchResponse(
-                url="https://evil.com/private",
-                status=200,
-                body=b"secret",
-            ),
-        }
-    )
-    monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
-
-    with pytest.raises(web.HTTPForbidden):
-        await api_views._resolve_url_state("https://allowed.com/a")
-
-    assert client.requests == [("https://allowed.com/a", False)]
-
-
-@pytest.mark.asyncio
-async def test_validating_fetch_resolver_rejects_private_connect_address() -> None:
-    resolver = api_views._ValidatingFetchResolver(
-        _FakeResolver([{"host": "10.0.0.10"}])
-    )
-
-    with pytest.raises(web.HTTPForbidden):
-        await resolver.resolve("allowed.com", 443)
-
-
-@pytest.mark.asyncio
-async def test_update_document_redirect_replace(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    db = _FakeDB()
-    req = _FakeRequest(db, query={"url": "https://allowed.com/a"})
-    _auth_ok(monkeypatch)
-
-    async def _hosts(request, client):
-        _ = request, client
-        return [(1, "allowed.com")]
-
-    async def _state(url):
-        _ = url
-        return 301, "https://allowed.com/new", 200
-
-    monkeypatch.setattr(api_views, "_get_source_hosts", _hosts)
-    monkeypatch.setattr(api_views, "_resolve_url_state", _state)
-    deleted = []
-    upserted = []
-
-    async def _delete(_request, url):
-        deleted.append(url)
-        return 1
-
-    async def _upsert(_request, source_id, url, **kwargs):
-        upserted.append((source_id, url, kwargs))
-        return ("indexed", 10)
-
-    monkeypatch.setattr(api_views, "_delete_document_by_url", _delete)
-    monkeypatch.setattr(api_views, "_upsert_document", _upsert)
-    resp = await api_views.update_document(req)
-    payload = _json(resp)
-    assert payload["action"] == "replaced"
-    assert deleted == ["https://allowed.com/a"]
-    assert upserted == [
-        (1, "https://allowed.com/new", {"discover_source": "vchat_test"})
-    ]
-
-
-@pytest.mark.asyncio
-async def test_update_document_success_indexed(monkeypatch: pytest.MonkeyPatch) -> None:
-    db = _FakeDB()
-    req = _FakeRequest(db, query={"url": "https://allowed.com/a"})
-    _auth_ok(monkeypatch)
-
-    async def _hosts(request, client):
-        _ = request, client
-        return [(55, "allowed.com")]
-
-    async def _state(url):
-        _ = url
-        return 200, None, 200
-
-    monkeypatch.setattr(api_views, "_get_source_hosts", _hosts)
-    monkeypatch.setattr(api_views, "_resolve_url_state", _state)
-    calls = []
-
-    async def _upsert(_request, source_id, url, **kwargs):
-        calls.append((source_id, url, kwargs))
-        return ("indexed", 999)
-
-    monkeypatch.setattr(api_views, "_upsert_document", _upsert)
-    resp = await api_views.update_document(req)
-    payload = _json(resp)
-    assert payload["action"] == "indexed"
-    assert calls == [(55, "https://allowed.com/a", {"discover_source": "vchat_test"})]
+    assert task.calls == []

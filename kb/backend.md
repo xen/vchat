@@ -6,6 +6,16 @@
   модели базы данных, метрики и middleware.
 - `jobs/` содержит фоновое выполнение: связку Celery, crawler, embedder,
   индексирование, документы и триггеры.
+- Код, который исполняется Celery/background worker-ом, должен жить в `jobs/`.
+  Код в `jobs/` должен быть синхронным: sync SQLAlchemy session, sync HTTP
+  clients и обычные helper-ы, без `aiohttp` imports и HTTP-layer exceptions.
+  Aiohttp route во `vchat/views/` валидирует вход, авторизует запрос и проверяет
+  DB-side права клиента на source/URL, затем ставит задачу в очередь.
+- API-обновление страницы должно переиспользовать существующий crawler lifecycle:
+  route создает или находит `Page`, ставит `PageStatus.crawler`, выставляет
+  `force_reprocess_once` при переобходе и вызывает `crawl_page_task.delay(page.id)`.
+  Не заводи параллельный job для скачивания, redirect/404, extraction, upsert,
+  shingles или индексирования: этим владеют crawler tasks/pipeline.
 - `migrations/` содержит Alembic-миграции и должен оставаться согласованным с
   изменениями моделей.
 - `tests/` содержит unit-тесты, интеграционные проверки, тесты чата, crawler и

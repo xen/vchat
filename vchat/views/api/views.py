@@ -1,35 +1,22 @@
-import asyncio
 import base64
 import hashlib
 import hmac
-import ipaddress
 import secrets
-import socket
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import sqlalchemy as sa
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, web
-from aiohttp.abc import AbstractResolver
-from aiohttp.resolver import DefaultResolver
+from aiohttp import web
 from cryptography.fernet import Fernet
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY, config
-from jobs.crawler.tasks import async_update_page_shingles, schedule_index_document
-from jobs.crawler.document_pipeline import extract_url_document
-from jobs.indexing.documents import (
-    async_document_has_chunks,
-    document_content_effectively_unchanged,
-    raw_content_payload,
-)
-from jobs.documents.content import document_too_big_message, is_document_too_big
-from jobs.documents.types import guess_document_type
+from jobs.crawler.tasks import crawl_page_task
+from vchat.settings import REDIS_KEY, cfg
 from vchat.utils import json_response
-from vchat.models import ApiClient, Chunk, Page, Source
+from vchat.models import ApiClient, Page, Source
 from vchat.models.data import api_client_source
-from vchat.tracing import request_id_headers
-from vchat.views.projects.page_status import PageStatus, PageStatusError
+from vchat.views.projects.page_status import PageStatus
 
 __all__ = [
     "update_document",
@@ -39,7 +26,77 @@ MAX_URL_LENGTH = 2048
 MAX_CLIENT_ID_LENGTH = 64
 SIGNATURE_LENGTH = 64
 MAX_NONCE_LENGTH = 128
-DEFAULT_RAW_CONTENT_MAX_BYTES = 10 * 1024 * 1024
+
+
+class UpdatePayload(BaseModel):
+    url: str
+    client_id: str
+    timestamp: str
+    nonce: str
+    signature: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_form_fields(cls, data: Any) -> dict[str, str]:
+        source = data if isinstance(data, dict) else {}
+        return {
+            "url": str(source.get("url") or "").strip(),
+            "client_id": str(source.get("client_id") or "").strip(),
+            "timestamp": str(source.get("timestamp") or "").strip(),
+            "nonce": str(source.get("nonce") or "").strip(),
+            "signature": str(source.get("signature") or "").strip(),
+        }
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        if not value:
+            raise ValueError("missing")
+        if len(value) > MAX_URL_LENGTH:
+            raise ValueError("too_long")
+        return value
+
+    @field_validator("client_id")
+    @classmethod
+    def validate_client_id(cls, value: str) -> str:
+        if not value:
+            raise ValueError("missing")
+        if len(value) > MAX_CLIENT_ID_LENGTH:
+            raise ValueError("too_long")
+        return value
+
+    @field_validator("timestamp")
+    @classmethod
+    def validate_timestamp(cls, value: str) -> str:
+        if not value:
+            raise ValueError("missing")
+        try:
+            timestamp = int(value)
+        except ValueError:
+            raise ValueError("invalid") from None
+
+        now = int(datetime.now(timezone.utc).timestamp())
+        if abs(now - timestamp) > cfg.api_update_timestamp_ttl_seconds:
+            raise ValueError("expired")
+        return value
+
+    @field_validator("nonce")
+    @classmethod
+    def validate_nonce(cls, value: str) -> str:
+        if not value:
+            raise ValueError("missing")
+        if len(value) > MAX_NONCE_LENGTH:
+            raise ValueError("too_long")
+        return value
+
+    @field_validator("signature")
+    @classmethod
+    def validate_signature(cls, value: str) -> str:
+        if not value:
+            raise ValueError("missing")
+        if len(value) != SIGNATURE_LENGTH:
+            raise ValueError("invalid")
+        return value
 
 
 def _error(message: str, status: int = 400) -> web.Response:
@@ -115,40 +172,7 @@ async def _read_update_payload(request: web.Request) -> dict[str, str]:
     return data
 
 
-def _validate_update_payload(
-    request: web.Request,
-    data: dict[str, str],
-) -> web.Response | None:
-    for field in ("url", "client_id", "timestamp", "nonce", "signature"):
-        if not data[field]:
-            return _error(f"Missing field: {field}", status=400)
-
-    if len(data["url"]) > MAX_URL_LENGTH:
-        return _error("Field is too long: url", status=400)
-    if len(data["client_id"]) > MAX_CLIENT_ID_LENGTH:
-        return _error("Field is too long: client_id", status=400)
-    if len(data["signature"]) != SIGNATURE_LENGTH:
-        return _error("Invalid signature", status=401)
-    if len(data["nonce"]) > MAX_NONCE_LENGTH:
-        return _error("Field is too long: nonce", status=400)
-
-    try:
-        timestamp = int(data["timestamp"])
-    except ValueError:
-        return _error("Invalid timestamp", status=400)
-
-    now = int(datetime.now(timezone.utc).timestamp())
-    ttl = int(request.app[CONFIG_KEY].get("api_update_timestamp_ttl_seconds", 60))
-    if abs(now - timestamp) > ttl:
-        return _error("Timestamp is too old", status=401)
-
-    return None
-
-
 async def _check_update_rate_limit(request: web.Request, client_id: str) -> bool:
-    config = request.app[CONFIG_KEY]
-    limit = int(config.get("api_update_rate_limit_requests", 60))
-    window = int(config.get("api_update_rate_limit_window_seconds", 60))
     redis = request.app[REDIS_KEY]
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     key = f"api_update:rate:{client_id}"
@@ -173,8 +197,8 @@ async def _check_update_rate_limit(request: web.Request, client_id: str) -> bool
         1,
         key,
         now_ms,
-        window * 1000,
-        limit,
+        cfg.api_update_rate_limit_window_seconds * 1000,
+        cfg.api_update_rate_limit_requests,
         member,
     )
     return bool(allowed)
@@ -185,7 +209,7 @@ async def _claim_update_nonce(
     client_id: str,
     nonce: str,
 ) -> bool:
-    ttl = int(request.app[CONFIG_KEY].get("api_update_nonce_ttl_seconds", 180))
+    ttl = cfg.api_update_nonce_ttl_seconds
     nonce_hash = hashlib.sha256(nonce.encode("utf-8")).hexdigest()
     key = f"api_update:nonce:{client_id}:{nonce_hash}"
     redis = request.app[REDIS_KEY]
@@ -197,34 +221,48 @@ async def _authenticate_update_request(
     request: web.Request,
     data: dict[str, str],
 ) -> ApiClient | web.Response:
-    validation_error = _validate_update_payload(request, data)
-    if validation_error is not None:
-        return validation_error
+    try:
+        payload = UpdatePayload.model_validate(data)
+    except ValidationError as exc:
+        errors = []
+        for error in exc.errors():
+            ctx_error = error.get("ctx", {}).get("error")
+            reason = str(ctx_error) if ctx_error else str(error["msg"])
+            errors.append(
+                {
+                    "field": ".".join(str(part) for part in error["loc"]),
+                    "reason": reason,
+                }
+            )
+        return json_response(
+            {"status": "error", "message": "Validation error", "errors": errors},
+            status=400,
+        )
 
     client = await request["db"].scalar(
-        sa.select(ApiClient).where(ApiClient.client_id == data["client_id"])
+        sa.select(ApiClient).where(ApiClient.client_id == payload.client_id)
     )
     if client is None or not client.is_active:
         return _error("Invalid client", status=401)
 
     secret = decrypt_client_secret(
         client.encrypted_secret,
-        request.app[CONFIG_KEY]["secret_key"],
+        cfg.secret_key,
     )
     expected = sign_update_request(
         secret,
-        url=data["url"],
-        client_id=data["client_id"],
-        timestamp=data["timestamp"],
-        nonce=data["nonce"],
+        url=payload.url,
+        client_id=payload.client_id,
+        timestamp=payload.timestamp,
+        nonce=payload.nonce,
     )
-    if not hmac.compare_digest(expected, data["signature"]):
+    if not hmac.compare_digest(expected, payload.signature):
         return _error("Invalid signature", status=401)
 
-    if not await _claim_update_nonce(request, data["client_id"], data["nonce"]):
+    if not await _claim_update_nonce(request, payload.client_id, payload.nonce):
         return _error("Nonce has already been used", status=401)
 
-    if not await _check_update_rate_limit(request, data["client_id"]):
+    if not await _check_update_rate_limit(request, payload.client_id):
         return _error("Rate limit exceeded", status=429)
 
     return client
@@ -246,194 +284,17 @@ def _is_host_allowed(host: str, source_hosts: set[str]) -> bool:
     return any(host.endswith(f".{allowed}") for allowed in source_hosts)
 
 
-def _hosts_within_same_domain(left: str, right: str) -> bool:
-    left = _normalize_host(left)
-    right = _normalize_host(right)
-    return (
-        left == right
-        or left.endswith(f".{right}")
-        or right.endswith(f".{left}")
-    )
-
-
-def _redirect_target_allowed(current_url: str, target_url: str) -> bool:
-    current = urlparse(current_url)
-    target = urlparse(target_url)
-    if target.scheme not in {"http", "https"} or not target.hostname:
-        return False
-    if current.scheme not in {"http", "https"} or not current.hostname:
-        return False
-    return _hosts_within_same_domain(current.hostname, target.hostname)
-
-
-def _address_allowed_for_fetch(
-    address: ipaddress.IPv4Address | ipaddress.IPv6Address,
-) -> bool:
-    if isinstance(address, ipaddress.IPv4Address) and address.packed[-1] in {0, 255}:
-        return False
-    return address.is_global and not address.is_multicast
-
-
-def _resolve_fetch_addresses(
-    hostname: str,
-) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
-    infos = socket.getaddrinfo(hostname, None)
-    addresses = []
-    for info in infos:
-        host = info[4][0]
-        addresses.append(ipaddress.ip_address(host.split("%", 1)[0]))
-    return addresses
-
-
-class _ValidatingFetchResolver(AbstractResolver):
-    def __init__(self, resolver: AbstractResolver | None = None) -> None:
-        self._resolver = resolver or DefaultResolver()
-
-    async def resolve(
-        self,
-        host: str,
-        port: int = 0,
-        family: socket.AddressFamily = socket.AF_INET,
-    ) -> list[dict[str, Any]]:
-        rows = await self._resolver.resolve(host, port, family)
-        addresses = [
-            ipaddress.ip_address(str(row["host"]).split("%", 1)[0])
-            for row in rows
-        ]
-        if not addresses or not all(
-            _address_allowed_for_fetch(addr) for addr in addresses
-        ):
-            raise web.HTTPForbidden(text="URL target is not allowed")
-        return rows
-
-    async def close(self) -> None:
-        await self._resolver.close()
-
-
-async def _ensure_fetch_target_allowed(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise web.HTTPForbidden(text="URL target is not allowed")
-
-    addresses = await asyncio.to_thread(_resolve_fetch_addresses, parsed.hostname)
-    if not addresses or not all(
-        _address_allowed_for_fetch(addr) for addr in addresses
-    ):
-        raise web.HTTPForbidden(text="URL target is not allowed")
-
-
-def _pick_source_for_host(host: str, source_rows: list[tuple[int, str]]) -> int | None:
-    host = _normalize_host(host)
-    # Prefer exact host match, then parent-domain match.
-    for source_id, source_host in source_rows:
-        if host == source_host:
-            return source_id
-    for source_id, source_host in source_rows:
-        if host.endswith(f".{source_host}"):
-            return source_id
-    return None
-
-
-async def _fetch_url_content(
-    url: str,
-    *,
-    max_bytes: int | None = None,
-) -> tuple[str, str | None, bytes | None, dict]:
-    if max_bytes is None:
-        max_bytes = int(
-            config.get("raw_content_max_bytes", DEFAULT_RAW_CONTENT_MAX_BYTES)
-            or DEFAULT_RAW_CONTENT_MAX_BYTES
-        )
-    timeout = ClientTimeout(total=20)
-    async with ClientSession(
-        timeout=timeout,
-        connector=TCPConnector(resolver=_ValidatingFetchResolver()),
-    ) as client:
-        current_url = url
-        for _ in range(5):
-            await _ensure_fetch_target_allowed(current_url)
-            async with client.get(
-                current_url,
-                allow_redirects=False,
-                headers=request_id_headers(),
-            ) as resp:
-                if resp.status in {301, 302, 303, 307, 308}:
-                    location = resp.headers.get("Location")
-                    if not location:
-                        break
-                    redirect_url = urljoin(str(resp.url), location)
-                    if not _redirect_target_allowed(str(resp.url), redirect_url):
-                        raise web.HTTPForbidden(
-                            text="Redirect target domain is not allowed"
-                        )
-                    await _ensure_fetch_target_allowed(redirect_url)
-                    current_url = redirect_url
-                    continue
-
-                resp.raise_for_status()
-                content_length = resp.headers.get("Content-Length")
-                if content_length is not None:
-                    try:
-                        actual_size = int(content_length)
-                    except ValueError:
-                        actual_size = None
-                    if actual_size is not None and actual_size > max_bytes:
-                        raise web.HTTPRequestEntityTooLarge(
-                            max_size=max_bytes,
-                            actual_size=actual_size,
-                            text="Document is too large",
-                        )
-
-                chunks: list[bytes] = []
-                raw_body_size = 0
-                async for chunk in resp.content.iter_chunked(64 * 1024):
-                    raw_body_size += len(chunk)
-                    if raw_body_size > max_bytes:
-                        raise web.HTTPRequestEntityTooLarge(
-                            max_size=max_bytes,
-                            actual_size=raw_body_size,
-                            text="Document is too large",
-                        )
-                    chunks.append(chunk)
-                raw_body = b"".join(chunks)
-                content_type = resp.headers.get("Content-Type")
-                charset = resp.charset or "utf-8"
-                body = raw_body.decode(charset, errors="replace")
-                return body, content_type, raw_body, dict(resp.headers)
-        raise web.HTTPBadGateway(text="Too many redirects")
-
-
-async def _extract_content(
-    url: str,
-) -> tuple[str, dict[str, str], str | None, bytes | None, str | None]:
-    body, content_type, raw_body, _headers = await _fetch_url_content(url)
-    content, title, meta = await asyncio.to_thread(
-        extract_url_document,
-        url,
-        html_body=body,
-        content_type=content_type,
-    )
-    return content, dict(meta or {}), title, raw_body, content_type
-
-
 async def _get_source_hosts(
     request: web.Request,
-    client: ApiClient | None = None,
+    client: ApiClient,
 ) -> list[tuple[int, str]]:
-    if client is not None:
-        rows = (
-            await request["db"].execute(
-                sa.select(Source.id, Source.uri)
-                .join(api_client_source, api_client_source.c.source_id == Source.id)
-                .where(api_client_source.c.api_client_id == client.id)
-            )
-        ).all()
-    else:
-        rows = (
-            await request["db"].execute(
-                sa.select(Source.id, Source.uri).where(Source.uri.isnot(None))
-            )
-        ).all()
+    rows = (
+        await request["db"].execute(
+            sa.select(Source.id, Source.uri)
+            .join(api_client_source, api_client_source.c.source_id == Source.id)
+            .where(api_client_source.c.api_client_id == client.id)
+        )
+    ).all()
 
     source_hosts: list[tuple[int, str]] = []
     for source_id, source_uri in rows:
@@ -441,158 +302,6 @@ async def _get_source_hosts(
         if host:
             source_hosts.append((source_id, host))
     return source_hosts
-
-
-async def _resolve_url_state(url: str) -> tuple[int, str | None, int]:
-    """Return: (status_code, redirect_location, final_status_if_followed)."""
-    timeout = ClientTimeout(total=20)
-    async with ClientSession(
-        timeout=timeout,
-        connector=TCPConnector(resolver=_ValidatingFetchResolver()),
-    ) as client:
-        current_url = url
-        await _ensure_fetch_target_allowed(current_url)
-        async with client.get(
-            current_url,
-            allow_redirects=False,
-            headers=request_id_headers(),
-        ) as resp:
-            status = resp.status
-            location = resp.headers.get("Location")
-
-        if status in {301, 302, 303, 307, 308} and location:
-            first_redirect_url = urljoin(current_url, location)
-            if not _redirect_target_allowed(current_url, first_redirect_url):
-                raise web.HTTPForbidden(text="Redirect target domain is not allowed")
-
-            current_url = first_redirect_url
-            for _ in range(5):
-                await _ensure_fetch_target_allowed(current_url)
-                async with client.get(
-                    current_url,
-                    allow_redirects=False,
-                    headers=request_id_headers(),
-                ) as final_resp:
-                    if final_resp.status not in {301, 302, 303, 307, 308}:
-                        return status, str(final_resp.url), final_resp.status
-                    location = final_resp.headers.get("Location")
-                    if not location:
-                        return status, str(final_resp.url), final_resp.status
-                    redirect_url = urljoin(str(final_resp.url), location)
-                    if not _redirect_target_allowed(str(final_resp.url), redirect_url):
-                        raise web.HTTPForbidden(
-                            text="Redirect target domain is not allowed"
-                        )
-                    await _ensure_fetch_target_allowed(redirect_url)
-                    current_url = redirect_url
-            raise web.HTTPBadGateway(text="Too many redirects")
-
-        return status, None, status
-
-
-async def _delete_document_by_url(request: web.Request, url: str) -> int:
-    db = request["db"]
-    docs = (await db.execute(sa.select(Page).where(Page.uri == url))).scalars().all()
-    if not docs:
-        return 0
-
-    deleted = 0
-    for doc in docs:
-        await db.execute(sa.delete(Chunk).where(Chunk.page_id == doc.id))
-        await db.delete(doc)
-        deleted += 1
-
-    await db.commit()
-    return deleted
-
-
-async def _upsert_document(
-    request: web.Request,
-    source_id: int,
-    url: str,
-    *,
-    discover_source: str | None = None,
-) -> tuple[str, int]:
-    db = request["db"]
-
-    (
-        content,
-        meta_from_fetch,
-        title,
-        raw_body,
-        raw_content_type,
-    ) = await _extract_content(url)
-    if not content:
-        raise web.HTTPInternalServerError(text="Failed to extract document content")
-
-    document = await db.scalar(sa.select(Page).where(Page.uri == url))
-    created = document is None
-
-    if document is None:
-        document = Page(
-            source_id=source_id,
-            uri=url,
-            status=PageStatus.parsing,
-            discover_by="api",
-            discover_source=discover_source,
-        )
-        db.add(document)
-
-    effectively_unchanged = document_content_effectively_unchanged(document, content)
-    has_chunks = (
-        await async_document_has_chunks(db, document.id)
-        if (effectively_unchanged and document.id is not None)
-        else False
-    )
-    too_big = is_document_too_big(content)
-    document.content = content
-    stored_raw_content, raw_content_meta = raw_content_payload(raw_body)
-    document.raw_content = stored_raw_content
-    document.raw_content_size = raw_content_meta["size"]
-    document.raw_content_type = raw_content_type
-    document.status = PageStatus.ready if too_big else PageStatus.parsing
-    document.status_error = PageStatusError.too_big if too_big else None
-    document.hash_value = content
-    document.language = ""
-    document.length = len(content)
-
-    meta = document.meta_dict()
-    meta.update(meta_from_fetch)
-    meta["raw_content"] = raw_content_meta
-    if "doc_type" not in meta:
-        guessed = guess_document_type(url, meta.get("content_type"))
-        if guessed:
-            meta["doc_type"] = guessed
-    for key in ("error", "message", "reason", "exception_class"):
-        meta.pop(key, None)
-    if too_big:
-        meta["reason"] = PageStatusError.too_big.value
-        meta["message"] = document_too_big_message(content)
-    document.meta = meta
-
-    if title:
-        document.title = title[:512]
-
-    if too_big:
-        await db.execute(sa.delete(Chunk).where(Chunk.page_id == document.id))
-    elif not (effectively_unchanged and has_chunks):
-        document.status = PageStatus.parsing
-    else:
-        document.status = PageStatus.ready
-
-    await db.flush()
-    await async_update_page_shingles(
-        db,
-        page_id=document.id,
-        source_id=document.source_id,
-        content=document.content,
-    )
-    await db.commit()
-    await db.refresh(document)
-    if not too_big and not (effectively_unchanged and has_chunks):
-        schedule_index_document(document.id)
-
-    return ("indexed" if created else "indexed", document.id)
 
 
 async def update_document(request: web.Request) -> web.Response:
@@ -641,8 +350,8 @@ async def update_document(request: web.Request) -> web.Response:
                 description: HMAC-SHA256 hex digest over sorted form fields except signature, joined as key=value lines.
                 example: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     responses:
-      '200':
-        description: Document update result.
+      '202':
+        description: Document update task queued.
         content:
           application/json:
             schema:
@@ -653,7 +362,7 @@ async def update_document(request: web.Request) -> web.Response:
                   example: ok
                 action:
                   type: string
-                  enum: [indexed, deleted, replaced]
+                  enum: [queued]
                 url:
                   type: string
                 final_url:
@@ -665,12 +374,8 @@ async def update_document(request: web.Request) -> web.Response:
         description: Invalid request body or URL.
       '401':
         description: Invalid client, signature, timestamp, or nonce.
-      '403':
-        description: URL domain is not allowed.
       '429':
         description: Rate limit exceeded.
-      '500':
-        description: Source fetch failed.
     """
     data = await _read_update_payload(request)
     auth_result = await _authenticate_update_request(request, data)
@@ -690,78 +395,58 @@ async def update_document(request: web.Request) -> web.Response:
     if not _is_host_allowed(parsed.hostname, source_hosts):
         return _error("Domain is not allowed", status=403)
 
-    status, redirect_url, final_status = await _resolve_url_state(url)
+    host = _normalize_host(parsed.hostname)
+    source_id = None
+    for candidate_source_id, source_host in source_rows:
+        if host == source_host:
+            source_id = candidate_source_id
+            break
+    if source_id is None:
+        for candidate_source_id, source_host in source_rows:
+            if host.endswith(f".{source_host}"):
+                source_id = candidate_source_id
+                break
+    if source_id is None:
+        return _error("Domain is not allowed", status=403)
 
-    if status == 404:
-        await _delete_document_by_url(request, url)
-        return json_response(
-            {
-                "status": "ok",
-                "action": "deleted",
-                "url": url,
-                "final_url": None,
-                "message": "Page removed from index (404)",
-            }
-        )
+    db = request["db"]
+    page = await db.scalar(sa.select(Page).where(Page.uri == url))
 
-    if status in {301, 302, 303, 307, 308} and redirect_url:
-        redirect_host = _extract_host(redirect_url)
-        if not redirect_host or not _is_host_allowed(redirect_host, source_hosts):
-            return _error("Redirect target domain is not allowed", status=403)
-
-        await _delete_document_by_url(request, url)
-        if final_status == 404:
-            return json_response(
-                {
-                    "status": "ok",
-                    "action": "deleted",
-                    "url": url,
-                    "final_url": redirect_url,
-                    "message": "Old URL removed; redirect target returns 404",
-                }
-            )
-
-        source_id = _pick_source_for_host(redirect_host, source_rows)
-        if source_id is None:
-            return _error("No source found for redirect target domain", status=403)
-
-        await _upsert_document(
-            request,
-            source_id,
-            redirect_url,
+    if page is None:
+        page = Page(
+            source_id=source_id,
+            uri=url,
+            status=PageStatus.crawler,
+            status_error=None,
+            discover_by="api",
             discover_source=auth_result.client_id,
         )
+        page._hash = ""
+        db.add(page)
+    else:
+        page.source_id = source_id
+        page.status = PageStatus.crawler
+        page.status_error = None
+        if not page.discover_by:
+            page.discover_by = "api"
+        page.discover_source = auth_result.client_id
+        page.updated_at = datetime.now(timezone.utc)
 
-        return json_response(
-            {
-                "status": "ok",
-                "action": "replaced",
-                "url": url,
-                "final_url": redirect_url,
-                "message": "Old URL removed, final URL indexed",
-            }
-        )
-
-    if status >= 400:
-        return _error(f"Source returned HTTP {status}", status=500)
-
-    source_id = _pick_source_for_host(parsed.hostname or "", source_rows)
-    if source_id is None:
-        return _error("No source found for domain", status=403)
-
-    await _upsert_document(
-        request,
-        source_id,
-        url,
-        discover_source=auth_result.client_id,
+    page.patch_meta(
+        remove=("error", "message", "reason", "exception_class"),
+        force_reprocess_once=True,
     )
+    await db.flush()
+    await db.commit()
+    crawl_page_task.delay(page.id)
 
     return json_response(
         {
             "status": "ok",
-            "action": "indexed",
+            "action": "queued",
             "url": url,
             "final_url": None,
-            "message": "Page indexed",
-        }
+            "message": "Document update queued",
+        },
+        status=202,
     )
