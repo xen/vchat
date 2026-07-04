@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from types import SimpleNamespace
 from yarl import URL
 
-from vchat.settings import CONFIG_KEY, SIGNER_KEY
+from vchat.settings import SIGNER_KEY
 from vchat.settings import REDIS_KEY
 from vchat.widget_state import (
     WIDGET_STATE_DISABLED,
@@ -107,8 +107,17 @@ class _FakeExecuteResult:
 
 
 class _TriggerResolveRequest(dict):
-    def __init__(self, *, db, url, widget_page_discovery_enabled: bool = False):
+    def __init__(self, *, db, url):
         super().__init__()
+        if not hasattr(db, "scalar"):
+            async def _scalar(_stmt):
+                return SimpleNamespace(
+                    code="widget-code",
+                    is_enabled=True,
+                    trigger_templates=["tpl"],
+                )
+
+            db.scalar = _scalar
         if not hasattr(db, "rollback"):
             db.rollbacks = 0
 
@@ -118,14 +127,11 @@ class _TriggerResolveRequest(dict):
             db.rollback = _rollback
         self["db"] = db
         self["app"] = {
-            CONFIG_KEY: {
-                "widget_page_discovery_enabled": widget_page_discovery_enabled,
-            },
             SIGNER_KEY: SimpleNamespace(
                 dumps=lambda value, salt=None: f"signed:{salt}:{value}"
             ),
         }
-        self.query = {"url": url, "title": "Title"}
+        self.query = {"code": "widget-code", "url": url, "title": "Title"}
 
     @property
     def app(self):
@@ -155,7 +161,7 @@ async def test_frontend_widget_js_renders_with_widget_path(
 ) -> None:
     captured = {}
 
-    def _render(template, request, context):
+    def _render(template, _request, context):
         captured["template"] = template
         captured["context"] = context
         return "ok"
@@ -504,7 +510,7 @@ async def test_widget_triggers_resolve_uses_empty_default_title_for_untitled_pag
 
     captured = {}
 
-    def _render_default_triggers(templates, title):
+    def _render_triggers(templates, title):
         captured["templates"] = templates
         captured["title"] = title
         return [{"key": "default", "text": title}]
@@ -513,8 +519,8 @@ async def test_widget_triggers_resolve_uses_empty_default_title_for_untitled_pag
     request.query["title"] = ""
 
     monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
-    monkeypatch.setattr(frontend, "load_default_trigger_templates", lambda app: ["tpl"])
-    monkeypatch.setattr(frontend, "render_default_triggers", _render_default_triggers)
+    monkeypatch.setattr(frontend, "load_trigger_templates", lambda _items: ["tpl"])
+    monkeypatch.setattr(frontend, "render_triggers", _render_triggers)
 
     response = await frontend.widget_triggers_resolve(request)
 
@@ -562,13 +568,13 @@ async def test_widget_triggers_resolve_discovers_matching_unknown_page(
     delayed = []
     monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
     monkeypatch.setattr(frontend.crawl_page_task, "delay", delayed.append)
+    monkeypatch.setattr(frontend.cfg, "widget_page_discovery_enabled", True)
 
     db = _Db()
     response = await frontend.widget_triggers_resolve(
         _TriggerResolveRequest(
             db=db,
             url="https://example.com/docs/page#part",
-            widget_page_discovery_enabled=True,
         )
     )
 
@@ -615,6 +621,7 @@ async def test_widget_triggers_resolve_skips_discovery_when_config_disabled(
     delayed = []
     monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
     monkeypatch.setattr(frontend.crawl_page_task, "delay", delayed.append)
+    monkeypatch.setattr(frontend.cfg, "widget_page_discovery_enabled", False)
 
     response = await frontend.widget_triggers_resolve(
         _TriggerResolveRequest(db=_Db(), url="https://example.com/docs/page")
@@ -678,13 +685,13 @@ async def test_widget_triggers_resolve_handles_concurrent_discovery_conflict(
     delayed = []
     monkeypatch.setattr(frontend, "find_page_by_url", _find_page_by_url)
     monkeypatch.setattr(frontend.crawl_page_task, "delay", delayed.append)
+    monkeypatch.setattr(frontend.cfg, "widget_page_discovery_enabled", True)
 
     db = _Db()
     response = await frontend.widget_triggers_resolve(
         _TriggerResolveRequest(
             db=db,
             url="https://example.com/docs/page",
-            widget_page_discovery_enabled=True,
         )
     )
 
@@ -730,22 +737,18 @@ async def test_admin_event_list_pagination(monkeypatch: pytest.MonkeyPatch) -> N
 async def test_admin_user_list_builds_context(monkeypatch: pytest.MonkeyPatch) -> None:
     users = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
 
-    async def _fake_get_users(_db):
-        return users
-
     async def _fake_get_session(_request):
         return {"user_id": 1}
 
-    monkeypatch.setattr(admin_views, "_get_users", _fake_get_users)
     monkeypatch.setattr(admin_views, "get_session", _fake_get_session)
     monkeypatch.setattr(vchat_utils, "get_session", _fake_get_session)
-    monkeypatch.setattr(admin_views, "UserAdd", lambda meta=None: {"meta": meta})
+    monkeypatch.setattr(admin_views.forms, "UserAdd", lambda meta=None: {"meta": meta})
+    monkeypatch.setattr(admin_views.cfg, "admin_user_create_enabled", False)
 
     app = _FakeApp(router=_FakeRouter({"login": _FakeRouterItem("/login/")}))
-    app[CONFIG_KEY] = {"admin_user_create_enabled": False}
     request = _FakeRequest(
         {
-            "db": SimpleNamespace(),
+            "db": _FakeDb([], events=users),
             "user": SimpleNamespace(id=1),
             "auth_session": {"user_id": 1},
             "path": "/users/",

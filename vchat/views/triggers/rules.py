@@ -11,7 +11,6 @@ import sqlalchemy as sa
 from vchat.models import Page, Source
 from vchat.models.source_config import CrawlerRule
 from vchat.views.projects.page_status import PageStatus
-from vchat.views.projects.settings import get_setting_json
 
 
 DEFAULT_TRIGGER_TEMPLATES = [
@@ -23,7 +22,6 @@ DEFAULT_TRIGGER_TEMPLATES = [
     "Найти важное в {title}?",
 ]
 
-TRIGGER_DEFAULTS_SETTING = "triggers.default_templates"
 TRIGGER_RULE_MAX_LENGTH = 256
 DEFAULT_SOURCE_TRIGGER_PATTERN = "^/.*"
 UNSUPPORTED_TRIGGER_REGEX_TOKENS = (
@@ -58,15 +56,14 @@ def trigger_prompt_hash(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 
-def load_default_trigger_templates(app) -> list[str]:
-    items = get_setting_json(app, TRIGGER_DEFAULTS_SETTING, DEFAULT_TRIGGER_TEMPLATES)
+def load_trigger_templates(items: Any = None) -> list[str]:
     if not isinstance(items, list):
         return list(DEFAULT_TRIGGER_TEMPLATES)
     cleaned = [str(item).strip() for item in items if str(item).strip()]
     return cleaned or list(DEFAULT_TRIGGER_TEMPLATES)
 
 
-def render_default_triggers(templates: list[str], title: str) -> list[dict[str, Any]]:
+def render_triggers(templates: list[str], title: str) -> list[dict[str, Any]]:
     page_title = "этой странице"
     cleaned_title = " ".join((title or "").split()).strip()
     if cleaned_title:

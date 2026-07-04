@@ -39,6 +39,16 @@ spec:
           env:
             - name: PROMETHEUS_MULTIPROC_DIR
               value: /tmp
+            - name: OMP_NUM_THREADS
+              value: "2"
+            - name: MKL_NUM_THREADS
+              value: "2"
+            - name: OPENBLAS_NUM_THREADS
+              value: "2"
+            - name: NUMEXPR_NUM_THREADS
+              value: "2"
+            - name: TOKENIZERS_PARALLELISM
+              value: "false"
           volumeMounts:
             - name: config
               mountPath: /app/local.yaml
@@ -72,10 +82,10 @@ spec:
           resources:
             requests:
               cpu: 500m
-              memory: 1Gi
+              memory: 2Gi
             limits:
               cpu: "2"
-              memory: 2Gi
+              memory: 3Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

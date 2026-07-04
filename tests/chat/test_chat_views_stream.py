@@ -10,6 +10,7 @@ import aiohttp
 import pytest
 from itsdangerous import BadSignature
 
+from vchat import settings
 from vchat.settings import SIGNER_KEY
 from vchat.views.chat.guardrails import GuardrailDecision
 from vchat.models.source_config import SourceConfig
@@ -141,15 +142,14 @@ def test_make_websocket_response_sets_request_id_header_with_real_aiohttp() -> N
     assert ws.headers[chat_views.REQUEST_ID_HEADER] == "rid-1"
 
 
-def test_websocket_origin_policy_uses_configured_origins() -> None:
+def test_websocket_origin_policy_uses_configured_origins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_views.cfg, "allowed_origins", ["https://local.vchat.com"])
+    monkeypatch.setattr(chat_views.cfg, "public_url", "https://www.vchat.com")
     request = _WebsocketRequest(
         payload="signed",
-        app={
-            "config": {
-                "allowed_origins": ["https://local.vchat.com"],
-                "public_url": "https://www.vchat.com",
-            }
-        },
+        app={},
         headers={"Origin": "https://local.vchat.com"},
     )
     assert chat_views._websocket_origin_allowed(request)
@@ -428,7 +428,6 @@ def test_build_generation_context_appends_answer_format_policy_to_custom_prompt(
     )
 
     ctx = chat_views.build_generation_context(
-        None,
         SimpleNamespace(
             system_prompt="Custom system prompt",
             suggestions_enabled=True,
@@ -641,7 +640,7 @@ async def test_ai_chat_stream_guardrails_client_mode(
         {"role": "system", "content": "sys\n\n[context]\nctx"},
         {"role": "user", "content": "hi"},
     ]
-    assert captured_request["max_tokens"] == chat_views.CHAT_RESPONSE_MAX_TOKENS
+    assert captured_request["max_tokens"] == settings.cfg.chat_response_max_tokens
     assert all(
         message["role"] != "developer" for message in captured_request["messages"]
     )
@@ -759,7 +758,7 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
         {"role": "system", "content": "sys\n\n[context]\nctx"},
         {"role": "user", "content": "x"},
     ]
-    assert session.posts[0]["json"]["max_tokens"] == chat_views.CHAT_RESPONSE_MAX_TOKENS
+    assert session.posts[0]["json"]["max_tokens"] == settings.cfg.chat_response_max_tokens
     assert all(message["role"] != "developer" for message in posted_messages)
 
     monkeypatch.setattr(
@@ -821,7 +820,7 @@ async def test_ai_chat_stream_passes_gigachat_ssl_setting(
             captured.update(kwargs)
             return _Resp()
 
-    monkeypatch.setitem(chat_views.config, "gigachat_verify_ssl_certs", False)
+    monkeypatch.setattr(chat_views.cfg, "gigachat_verify_ssl_certs", False)
     monkeypatch.setattr(chat_views, "get_gigachat_access_token", _token)
     monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: _Session())
 
@@ -975,7 +974,7 @@ async def test_websocket_sends_internal_error_json(
     monkeypatch.setattr(
         chat_views,
         "build_generation_context",
-        lambda app, widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
+        lambda widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
     )
 
     async def _raise_input_guardrail(*, text: str, provider: Any) -> GuardrailDecision:
@@ -1033,7 +1032,7 @@ async def test_websocket_sends_neutral_provider_response_error(
     monkeypatch.setattr(
         chat_views,
         "build_generation_context",
-        lambda app, widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
+        lambda widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
     )
 
     async def _provider_error(*, text: str, provider: Any) -> GuardrailDecision:
@@ -1095,7 +1094,7 @@ async def test_websocket_rejects_overlong_user_message(
     monkeypatch.setattr(
         chat_views,
         "build_generation_context",
-        lambda app, widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
+        lambda widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
     )
 
     async def _unexpected_guardrail(*, text: str, provider: Any) -> GuardrailDecision:

@@ -51,25 +51,6 @@
         <input type="hidden" name="action" value="save">
 
         <div class="rounded-box border border-base-300 bg-base-100 p-5">
-            <div class="form-control w-full">
-                <label class="label">
-                    <span class="label-text">Стандартные триггеры</span>
-                </label>
-                {{ form.default_templates }}
-                <label class="label">
-                    <span class="label-text-alt whitespace-normal break-words">Один шаблон на строку. Используйте <code>{title}</code> для подстановки заголовка страницы.</span>
-                </label>
-                {% if form.default_templates.errors %}
-                    <div class="label">
-                        {% for error in form.default_templates.errors %}
-                            <span class="label-text-alt text-error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="mt-6 rounded-box border border-base-300 bg-base-100 p-5">
             <div class="flex items-center justify-between gap-3">
                 <h2 class="font-medium">Regex-правила страниц</h2>
             </div>

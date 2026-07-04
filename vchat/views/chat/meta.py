@@ -66,9 +66,7 @@ def merge_chat_meta(
         "user_agent": user_agent or None,
         "browser": infer_browser(user_agent),
         "device_type": infer_device_type(user_agent),
-        "device_fingerprint": (
-            client_meta.get("device_fingerprint") or ""
-        ).strip()
+        "device_fingerprint": (client_meta.get("device_fingerprint") or "").strip()
         or None,
         "platform": (client_meta.get("platform") or "").strip() or None,
         "language": (client_meta.get("language") or "").strip() or None,

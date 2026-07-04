@@ -76,7 +76,7 @@
 
 ## Тесты
 
-1. Unit-тесты helper-функций: default trigger rendering, URL matching, response parsing.
+1. Unit-тесты helper-функций: trigger template rendering, URL matching, response parsing.
 2. View-тесты:
    - resolve возвращает defaults;
    - resolve возвращает page triggers;

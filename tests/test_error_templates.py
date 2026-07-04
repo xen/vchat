@@ -16,7 +16,6 @@ def test_error_templates_render_contact_link_on_separate_line() -> None:
         "get_flash_messages": lambda: [],
         "meta": SimpleNamespace(title="Error", description=None, author=None),
         "page_title": None,
-        "project_settings": {},
         "request": SimpleNamespace(
             path_qs="/broken",
             rel_url=SimpleNamespace(path="/broken"),

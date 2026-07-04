@@ -10,7 +10,7 @@ from redis.asyncio import from_url as redis_from_url
 
 from jobs.celery import app as celery_app
 from jobs.embedder.model import resolve_embedding_device
-from vchat.settings import REDIS_KEY, config
+from vchat.settings import REDIS_KEY, cfg
 from vchat.views.chat import ctx as chat_ctx
 from vchat.views.chat.ai import resolve_ai_settings
 
@@ -37,8 +37,7 @@ def _failed(exc: BaseException | str, **details: Any) -> CheckResult:
 
 
 def _queue_names() -> tuple[str, str, str]:
-    default_queue = str(config.get("celery_default_queue", "celery") or "celery")
-    return default_queue, CRAWLER_QUEUE, EMBEDDER_QUEUE
+    return cfg.celery_default_queue, CRAWLER_QUEUE, EMBEDDER_QUEUE
 
 
 async def _check_database(request: web.Request) -> CheckResult:
@@ -58,7 +57,7 @@ async def _check_app_redis(request: web.Request) -> CheckResult:
 
 
 async def _check_celery_broker() -> CheckResult:
-    broker_url = f"{config['celery_redis_uri']}{config['celery_broker_db']}"
+    broker_url = f"{cfg.celery_redis_uri}{cfg.celery_broker_db}"
     redis = redis_from_url(broker_url, decode_responses=False)
     try:
         await redis.ping()
@@ -89,11 +88,10 @@ def _inspect_celery_workers(timeout_seconds: float) -> WorkerQueues:
 
 async def _check_celery_workers() -> CheckResult:
     default_queue = _queue_names()[0]
-    timeout_seconds = float(config.get("readiness_celery_timeout_seconds", 1.0))
     try:
         worker_queues = await asyncio.to_thread(
             _inspect_celery_workers,
-            timeout_seconds,
+            cfg.readiness_celery_timeout_seconds,
         )
     except Exception as exc:
         return _failed(exc)
@@ -115,11 +113,10 @@ async def _check_celery_workers() -> CheckResult:
 
 
 async def _check_embedder_workers() -> CheckResult:
-    timeout_seconds = float(config.get("readiness_celery_timeout_seconds", 1.0))
     try:
         worker_queues = await asyncio.to_thread(
             _inspect_celery_workers,
-            timeout_seconds,
+            cfg.readiness_celery_timeout_seconds,
         )
     except Exception as exc:
         return _failed(exc)
@@ -141,14 +138,16 @@ def _is_model_loaded(value: Any) -> bool:
 
 
 async def _check_embedding_model() -> CheckResult:
-    model_dir = Path(str(config["embedding_model_dir"]))
+    model_dir = Path("models/embedder")
     try:
         device = resolve_embedding_device()
     except Exception as exc:
         return _failed(exc, model_dir=str(model_dir))
 
     if not model_dir.exists():
-        return _failed("model directory missing", model_dir=str(model_dir), device=device)
+        return _failed(
+            "model directory missing", model_dir=str(model_dir), device=device
+        )
 
     loaded = {
         "embedding": _is_model_loaded(getattr(chat_ctx, "_embed_model", None)),
@@ -166,8 +165,8 @@ async def _check_embedding_model() -> CheckResult:
 
 
 async def _check_llm_config() -> CheckResult:
-    provider_id = str(config.get("chat_provider") or "").strip()
-    model_id = str(config.get("chat_model") or "").strip()
+    provider_id = cfg.chat_provider.strip()
+    model_id = cfg.chat_model.strip()
     try:
         provider, model = resolve_ai_settings(provider_id, model_id)
     except Exception as exc:

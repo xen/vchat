@@ -184,6 +184,9 @@ class WidgetIntegration(Base, Created, Updated):
         server_default=sa.text("true"),
     )
     suggestions_prompt: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    trigger_templates: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
     pinned_messages: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, nullable=False, default=list
     )
@@ -625,10 +628,3 @@ class LLMCacheEntry(Base, Created, Updated):
         server_default=sa.func.now(),
         index=True,
     )
-
-
-class Settings(Base):
-    __tablename__ = "settings"
-
-    key: Mapped[str] = mapped_column(sa.String(255), primary_key=True)
-    value: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

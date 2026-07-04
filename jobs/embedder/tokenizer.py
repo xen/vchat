@@ -1,7 +1,7 @@
 from pathlib import Path
 from tokenizers import Tokenizer
 
-from vchat.settings import config
+from vchat.settings import cfg
 
 
 class EmbeddingTokenizer:
@@ -37,9 +37,10 @@ class EmbeddingTokenizer:
 
 
 def load_embedding_tokenizer() -> EmbeddingTokenizer:
-    max_seq_length = int(config.get("embedding_max_seq_length") or 0)
-    tokenizer_path = Path(config["embedding_model_dir"]) / "tokenizer.json"
+    tokenizer_path = Path("models/embedder") / "tokenizer.json"
     return EmbeddingTokenizer(
         Tokenizer.from_file(str(tokenizer_path)),
-        model_max_length=max_seq_length if max_seq_length > 0 else None,
+        model_max_length=(
+            cfg.embedding_max_seq_length if cfg.embedding_max_seq_length > 0 else None
+        ),
     )

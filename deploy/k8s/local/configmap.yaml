@@ -6,7 +6,6 @@ data:
   local.yaml: |
     mode: stage
     public_url: "http://localhost:9080"
-    public_cdn: "http://localhost:9080"
     allowed_origins:
       - "http://localhost:9080"
     cookie_domain: "localhost"
@@ -25,4 +24,3 @@ data:
     gigachat_api_key: !env "$GIGACHAT_API_KEY"
     secret_key: !env "$SECRET_KEY"
     cookie_key: !env "$COOKIE_KEY"
-    vchat_secret: !env "$VCHAT_SECRET"

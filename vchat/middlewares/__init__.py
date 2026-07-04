@@ -15,7 +15,7 @@ from aiohttp.web_middlewares import normalize_path_middleware
 from aiohttp_session import get_session, session_middleware
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY
+from vchat.settings import REDIS_KEY, cfg
 from vchat.db import async_session_factory
 from vchat.models import User, UserSession
 from vchat.tracing import (
@@ -197,17 +197,20 @@ async def public_widget_cors_middleware(
         return await handler(request)
 
     origin = request.headers.get("Origin")
-    if request.method == "OPTIONS" and "Access-Control-Request-Method" in request.headers:
-        response: web.StreamResponse = web.Response(text="")
+    if (
+        request.method == "OPTIONS"
+        and "Access-Control-Request-Method" in request.headers
+    ):
+        rsp: web.StreamResponse = web.Response(text="")
     else:
-        response = await handler(request)
+        rsp = await handler(request)
 
     if origin:
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "accept, content-type, origin"
-        response.headers["Vary"] = "Origin"
-    return response
+        rsp.headers["Access-Control-Allow-Origin"] = "*"
+        rsp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        rsp.headers["Access-Control-Allow-Headers"] = "accept, content-type, origin"
+        rsp.headers["Vary"] = "Origin"
+    return rsp
 
 
 @web.middleware
@@ -254,18 +257,9 @@ async def auth_middleware(
             request["auth_session"].invalidate()
             return await handler(request)
 
-        config = request.app.get(CONFIG_KEY, {})
-        auth_session_time = int(config.get("auth_session_time", 0) or 0)
-        if _auth_session_expired(request["auth_session"], auth_session_time):
+        if _auth_session_expired(request["auth_session"], cfg.auth_session_time):
             request["auth_session"].invalidate()
             return await handler(request)
-        idle_timeout_seconds = int(
-            config.get(
-                "auth_session_idle_timeout_seconds",
-                DEFAULT_AUTH_SESSION_IDLE_TIMEOUT_SECONDS,
-            )
-            or 0
-        )
 
         result = await request["db"].execute(
             sa.select(
@@ -291,12 +285,10 @@ async def auth_middleware(
             if last_seen_at and last_seen_at.tzinfo is None:
                 last_seen_at = last_seen_at.replace(tzinfo=timezone.utc)
 
-            idle_expired = (
-                idle_timeout_seconds > 0
-                and (
-                    last_seen_at is None
-                    or now - last_seen_at >= timedelta(seconds=idle_timeout_seconds)
-                )
+            idle_expired = cfg.auth_session_idle_timeout_seconds > 0 and (
+                last_seen_at is None
+                or now - last_seen_at
+                >= timedelta(seconds=cfg.auth_session_idle_timeout_seconds)
             )
 
             session_values: dict[str, Any] = {"updated_at": now}
@@ -380,15 +372,15 @@ async def force_https_location_middleware(request, handler):
     response = await handler(request)
     location = response.headers.get("Location")
     if location and location.startswith("http://"):
-        config = request.app[CONFIG_KEY]
-        public_url = config.get("public_url", "")
-        if public_url.startswith("https://"):
+        if cfg.public_url.startswith("https://"):
             response.headers["Location"] = location.replace("http://", "https://", 1)
     return response
 
 
-def get_middlewares(config):
-    configured_origins = config.get("allowed_origins") or [config.get("public_url", "")]
+def get_middlewares(cfg):
+    configured_origins = (
+        cfg.allowed_origins if cfg.allowed_origins else [cfg.public_url]
+    )
     origins = tuple(origin for origin in configured_origins if origin)
     CORS_METHODS = ("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD")
     CORS_EXPOSE_HEADERS = (
@@ -426,11 +418,11 @@ def get_middlewares(config):
         # Now enable session middleware and API auth / user / admin stuff
         session_middleware(
             EncryptedCookieStorage(
-                config["cookie_key"],
-                cookie_name=config["cookie_name"],
-                domain=config["cookie_domain"],
-                secure=config["cookie_secure"],
-                max_age=int(config["session_max_age_seconds"]),
+                cfg.cookie_key,
+                cookie_name=cfg.cookie_name,
+                domain=cfg.cookie_domain,
+                secure=cfg.cookie_secure,
+                max_age=cfg.session_max_age_seconds,
                 path="/",
                 httponly=True,
                 samesite="Lax",
@@ -443,7 +435,7 @@ def get_middlewares(config):
         force_https_location_middleware,
     )
 
-    if config["enable_https_middleware"]:
+    if cfg.enable_https_middleware:
         middlewares = (https_middleware(), *middlewares)
 
     return middlewares

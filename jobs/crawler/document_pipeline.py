@@ -96,9 +96,7 @@ def _strip_nul_chars(text: str) -> str:
 
 
 def normalize_markdown(text: str) -> str:
-    lines = (
-        _strip_nul_chars(text).replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    )
+    lines = _strip_nul_chars(text).replace("\r\n", "\n").replace("\r", "\n").split("\n")
     normalized: list[str] = []
     blank_count = 0
     in_code_block = False
@@ -567,9 +565,7 @@ def _shape_text_blocks(shape: Any) -> list[str]:
                 f"| {' | '.join(header)} |",
                 f"| {' | '.join(['---'] * width)} |",
             ]
-            table_lines.extend(
-                f"| {' | '.join(row)} |" for row in normalized_rows[1:]
-            )
+            table_lines.extend(f"| {' | '.join(row)} |" for row in normalized_rows[1:])
             blocks.append("\n".join(table_lines))
 
     return blocks
@@ -747,8 +743,7 @@ def _html_to_markdown_like(soup: BeautifulSoup) -> tuple[str, int]:
             parent = element.parent
             if parent is not None and parent.name == "ol":
                 siblings = [
-                    sibling
-                    for sibling in parent.find_all("li", recursive=False)
+                    sibling for sibling in parent.find_all("li", recursive=False)
                 ]
                 index = siblings.index(element) + 1 if element in siblings else 1
                 prefix = f"{index}. "

@@ -15,8 +15,8 @@ from jobs.embedder import queue as embedding_queue
 def test_pending_chunk_task_target_respects_batch_and_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_BATCH_SIZE", 8)
-    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
+    monkeypatch.setattr(embedding_queue.cfg, "embedding_pending_chunks_batch_size", 8)
+    monkeypatch.setattr(embedding_queue.cfg, "embedding_pending_chunks_max_inflight", 4)
 
     assert embedding_queue.pending_chunk_task_target(0) == 0
     assert embedding_queue.pending_chunk_task_target(1) == 1
@@ -28,11 +28,11 @@ def test_pending_chunk_task_target_respects_batch_and_cap(
 def test_run_pending_chunk_batch_stops_at_batch_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(embedder_tasks, "PENDING_CHUNKS_BATCH_SIZE", 2)
-    calls: list[tuple[object, int, object]] = []
+    monkeypatch.setattr(embedder_tasks.cfg, "embedding_pending_chunks_batch_size", 2)
+    calls: list[tuple[object, int]] = []
 
-    def _process(session, *, batch_size, redis_client=None):
-        calls.append((session, batch_size, redis_client))
+    def _process(session, *, batch_size):
+        calls.append((session, batch_size))
         return 2
 
     monkeypatch.setattr(embedder_tasks, "process_pending_chunk_batch", _process)
@@ -40,12 +40,11 @@ def test_run_pending_chunk_batch_stops_at_batch_limit(
 
     processed, remaining = embedder_tasks.run_pending_chunk_batch(
         session="db-session",
-        redis_client="redis-client",
     )
 
     assert processed == 2
     assert remaining == 1
-    assert calls == [("db-session", 2, "redis-client")]
+    assert calls == [("db-session", 2)]
 
 
 def test_apply_embedding_to_matching_kb_chunks_updates_by_hash_and_normalized_text():
@@ -92,8 +91,8 @@ def test_ensure_pending_chunk_workers_schedules_only_missing_tasks(
         "release_pending_chunk_slots",
         lambda _redis_client, slots=1: (_redis_client, slots),
     )
-    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_BATCH_SIZE", 8)
-    monkeypatch.setattr(embedding_queue, "PENDING_CHUNKS_MAX_INFLIGHT", 4)
+    monkeypatch.setattr(embedding_queue.cfg, "embedding_pending_chunks_batch_size", 8)
+    monkeypatch.setattr(embedding_queue.cfg, "embedding_pending_chunks_max_inflight", 4)
 
     pending, scheduled = embedding_queue.ensure_pending_chunk_workers(
         session="db-session",
@@ -221,7 +220,7 @@ def test_schedule_index_document_deduplicates(monkeypatch: pytest.MonkeyPatch) -
     assert calls == [
         (
             f"{crawler_tasks.INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX}77",
-            crawler_tasks.INDEX_DOCUMENT_SCHEDULE_TTL,
+            crawler_tasks.cfg.embedding_index_document_schedule_ttl_seconds,
             True,
         )
     ]
@@ -379,7 +378,7 @@ def test_make_embed_vectors_splits_large_encode_batches(
                 dtype=np.float32,
             )
 
-    monkeypatch.setattr(embedder_tasks, "EMBEDDING_ENCODE_BATCH_MAX_CHARS", 10)
+    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chars", 10)
     monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
 
     vectors = embedder_tasks.make_embed_vectors(["1234", "5678", "abcdef", "gh"])
@@ -500,38 +499,40 @@ def test_embedding_result_to_vectors_rejects_nan() -> None:
         )
 
 
-def test_resolve_embedder_instance_count_auto_for_cpu() -> None:
-    assert (
-        launcher.resolve_embedder_instance_count(
-            configured="auto",
-            cpu_count=8,
-            reserve_cpus=2,
-            device="cpu",
-        )
-        == 6
-    )
+def test_resolve_embedder_instance_count_auto_for_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(launcher.cfg, "embedding_worker_instances", "auto")
+    monkeypatch.setattr(launcher.cfg, "embedding_worker_cpu_reserve", 2)
+    monkeypatch.setattr(launcher.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(launcher, "resolve_embedding_device", lambda: "cpu")
+
+    assert launcher.resolve_embedder_instance_count() == 6
 
 
-def test_resolve_embedder_instance_count_auto_keeps_single_gpu_worker() -> None:
-    assert (
-        launcher.resolve_embedder_instance_count(
-            configured="auto",
-            cpu_count=16,
-            reserve_cpus=0,
-            device="mps",
-        )
-        == 1
-    )
+def test_resolve_embedder_instance_count_auto_keeps_single_gpu_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(launcher.cfg, "embedding_worker_instances", "auto")
+    monkeypatch.setattr(launcher.cfg, "embedding_worker_cpu_reserve", 0)
+    monkeypatch.setattr(launcher.os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(launcher, "resolve_embedding_device", lambda: "mps")
+
+    assert launcher.resolve_embedder_instance_count() == 1
 
 
-def test_resolve_embedder_instance_count_honors_explicit_override() -> None:
-    assert launcher.resolve_embedder_instance_count(configured="5", device="cpu") == 5
+def test_resolve_embedder_instance_count_honors_explicit_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(launcher.cfg, "embedding_worker_instances", 5)
+
+    assert launcher.resolve_embedder_instance_count() == 5
 
 
 def test_maybe_reset_embed_model_after_document_respects_threshold(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(embedder_tasks, "EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS", 2)
+    monkeypatch.setattr(embedder_tasks.cfg, "embedding_model_reset_after_documents", 2)
     monkeypatch.setattr(embedder_tasks, "_completed_documents_since_reset", 0)
     resets: list[bool] = []
     monkeypatch.setattr(
@@ -550,7 +551,7 @@ def test_maybe_reset_embed_model_after_document_respects_threshold(
 def test_maybe_reset_embed_model_after_document_can_be_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(embedder_tasks, "EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS", 0)
+    monkeypatch.setattr(embedder_tasks.cfg, "embedding_model_reset_after_documents", 0)
     monkeypatch.setattr(embedder_tasks, "_completed_documents_since_reset", 0)
     monkeypatch.setattr(
         embedder_tasks,

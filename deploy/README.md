@@ -42,8 +42,7 @@ kubectl -n vchat create secret generic vchat-secret \
   --from-literal=DATABASE_URI='postgresql+asyncpg://...' \
   --from-literal=GIGACHAT_API_KEY='...' \
   --from-literal=SECRET_KEY='...' \
-  --from-literal=COOKIE_KEY='...' \
-  --from-literal=VCHAT_SECRET='...'
+  --from-literal=COOKIE_KEY='...'
 ```
 
 Then set the production image in `deploy/k8s/base/kustomization.yaml` or through

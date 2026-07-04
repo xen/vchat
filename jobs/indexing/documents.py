@@ -8,25 +8,14 @@ import sqlalchemy as sa
 from jobs.documents.content import content_sha256
 from jobs.documents.shingles import extract_shingles
 from vchat.models import Chunk, Page
-from vchat.settings import config
+from vchat.settings import cfg
 
 NEAR_DUPLICATE_SHINGLE_SIZE = 3
 NEAR_DUPLICATE_SIMILARITY_THRESHOLD = 0.9
-DEFAULT_RAW_CONTENT_MAX_BYTES = 10 * 1024 * 1024
 
 
 def document_content_unchanged(document: Page | None, content: str) -> bool:
     return document is not None and document.hash_value == content_sha256(content)
-
-
-def raw_content_max_bytes() -> int:
-    return max(
-        1,
-        int(
-            config.get("raw_content_max_bytes", DEFAULT_RAW_CONTENT_MAX_BYTES)
-            or DEFAULT_RAW_CONTENT_MAX_BYTES
-        ),
-    )
 
 
 def raw_content_payload(
@@ -36,12 +25,11 @@ def raw_content_payload(
         return None, {"stored": False, "size": 0}
 
     size = len(raw_content)
-    max_size = raw_content_max_bytes()
-    if size > max_size:
+    if size > cfg.raw_content_max_bytes:
         return None, {
             "stored": False,
             "size": size,
-            "max_size": max_size,
+            "max_size": cfg.raw_content_max_bytes,
             "reason": "too_big",
         }
 

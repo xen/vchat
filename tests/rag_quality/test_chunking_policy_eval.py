@@ -63,8 +63,8 @@ def test_chunking_policy_eval(case: dict, monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(crawler_tasks, "mark_duplicate_page_chunks", lambda *_, **__: 0)
     if "embedding_document_max_chars" in case:
         monkeypatch.setattr(
-            crawler_tasks,
-            "EMBEDDING_DOCUMENT_MAX_CHARS",
+            crawler_tasks.cfg,
+            "embedding_document_max_chars",
             int(case["embedding_document_max_chars"]),
         )
 

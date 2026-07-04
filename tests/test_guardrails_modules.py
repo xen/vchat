@@ -9,7 +9,7 @@ from vchat.views.chat import guardrails
 
 @pytest.mark.asyncio
 async def test_check_input_guardrails_blocks_russian_pii(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(guardrails.config, "guardrails_ru_pii_enabled", True)
+    monkeypatch.setattr(guardrails.cfg, "guardrails_ru_pii_enabled", True)
     monkeypatch.setattr(
         guardrails,
         "detect_russian_pii_reasons",
@@ -26,7 +26,7 @@ async def test_check_input_guardrails_blocks_russian_pii(monkeypatch: pytest.Mon
 
 @pytest.mark.asyncio
 async def test_check_output_guardrails_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(guardrails.config, "guardrails_ru_pii_enabled", False)
+    monkeypatch.setattr(guardrails.cfg, "guardrails_ru_pii_enabled", False)
     decision = await guardrails.check_output_guardrails(
         text="Телефон +7 999 123 45 67",
         provider=SimpleNamespace(),
@@ -75,7 +75,7 @@ def test_extract_tripwire_details_normalizes_values() -> None:
 
 
 def test_get_guardrails_client_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(guardrails.config, "openai_guardrails_enabled", False)
+    monkeypatch.setattr(guardrails.cfg, "openai_guardrails_enabled", False)
     client = guardrails.get_guardrails_client(
         api_key="k",
         base_url="https://example.com",
@@ -86,7 +86,7 @@ def test_get_guardrails_client_disabled(monkeypatch: pytest.MonkeyPatch) -> None
 def test_get_guardrails_client_init_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setitem(guardrails.config, "openai_guardrails_enabled", True)
+    monkeypatch.setattr(guardrails.cfg, "openai_guardrails_enabled", True)
     monkeypatch.setattr(guardrails, "_cached_client", None)
     monkeypatch.setattr(guardrails, "_cached_key", None)
 

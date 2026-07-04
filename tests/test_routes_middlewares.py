@@ -10,7 +10,8 @@ import sqlalchemy as sa
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY
+from vchat import settings
+from vchat.settings import REDIS_KEY
 import vchat.middlewares as mw
 from vchat.routes import setup_routes
 from vchat.views import health
@@ -206,9 +207,9 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(mw, "get_session", _get_session)
     monkeypatch.setattr(mw.time, "time", lambda: 120)
+    monkeypatch.setattr(mw.cfg, "auth_session_time", 0)
 
     req = make_mocked_request("GET", "/x")
-    req.app.get.return_value = {"auth_session_time": 0}
     req["db"] = FakeDB()
 
     async def _handler(request):
@@ -238,8 +239,8 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
     resp2 = await mw.flash_middleware(req2, _h2)
     assert resp2.status == 200
 
+    monkeypatch.setattr(mw.cfg, "public_url", "https://local.vchat.com")
     req3 = make_mocked_request("GET", "/x")
-    req3.app[CONFIG_KEY] = {"public_url": "https://local.vchat.com"}
 
     async def _h3(_request):
         r = web.HTTPFound("http://example.com/path")
@@ -250,14 +251,16 @@ async def test_auth_flash_and_force_https(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_get_middlewares_and_routes() -> None:
-    cfg = {
-        "cookie_key": b"12345678901234567890123456789012",
-        "cookie_name": "s",
-        "cookie_domain": ".example.com",
-        "cookie_secure": False,
-        "enable_https_middleware": False,
-        "session_max_age_seconds": 30 * 24 * 60 * 60,
-    }
+    cfg = settings.cfg.model_copy(
+        update={
+            "cookie_key": settings.cfg.cookie_key,
+            "cookie_name": "s",
+            "cookie_domain": ".example.com",
+            "cookie_secure": False,
+            "enable_https_middleware": False,
+            "session_max_age_seconds": 30 * 24 * 60 * 60,
+        }
+    )
     mws = mw.get_middlewares(cfg)
     assert mws
 
@@ -323,14 +326,14 @@ def _patch_ready_dependencies(
     *,
     worker_queues: dict[str, list[str]] | None = None,
 ) -> None:
-    model_dir = tmp_path / "model"
-    model_dir.mkdir()
-    monkeypatch.setitem(health.config, "chat_provider", "openai")
-    monkeypatch.setitem(health.config, "chat_model", "gpt-4o-mini")
-    monkeypatch.setitem(health.config, "openai_api_key", "test-key")
-    monkeypatch.setitem(health.config, "embedding_model_dir", str(model_dir))
-    monkeypatch.setitem(health.config, "celery_redis_uri", "redis://localhost/")
-    monkeypatch.setitem(health.config, "celery_broker_db", 31)
+    monkeypatch.chdir(tmp_path)
+    model_dir = tmp_path / "models" / "embedder"
+    model_dir.mkdir(parents=True)
+    monkeypatch.setattr(health.cfg, "chat_provider", "openai")
+    monkeypatch.setattr(health.cfg, "chat_model", "gpt-4o-mini")
+    monkeypatch.setattr(health.cfg, "openai_api_key", "test-key")
+    monkeypatch.setattr(health.cfg, "celery_redis_uri", "redis://localhost/")
+    monkeypatch.setattr(health.cfg, "celery_broker_db", 31)
     monkeypatch.setattr(health, "redis_from_url", lambda *_args, **_kwargs: HealthBrokerRedis())
     monkeypatch.setattr(health, "resolve_embedding_device", lambda: "cpu")
     monkeypatch.setattr(health.chat_ctx, "_embed_model", object())
@@ -396,7 +399,7 @@ async def test_health_ready_returns_503_for_invalid_llm_model(
     tmp_path: Path,
 ) -> None:
     _patch_ready_dependencies(monkeypatch, tmp_path)
-    monkeypatch.setitem(health.config, "chat_provider", "missing-provider")
+    monkeypatch.setattr(health.cfg, "chat_provider", "missing-provider")
 
     response = await health.ready(HealthRequest(HealthRedis(), HealthDB()))  # type: ignore[arg-type]
     payload = json.loads(response.text)

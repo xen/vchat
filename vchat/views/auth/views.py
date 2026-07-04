@@ -9,15 +9,13 @@ import sqlalchemy as sa
 import bonsai
 from aiohttp import web
 from aiohttp_session import get_session, new_session
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from passlib.context import CryptContext
-from wtforms import Form, PasswordField, StringField, validators
-from wtforms.csrf.session import SessionCSRF
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY
+from vchat.settings import REDIS_KEY
 from vchat.middlewares import UserInfo
 from vchat.models import User, UserSession
-from vchat.settings import config
+from vchat.settings import cfg
 from vchat.utils import (
     admin_event,
     get_client_ip,
@@ -25,6 +23,7 @@ from vchat.utils import (
     meta,
     validate_signed_user_csrf,
 )
+from . import forms
 
 __all__ = [
     "login",
@@ -96,7 +95,7 @@ async def _render_sessions_form_error(
     request: web.Request,
     *,
     current_session_id: str | None,
-    form: "PasswordChange",
+    form: forms.PasswordChange,
 ) -> web.Response:
     rows = (
         (
@@ -137,104 +136,23 @@ def _normalize_ldap_dn(value: str) -> str:
     return ",".join(part.strip().casefold() for part in value.split(","))
 
 
-class Login(Form):
-    class Meta:
-        csrf = True
-        csrf_secret = config["secret_key"]
-        csrf_class = SessionCSRF
-        csrf_time_limit = timedelta(minutes=20)
+async def authenticate_ldap(email: str, password: str) -> dict | None:
+    search_filter = cfg.ldap_search_filter.format(email=bonsai.escape_filter_exp(email))
+    required_group_dn = cfg.ldap_required_group_dn.strip()
+    attrlist = [cfg.ldap_attr_name]
+    if required_group_dn and cfg.ldap_member_of_attr not in attrlist:
+        attrlist.append(cfg.ldap_member_of_attr)
 
-    email = StringField(
-        "Ваш email",
-        [
-            validators.Length(
-                min=6,
-                max=254,
-                message="Длина от 6 до 254 символов",
-            ),
-            validators.Email(message="Введите корректный email"),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "name@company.com"},
-    )
-    password = PasswordField(
-        "Ваш пароль",
-        [
-            validators.Length(
-                max=128,
-                message="Длина до 128 символов",
-            ),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "Пароль"},
-    )
-
-    def add_email_error(self, message: str) -> None:
-        email_field: Any = self.email
-        email_field.errors = [*self.email.errors, message]
-
-
-class PasswordChange(Form):
-    class Meta:
-        csrf = True
-        csrf_secret = config["secret_key"]
-        csrf_class = SessionCSRF
-        csrf_time_limit = timedelta(minutes=20)
-
-    current_password = PasswordField(
-        "Текущий пароль",
-        [
-            validators.Length(
-                max=128,
-                message="Длина до 128 символов",
-            ),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "Текущий пароль"},
-    )
-    password = PasswordField(
-        "Новый пароль",
-        [
-            validators.Length(
-                min=12,
-                max=128,
-                message="Длина от 12 до 128 символов",
-            ),
-            validators.EqualTo("confirm", message="Пароли должны совпадать"),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "Новый пароль"},
-    )
-    confirm = PasswordField(
-        "Подтвердите пароль",
-        render_kw={"placeholder": "Подтвердите пароль"},
-    )
-
-
-async def authenticate_ldap(email: str, password: str, config: dict) -> dict | None:
-    server = config["ldap_server"]
-    use_ssl = config.get("ldap_use_ssl", False)
-    bind_dn = config.get("ldap_bind_dn", "")
-    bind_password = config.get("ldap_bind_password", "")
-    search_base = config["ldap_search_base"]
-    search_filter = config["ldap_search_filter"].format(
-        email=bonsai.escape_filter_exp(email)
-    )
-    attr_name = config.get("ldap_attr_name", "displayName")
-    required_group_dn = (config.get("ldap_required_group_dn") or "").strip()
-    member_of_attr = config.get("ldap_member_of_attr", "memberOf")
-    attrlist = [attr_name]
-    if required_group_dn and member_of_attr not in attrlist:
-        attrlist.append(member_of_attr)
-
-    service_client = bonsai.LDAPClient(server, tls=use_ssl)
-    if bind_dn:
-        service_client.set_credentials("SIMPLE", user=bind_dn, password=bind_password)
+    service_client = bonsai.LDAPClient(cfg.ldap_server, tls=cfg.ldap_use_ssl)
+    if cfg.ldap_bind_dn:
+        service_client.set_credentials(
+            "SIMPLE", user=cfg.ldap_bind_dn, password=cfg.ldap_bind_password
+        )
 
     try:
         async with service_client.connect(is_async=True) as conn:
             results = await conn.search(
-                base=search_base,
+                base=cfg.ldap_search_base,
                 scope=bonsai.LDAPSearchScope.SUB,
                 filter_exp=search_filter,
                 attrlist=attrlist,
@@ -252,15 +170,15 @@ async def authenticate_ldap(email: str, password: str, config: dict) -> dict | N
         required_group = _normalize_ldap_dn(required_group_dn)
         user_groups = {
             _normalize_ldap_dn(group_dn)
-            for group_dn in _ldap_attr_values(user_entry, member_of_attr)
+            for group_dn in _ldap_attr_values(user_entry, cfg.ldap_member_of_attr)
         }
         if required_group not in user_groups:
             return None
 
-    name_values = _ldap_attr_values(user_entry, attr_name)
+    name_values = _ldap_attr_values(user_entry, cfg.ldap_attr_name)
     name = name_values[0] if name_values else email
 
-    user_client = bonsai.LDAPClient(server, tls=use_ssl)
+    user_client = bonsai.LDAPClient(cfg.ldap_server, tls=cfg.ldap_use_ssl)
     user_client.set_credentials("SIMPLE", user=user_dn, password=password)
 
     try:
@@ -276,13 +194,12 @@ async def authenticate_ldap(email: str, password: str, config: dict) -> dict | N
 @meta(title="Вход в vchat")
 @aiohttp_jinja2.template("auth/login.html")
 async def login(request):
-    config = request.app[CONFIG_KEY]
-    if not config.get("auth_basic_enabled", True):
+    if not cfg.auth_basic_enabled:
         raise web.HTTPFound(location=request.app.router["login_ldap"].url_for())
 
     session = await get_session(request)
     data = await request.post()
-    form = Login(data, meta={"csrf_context": session})
+    form = forms.Login(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
         normalized_email = form.email.data.strip().lower()
@@ -298,7 +215,7 @@ async def login(request):
             form.add_email_error("Слишком много попыток входа. Попробуйте позже")
             return {
                 "form": form,
-                "ldap_enabled": config.get("auth_ldap_enabled", False),
+                "ldap_enabled": cfg.auth_ldap_enabled,
             }
 
         await redis.set(
@@ -321,7 +238,7 @@ async def login(request):
             form.add_email_error("Неверный email или пароль")
             return {
                 "form": form,
-                "ldap_enabled": config.get("auth_ldap_enabled", False),
+                "ldap_enabled": cfg.auth_ldap_enabled,
             }
         if user.is_active is False:
             form.add_email_error(
@@ -330,7 +247,7 @@ async def login(request):
             )
             return {
                 "form": form,
-                "ldap_enabled": config.get("auth_ldap_enabled", False),
+                "ldap_enabled": cfg.auth_ldap_enabled,
             }
         if user.is_ldap:
             form.add_email_error(
@@ -338,7 +255,7 @@ async def login(request):
             )
             return {
                 "form": form,
-                "ldap_enabled": config.get("auth_ldap_enabled", False),
+                "ldap_enabled": cfg.auth_ldap_enabled,
             }
         if not user.password or not password_context.verify(
             form.password.data, user.password
@@ -350,10 +267,7 @@ async def login(request):
             )
             await admin_event("user_login_failed", request)
             form.add_email_error("Неверный email или пароль")
-            return {
-                "form": form,
-                "ldap_enabled": config.get("auth_ldap_enabled", False),
-            }
+            return {"form": form, "ldap_enabled": cfg.auth_ldap_enabled}
 
         # Warning: always use new_session() instead of get_session() in login views
         # to guard against Session Fixation attacks!
@@ -369,19 +283,18 @@ async def login(request):
             raise web.HTTPFound(location=next_location)
         raise web.HTTPFound(location=request.app.router["index"].url_for())
 
-    return {"form": form, "ldap_enabled": config.get("auth_ldap_enabled", False)}
+    return {"form": form, "ldap_enabled": cfg.auth_ldap_enabled}
 
 
 @meta(title="LDAP-вход в vchat")
 @aiohttp_jinja2.template("auth/login_ldap.html")
 async def login_ldap(request):
-    config = request.app[CONFIG_KEY]
-    if not config.get("auth_ldap_enabled", False):
+    if not cfg.auth_ldap_enabled:
         raise web.HTTPFound(location=request.app.router["login"].url_for())
 
     session = await get_session(request)
     data = await request.post()
-    form = Login(data, meta={"csrf_context": session})
+    form = forms.Login(data, meta={"csrf_context": session})
 
     if request.method == "POST" and form.validate():
         normalized_email = form.email.data.strip().lower()
@@ -395,10 +308,7 @@ async def login_ldap(request):
         ):
             await admin_event("user_login_ldap_rate_limited", request)
             form.add_email_error("Слишком много попыток входа. Попробуйте позже")
-            return {
-                "form": form,
-                "basic_enabled": config.get("auth_basic_enabled", True),
-            }
+            return {"form": form, "basic_enabled": cfg.auth_basic_enabled}
 
         await redis.set(
             login_check_lock_key,
@@ -406,9 +316,7 @@ async def login_ldap(request):
             ex=LOGIN_FAILURE_DELAY_SECONDS,
         )
 
-        ldap_result = await authenticate_ldap(
-            normalized_email, form.password.data, config
-        )
+        ldap_result = await authenticate_ldap(normalized_email, form.password.data)
         if ldap_result is None:
             await _record_login_failure(
                 redis=redis,
@@ -417,10 +325,7 @@ async def login_ldap(request):
             )
             await admin_event("user_login_ldap_failed", request)
             form.add_email_error("Неверный email или пароль")
-            return {
-                "form": form,
-                "basic_enabled": config.get("auth_basic_enabled", True),
-            }
+            return {"form": form, "basic_enabled": cfg.auth_basic_enabled}
 
         result = await request["db"].execute(
             sa.select(User).where(User.email == normalized_email)
@@ -438,18 +343,12 @@ async def login_ldap(request):
             await request["db"].flush()
         elif user.is_active is False:
             form.add_email_error("Пользователь заблокирован")
-            return {
-                "form": form,
-                "basic_enabled": config.get("auth_basic_enabled", True),
-            }
+            return {"form": form, "basic_enabled": cfg.auth_basic_enabled}
         elif not user.is_ldap:
             form.add_email_error(
                 "Для этой учётной записи используется локальная аутентификация",
             )
-            return {
-                "form": form,
-                "basic_enabled": config.get("auth_basic_enabled", True),
-            }
+            return {"form": form, "basic_enabled": cfg.auth_basic_enabled}
 
         # Warning: always use new_session() instead of get_session() in login views
         # to guard against Session Fixation attacks!
@@ -465,7 +364,7 @@ async def login_ldap(request):
             raise web.HTTPFound(location=next_location)
         raise web.HTTPFound(location=request.app.router["index"].url_for())
 
-    return {"form": form, "basic_enabled": config.get("auth_basic_enabled", True)}
+    return {"form": form, "basic_enabled": cfg.auth_basic_enabled}
 
 
 @meta(title="Выход из vchat")
@@ -503,7 +402,7 @@ async def logout(request):
 async def sessions(request):
     auth_session = await get_session(request)
     current_session_id = auth_session.get("session_id")
-    form = PasswordChange(meta={"csrf_context": auth_session})
+    form = forms.PasswordChange(meta={"csrf_context": auth_session})
     rows = (
         (
             await request["db"].execute(
@@ -592,7 +491,7 @@ async def sessions_action(request):
         if user.is_ldap:
             raise web.HTTPForbidden(text="Password is managed by LDAP")
 
-        form = PasswordChange(data, meta={"csrf_context": auth_session})
+        form = forms.PasswordChange(data, meta={"csrf_context": auth_session})
         if not form.validate():
             return await _render_sessions_form_error(
                 request,

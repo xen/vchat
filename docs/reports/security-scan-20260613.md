@@ -232,7 +232,7 @@ Use one fetch for validation and consumption, or validate resp.url after redirec
 
 #### Summary
 
-The repository ships concrete values for secret_key, cookie_key, and vchat_secret in the default production config. If a runtime misses local.yaml overrides, those committed values protect sessions, CSRF/chat/API tokens, and widget signatures.
+The repository ships concrete values for secret_key and cookie_key in the default production config. If a runtime misses local.yaml overrides, those committed values protect sessions, CSRF/chat/API tokens, and widget signatures.
 
 #### Validation
 
@@ -588,7 +588,7 @@ Do not mount repository data/ publicly by default. Remove follow_symlinks unless
 
 - Confirm whether public widgets are intended to access the whole global KB. If not, run a focused fix review around `vchat/views/chat/ctx.py` and `WidgetIntegration` source scoping.
 - Reproduce `VCHAT-CRAWLER-SITEMAP-OFFHOST-SSRF-002` with a local disposable Scrapy run to decide whether it should be raised from low-confidence medium to high-confidence medium/high.
-- Check the live deployment config for default `secret_key`, `cookie_key`, and `vchat_secret` usage before prioritizing key rotation. This scan did not access remote servers by policy.
+- Check the live deployment config for default `secret_key` and `cookie_key` usage before prioritizing key rotation. This scan did not access remote servers by policy.
 - Run a dependency advisory scan with `pip-audit` or the project-approved equivalent after installing it in the project virtualenv. The tool was not installed during this scan.
 
 ## Artifact Index

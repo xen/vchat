@@ -47,10 +47,30 @@ def _disable_chunk_dedup_for_fake_sessions(monkeypatch) -> None:
     )
 
 
-def test_chunk_text_respects_token_limit_and_overlap() -> None:
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 6
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 2
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+def _set_chunk_cfg(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    max_tokens: int,
+    overlap_tokens: int,
+    max_chars: int,
+) -> None:
+    monkeypatch.setattr(tasks.cfg, "embedding_chunk_max_tokens", max_tokens)
+    monkeypatch.setattr(tasks.cfg, "embedding_chunk_overlap_tokens", overlap_tokens)
+    monkeypatch.setattr(tasks.cfg, "embedding_chunk_max_chars", max_chars)
+
+
+def _patch_meta(page, *, remove=(), **updates) -> None:
+    meta = dict(page.meta or {})
+    for key in remove:
+        meta.pop(key, None)
+    meta.update(updates)
+    page.meta = meta
+
+
+def test_chunk_text_respects_token_limit_and_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_chunk_cfg(monkeypatch, max_tokens=6, overlap_tokens=2, max_chars=1000)
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
     text = " ".join(f"w{i}" for i in range(20))
     chunks = tasks.chunk_text_word_window(text)
@@ -62,22 +82,20 @@ def test_chunk_text_respects_token_limit_and_overlap() -> None:
     assert chunks[1].start < chunks[0].end
 
 
-def test_chunk_text_splits_long_token() -> None:
-    # EMBEDDING_CHUNK_MAX_CHARS=4 triggers the long-word branch for "abcdefghij".
+def test_chunk_text_splits_long_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    # embedding_chunk_max_chars=4 triggers the long-word branch for "abcdefghij".
     # With a char-level tokenizer and max_tokens=4, the 10 token IDs are split
     # into slices of 4 and decoded back to text.
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 4
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 0
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 4
+    _set_chunk_cfg(monkeypatch, max_tokens=4, overlap_tokens=0, max_chars=4)
     tasks.get_embed_tokenizer = lambda: _CharTokenizer()
     chunks = tasks.chunk_text_word_window("abcdefghij")
     assert [chunk.text for chunk in chunks] == ["abcd", "efgh", "ij"]
 
 
-def test_chunk_text_caps_overlap_when_overlap_exceeds_chunk_size() -> None:
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 6
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 400
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 15
+def test_chunk_text_caps_overlap_when_overlap_exceeds_chunk_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_chunk_cfg(monkeypatch, max_tokens=6, overlap_tokens=400, max_chars=15)
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
     chunks = tasks.chunk_text_word_window("aaaaa bbbbb ccccc ddddd")
@@ -89,10 +107,10 @@ def test_chunk_text_caps_overlap_when_overlap_exceeds_chunk_size() -> None:
     assert [chunk.start for chunk in chunks] == [0, 2]
 
 
-def test_chunk_text_uses_token_overlap_not_word_overlap() -> None:
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 40
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 30
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+def test_chunk_text_uses_token_overlap_not_word_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_chunk_cfg(monkeypatch, max_tokens=40, overlap_tokens=30, max_chars=1000)
     tasks.get_embed_tokenizer = lambda: _CharTokenizer()
 
     text = " ".join("abcdefghij" for _ in range(80))
@@ -113,10 +131,10 @@ def test_split_text_block_for_chunking_breaks_large_block() -> None:
     assert all(len(chunk) <= 12 for chunk in chunks)
 
 
-def test_chunk_document_normalizes_full_html_document() -> None:
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+def test_chunk_document_normalizes_full_html_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_chunk_cfg(monkeypatch, max_tokens=20, overlap_tokens=4, max_chars=1000)
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
     html = """
@@ -147,10 +165,10 @@ def test_chunk_document_normalizes_full_html_document() -> None:
     assert "<html" not in joined.lower()
 
 
-def test_chunk_document_drops_html_ui_config_json_lines() -> None:
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+def test_chunk_document_drops_html_ui_config_json_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_chunk_cfg(monkeypatch, max_tokens=20, overlap_tokens=4, max_chars=1000)
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
     html = """
@@ -175,10 +193,10 @@ def test_chunk_document_drops_html_ui_config_json_lines() -> None:
     assert "isActive" not in joined
 
 
-def test_chunk_document_keeps_plain_text_json_examples() -> None:
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+def test_chunk_document_keeps_plain_text_json_examples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_chunk_cfg(monkeypatch, max_tokens=20, overlap_tokens=4, max_chars=1000)
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
     chunks = tasks.chunk_document_text(
@@ -188,10 +206,10 @@ def test_chunk_document_keeps_plain_text_json_examples() -> None:
     assert any("documented option" in chunk.text for chunk in chunks)
 
 
-def test_chunk_document_does_not_treat_inline_html_mention_as_document() -> None:
-    tasks.EMBEDDING_CHUNK_MAX_TOKENS = 20
-    tasks.EMBEDDING_CHUNK_OVERLAP_TOKENS = 4
-    tasks.EMBEDDING_CHUNK_MAX_CHARS = 1000
+def test_chunk_document_does_not_treat_inline_html_mention_as_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_chunk_cfg(monkeypatch, max_tokens=20, overlap_tokens=4, max_chars=1000)
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
     chunks = tasks.chunk_document_text("Use the <html> tag in examples.")
@@ -206,7 +224,7 @@ def test_validate_chunk_data_rejects_embedder_oversize() -> None:
         end=1,
         text="payload",
         kind="text",
-        token_count=tasks.EMBEDDING_MAX_SEQ_LENGTH + 1,
+        token_count=tasks.cfg.embedding_max_seq_length + 1,
     )
 
     with pytest.raises(tasks.EmbedderDocumentError) as exc:
@@ -228,6 +246,7 @@ def test_mark_page_embedder_failed_sets_status_and_cleans_chunks() -> None:
         status_error=None,
         meta={"existing": "value"},
     )
+    page.patch_meta = lambda **kwargs: _patch_meta(page, **kwargs)
 
     class _Session:
         def get(self, model, page_id):
@@ -329,7 +348,7 @@ def test_materialize_page_chunks_marks_oversize_document_too_big(monkeypatch) ->
     from jobs.crawler import tasks as crawler_tasks
     from vchat.views.projects.page_status import PageStatus, PageStatusError
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 10)
     monkeypatch.setattr(
         crawler_tasks,
         "document_too_big_message",
@@ -354,6 +373,7 @@ def test_materialize_page_chunks_marks_oversize_document_too_big(monkeypatch) ->
         status=None,
         status_error=None,
     )
+    page.patch_meta = lambda **kwargs: _patch_meta(page, **kwargs)
     calls = []
 
     class _Session:
@@ -386,7 +406,7 @@ def test_materialize_page_chunks_marks_oversize_document_too_big(monkeypatch) ->
 def test_materialize_page_chunks_sizes_full_html_by_visible_text(monkeypatch) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 30)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 30)
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
@@ -499,7 +519,7 @@ def test_materialize_page_chunks_uses_metadata_only_for_giant_csv(
 ) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 10)
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
 
     page = SimpleNamespace(
@@ -548,7 +568,7 @@ def test_materialize_page_chunks_detects_large_statistical_dump_without_csv_hint
 ) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10_000)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 10_000)
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
 
     rows = ["user_id|match_id|score|duration|rank|won"]
@@ -603,7 +623,7 @@ def test_materialize_page_chunks_keeps_article_with_few_delimited_lines_full_tex
 ) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10_000)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 10_000)
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
@@ -660,7 +680,7 @@ def test_materialize_page_chunks_uses_metadata_only_for_large_downloadable_docum
 ) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 80)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 80)
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
 
     page = SimpleNamespace(
@@ -711,7 +731,7 @@ def test_materialize_page_chunks_keeps_large_raw_downloadable_document_full_text
 ) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 1000)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 1000)
     monkeypatch.setattr(crawler_tasks, "get_embed_tokenizer", lambda: _WordTokenizer())
     tasks.get_embed_tokenizer = lambda: _WordTokenizer()
 
@@ -913,7 +933,7 @@ def test_fetch_page_context_marks_old_oversize_error_too_big(monkeypatch) -> Non
     from jobs.crawler import tasks as crawler_tasks
     from vchat.views.projects.page_status import PageStatus, PageStatusError
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 10)
     monkeypatch.setattr(
         crawler_tasks,
         "document_too_big_message",
@@ -941,6 +961,7 @@ def test_fetch_page_context_marks_old_oversize_error_too_big(monkeypatch) -> Non
         status_error=PageStatusError.embedder_failed,
         meta={},
     )
+    page.patch_meta = lambda **kwargs: _patch_meta(page, **kwargs)
     calls = []
 
     class _Result:
@@ -978,7 +999,7 @@ def test_fetch_page_context_allows_old_too_big_when_visible_html_fits(
     from jobs.crawler import tasks as crawler_tasks
     from vchat.views.projects.page_status import PageStatusError
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 30)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 30)
 
     row = SimpleNamespace(
         id=13,

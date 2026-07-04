@@ -71,12 +71,8 @@ async def run_live_case(
 
 
 async def run_live_eval(args: argparse.Namespace) -> list[dict[str, Any]]:
-    provider_id = (
-        args.provider
-        or chat_views.config.get("chat_provider")
-        or get_default_provider_id()
-    )
-    model_id = args.model or chat_views.config.get("chat_model")
+    provider_id = args.provider or chat_views.cfg.chat_provider or get_default_provider_id()
+    model_id = args.model or chat_views.cfg.chat_model
     provider, model = resolve_ai_settings(provider_id, model_id)
     generation_context = chat_views.GenerationContext(
         provider=provider,

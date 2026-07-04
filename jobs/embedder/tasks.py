@@ -14,14 +14,9 @@ from jobs.db import create_sync_engine
 from jobs.embedder.model import (
     load_embedding_model,
     release_torch_cache,
-    resolve_embedding_device,
 )
-from jobs.embedder.chunking import (
-    EMBEDDING_MAX_SEQ_LENGTH,
-    EmbedderDocumentError,
-)
+from jobs.embedder.chunking import EmbedderDocumentError
 from jobs.embedder.queue import (
-    PENDING_CHUNKS_BATCH_SIZE,
     pending_chunks_remain,
     release_pending_chunk_slots,
 )
@@ -32,22 +27,7 @@ from jobs.documents.content import (
 )
 from vchat.models import Chunk, Page
 from vchat.views.projects.page_status import PageStatus
-from vchat.settings import config
-
-REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
-EMBEDDING_ENCODE_BATCH_MAX_CHARS = max(
-    1,
-    int(
-        config.get(
-            "embedding_encode_batch_max_chars",
-            config.get("embedding_chunk_max_chars", 12000),
-        )
-        or config.get("embedding_chunk_max_chars", 12000)
-    ),
-)
-EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS = max(
-    0, int(config.get("embedding_model_reset_after_documents", 20) or 20)
-)
+from vchat.settings import cfg
 
 # Lazy, per-process singleton
 _embed_model = None
@@ -57,8 +37,7 @@ _completed_documents_since_reset = 0
 def get_embed_model() -> Any:
     global _embed_model
     if _embed_model is None:
-        resolved_device = resolve_embedding_device()
-        _embed_model = load_embedding_model(device=resolved_device)
+        _embed_model = load_embedding_model()
     return _embed_model
 
 
@@ -77,11 +56,11 @@ def reset_embed_model() -> None:
 
 def maybe_reset_embed_model_after_document() -> bool:
     global _completed_documents_since_reset
-    if EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS <= 0:
+    if cfg.embedding_model_reset_after_documents <= 0:
         return False
 
     _completed_documents_since_reset += 1
-    if _completed_documents_since_reset < EMBEDDING_MODEL_RESET_AFTER_DOCUMENTS:
+    if _completed_documents_since_reset < cfg.embedding_model_reset_after_documents:
         return False
 
     logging.info(
@@ -121,7 +100,7 @@ def make_embed_vectors(texts: list[str]) -> list[List[float]]:
     current_chars = 0
     for text in texts:
         text_len = len(text or "")
-        if current and current_chars + text_len > EMBEDDING_ENCODE_BATCH_MAX_CHARS:
+        if current and current_chars + text_len > cfg.embedding_encode_batch_max_chars:
             batches.append(current)
             current = []
             current_chars = 0
@@ -204,7 +183,7 @@ def mark_completed_pages(session: Session, page_ids: set[int]) -> list[int]:
     return completed_page_ids
 
 
-def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bool:
+def process_next_pending_chunk(session: Session) -> bool:
     stmt = (
         select(Chunk)
         .where(Chunk.embedding.is_(None), Chunk.is_duplicate.is_(False))
@@ -251,10 +230,10 @@ def process_next_pending_chunk(session: Session, redis_client: Any = None) -> bo
         chunk_size,
     )
 
-    if (chunk.token_count or 0) > EMBEDDING_MAX_SEQ_LENGTH:
+    if (chunk.token_count or 0) > cfg.embedding_max_seq_length:
         raise EmbedderDocumentError(
             f"Chunk {chunk_ix} for page {chunk_page_id} is too large for embedder "
-            f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
+            f"({chunk.token_count} tokens > {cfg.embedding_max_seq_length})",
             page_id=chunk_page_id,
         )
 
@@ -311,9 +290,8 @@ def process_pending_chunk_batch(
     session: Session,
     *,
     batch_size: int,
-    redis_client: Any = None,
 ) -> int:
-    limit = max(1, int(batch_size or PENDING_CHUNKS_BATCH_SIZE))
+    limit = max(1, int(batch_size or cfg.embedding_pending_chunks_batch_size))
     chunk_table: sa.Table = Chunk.__table__  # type: ignore
     stmt = (
         select(
@@ -345,10 +323,10 @@ def process_pending_chunk_batch(
             continue
 
         chunk_page_id = int(chunk.page_id)
-        if (chunk.token_count or 0) > EMBEDDING_MAX_SEQ_LENGTH:
+        if (chunk.token_count or 0) > cfg.embedding_max_seq_length:
             raise EmbedderDocumentError(
                 f"Chunk {chunk.chunk_ix} for page {chunk_page_id} is too large for embedder "
-                f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
+                f"({chunk.token_count} tokens > {cfg.embedding_max_seq_length})",
                 page_id=chunk_page_id,
             )
         chunk_text = chunk.text or ""
@@ -452,15 +430,13 @@ def process_pending_chunk_batch(
 
 def run_pending_chunk_batch(
     session: Session,
-    redis_client: Any,
     *,
     batch_size: int | None = None,
 ) -> tuple[int, int]:
-    limit = max(1, int(batch_size or PENDING_CHUNKS_BATCH_SIZE))
+    limit = max(1, int(batch_size or cfg.embedding_pending_chunks_batch_size))
     processed = process_pending_chunk_batch(
         session,
         batch_size=limit,
-        redis_client=redis_client,
     )
 
     remaining = 1 if pending_chunks_remain(session) else 0
@@ -470,13 +446,13 @@ def run_pending_chunk_batch(
 @app.task(name="jobs.embedder.tasks.pending_chunks", queue="embeddings")
 def pending_chunks(counted: bool = False):
     engine = create_sync_engine()
-    redis_client = redis.from_url(REDIS_URL)
+    redis_client = redis.from_url(cfg.redis_uri)
     processed = 0
     remaining = 0
     try:
         with Session(bind=engine) as session:
             try:
-                processed, remaining = run_pending_chunk_batch(session, redis_client)
+                processed, remaining = run_pending_chunk_batch(session)
             except EmbedderDocumentError as exc:
                 logging.exception("Embedder rejected a pending chunk batch")
                 if exc.page_id is not None:

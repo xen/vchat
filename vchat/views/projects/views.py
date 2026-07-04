@@ -45,7 +45,7 @@ from vchat.views.chat.ai import (
     resolve_ai_settings,
 )
 from vchat.views.chat.sources import enrich_source_payloads
-from vchat.settings import CONFIG_KEY, REDIS_KEY, SETTINGS_KEY, SIGNER_KEY
+from vchat.settings import REDIS_KEY, SIGNER_KEY, cfg
 from vchat.widget_state import (
     WIDGET_STATE_DISABLED,
     WIDGET_STATE_ENABLED,
@@ -74,10 +74,6 @@ from vchat.models import (
 )
 from vchat.models.data import api_client_source
 from vchat.models.source_config import CrawlerRule, SourceConfig
-from vchat.views.projects.settings import (
-    apply_settings_updates,
-    get_setting,
-)
 from jobs.crawler.source_settings import (
     DEFAULT_CRAWLER_CONCURRENT_REQUESTS,
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
@@ -92,7 +88,6 @@ from jobs.crawler.source_blocking import (
     check_source_blocking,
     describe_blocked_reason,
 )
-from vchat.settings import config
 from vchat.views.projects.page_status import (
     EXCLUDED_INDEX_STATUS_ERRORS,
     PageStatus,
@@ -101,10 +96,9 @@ from vchat.views.projects.page_status import (
 )
 from vchat.views.triggers.rules import (
     DEFAULT_SOURCE_TRIGGER_PATTERN,
-    TRIGGER_DEFAULTS_SETTING,
+    DEFAULT_TRIGGER_TEMPLATES,
     TriggerPatternError,
     apply_source_trigger_rules,
-    load_default_trigger_templates,
     page_trigger_items,
     trigger_pattern_matches_url,
     trigger_rule_url_part,
@@ -119,13 +113,13 @@ from vchat.utils import (
     validate_signed_user_csrf,
 )
 
-from vchat.views.admin.views import (
+from vchat.views.admin.forms import (
     ApiClientAdd,
     ApiClientEdit,
     UserAdd,
     UserPasswordEdit,
 )
-from vchat.views.api.views import decrypt_client_secret, encrypt_client_secret
+from vchat.views.api.views import encrypt_client_secret
 
 from . import forms
 
@@ -184,7 +178,7 @@ async def _revoke_user_sessions(
 
 
 async def _api_client_list_context(
-    request: web.Request,
+    _request: web.Request,
     db_session,
     *,
     add_form: ApiClientAdd,
@@ -218,11 +212,7 @@ async def _api_client_list_context(
             )
         for client in clients:
             client.sources = sources_by_client.get(client.id, [])
-            secret = decrypt_client_secret(
-                client.encrypted_secret,
-                request.app[CONFIG_KEY]["secret_key"],
-            )
-            client.masked_secret = f"vchatsec-...{secret[-4:]}"
+            client.masked_secret = "vchatsec-..."
 
     source_rows = (
         await db_session.execute(
@@ -788,13 +778,13 @@ async def _initial_messages_for_chat(
         src["uri"]
         for msg in initial_messages
         for src in msg.get("sources") or []
-        if isinstance(src, dict)
-        and src.get("uri")
-        and _is_slug_title(src.get("title"))
+        if isinstance(src, dict) and src.get("uri") and _is_slug_title(src.get("title"))
     }
     if slug_uris:
         fresh_rows = (
-            await db.execute(sa.select(Page.uri, Page.title).where(Page.uri.in_(slug_uris)))
+            await db.execute(
+                sa.select(Page.uri, Page.title).where(Page.uri.in_(slug_uris))
+            )
         ).all()
         uri_title_map = {r.uri: r.title for r in fresh_rows if r.title}
         for msg in initial_messages:
@@ -990,12 +980,9 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         document_content_preview,
         is_truncated=document_content_is_truncated,
     )
-    document_content_can_expand = (
-        document_content_is_truncated
-        and (
-            document.status_error == PageStatusError.duplicate_content
-            or not _is_ignored_document(document)
-        )
+    document_content_can_expand = document_content_is_truncated and (
+        document.status_error == PageStatusError.duplicate_content
+        or not _is_ignored_document(document)
     )
     document_meta = {
         "extraction": meta_extraction if isinstance(meta_extraction, dict) else {},
@@ -1073,7 +1060,9 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
         raw_meta.get("outline") if isinstance(raw_meta.get("outline"), list) else []
     )
     raw_extraction = raw_meta.get("extraction")
-    extraction: dict[str, Any] = raw_extraction if isinstance(raw_extraction, dict) else {}
+    extraction: dict[str, Any] = (
+        raw_extraction if isinstance(raw_extraction, dict) else {}
+    )
     uniqueness_percent = None
     if not document_content_is_truncated:
         boilerplate_hashes = frozenset()
@@ -1155,22 +1144,15 @@ async def _document_detail_context(request, document_id: int) -> dict[str, Any]:
     }
 
 
-def _project_context(request) -> SimpleNamespace:
-    settings = request.app.get(SETTINGS_KEY, {})
+def _project_context() -> SimpleNamespace:
     return SimpleNamespace(
         id="global",
-        title=settings.get("project.title") or "vchat",
-        provider=config.get("chat_provider") or "gigachat",
-        model=(
-            config.get("chat_model")
-            or config.get("openai_model")
-            or DEFAULT_OPENAI_MODEL
-        ),
+        title="vchat",
+        provider=cfg.chat_provider,
+        model=cfg.chat_model,
         system_prompt=forms.DEFAULT_SYSTEM_PROMPT,
-        agent_style=settings.get("project.agent_style") or "",
-        config={
-            "secret": settings.get("project.secret") or "",
-        },
+        agent_style="",
+        config={},
     )
 
 
@@ -1269,18 +1251,6 @@ async def index(request):
     return await project_view(request)
 
 
-def _trigger_lines(raw: str | None) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for line in (raw or "").splitlines():
-        value = line.strip()
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        result.append(value)
-    return result
-
-
 def _compile_trigger_patterns(patterns: list[str]) -> None:
     for pattern in patterns:
         validate_trigger_pattern(pattern)
@@ -1352,7 +1322,9 @@ async def _load_llm_cache_context(request: web.Request) -> dict[str, Any]:
         )
     )
     potential_saved_tokens = await db_session.scalar(
-        sa.select(sa.func.coalesce(sa.func.sum(LLMCacheEntry.potential_saved_tokens), 0))
+        sa.select(
+            sa.func.coalesce(sa.func.sum(LLMCacheEntry.potential_saved_tokens), 0)
+        )
     )
     await db_session.rollback()
     return {
@@ -1421,11 +1393,6 @@ async def _load_trigger_settings_context(request, form=None) -> dict[str, Any]:
     if form is None:
         form = forms.TriggerEdit(
             meta={"csrf_context": await get_session(request)},
-            data={
-                "default_templates": "\n".join(
-                    load_default_trigger_templates(request.app)
-                )
-            },
         )
     trigger_pages = list(
         (
@@ -1467,19 +1434,10 @@ async def project_triggers(request):
     form = forms.TriggerEdit(
         meta={"csrf_context": session},
         formdata=data,
-        data={
-            "default_templates": "\n".join(load_default_trigger_templates(request.app))
-        },
     )
 
     if data is not None:
         if form.validate():
-            default_templates = _trigger_lines(form.default_templates.data)
-            await apply_settings_updates(
-                request.app,
-                db_session,
-                {TRIGGER_DEFAULTS_SETTING: default_templates},
-            )
             matched = 0
             sources = list((await db_session.execute(sa.select(Source))).scalars())
             for source in sources:
@@ -1494,13 +1452,13 @@ async def project_triggers(request):
                     await flash(request, f"Некорректный regex: {exc}", "error")
                     return await _load_trigger_settings_context(request, form)
 
-                cfg = source.config
+                source_cfg = source.config
                 source.config = SourceConfig(
-                    crawler_concurrent_requests=cfg.crawler_concurrent_requests,
-                    crawler_download_delay=cfg.crawler_download_delay,
-                    crawler_download_timeout=cfg.crawler_download_timeout,
-                    ignore_robots_txt=cfg.ignore_robots_txt,
-                    rules=cfg.rules,
+                    crawler_concurrent_requests=source_cfg.crawler_concurrent_requests,
+                    crawler_download_delay=source_cfg.crawler_download_delay,
+                    crawler_download_timeout=source_cfg.crawler_download_timeout,
+                    ignore_robots_txt=source_cfg.ignore_robots_txt,
+                    rules=source_cfg.rules,
                     trigger_rules=[
                         CrawlerRule(type="regex", value=pattern)
                         for pattern in source_patterns
@@ -1527,6 +1485,7 @@ async def project_triggers(request):
         return await _load_trigger_settings_context(request, form)
 
     return await _load_trigger_settings_context(request, form)
+
 
 @login_required()
 async def project_trigger_rule_count(request):
@@ -1639,11 +1598,7 @@ async def _get_source_row_data(db_session, source_id: int) -> dict[str, Any] | N
 async def project_edit_sources(request):
     db_session = request["db"]
     session = await get_session(request)
-    data = (
-        await request.post()
-        if getattr(request, "method", "GET") == "POST"
-        else None
-    )
+    data = await request.post() if getattr(request, "method", "GET") == "POST" else None
     form = forms.SourceAdd(
         formdata=data,
         meta={"csrf_context": session},
@@ -1774,17 +1729,17 @@ async def project_source_settings(request):
     if data is not None:
         form_kwargs["formdata"] = data
     else:
-        cfg = source.config
+        source_cfg = source.config
         form_kwargs["data"] = {
             "title": source.title,
             "reindex_cron": ""
             if source.reindex_cron == MANUAL_REINDEX_MODE
             else source.reindex_cron,
             "url": source.uri,
-            "concurrent_requests": cfg.crawler_concurrent_requests,
-            "download_delay": cfg.crawler_download_delay,
-            "download_timeout": cfg.crawler_download_timeout,
-            "ignore_robots_txt": cfg.ignore_robots_txt,
+            "concurrent_requests": source_cfg.crawler_concurrent_requests,
+            "download_delay": source_cfg.crawler_download_delay,
+            "download_timeout": source_cfg.crawler_download_timeout,
+            "ignore_robots_txt": source_cfg.ignore_robots_txt,
             "enable_triggers": source.enable_triggers,
         }
 
@@ -1932,10 +1887,7 @@ async def project_action(request):
     action = request.match_info.get("action")
 
     if action == "user_create":
-        admin_user_create_enabled = request.app[CONFIG_KEY].get(
-            "admin_user_create_enabled", True
-        )
-        if not admin_user_create_enabled:
+        if not cfg.admin_user_create_enabled:
             raise web.HTTPForbidden(text="User creation is disabled")
 
         session = await get_session(request)
@@ -1956,7 +1908,7 @@ async def project_action(request):
                     "add_form": form,
                     "total_users": len(users),
                     "current_user_id": request["user"].id,
-                    "admin_user_create_enabled": admin_user_create_enabled,
+                    "admin_user_create_enabled": cfg.admin_user_create_enabled,
                 },
                 status=400,
             )
@@ -1976,7 +1928,7 @@ async def project_action(request):
                     "add_form": form,
                     "total_users": len(users),
                     "current_user_id": request["user"].id,
-                    "admin_user_create_enabled": admin_user_create_enabled,
+                    "admin_user_create_enabled": cfg.admin_user_create_enabled,
                 },
                 status=400,
             )
@@ -2133,7 +2085,7 @@ async def project_action(request):
             client_id=client_id,
             encrypted_secret=encrypt_client_secret(
                 client_secret,
-                request.app[CONFIG_KEY]["secret_key"],
+                cfg.secret_key,
             ),
             is_active=True,
         )
@@ -2231,7 +2183,7 @@ async def project_action(request):
             client_secret = f"vchatsec-{secrets.token_urlsafe(32)}"
             client.encrypted_secret = encrypt_client_secret(
                 client_secret,
-                request.app[CONFIG_KEY]["secret_key"],
+                cfg.secret_key,
             )
 
         await db_session.commit()
@@ -2426,20 +2378,6 @@ async def project_action(request):
 
         return web.Response(text="ok")
 
-    if action == "reset_secret":
-        secret = secrets.token_urlsafe(32)
-        await apply_settings_updates(
-            request.app,
-            db_session,
-            {"project.secret": secret},
-        )
-        await db_session.commit()
-        return aiohttp_jinja2.render_template(
-            "projects/_integration_secret_field.html",
-            request,
-            {"project_secret": secret},
-        )
-
     if action == "delete_document":
         document = await db_session.scalar(
             sa.select(Page).where(Page.id == int(item_id))
@@ -2625,18 +2563,18 @@ async def project_action(request):
             rule_index = int(data.get("rule_index", "-1"))
         except (TypeError, ValueError):
             raise web.HTTPBadRequest(text="Invalid rule index")
-        cfg = source.config
-        rules = list(cfg.rules)
+        source_cfg = source.config
+        rules = list(source_cfg.rules)
         if rule_index < 0 or rule_index >= len(rules):
             raise web.HTTPBadRequest(text="Rule index out of range")
         rules.pop(rule_index)
         source.config = SourceConfig(
-            crawler_concurrent_requests=cfg.crawler_concurrent_requests,
-            crawler_download_delay=cfg.crawler_download_delay,
-            crawler_download_timeout=cfg.crawler_download_timeout,
-            ignore_robots_txt=cfg.ignore_robots_txt,
+            crawler_concurrent_requests=source_cfg.crawler_concurrent_requests,
+            crawler_download_delay=source_cfg.crawler_download_delay,
+            crawler_download_timeout=source_cfg.crawler_download_timeout,
+            ignore_robots_txt=source_cfg.ignore_robots_txt,
             rules=rules,
-            trigger_rules=cfg.trigger_rules,
+            trigger_rules=source_cfg.trigger_rules,
         )
         source.updated_at = datetime.now(timezone.utc)
         await db_session.commit()
@@ -2893,8 +2831,7 @@ async def project_files_json(request):
 async def project_stats(request):
     db = request["db"]
 
-    tz_name = config.get("time_zone") or "UTC"
-    app_tz = ZoneInfo(tz_name)
+    app_tz = ZoneInfo(cfg.time_zone)
     now_local = datetime.now(app_tz)
     start_day_local = now_local.date() - timedelta(days=30)
     start_date_local = datetime.combine(start_day_local, time.min, tzinfo=app_tz)
@@ -2902,9 +2839,9 @@ async def project_stats(request):
 
     chats_query = (
         sa.select(
-            sa.func.date_trunc("day", sa.func.timezone(tz_name, Chat.created_at)).label(
-                "day"
-            ),
+            sa.func.date_trunc(
+                "day", sa.func.timezone(cfg.time_zone, Chat.created_at)
+            ).label("day"),
             sa.func.count(Chat.id).label("count"),
             sa.func.count(sa.distinct(Chat.user_uid)).label("users"),
         )
@@ -2917,7 +2854,7 @@ async def project_stats(request):
     msgs_query = (
         sa.select(
             sa.func.date_trunc(
-                "day", sa.func.timezone(tz_name, ChatMsg.created_at)
+                "day", sa.func.timezone(cfg.time_zone, ChatMsg.created_at)
             ).label("day"),
             sa.func.count(ChatMsg.id).label("count"),
             sa.func.sum(sa.func.jsonb_array_length(ChatMsg.used_chunks)).label("hits"),
@@ -2932,7 +2869,7 @@ async def project_stats(request):
     votes_query = (
         sa.select(
             sa.func.date_trunc(
-                "day", sa.func.timezone(tz_name, ChatMsg.created_at)
+                "day", sa.func.timezone(cfg.time_zone, ChatMsg.created_at)
             ).label("day"),
             sa.func.coalesce(
                 sa.func.sum(sa.case((ChatMsg.vote.is_(True), 1), else_=0)),
@@ -3167,7 +3104,7 @@ async def project_chat(request):
         user_uid_param = request.rel_url.query.get("user_uid", "").strip()
         user_uid = user_uid_param or str(request["user"].id)
 
-        project = _project_context(request)
+        project = _project_context()
         chat = Chat(
             title=f"Chat for {project.title}",
             user_uid=user_uid,
@@ -3183,7 +3120,7 @@ async def project_chat(request):
         location = request.app.router["project_chat_with_id"].url_for(chat_id=chat.id)
         raise web.HTTPFound(location=location)
 
-    serializer = URLSafeSerializer(config.get("secret_key"))
+    serializer = URLSafeSerializer(cfg.secret_key)
     payload = serializer.dumps([request["user"].id, chat.id], salt="vchat")
     signed_chat_id = serializer.dumps(chat.id, salt="chat")
     initial_messages = await _initial_messages_for_chat(
@@ -3192,7 +3129,7 @@ async def project_chat(request):
         serializer=serializer,
     )
 
-    project = _project_context(request)
+    project = _project_context()
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
 
     return {
@@ -3229,7 +3166,6 @@ async def project_chat(request):
 @aiohttp_jinja2.template("projects/integration.html")
 async def project_integration(request):
     session = await get_session(request)
-    secret = get_setting(request.app, "project.secret", "") or ""
     if request.method == "POST":
         data = await request.post()
         form = forms.WidgetIntegrationAdd(
@@ -3238,7 +3174,6 @@ async def project_integration(request):
         )
         if not form.validate():
             return {
-                "project_secret": secret,
                 "form": form,
                 "widgets": await _widget_integrations(request["db"]),
             }
@@ -3253,6 +3188,7 @@ async def project_integration(request):
         widget.footer_text = forms.WIDGET_FOOTER_TEXT
         widget.system_prompt = forms.DEFAULT_SYSTEM_PROMPT
         widget.suggestions_prompt = forms.DEFAULT_SUGGESTIONS_PROMPT
+        widget.trigger_templates = list(DEFAULT_TRIGGER_TEMPLATES)
         await _assign_new_widget_code(request["db"], widget)
         request["db"].add(widget)
         await request["db"].flush()
@@ -3262,20 +3198,10 @@ async def project_integration(request):
         await admin_event("widget_create", request)
         await flash(request, "Код виджета создан", "success")
         raise web.HTTPFound(
-            request.app.router["project_widget_edit"].url_for(
-                widget_id=str(widget_id)
-            )
+            request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
-
-    if not secret:
-        secret = secrets.token_urlsafe(32)
-        await apply_settings_updates(
-            request.app, request["db"], {"project.secret": secret}
-        )
-        await request["db"].commit()
 
     return {
-        "project_secret": secret,
         "form": forms.WidgetIntegrationAdd(meta={"csrf_context": session}),
         "widgets": await _widget_integrations(request["db"]),
     }
@@ -3315,15 +3241,14 @@ async def project_widget_edit(request):
         item.footer_text = form.footer_text.data
         item.welcome_messages = form.cleaned_welcome_messages
         item.waiting_messages = form.cleaned_waiting_messages
+        item.trigger_templates = form.cleaned_trigger_templates
         item.pinned_messages = form.cleaned_pinned_messages
         item.updated_at = datetime.now(timezone.utc)
         await request["db"].commit()
         await admin_event("widget_update", request)
         await flash(request, "Код виджета обновлен", "success")
         raise web.HTTPFound(
-            request.app.router["project_widget_edit"].url_for(
-                widget_id=str(widget_id)
-            )
+            request.app.router["project_widget_edit"].url_for(widget_id=str(widget_id))
         )
 
     return {
@@ -3461,16 +3386,21 @@ async def _render_public_chat(request, widget: SimpleNamespace):
     if not user_uid:
         user_uid = f"guest_{uuid.uuid4().hex[:8]}"
 
-    serializer = URLSafeSerializer(config.get("secret_key"))
+    serializer = URLSafeSerializer(cfg.secret_key)
     if signed_resume_chat_id:
         try:
             resume_chat_id = serializer.loads(signed_resume_chat_id, salt="chat")
         except BadSignature:
             return web.HTTPForbidden(text="Invalid chat id")
-        chat = await request["db"].scalar(sa.select(Chat).where(Chat.id == resume_chat_id))
+        chat = await request["db"].scalar(
+            sa.select(Chat).where(Chat.id == resume_chat_id)
+        )
         if not chat:
             raise web.HTTPNotFound(text="Chat not found")
-        if chat.user_uid != user_uid or (chat.meta or {}).get("widget_code") != widget.code:
+        if (
+            chat.user_uid != user_uid
+            or (chat.meta or {}).get("widget_code") != widget.code
+        ):
             return web.HTTPForbidden(text="Invalid chat id")
         resume_meta = dict(chat.meta or {})
         if user_name:
@@ -3506,7 +3436,7 @@ async def _render_public_chat(request, widget: SimpleNamespace):
         serializer=serializer,
     )
 
-    project = _project_context(request)
+    project = _project_context()
     provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
 
     return {

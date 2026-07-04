@@ -1,147 +1,14 @@
-from datetime import timedelta
 from types import SimpleNamespace
 
 import aiohttp_jinja2
 import sqlalchemy as sa
 from aiohttp_session import get_session
-from wtforms import Form, PasswordField, StringField, validators
-from wtforms.csrf.session import SessionCSRF
 
-from vchat.settings import CONFIG_KEY
-from vchat.settings import config
+from vchat.settings import cfg
 from vchat.models import AdminEvent, ApiClient, Source, User
 from vchat.models.data import api_client_source
 from vchat.utils import login_required, meta, paginator
-from vchat.views.api.views import decrypt_client_secret
-
-
-class AdminCSRFBase(Form):
-    class Meta:
-        csrf = True
-        csrf_secret = config["secret_key"]
-        csrf_class = SessionCSRF
-        csrf_time_limit = timedelta(minutes=20)
-
-
-class UserAdd(AdminCSRFBase):
-    email = StringField(
-        "Email",
-        [
-            validators.Length(min=6, max=254, message="Длина от 6 до 254 символов"),
-            validators.Email(message="Введите корректный email"),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "name@company.com"},
-    )
-    password = PasswordField(
-        "Пароль",
-        [
-            validators.Length(
-                min=12,
-                max=128,
-                message="Длина от 12 до 128 символов",
-            ),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "Пароль"},
-    )
-
-
-class UserPasswordEdit(AdminCSRFBase):
-    password = PasswordField(
-        "Новый пароль",
-        [
-            validators.Length(
-                min=12,
-                max=128,
-                message="Длина от 12 до 128 символов",
-            ),
-            validators.EqualTo("confirm", message="Пароли должны совпадать"),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "Новый пароль"},
-    )
-    confirm = PasswordField(
-        "Подтвердите пароль",
-        render_kw={"placeholder": "Подтвердите пароль"},
-    )
-
-
-class ApiClientAdd(AdminCSRFBase):
-    name = StringField(
-        "Имя",
-        [
-            validators.Length(
-                min=1, max=128, message="Length from 1 to 128 characters"
-            ),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "Client name"},
-    )
-
-
-class ApiClientEdit(AdminCSRFBase):
-    name = StringField(
-        "Имя",
-        [
-            validators.Length(
-                min=1, max=128, message="Length from 1 to 128 characters"
-            ),
-            validators.DataRequired(message="Обязательное поле"),
-        ],
-        render_kw={"placeholder": "Client name"},
-    )
-
-
-async def _get_users(db_session) -> list[User]:
-    return (
-        (await db_session.execute(sa.select(User).order_by(User.id.desc())))
-        .scalars()
-        .all()
-    )
-
-
-def _masked_api_client_secret(encrypted_secret: str, secret_key: str) -> str:
-    secret = decrypt_client_secret(encrypted_secret, secret_key)
-    return f"vchatsec-...{secret[-4:]}"
-
-
-async def _get_api_clients(db_session, secret_key: str) -> list[ApiClient]:
-    clients = (
-        (await db_session.execute(sa.select(ApiClient).order_by(ApiClient.id.desc())))
-        .scalars()
-        .all()
-    )
-    if not clients:
-        return []
-
-    client_ids = [client.id for client in clients]
-    source_rows = (
-        await db_session.execute(
-            sa.select(
-                api_client_source.c.api_client_id,
-                Source.id,
-                Source.title,
-                Source.uri,
-            )
-            .join(Source, Source.id == api_client_source.c.source_id)
-            .where(api_client_source.c.api_client_id.in_(client_ids))
-            .order_by(Source.title.asc(), Source.id.asc())
-        )
-    ).all()
-    sources_by_client: dict[int, list[SimpleNamespace]] = {}
-    for client_id, source_id, title, uri in source_rows:
-        sources_by_client.setdefault(client_id, []).append(
-            SimpleNamespace(id=source_id, title=title, uri=uri)
-        )
-
-    for client in clients:
-        client.sources = sources_by_client.get(client.id, [])
-        client.masked_secret = _masked_api_client_secret(
-            client.encrypted_secret,
-            secret_key,
-        )
-    return clients
+from . import forms
 
 
 async def _get_api_client_sources(db_session) -> list[SimpleNamespace]:
@@ -212,16 +79,18 @@ async def event_list(request):
 @aiohttp_jinja2.template("admin/user_list.html")
 async def user_list(request):
     session = await get_session(request)
-    add_form = UserAdd(meta={"csrf_context": session})
-    users = await _get_users(request["db"])
+    add_form = forms.UserAdd(meta={"csrf_context": session})
+    users = (
+        (await request["db"].execute(sa.select(User).order_by(User.id.desc())))
+        .scalars()
+        .all()
+    )
     return {
         "users": users,
         "add_form": add_form,
         "total_users": len(users),
         "current_user_id": request["user"].id,
-        "admin_user_create_enabled": request.app[CONFIG_KEY].get(
-            "admin_user_create_enabled", True
-        ),
+        "admin_user_create_enabled": cfg.admin_user_create_enabled,
     }
 
 
@@ -230,12 +99,43 @@ async def user_list(request):
 @aiohttp_jinja2.template("admin/api_client_list.html")
 async def api_client_list(request):
     session = await get_session(request)
-    add_form = ApiClientAdd(meta={"csrf_context": session})
+    add_form = forms.ApiClientAdd(meta={"csrf_context": session})
+    clients = (
+        (
+            await request["db"].execute(
+                sa.select(ApiClient).order_by(ApiClient.id.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if clients:
+        client_ids = [client.id for client in clients]
+        source_rows = (
+            await request["db"].execute(
+                sa.select(
+                    api_client_source.c.api_client_id,
+                    Source.id,
+                    Source.title,
+                    Source.uri,
+                )
+                .join(Source, Source.id == api_client_source.c.source_id)
+                .where(api_client_source.c.api_client_id.in_(client_ids))
+                .order_by(Source.title.asc(), Source.id.asc())
+            )
+        ).all()
+        sources_by_client: dict[int, list[SimpleNamespace]] = {}
+        for client_id, source_id, title, uri in source_rows:
+            sources_by_client.setdefault(client_id, []).append(
+                SimpleNamespace(id=source_id, title=title, uri=uri)
+            )
+
+        for client in clients:
+            client.sources = sources_by_client.get(client.id, [])
+            client.masked_secret = "vchatsec-..."
+
     return {
-        "clients": await _get_api_clients(
-            request["db"],
-            request.app[CONFIG_KEY]["secret_key"],
-        ),
+        "clients": clients,
         "sources": await _get_api_client_sources(request["db"]),
         "add_form": add_form,
         "new_credentials": None,

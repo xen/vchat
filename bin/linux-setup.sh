@@ -34,6 +34,7 @@ apt-get install -y \
   libsasl2-dev \
   libpq-dev \
   libssl-dev \
+  libyaml-dev \
   python3-dev \
   python3-pip \
   git \

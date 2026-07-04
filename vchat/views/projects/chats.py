@@ -13,12 +13,11 @@ from vchat.db import async_session_factory
 from vchat.views.chat.guardrails import mask_russian_pii
 from vchat.views.chat.sources import enrich_source_payloads
 from vchat.models import Chat, ChatMsg, Page
-from vchat.settings import config
+from vchat.settings import cfg
 from vchat.utils import login_required, meta, paginator
 
 logger = logging.getLogger("vchat.projects.chats")
-REDIS_URL = config.get("redis_uri", "redis://localhost:6379/3")
-redis = aioredis.from_url(REDIS_URL, decode_responses=True)
+redis = aioredis.from_url(cfg.redis_uri, decode_responses=True)
 
 GUARDRAIL_REASON_LABELS = {
     "russian_pii": "Персональные данные (РФ)",
@@ -125,7 +124,7 @@ async def _mark_deleted_history_sources(db, messages: list[ChatMsg]) -> None:
 @meta(title="Чаты")
 @login_required()
 @aiohttp_jinja2.template("projects/chats.html")
-async def chats_list(request):
+async def chats_list(_ignore_request):
     active_chat_ids = await redis.smembers("active_chats")
     active_chats = []
 

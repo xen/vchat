@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
+import time
 from types import SimpleNamespace
 
 import pytest
 
 from vchat.views.chat import ctx as ctx_mod
 from vchat.views.chat.ctx import Msg
+
+
+def _reset_request_embedding_runtime() -> None:
+    executor = ctx_mod._request_embed_executor
+    if executor is not None:
+        executor.shutdown(wait=True, cancel_futures=True)
+    ctx_mod._request_embed_executor = None
+    ctx_mod._request_embed_semaphore = None
 
 
 class _MappingsResult:
@@ -72,7 +83,7 @@ async def test_context_supplies_apply_allowed_source_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db = _DB(results=[[], [], []])
-    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 2)
+    monkeypatch.setattr(ctx_mod.cfg, "vec_dim", 2)
     monkeypatch.setattr(
         ctx_mod,
         "queryprofile",
@@ -121,7 +132,7 @@ async def test_kb_vector_supply_zero_top_k_skips_db() -> None:
 async def test_kb_vector_supply_uses_knn_candidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 2)
+    monkeypatch.setattr(ctx_mod.cfg, "vec_dim", 2)
     db = _DB(results=[[]])
 
     await ctx_mod.kb_vector_supply(
@@ -149,7 +160,7 @@ async def test_kb_vector_supply_uses_knn_candidates(
 async def test_kb_vector_supply_rejects_wrong_vector_dimension(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setitem(ctx_mod.cfg, "vec_dim", 3)
+    monkeypatch.setattr(ctx_mod.cfg, "vec_dim", 3)
     db = _DB()
 
     with pytest.raises(ValueError, match="query_vec must have 3 dimensions"):
@@ -205,6 +216,99 @@ def test_embed_query_prepends_prompt_and_encodes(
     assert vec == [0.4, 0.5]
     assert seen["payload"].endswith("hello world")
     assert ctx_mod.EMBEDDING_QUERY_PROMPT in seen["payload"]
+
+
+@pytest.mark.asyncio
+async def test_embed_query_async_limits_parallel_encode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_request_embedding_runtime()
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_concurrency", 1)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_executor_workers", 1)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_timeout_seconds", 5)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_warn_seconds", 5)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_torch_threads", 1)
+    monkeypatch.setattr(ctx_mod.torch, "set_num_threads", lambda _threads: None)
+
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+
+    def _embed(text: str) -> list[float]:
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        try:
+            time.sleep(0.01)
+            return [float(text)]
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(ctx_mod, "embed_query", _embed)
+
+    try:
+        results = await asyncio.gather(
+            *(ctx_mod.embed_query_async(str(index)) for index in range(10))
+        )
+    finally:
+        _reset_request_embedding_runtime()
+
+    assert max_active == 1
+    assert results == [[float(index)] for index in range(10)]
+
+
+@pytest.mark.asyncio
+async def test_embed_query_async_times_out_waiting_for_limiter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_request_embedding_runtime()
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_concurrency", 1)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_executor_workers", 1)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_timeout_seconds", 0.01)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_warn_seconds", 5)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_torch_threads", 1)
+    monkeypatch.setattr(ctx_mod.torch, "set_num_threads", lambda _threads: None)
+
+    def _embed(_text: str) -> list[float]:
+        time.sleep(0.05)
+        return [0.1]
+
+    monkeypatch.setattr(ctx_mod, "embed_query", _embed)
+
+    first = asyncio.create_task(ctx_mod.embed_query_async("1"))
+    await asyncio.sleep(0)
+    try:
+        with pytest.raises(ctx_mod.RequestEmbeddingTimeoutError):
+            await ctx_mod.embed_query_async("2")
+        assert await first == [0.1]
+    finally:
+        _reset_request_embedding_runtime()
+
+
+@pytest.mark.asyncio
+async def test_embed_query_async_propagates_encode_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_request_embedding_runtime()
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_concurrency", 1)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_executor_workers", 1)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_timeout_seconds", 5)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_warn_seconds", 5)
+    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_torch_threads", 1)
+    monkeypatch.setattr(ctx_mod.torch, "set_num_threads", lambda _threads: None)
+
+    def _embed(_text: str) -> list[float]:
+        raise RuntimeError("model crashed")
+
+    monkeypatch.setattr(ctx_mod, "embed_query", _embed)
+
+    try:
+        with pytest.raises(RuntimeError, match="model crashed"):
+            await ctx_mod.embed_query_async("boom")
+    finally:
+        _reset_request_embedding_runtime()
 
 
 def test_sanitize_helper() -> None:

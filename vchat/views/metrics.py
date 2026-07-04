@@ -18,7 +18,7 @@ from prometheus_client import (
     multiprocess,
 )
 from prometheus_client.core import GaugeMetricFamily
-from vchat.settings import config
+from vchat.settings import cfg
 
 logger = logging.getLogger("vchat.views.metrics")
 
@@ -52,6 +52,29 @@ CHAT_CONTEXT_CHUNKS = Histogram(
     "Number of retrieval chunks used in a chat response context.",
     ("provider", "model", "status"),
     buckets=(0, 1, 2, 3, 5, 8, 10, 15, 20, 30),
+)
+
+REQUEST_EMBEDDING_QUEUE_WAIT_SECONDS = Histogram(
+    "vchat_request_embedding_queue_wait_seconds",
+    "Time spent waiting for the in-process request embedding limiter.",
+    buckets=(0.001, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 15, 20, 30, 60),
+)
+
+REQUEST_EMBEDDING_ENCODE_SECONDS = Histogram(
+    "vchat_request_embedding_encode_seconds",
+    "Time spent inside request-path embedding encode.",
+    buckets=(0.1, 0.5, 1, 2.5, 5, 10, 15, 20, 30, 60),
+)
+
+REQUEST_EMBEDDING_INFLIGHT = Gauge(
+    "vchat_request_embedding_inflight",
+    "Number of request-path embedding encodes currently running in this process.",
+    multiprocess_mode="livesum",
+)
+
+REQUEST_EMBEDDING_TIMEOUTS_TOTAL = Counter(
+    "vchat_request_embedding_timeouts_total",
+    "Total request-path embedding queue timeouts.",
 )
 
 CRAWLER_PAGES_TOTAL = Counter(
@@ -179,6 +202,26 @@ def record_chat_request(
         ).observe(float(context_chunks))
 
 
+def record_request_embedding_queue_wait(duration_seconds: float) -> None:
+    REQUEST_EMBEDDING_QUEUE_WAIT_SECONDS.observe(max(float(duration_seconds), 0.0))
+
+
+def record_request_embedding_encode(duration_seconds: float) -> None:
+    REQUEST_EMBEDDING_ENCODE_SECONDS.observe(max(float(duration_seconds), 0.0))
+
+
+def request_embedding_started() -> None:
+    REQUEST_EMBEDDING_INFLIGHT.inc()
+
+
+def request_embedding_finished() -> None:
+    REQUEST_EMBEDDING_INFLIGHT.dec()
+
+
+def record_request_embedding_timeout() -> None:
+    REQUEST_EMBEDDING_TIMEOUTS_TOTAL.inc()
+
+
 def record_crawl_run(
     *,
     source_id: int,
@@ -238,10 +281,10 @@ class CrawlerQueueCollector:
         ]
         r = None
         try:
-            broker_url = f"{config['celery_redis_uri']}{config['celery_broker_db']}"
+            broker_url = f"{cfg.celery_redis_uri}{cfg.celery_broker_db}"
             r = redis_lib.Redis.from_url(broker_url, decode_responses=False)
             queue_names = (
-                str(config.get("celery_default_queue", "celery") or "celery"),
+                cfg.celery_default_queue,
                 "embeddings",
                 "crawler",
             )
@@ -262,7 +305,7 @@ class CrawlerQueueCollector:
         )
         r = None
         try:
-            r = redis_lib.Redis.from_url(config["redis_uri"], decode_responses=False)
+            r = redis_lib.Redis.from_url(cfg.redis_uri, decode_responses=False)
             active_chats: int = r.scard("active_chats")  # type: ignore
             active_chats_metric.add_metric([], float(active_chats))
         except Exception as exc:

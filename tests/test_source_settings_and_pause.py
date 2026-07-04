@@ -39,7 +39,6 @@ class _App(dict):
             **(routes or {}),
         }
         self[project_views.SIGNER_KEY] = SimpleNamespace(loads=lambda token, max_age: 1)
-        self[project_views.SETTINGS_KEY] = {}
 
 
 class _StatsDB:

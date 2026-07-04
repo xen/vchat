@@ -29,7 +29,7 @@ from jobs.documents.content import (
 from jobs.documents.types import guess_document_type
 from vchat.models.data import Chunk, CrawlRun, Page, PageLink, PageShingle, Source
 from vchat.views.projects.page_status import PageStatus, PageStatusError
-from vchat.settings import config
+from vchat.settings import cfg
 from vchat.views.triggers.rules import source_trigger_rules_match_url
 from jobs.crawler.tasks import schedule_index_document, update_page_shingles
 from jobs.crawler.url_rules import (
@@ -346,7 +346,7 @@ class DatabasePipeline:
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.engine = create_engine(
-            sync_uri(config["database_uri"]),
+            sync_uri(cfg.database_uri),
         )
         self._crawl_run_id: int | None = None
 

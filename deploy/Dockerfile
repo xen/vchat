@@ -34,6 +34,7 @@ RUN apt-get update \
         libpq5 \
         libsasl2-dev \
         libyaml-0-2 \
+        libyaml-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements/requirements.txt requirements/requirements.txt
@@ -44,7 +45,7 @@ RUN python -m venv /app/venv \
     && /app/venv/bin/uv pip sync requirements/requirements.txt --link-mode=copy --index-strategy unsafe-best-match --no-cache \
     && if [ "${INSTALL_LINUX_EXTRAS}" = "true" ]; then /app/venv/bin/uv pip install -r requirements/req_linux.txt --link-mode=copy --index-strategy unsafe-best-match --no-cache; fi \
     && apt-mark manual ca-certificates curl libldap-2.5-0 libpq5 libsasl2-2 libyaml-0-2 \
-    && apt-get purge -y --auto-remove build-essential git libldap2-dev libsasl2-dev \
+    && apt-get purge -y --auto-remove build-essential git libldap2-dev libsasl2-dev libyaml-dev \
     && rm -rf /root/.cache/uv
 
 COPY . .

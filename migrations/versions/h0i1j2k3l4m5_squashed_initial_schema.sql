@@ -432,10 +432,6 @@ ALTER SEQUENCE public.request_id_seq OWNED BY public.request.id;
 
 
 
-CREATE TABLE public.settings (
-    key character varying(255) NOT NULL,
-    value text
-);
 
 
 
@@ -592,7 +588,8 @@ CREATE TABLE public.widget_integration (
 '::text NOT NULL,
     footer_text text DEFAULT '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>.<br>Отправить Enter, новая строка Shift+Enter'::text NOT NULL,
     welcome_messages jsonb DEFAULT '[]'::jsonb NOT NULL,
-    waiting_messages jsonb DEFAULT '["Готовлю ответ"]'::jsonb NOT NULL
+    waiting_messages jsonb DEFAULT '["Готовлю ответ"]'::jsonb NOT NULL,
+    trigger_templates jsonb DEFAULT '["Хотите узнать больше о {title}?","Помочь разобраться с {title}?","Есть вопросы по {title}?","Показать главное про {title}?","Обсудим детали страницы {title}?","Найти важное в {title}?"]'::jsonb NOT NULL
 );
 
 
@@ -722,8 +719,6 @@ ALTER TABLE ONLY public.request
 
 
 
-ALTER TABLE ONLY public.settings
-    ADD CONSTRAINT settings_pkey PRIMARY KEY (key);
 
 
 

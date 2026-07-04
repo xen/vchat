@@ -22,8 +22,9 @@ from jobs.crawler.source_settings import (
     normalize_reindex_cron,
     validate_reindex_cron,
 )
-from vchat.settings import config
+from vchat.settings import cfg
 from vchat.utils import SafeHTML
+from vchat.views.triggers.rules import DEFAULT_TRIGGER_TEMPLATES
 
 DEFAULT_SYSTEM_PROMPT = (
     "Ты дружелюбный ИИ-ассистент. Тон общения: дружелюбный, открытый, "
@@ -83,7 +84,7 @@ class PinnedMessageForm(Form):
 class WidgetIntegrationAdd(Form):
     class Meta:
         csrf = True
-        csrf_secret = config["secret_key"]
+        csrf_secret = cfg.csrf_secret
         csrf_class = SessionCSRF
         csrf_time_limit = timedelta(minutes=20)
 
@@ -109,7 +110,7 @@ class WidgetIntegrationAdd(Form):
 class WidgetIntegrationEdit(Form):
     class Meta:
         csrf = True
-        csrf_secret = config["secret_key"]
+        csrf_secret = cfg.csrf_secret
         csrf_class = SessionCSRF
         csrf_time_limit = timedelta(minutes=20)
 
@@ -170,6 +171,17 @@ class WidgetIntegrationEdit(Form):
         min_entries=1,
         default=WIDGET_WAITING_MESSAGES,
     )
+    trigger_templates = FieldList(
+        StringField(
+            "Стандартный триггер",
+            filters=[str.strip],
+            validators=[validators.Optional(), validators.Length(max=256)],
+            default="",
+        ),
+        "Стандартные триггеры",
+        min_entries=1,
+        default=DEFAULT_TRIGGER_TEMPLATES,
+    )
     pinned_messages = FieldList(
         FormField(PinnedMessageForm),
         "Закрепленные сообщения",
@@ -207,6 +219,19 @@ class WidgetIntegrationEdit(Form):
         if not messages and field.entries:
             field.entries[0].data = self.cleaned_waiting_messages[0]
 
+    def validate_trigger_templates(self, field) -> None:
+        templates = []
+        seen = set()
+        for entry in field.entries:
+            value = (entry.data or "").strip()
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            templates.append(value)
+        self.cleaned_trigger_templates = templates or list(DEFAULT_TRIGGER_TEMPLATES)
+        if not templates and field.entries:
+            field.entries[0].data = self.cleaned_trigger_templates[0]
+
     def validate_pinned_messages(self, field) -> None:
         messages = []
         for entry in field.entries[:3]:
@@ -224,24 +249,15 @@ class WidgetIntegrationEdit(Form):
 class TriggerEdit(Form):
     class Meta:
         csrf = True
-        csrf_secret = config["secret_key"]
+        csrf_secret = cfg.csrf_secret
         csrf_class = SessionCSRF
         csrf_time_limit = timedelta(minutes=20)
-
-    default_templates = TextAreaField(
-        "Стандартные триггеры",
-        validators=[
-            validators.Optional(),
-            validators.Length(max=4000, message="Длина до 4000 символов"),
-        ],
-        render_kw={"class": "textarea textarea-bordered w-full", "rows": "8"},
-    )
 
 
 class SourceAdd(Form):
     class Meta:
         csrf = True
-        csrf_secret = config["secret_key"]
+        csrf_secret = cfg.csrf_secret
         csrf_class = SessionCSRF
         csrf_time_limit = timedelta(minutes=20)
 
@@ -282,7 +298,9 @@ class SourceAdd(Form):
 
     def validate_url(self, field):
         split = urlsplit(field.data.strip())
-        field.data = urlunsplit((split.scheme.lower(), split.netloc.lower(), "", "", ""))
+        field.data = urlunsplit(
+            (split.scheme.lower(), split.netloc.lower(), "", "", "")
+        )
 
     enable_triggers = BooleanField(
         "Разрешить пользовательские триггеры",

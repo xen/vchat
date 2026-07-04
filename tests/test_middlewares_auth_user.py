@@ -9,9 +9,10 @@ from aiohttp import web
 from multidict import MultiDict
 from yarl import URL
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
+from vchat.settings import REDIS_KEY, SIGNER_KEY
 import vchat.middlewares as mdw
-from vchat.views.admin import views as admin_views
+from vchat.views.admin import forms as admin_forms
+from vchat.views.auth import forms as auth_forms
 from vchat.views.auth import views as auth_views
 from vchat.views.user import views as user_views
 
@@ -223,20 +224,20 @@ async def test_public_widget_cors_handles_trigger_preflight_for_any_origin() -> 
 
 
 def test_local_password_forms_enforce_asvs_length_bounds() -> None:
-    legacy_login = auth_views.Login(
+    legacy_login = auth_forms.Login(
         MultiDict({"email": "user@example.com", "password": "short"}),
         meta={"csrf": False},
     )
     assert legacy_login.validate()
 
     long_password = "p" * 128
-    login = auth_views.Login(
+    login = auth_forms.Login(
         MultiDict({"email": "user@example.com", "password": long_password}),
         meta={"csrf": False},
     )
     assert login.validate()
 
-    password_change = auth_views.PasswordChange(
+    password_change = auth_forms.PasswordChange(
         MultiDict(
             {
                 "current_password": "short",
@@ -248,7 +249,7 @@ def test_local_password_forms_enforce_asvs_length_bounds() -> None:
     )
     assert password_change.validate()
 
-    short_new_password = auth_views.PasswordChange(
+    short_new_password = auth_forms.PasswordChange(
         MultiDict(
             {
                 "current_password": "short",
@@ -261,13 +262,13 @@ def test_local_password_forms_enforce_asvs_length_bounds() -> None:
     assert not short_new_password.validate()
 
     too_long = "p" * 129
-    add_form = admin_views.UserAdd(
+    add_form = admin_forms.UserAdd(
         MultiDict({"email": "admin@example.com", "password": too_long}),
         meta={"csrf": False},
     )
     assert not add_form.validate()
 
-    edit_form = admin_views.UserPasswordEdit(
+    edit_form = admin_forms.UserPasswordEdit(
         MultiDict({"password": long_password, "confirm": long_password}),
         meta={"csrf": False},
     )
@@ -275,7 +276,9 @@ def test_local_password_forms_enforce_asvs_length_bounds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_flash_and_force_https_middlewares() -> None:
+async def test_flash_and_force_https_middlewares(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _Redis:
         async def lrange(self, key, _start, _end):
             assert key == "message_1"
@@ -284,9 +287,8 @@ async def test_flash_and_force_https_middlewares() -> None:
         async def delete(self, key):
             assert key == "message_1"
 
-    app = _App(
-        {REDIS_KEY: _Redis(), CONFIG_KEY: {"public_url": "https://local.vchat.com"}}
-    )
+    monkeypatch.setattr(mdw.cfg, "public_url", "https://local.vchat.com")
+    app = _App({REDIS_KEY: _Redis()})
     request = _Request(app=app)
     request["user"] = SimpleNamespace(id=1)
 
@@ -406,11 +408,9 @@ async def test_auth_middleware_invalidates_idle_user_session(
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
     monkeypatch.setattr(mdw.time, "time", lambda: 120)
+    monkeypatch.setattr(mdw.cfg, "auth_session_idle_timeout_seconds", 4 * 60 * 60)
 
-    request = _Request(
-        path="/dashboard",
-        app=_App({CONFIG_KEY: {"auth_session_idle_timeout_seconds": 4 * 60 * 60}}),
-    )
+    request = _Request(path="/dashboard")
     db = _DB()
     request["db"] = db
 
@@ -448,11 +448,9 @@ async def test_auth_middleware_invalidates_expired_auth_session(
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
     monkeypatch.setattr(mdw.time, "time", lambda: 161)
+    monkeypatch.setattr(mdw.cfg, "auth_session_time", 60)
 
-    request = _Request(
-        path="/dashboard",
-        app=_App({CONFIG_KEY: {"auth_session_time": 60}}),
-    )
+    request = _Request(path="/dashboard")
     request["db"] = _DB()
 
     async def _handler(req):
@@ -483,11 +481,9 @@ async def test_auth_middleware_invalidates_missing_login_timestamp_when_ttl_enab
         return session
 
     monkeypatch.setattr(mdw, "get_session", _get_session)
+    monkeypatch.setattr(mdw.cfg, "auth_session_time", 60)
 
-    request = _Request(
-        path="/dashboard",
-        app=_App({CONFIG_KEY: {"auth_session_time": 60}}),
-    )
+    request = _Request(path="/dashboard")
     request["db"] = _DB()
 
     async def _handler(req):
@@ -619,7 +615,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     login_router = {"index": _Route("/"), "login": _Route("/login/")}
     request = _Request(
         method="POST",
-        app=_App({CONFIG_KEY: {}, REDIS_KEY: _Redis()}, router=login_router),
+        app=_App({REDIS_KEY: _Redis()}, router=login_router),
         post_data={"email": "user@example.com", "password": "pass"},
         query={},
     )
@@ -643,7 +639,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _admin_event(name, req):
         _ = name, req
 
-    monkeypatch.setattr(auth_views, "Login", _Form)
+    monkeypatch.setattr(auth_views.forms, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
     monkeypatch.setattr(auth_views.password_context, "verify", lambda raw, hashed: True)
@@ -662,7 +658,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     created_session.clear()
     request_next = _Request(
         method="POST",
-        app=_App({CONFIG_KEY: {}, REDIS_KEY: _Redis()}, router=login_router),
+        app=_App({REDIS_KEY: _Redis()}, router=login_router),
         post_data={"email": "user@example.com", "password": "pass"},
         query={"next": "/sessions/"},
     )
@@ -681,7 +677,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_views, "get_session", _logout_session)
     logout_fn = auth_views.logout.__wrapped__.__wrapped__
     request2 = _Request(
-        method="GET", app=_App({CONFIG_KEY: {}}, router={"login": _Route("/login/")})
+        method="GET", app=_App(router={"login": _Route("/login/")})
     )
     request2["user"] = SimpleNamespace(id=5)
     request2["db"] = db
@@ -843,8 +839,8 @@ async def test_login_ldap_rejects_inactive_existing_user(
     async def _get_session(_request):
         return {}
 
-    async def _authenticate(email, password, config):
-        _ = email, password, config
+    async def _authenticate(email, password):
+        _ = email, password
         return {"email": "ldap@example.com", "name": "LDAP User"}
 
     async def _new_session(_request):
@@ -853,17 +849,18 @@ async def test_login_ldap_rejects_inactive_existing_user(
     request = _Request(
         method="POST",
         app=_App(
-            {CONFIG_KEY: {"auth_ldap_enabled": True}, REDIS_KEY: _Redis()},
+            {REDIS_KEY: _Redis()},
             router={"login": _Route("/login/")},
         ),
         post_data={"email": "ldap@example.com", "password": "pass"},
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "Login", _Form)
+    monkeypatch.setattr(auth_views.forms, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "authenticate_ldap", _authenticate)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
+    monkeypatch.setattr(auth_views.cfg, "auth_ldap_enabled", True)
 
     payload = await auth_views.login_ldap.__wrapped__.__wrapped__(request)
 
@@ -918,8 +915,8 @@ async def test_login_ldap_rejects_existing_local_user(
     async def _get_session(_request):
         return {}
 
-    async def _authenticate(email, password, config):
-        _ = email, password, config
+    async def _authenticate(email, password):
+        _ = email, password
         return {"email": "local@example.com", "name": "LDAP User"}
 
     async def _new_session(_request):
@@ -928,16 +925,17 @@ async def test_login_ldap_rejects_existing_local_user(
     request = _Request(
         method="POST",
         app=_App(
-            {CONFIG_KEY: {"auth_ldap_enabled": True}, REDIS_KEY: _Redis()},
+            {REDIS_KEY: _Redis()},
             router={"login": _Route("/login/")},
         ),
         post_data={"email": "local@example.com", "password": "pass"},
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "Login", _Form)
+    monkeypatch.setattr(auth_views.forms, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "authenticate_ldap", _authenticate)
+    monkeypatch.setattr(auth_views.cfg, "auth_ldap_enabled", True)
     monkeypatch.setattr(auth_views, "new_session", _new_session)
 
     payload = await auth_views.login_ldap.__wrapped__.__wrapped__(request)
@@ -989,19 +987,21 @@ async def test_authenticate_ldap_escapes_search_filter_email(
             return _Connection()
 
     monkeypatch.setattr(auth_views.bonsai, "LDAPClient", _LDAPClient)
+    monkeypatch.setattr(auth_views.cfg, "ldap_server", "ldap://ldap.example.com:389")
+    monkeypatch.setattr(auth_views.cfg, "ldap_use_ssl", False)
+    monkeypatch.setattr(auth_views.cfg, "ldap_bind_dn", "cn=service,dc=example,dc=com")
+    monkeypatch.setattr(auth_views.cfg, "ldap_bind_password", "service-secret")
+    monkeypatch.setattr(
+        auth_views.cfg, "ldap_search_base", "ou=people,dc=example,dc=com"
+    )
+    monkeypatch.setattr(
+        auth_views.cfg, "ldap_search_filter", "(&(mail={email})(memberOf=cn=vchat))"
+    )
+    monkeypatch.setattr(auth_views.cfg, "ldap_attr_name", "displayName")
 
     result = await auth_views.authenticate_ldap(
         "user*)(mail=*)@example.com",
         "secret",
-        {
-            "ldap_server": "ldap://ldap.example.com:389",
-            "ldap_use_ssl": False,
-            "ldap_bind_dn": "cn=service,dc=example,dc=com",
-            "ldap_bind_password": "service-secret",
-            "ldap_search_base": "ou=people,dc=example,dc=com",
-            "ldap_search_filter": "(&(mail={email})(memberOf=cn=vchat))",
-            "ldap_attr_name": "displayName",
-        },
     )
 
     assert result == {
@@ -1067,21 +1067,25 @@ async def test_authenticate_ldap_requires_configured_group(
             return _Connection()
 
     monkeypatch.setattr(auth_views.bonsai, "LDAPClient", _LDAPClient)
+    monkeypatch.setattr(auth_views.cfg, "ldap_server", "ldap://ldap.example.com:389")
+    monkeypatch.setattr(auth_views.cfg, "ldap_use_ssl", False)
+    monkeypatch.setattr(auth_views.cfg, "ldap_bind_dn", "cn=service,dc=example,dc=com")
+    monkeypatch.setattr(auth_views.cfg, "ldap_bind_password", "service-secret")
+    monkeypatch.setattr(
+        auth_views.cfg, "ldap_search_base", "ou=people,dc=example,dc=com"
+    )
+    monkeypatch.setattr(auth_views.cfg, "ldap_search_filter", "(mail={email})")
+    monkeypatch.setattr(auth_views.cfg, "ldap_attr_name", "displayName")
+    monkeypatch.setattr(
+        auth_views.cfg,
+        "ldap_required_group_dn",
+        "cn=vchat users,ou=groups,dc=example,dc=com",
+    )
+    monkeypatch.setattr(auth_views.cfg, "ldap_member_of_attr", "memberOf")
 
     result = await auth_views.authenticate_ldap(
         "user@example.com",
         "user-secret",
-        {
-            "ldap_server": "ldap://ldap.example.com:389",
-            "ldap_use_ssl": False,
-            "ldap_bind_dn": "cn=service,dc=example,dc=com",
-            "ldap_bind_password": "service-secret",
-            "ldap_search_base": "ou=people,dc=example,dc=com",
-            "ldap_search_filter": "(mail={email})",
-            "ldap_attr_name": "displayName",
-            "ldap_required_group_dn": "cn=vchat users,ou=groups,dc=example,dc=com",
-            "ldap_member_of_attr": "memberOf",
-        },
     )
 
     assert ("attrlist", ["displayName", "memberOf"]) in calls
@@ -1118,7 +1122,8 @@ def test_get_middlewares_uses_configured_session_max_age(
     monkeypatch.setattr(mdw, "session_middleware", _session_middleware)
 
     middlewares = mdw.get_middlewares(
-        {
+        mdw.cfg.model_copy(
+            update={
             "allowed_origins": ["https://local.vchat.com"],
             "public_url": "https://local.vchat.com",
             "cookie_key": "cookie-key",
@@ -1127,7 +1132,8 @@ def test_get_middlewares_uses_configured_session_max_age(
             "cookie_secure": True,
             "session_max_age_seconds": 7200,
             "enable_https_middleware": False,
-        }
+            }
+        )
     )
 
     assert middlewares
@@ -1153,7 +1159,7 @@ def test_get_middlewares_uses_configured_cors_origins(
         def __init__(self, *ignored_args, **ignored_kwargs):
             pass
 
-    def _session_middleware(ignored_storage):
+    def _session_middleware(_ignored_storage):
         async def _middleware(request, handler):
             return await handler(request)
 
@@ -1164,7 +1170,8 @@ def test_get_middlewares_uses_configured_cors_origins(
     monkeypatch.setattr(mdw, "session_middleware", _session_middleware)
 
     mdw.get_middlewares(
-        {
+        mdw.cfg.model_copy(
+            update={
             "allowed_origins": ["https://local.vchat.com"],
             "public_url": "https://local.vchat.com",
             "cookie_key": "cookie-key",
@@ -1173,7 +1180,8 @@ def test_get_middlewares_uses_configured_cors_origins(
             "cookie_secure": True,
             "session_max_age_seconds": 7200,
             "enable_https_middleware": False,
-        }
+            }
+        )
     )
 
     assert captured["allow_all"] is False
@@ -1345,14 +1353,14 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
     request = _Request(
         method="POST",
         app=_App(
-            {CONFIG_KEY: {}, REDIS_KEY: _Redis()},
+            {REDIS_KEY: _Redis()},
             router={"index": _Route("/"), "login": _Route("/login/")},
         ),
         post_data={"email": "user@example.com", "password": "wrong"},
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "Login", _Form)
+    monkeypatch.setattr(auth_views.forms, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "admin_event", _admin_event)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
@@ -1441,14 +1449,14 @@ async def test_login_wrong_password_sets_lockout_after_failure_limit(
     request = _Request(
         method="POST",
         app=_App(
-            {CONFIG_KEY: {}, REDIS_KEY: redis},
+            {REDIS_KEY: redis},
             router={"index": _Route("/"), "login": _Route("/login/")},
         ),
         post_data={"email": "user@example.com", "password": "wrong"},
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "Login", _Form)
+    monkeypatch.setattr(auth_views.forms, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "admin_event", _admin_event)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)
@@ -1526,14 +1534,14 @@ async def test_login_redis_lock_blocks_parallel_checks(
     request = _Request(
         method="POST",
         app=_App(
-            {CONFIG_KEY: {}, REDIS_KEY: _Redis()},
+            {REDIS_KEY: _Redis()},
             router={"index": _Route("/"), "login": _Route("/login/")},
         ),
         post_data={"email": "user@example.com", "password": "wrong"},
     )
     request["db"] = _DB()
 
-    monkeypatch.setattr(auth_views, "Login", _Form)
+    monkeypatch.setattr(auth_views.forms, "Login", _Form)
     monkeypatch.setattr(auth_views, "get_session", _get_session)
     monkeypatch.setattr(auth_views, "admin_event", _admin_event)
     monkeypatch.setattr(auth_views.asyncio, "sleep", _sleep)

@@ -7,21 +7,20 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 
-from vchat.settings import config
+from vchat.settings import cfg
 
 
-def sync_db_uri(uri: str | None = None) -> str:
+def sync_db_uri() -> str:
     """
     Convert an async SQLAlchemy URI into its synchronous counterpart.
     """
-    uri = uri or config["database_uri"]
-    if "+asyncpg" in uri:
-        return uri.replace("+asyncpg", "+psycopg", 1)
-    return uri
+    if "+asyncpg" in cfg.database_uri:
+        return cfg.database_uri.replace("+asyncpg", "+psycopg", 1)
+    return cfg.database_uri
 
 
-def create_sync_engine(uri: str | None = None, **kwargs) -> Engine:
+def create_sync_engine(**kwargs) -> Engine:
     """
     Create a synchronous SQLAlchemy engine that can be used inside Celery jobs.
     """
-    return create_engine(sync_db_uri(uri), future=True, **kwargs)
+    return create_engine(sync_db_uri(), future=True, **kwargs)

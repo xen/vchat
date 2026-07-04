@@ -245,7 +245,7 @@ class TestCrawlSourceTaskPayload:
             def start(self):
                 captured["started"] = True
 
-        monkeypatch.setitem(project_settings.config, "raw_content_max_bytes", 1234)
+        monkeypatch.setattr(project_settings.cfg, "raw_content_max_bytes", 1234)
         monkeypatch.setattr(scrapy.crawler, "CrawlerProcess", FakeCrawlerProcess)
         monkeypatch.setattr(
             sys,
@@ -640,7 +640,7 @@ class TestSitemapLimits:
     def test_fetch_sitemap_rejects_oversized_content_length(self, monkeypatch):
         from jobs.crawler import tasks as crawler_tasks
 
-        monkeypatch.setattr(crawler_tasks, "_CRAWLER_DOWNLOAD_MAX_BYTES", 5)
+        monkeypatch.setattr(crawler_tasks.cfg, "raw_content_max_bytes", 5)
         fake_response = _FakeCrawlerResponse(headers={"Content-Length": "6"})
 
         def fake_get(*args, **kwargs):
@@ -661,7 +661,7 @@ class TestSitemapLimits:
     def test_fetch_sitemap_rejects_chunked_body_over_limit(self, monkeypatch):
         from jobs.crawler import tasks as crawler_tasks
 
-        monkeypatch.setattr(crawler_tasks, "_CRAWLER_DOWNLOAD_MAX_BYTES", 5)
+        monkeypatch.setattr(crawler_tasks.cfg, "raw_content_max_bytes", 5)
         fake_response = _FakeCrawlerResponse(chunks=[b"123", b"456"])
         monkeypatch.setattr(
             crawler_tasks.requests,

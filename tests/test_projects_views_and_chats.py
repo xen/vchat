@@ -94,9 +94,7 @@ async def test_chats_list_returns_active_chats(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
-async def test_history_list_builds_pagination_and_filters(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_history_list_builds_pagination_and_filters() -> None:
     now = datetime.now(timezone.utc)
     fake_chat = SimpleNamespace(
         id="c1",
@@ -179,9 +177,7 @@ async def test_history_list_builds_pagination_and_filters(
 
 
 @pytest.mark.asyncio
-async def test_history_detail_masks_pii_and_maps_guardrail_labels(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_history_detail_masks_pii_and_maps_guardrail_labels() -> None:
     chat = SimpleNamespace(id="chat-1", title="Demo", meta={})
     msgs = [
         SimpleNamespace(
@@ -231,9 +227,7 @@ async def test_history_detail_masks_pii_and_maps_guardrail_labels(
 
 
 @pytest.mark.asyncio
-async def test_history_detail_uses_used_chunks_snapshot_and_marks_deleted(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_history_detail_uses_used_chunks_snapshot_and_marks_deleted() -> None:
     chat = SimpleNamespace(id="chat-1", title="Demo", meta={})
     msgs = [
         SimpleNamespace(
@@ -416,6 +410,7 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
         pinned_messages=[SimpleNamespace(text="Pinned", color="primary")],
         suggestions_enabled=True,
         suggestions_prompt="Suggestions",
+        trigger_templates=["Первый {title}?", "Второй {title}?"],
         public_url="https://example.com/widget.js",
     )
     form = project_forms.WidgetIntegrationEdit(
@@ -431,6 +426,7 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
             "pinned_messages": [{"text": "Pinned", "color": "primary"}],
             "suggestions_enabled": widget.suggestions_enabled,
             "suggestions_prompt": widget.suggestions_prompt,
+            "trigger_templates": widget.trigger_templates,
         },
         meta={"csrf": False},
     )
@@ -458,6 +454,7 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
         'Заголовок чата',
         'Приветственные сообщения',
         'Закрепленные сообщения',
+        'Стандартные триггеры',
         'Подсказки после ответа',
         'Тексты ожидания',
         'Сообщение при ошибке',
@@ -479,6 +476,10 @@ def test_widget_edit_template_renders_pinned_message_color_options() -> None:
     assert 'data-add-waiting-message' in rendered
     assert 'data-remove-waiting-message' in rendered
     assert 'name="error_message"' in rendered
+    assert 'name="trigger_templates-0"' in rendered
+    assert "Первый {title}?" in rendered
+    assert 'data-add-trigger-template' in rendered
+    assert 'data-remove-trigger-template' in rendered
     assert 'data-error-message-editor' in rendered
     assert 'data-error-message-html-input' in rendered
     assert 'data-max-length="2000"' in rendered
@@ -595,6 +596,7 @@ def test_widget_edit_template_shows_enable_action_when_disabled() -> None:
         pinned_messages=[],
         suggestions_enabled=True,
         suggestions_prompt="Suggestions",
+        trigger_templates=["Default {title}?"],
         public_url="https://example.com/widget.js",
     )
     form = project_forms.WidgetIntegrationEdit(
@@ -608,6 +610,7 @@ def test_widget_edit_template_shows_enable_action_when_disabled() -> None:
             "system_prompt": widget.system_prompt,
             "suggestions_enabled": widget.suggestions_enabled,
             "suggestions_prompt": widget.suggestions_prompt,
+            "trigger_templates": widget.trigger_templates,
         },
         meta={"csrf": False},
     )

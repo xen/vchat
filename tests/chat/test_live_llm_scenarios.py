@@ -10,6 +10,7 @@ import aiohttp
 import pytest
 from itsdangerous import URLSafeSerializer
 
+from vchat.settings import cfg
 from vchat.views.chat.ai import resolve_ai_settings
 from vchat.views.chat.guardrails import GuardrailDecision
 from vchat.views.chat import views as chat_views
@@ -98,7 +99,7 @@ class _FakeRedis:
 
 
 def _make_request() -> Any:
-    payload = URLSafeSerializer(chat_views.SECRET_KEY).dumps(
+    payload = URLSafeSerializer(cfg.secret_key).dumps(
         [1, "chat-1"], salt="vchat"
     )
     return type(
@@ -209,7 +210,9 @@ async def test_live_websocket_user_mentions_document_gets_recommendations_and_so
     monkeypatch.setattr(chat_views, "async_session_factory", _FakeSessionFactory(state))
     monkeypatch.setattr(chat_views, "redis", _FakeRedis())
     monkeypatch.setattr(
-        chat_views, "build_generation_context", lambda app: _live_generation_context()
+        chat_views,
+        "build_generation_context",
+        lambda widget=None: _live_generation_context(),
     )
 
     async def _input_ok(*, text: str, provider: Any) -> GuardrailDecision:
@@ -257,7 +260,11 @@ async def test_live_websocket_user_mentions_document_gets_recommendations_and_so
         )
 
     monkeypatch.setattr(chat_views, "get_context", _context)
-    monkeypatch.setattr(chat_views, "embed_query", lambda text: [0.1, 0.2])
+
+    async def _embed_query_async(_text: str) -> list[float]:
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(chat_views, "embed_query_async", _embed_query_async)
 
     request = _make_request()
     await chat_views.websocket(request)

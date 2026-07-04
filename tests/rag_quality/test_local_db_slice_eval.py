@@ -2,8 +2,29 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
+
 from jobs.embedder.chunking import ChunkData
 from tests.rag_quality import local_db_slice_eval
+
+
+class _WordTokenizer:
+    def __call__(self, text, add_special_tokens=False, truncation=False, verbose=True):
+        _ = add_special_tokens, truncation, verbose
+        return {"input_ids": (text or "").split()}
+
+    def decode(self, ids, skip_special_tokens=True, clean_up_tokenization_spaces=False):
+        _ = skip_special_tokens, clean_up_tokenization_spaces
+        return " ".join(ids)
+
+
+@pytest.fixture(autouse=True)
+def _fake_tokenizer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        local_db_slice_eval.crawler_tasks,
+        "get_embed_tokenizer",
+        lambda: _WordTokenizer(),
+    )
 
 
 def test_build_query_filters_by_ids_and_uri_like() -> None:
@@ -166,7 +187,7 @@ def test_summarize_page_materialize_mode_applies_metadata_policy() -> None:
 def test_summarize_page_materialize_mode_handles_oversize_page(monkeypatch) -> None:
     from jobs.crawler import tasks as crawler_tasks
 
-    monkeypatch.setattr(crawler_tasks, "EMBEDDING_DOCUMENT_MAX_CHARS", 10)
+    monkeypatch.setattr(crawler_tasks.cfg, "embedding_document_max_chars", 10)
     page = local_db_slice_eval.PageRow(
         id=12,
         source_id=None,

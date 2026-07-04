@@ -1,12 +1,12 @@
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
-from vchat.settings import config
+from vchat.settings import cfg
 
 # Connection pool setup
 engine = create_async_engine(
-    config["database_uri"],
-    echo=config["sql_echo"],
+    cfg.database_uri,
+    echo=cfg.sql_echo,
     pool_size=5,
     max_overflow=10,
 )

@@ -48,8 +48,8 @@ plain: hello
 
 
 def test_ai_providers_and_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(settings.config, "openai_api_key", "k")
-    monkeypatch.setitem(settings.config, "openai_base_url", "https://example.test/v1")
+    monkeypatch.setattr(settings.cfg, "openai_api_key", "k")
+    monkeypatch.setattr(settings.cfg, "openai_base_url", "https://example.test/v1")
     providers = ai_providers.list_ai_providers()
     assert providers
     openai = ai_providers.get_provider("openai")
@@ -110,6 +110,9 @@ async def test_metrics_record_and_handler(monkeypatch: pytest.MonkeyPatch) -> No
     assert b"vchat_chat_requests_total" in response.body
     assert b"vchat_chat_response_duration_seconds" in response.body
     assert b"vchat_chat_context_chunks" in response.body
+    assert b"vchat_request_embedding_queue_wait_seconds" in response.body
+    assert b"vchat_request_embedding_encode_seconds" in response.body
+    assert b"vchat_request_embedding_inflight" in response.body
 
 
 def test_utils_json_to_str_and_meta() -> None:
@@ -183,7 +186,7 @@ async def test_flash_admin_event_login_required_and_make_url(
 
     app.router.add_get("/login/", _h, name="login")
     app.router.add_get("/x/{id}", _h, name="x")
-    app[utils.CONFIG_KEY] = {"public_url": "https://local.vchat.com"}
+    monkeypatch.setattr(utils.cfg, "public_url", "https://local.vchat.com")
 
     class Req(dict):
         path = "/private"
@@ -200,7 +203,7 @@ async def test_flash_admin_event_login_required_and_make_url(
     monkeypatch.setattr(utils, "get_session", _session)
 
     @utils.login_required()
-    async def _protected(request):
+    async def _protected(_request):
         return web.Response(text="ok")
 
     with pytest.raises(web.HTTPFound) as exc_info:

@@ -10,7 +10,7 @@ from urllib.robotparser import RobotFileParser
 
 import requests
 
-from vchat.settings import config
+from vchat.settings import cfg
 
 
 class SourceBlockedReason(str, Enum):
@@ -30,8 +30,6 @@ SOURCE_BLOCKED_REASON_LABELS: dict[SourceBlockedReason, str] = {
     SourceBlockedReason.redirect_other_domain: "Главная страница редиректит на другой домен",
     SourceBlockedReason.private_address: "Источник указывает на внутренний или служебный IP-адрес",
 }
-
-_CRAWLER_USER_AGENT = config.get("crawler_user_agent", "Dzen-AI/1.0")
 
 
 @dataclass(slots=True)
@@ -129,12 +127,12 @@ def _check_robots_txt(
     parser = RobotFileParser()
     parser.parse(resp.text.splitlines())
     probe_url = urljoin(source_uri.rstrip("/") + "/", "/")
-    if parser.can_fetch(_CRAWLER_USER_AGENT, probe_url):
+    if parser.can_fetch(cfg.crawler_user_agent, probe_url):
         return None
 
     return _blocked(
         SourceBlockedReason.robots_txt,
-        f"robots.txt запрещает обход для {_CRAWLER_USER_AGENT}.",
+        f"robots.txt запрещает обход для {cfg.crawler_user_agent}.",
         checked_at=checked_at,
     )
 
@@ -162,7 +160,7 @@ def check_source_blocking(
             checked_at=checked_at,
         )
 
-    headers = {"User-Agent": _CRAWLER_USER_AGENT}
+    headers = {"User-Agent": cfg.crawler_user_agent}
 
     if not ignore_robots_txt:
         robots_result = _check_robots_txt(

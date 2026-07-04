@@ -23,8 +23,7 @@ from multidict import CIMultiDict, CIMultiDictProxy, istr
 from wtforms import validators
 from yarl import URL
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
-from vchat.settings import config
+from vchat.settings import REDIS_KEY, SIGNER_KEY, cfg
 
 
 class _MsgSpecJSON:
@@ -182,9 +181,7 @@ def get_request_peer_ip(request: web.Request) -> str | None:
     return None
 
 
-def is_trusted_proxy_peer(
-    peer_ip: str | None, trusted_proxy_cidrs
-) -> bool:
+def is_trusted_proxy_peer(peer_ip: str | None, trusted_proxy_cidrs) -> bool:
     if not peer_ip:
         return False
     peer = ip_address(peer_ip)
@@ -197,10 +194,8 @@ def is_trusted_proxy_peer(
 
 def get_client_ip(request: web.Request) -> str | None:
     peer_ip = get_request_peer_ip(request)
-    request_config = request.app.get(CONFIG_KEY, {}) if hasattr(request, "app") else {}
-    trusted_proxy_cidrs = request_config.get("trusted_proxy_cidrs") or []
 
-    if not is_trusted_proxy_peer(peer_ip, trusted_proxy_cidrs):
+    if not is_trusted_proxy_peer(peer_ip, cfg.trusted_proxy_cidrs):
         return peer_ip
 
     for header_name in CLIENT_IP_HEADERS:
@@ -350,8 +345,8 @@ async def admin_event(event_name: str, request) -> None:
     await db.commit()
 
 
-serializer_timed = URLSafeTimedSerializer(config["secret_key"])
-serializer = URLSafeSerializer(config["secret_key"])
+serializer_timed = URLSafeTimedSerializer(cfg.secret_key)
+serializer = URLSafeSerializer(cfg.secret_key)
 
 
 def protect(value, salt=None):
@@ -382,7 +377,7 @@ def make_full_url(request, endpoint, **kwargs):
     queries = kwargs.pop("query_", False)
     kwargs = {k: str(v) for k, v in kwargs.items()}
     return URL(
-        URL(request.app[CONFIG_KEY].get("public_url", "/"))
+        URL(cfg.public_url)
         / (
             str(
                 request.app.router[endpoint].url_for(**kwargs).with_query(**queries)

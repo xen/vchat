@@ -6,24 +6,7 @@ from bs4 import BeautifulSoup
 
 from jobs.documents.shingles import is_boilerplate_block
 from jobs.embedder.tokenizer import EmbeddingTokenizer, load_embedding_tokenizer
-from vchat.settings import config
-
-EMBEDDING_MAX_SEQ_LENGTH = config["embedding_max_seq_length"]
-EMBEDDING_CHUNK_MAX_TOKENS = config["embedding_chunk_max_tokens"]
-EMBEDDING_CHUNK_OVERLAP_TOKENS = config["embedding_chunk_overlap_tokens"]
-EMBEDDING_CHUNK_MAX_CHARS = config["embedding_chunk_max_chars"]
-EMBEDDING_BLOCK_MAX_CHARS = max(
-    EMBEDDING_CHUNK_MAX_CHARS,
-    int(config.get("embedding_block_max_chars", 48000) or 48000),
-)
-EMBEDDING_ENTITY_SCAN_MAX_CHARS = max(
-    EMBEDDING_CHUNK_MAX_CHARS,
-    int(config.get("embedding_entity_scan_max_chars", 24000) or 24000),
-)
-EMBEDDING_DOCUMENT_MAX_CHARS = max(
-    1,
-    int(config.get("embedding_document_max_chars", 1_000_000) or 1_000_000),
-)
+from vchat.settings import cfg
 
 
 class EmbedderDocumentError(RuntimeError):
@@ -84,15 +67,7 @@ def count_token_ids(tokenizer: EmbeddingTokenizer, text: str) -> int:
 
 def chunk_text_word_window(
     text: str,
-    *,
-    max_tokens: int | None = None,
-    overlap: int | None = None,
 ) -> List[ChunkData]:
-    if max_tokens is None:
-        max_tokens = EMBEDDING_CHUNK_MAX_TOKENS
-    if overlap is None:
-        overlap = EMBEDDING_CHUNK_OVERLAP_TOKENS
-
     tokenizer = get_embed_tokenizer()
     words = text.split()
     n = len(words)
@@ -115,9 +90,14 @@ def chunk_text_word_window(
     while i < n:
         word = words[i]
         token_ids = word_token_ids[i]
-        if len(word) > EMBEDDING_CHUNK_MAX_CHARS or len(token_ids) > max_tokens:
-            for id_start in range(0, len(token_ids), max_tokens):
-                piece_ids = token_ids[id_start : id_start + max_tokens]
+        if (
+            len(word) > cfg.embedding_chunk_max_chars
+            or len(token_ids) > cfg.embedding_chunk_max_tokens
+        ):
+            for id_start in range(0, len(token_ids), cfg.embedding_chunk_max_tokens):
+                piece_ids = token_ids[
+                    id_start : id_start + cfg.embedding_chunk_max_tokens
+                ]
                 piece = tokenizer.decode(
                     piece_ids,
                     skip_special_tokens=True,
@@ -145,8 +125,8 @@ def chunk_text_word_window(
             current_token_len = len(word_token_ids[end])
             current_char_len = len(words[end]) if end == i else len(words[end]) + 1
             if end > i and (
-                token_len + current_token_len > max_tokens
-                or char_len + current_char_len > EMBEDDING_CHUNK_MAX_CHARS
+                token_len + current_token_len > cfg.embedding_chunk_max_tokens
+                or char_len + current_char_len > cfg.embedding_chunk_max_chars
             ):
                 break
             token_len += current_token_len
@@ -172,7 +152,10 @@ def chunk_text_word_window(
         if end >= n:
             break
 
-        effective_overlap = min(overlap, max(0, token_len // 4))
+        effective_overlap = min(
+            cfg.embedding_chunk_overlap_tokens,
+            max(0, token_len // 4),
+        )
         if effective_overlap <= 0:
             i = end
             continue
@@ -236,7 +219,11 @@ def collect_entity_terms(
     header_text: str | None = None,
     section_path: str | None = None,
 ) -> list[str]:
-    block = block[:EMBEDDING_ENTITY_SCAN_MAX_CHARS]
+    entity_scan_max_chars = max(
+        cfg.embedding_chunk_max_chars,
+        cfg.embedding_entity_scan_max_chars,
+    )
+    block = block[:entity_scan_max_chars]
     raw_terms: list[str] = []
     if header_text:
         raw_terms.extend(re.findall(r"[A-Za-zА-Яа-я0-9_.-]{3,}", header_text))
@@ -293,7 +280,7 @@ def split_text_block_for_chunking(
     max_chars: int | None = None,
 ) -> list[str]:
     if max_chars is None:
-        max_chars = EMBEDDING_BLOCK_MAX_CHARS
+        max_chars = max(cfg.embedding_chunk_max_chars, cfg.embedding_block_max_chars)
 
     normalized = (text or "").strip()
     if not normalized:
@@ -353,15 +340,8 @@ def split_text_block_for_chunking(
 def chunk_document_text(
     text: str,
     *,
-    max_tokens: int | None = None,
-    overlap: int | None = None,
     boilerplate_hashes: frozenset[int] | None = None,
 ) -> list[ChunkData]:
-    if max_tokens is None:
-        max_tokens = EMBEDDING_CHUNK_MAX_TOKENS
-    if overlap is None:
-        overlap = EMBEDDING_CHUNK_OVERLAP_TOKENS
-
     text = normalize_html_document_for_chunking(text)
     chunks: list[ChunkData] = []
     lines = text.splitlines()
@@ -482,7 +462,10 @@ def chunk_document_text(
                 projection_lines.append("Preview rows:")
                 for row in table_lines[2 : min(len(table_lines), 5)]:
                     candidate = "\n".join([*projection_lines, row])
-                    if count_token_ids(tokenizer, candidate) > max_tokens:
+                    if (
+                        count_token_ids(tokenizer, candidate)
+                        > cfg.embedding_chunk_max_tokens
+                    ):
                         break
                     projection_lines.append(row)
             projection_text = "\n".join(projection_lines).strip()
@@ -505,7 +488,10 @@ def chunk_document_text(
                 )
             )
             chunk_ix += 1
-            for part in split_table_rows(block, max_tokens=max_tokens):
+            for part in split_table_rows(
+                block,
+                max_tokens=cfg.embedding_chunk_max_tokens,
+            ):
                 chunks.append(
                     ChunkData(
                         index=chunk_ix,
@@ -546,11 +532,7 @@ def chunk_document_text(
             chunk_ix += 1
 
         for segment in split_text_block_for_chunking(block):
-            defs = chunk_text_word_window(
-                segment,
-                max_tokens=max_tokens,
-                overlap=overlap,
-            )
+            defs = chunk_text_word_window(segment)
             for item in defs:
                 chunks.append(
                     ChunkData(
@@ -592,19 +574,17 @@ def chunk_document_text(
 
 
 def validate_chunk_data(chunks: list[ChunkData], *, page_id: int) -> None:
+    block_max_chars = max(cfg.embedding_chunk_max_chars, cfg.embedding_block_max_chars)
     for chunk in chunks:
-        if chunk.token_count > EMBEDDING_MAX_SEQ_LENGTH:
+        if chunk.token_count > cfg.embedding_max_seq_length:
             raise EmbedderDocumentError(
                 f"Chunk {chunk.index} for page {page_id} is too large for embedder "
-                f"({chunk.token_count} tokens > {EMBEDDING_MAX_SEQ_LENGTH})",
+                f"({chunk.token_count} tokens > {cfg.embedding_max_seq_length})",
                 page_id=page_id,
             )
-        if (
-            chunk.kind in {"text", "table_rows"}
-            and len(chunk.text) > EMBEDDING_BLOCK_MAX_CHARS
-        ):
+        if chunk.kind in {"text", "table_rows"} and len(chunk.text) > block_max_chars:
             raise EmbedderDocumentError(
                 f"Chunk {chunk.index} for page {page_id} exceeds the block char cap "
-                f"({len(chunk.text)} chars > {EMBEDDING_BLOCK_MAX_CHARS})",
+                f"({len(chunk.text)} chars > {block_max_chars})",
                 page_id=page_id,
             )

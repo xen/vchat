@@ -4,11 +4,13 @@ import ipaddress
 from types import SimpleNamespace
 from urllib.parse import urlparse
 
+import msgspec
 import pytest
 from aiohttp import web
+from pydantic import ValidationError
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY
-from vchat.settings import config
+from vchat.settings import REDIS_KEY
+from vchat.settings import cfg
 from vchat.views.api import views as api_views
 from jobs.documents.content import content_sha256
 from vchat.views.projects.page_status import PageStatus
@@ -93,6 +95,9 @@ class _FakeDocument:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
+    def meta_dict(self):
+        return dict(self.meta or {})
+
     @property
     def hash_value(self):
         return self._hash
@@ -159,6 +164,32 @@ def test_build_update_signature_payload_uses_sorted_key_value_lines() -> None:
     )
 
 
+def test_update_payload_contract_normalizes_and_validates_fields() -> None:
+    payload = api_views.UpdatePayload.model_validate(
+        _signed_payload("secret-value", url=" https://allowed.com/a ")
+    )
+
+    assert payload.url == "https://allowed.com/a"
+
+    with pytest.raises(ValidationError):
+        api_views.UpdatePayload.model_validate(_signed_payload("secret-value", url=""))
+
+    with pytest.raises(ValidationError):
+        api_views.UpdatePayload.model_validate(
+            _signed_payload("secret-value", client_id="x" * 65)
+        )
+
+    bad_signature_payload = _signed_payload("secret-value")
+    bad_signature_payload["signature"] = "short"
+    with pytest.raises(ValidationError):
+        api_views.UpdatePayload.model_validate(bad_signature_payload)
+
+    with pytest.raises(ValidationError):
+        api_views.UpdatePayload.model_validate(
+            _signed_payload("secret-value", timestamp="not-int")
+        )
+
+
 def test_host_helpers() -> None:
     assert api_views._normalize_host(" ExAmPle.COM. ") == "example.com"
     assert api_views._extract_host("https://Sub.Example.com/path") == "sub.example.com"
@@ -180,14 +211,13 @@ async def test_authenticate_update_request_accepts_valid_signature() -> None:
     secret = "secret-value"
     client = SimpleNamespace(
         client_id="vchat_test",
-        encrypted_secret=api_views.encrypt_client_secret(secret, config["secret_key"]),
+        encrypted_secret=api_views.encrypt_client_secret(secret, cfg.secret_key),
         is_active=True,
     )
     db = _FakeDB(scalar_value=client)
     req = _FakeRequest(
         db,
         app={
-            CONFIG_KEY: config,
             REDIS_KEY: _FakeRedis(),
         },
     )
@@ -203,14 +233,48 @@ async def test_authenticate_update_request_rejects_stale_timestamp() -> None:
     req = _FakeRequest(
         _FakeDB(),
         app={
-            CONFIG_KEY: config,
             REDIS_KEY: _FakeRedis(),
         },
     )
     payload = _signed_payload("secret-value", timestamp="1")
     resp = await api_views._authenticate_update_request(req, payload)
-    assert resp.status == 401
-    assert "Timestamp is too old" in resp.text
+    assert resp.status == 400
+    body = msgspec.json.decode(resp.body)
+    assert body == {
+        "status": "error",
+        "message": "Validation error",
+        "errors": [{"field": "timestamp", "reason": "expired"}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_authenticate_update_request_returns_validation_details() -> None:
+    req = _FakeRequest(
+        _FakeDB(),
+        app={
+            REDIS_KEY: _FakeRedis(),
+        },
+    )
+    payload = _signed_payload(
+        "secret-value",
+        url="",
+        client_id="x" * 65,
+        timestamp="not-int",
+    )
+    payload["signature"] = "short"
+
+    resp = await api_views._authenticate_update_request(req, payload)
+
+    assert resp.status == 400
+    body = msgspec.json.decode(resp.body)
+    assert body["status"] == "error"
+    assert body["message"] == "Validation error"
+    assert body["errors"] == [
+        {"field": "url", "reason": "missing"},
+        {"field": "client_id", "reason": "too_long"},
+        {"field": "timestamp", "reason": "invalid"},
+        {"field": "signature", "reason": "invalid"},
+    ]
 
 
 @pytest.mark.asyncio
@@ -218,13 +282,12 @@ async def test_authenticate_update_request_rejects_reused_nonce() -> None:
     secret = "secret-value"
     client = SimpleNamespace(
         client_id="vchat_test",
-        encrypted_secret=api_views.encrypt_client_secret(secret, config["secret_key"]),
+        encrypted_secret=api_views.encrypt_client_secret(secret, cfg.secret_key),
         is_active=True,
     )
     req = _FakeRequest(
         _FakeDB(scalar_value=client),
         app={
-            CONFIG_KEY: config,
             REDIS_KEY: _FakeRedis(nonce_claimed=False),
         },
     )
@@ -238,13 +301,12 @@ async def test_authenticate_update_request_rejects_rate_limit() -> None:
     secret = "secret-value"
     client = SimpleNamespace(
         client_id="vchat_test",
-        encrypted_secret=api_views.encrypt_client_secret(secret, config["secret_key"]),
+        encrypted_secret=api_views.encrypt_client_secret(secret, cfg.secret_key),
         is_active=True,
     )
     req = _FakeRequest(
         _FakeDB(scalar_value=client),
         app={
-            CONFIG_KEY: config,
             REDIS_KEY: _FakeRedis(rate_allowed=False),
         },
     )
@@ -464,7 +526,7 @@ async def test_upsert_document_skips_reindex_for_near_duplicate_content(
 
 
 @pytest.mark.asyncio
-async def test_delete_document_by_url(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_delete_document_by_url() -> None:
     docs = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
     db = _FakeDB(rows=docs)
     req = _FakeRequest(db=db)
@@ -754,7 +816,7 @@ async def test_fetch_url_content_blocks_same_domain_private_redirect(
 async def test_ensure_fetch_target_allowed_propagates_dns_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def _raise_gaierror(hostname):
+    def _raise_gaierror(_hostname):
         raise api_views.socket.gaierror("dns unavailable")
 
     monkeypatch.setattr(api_views, "_resolve_fetch_addresses", _raise_gaierror)
@@ -779,9 +841,10 @@ async def test_fetch_url_content_rejects_oversized_content_length(
         }
     )
     monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
+    monkeypatch.setattr(api_views.cfg, "raw_content_max_bytes", 5)
 
     with pytest.raises(web.HTTPRequestEntityTooLarge):
-        await api_views._fetch_url_content("https://allowed.com/a", max_bytes=5)
+        await api_views._fetch_url_content("https://allowed.com/a")
 
 
 @pytest.mark.asyncio
@@ -799,9 +862,10 @@ async def test_fetch_url_content_rejects_chunked_body_over_limit(
         }
     )
     monkeypatch.setattr(api_views, "ClientSession", lambda **kwargs: client)
+    monkeypatch.setattr(api_views.cfg, "raw_content_max_bytes", 5)
 
     with pytest.raises(web.HTTPRequestEntityTooLarge):
-        await api_views._fetch_url_content("https://allowed.com/a", max_bytes=5)
+        await api_views._fetch_url_content("https://allowed.com/a")
 
 
 @pytest.mark.asyncio
@@ -862,11 +926,11 @@ async def test_update_document_redirect_replace(
     deleted = []
     upserted = []
 
-    async def _delete(request, url):
+    async def _delete(_request, url):
         deleted.append(url)
         return 1
 
-    async def _upsert(request, source_id, url, **kwargs):
+    async def _upsert(_request, source_id, url, **kwargs):
         upserted.append((source_id, url, kwargs))
         return ("indexed", 10)
 
@@ -899,7 +963,7 @@ async def test_update_document_success_indexed(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(api_views, "_resolve_url_state", _state)
     calls = []
 
-    async def _upsert(request, source_id, url, **kwargs):
+    async def _upsert(_request, source_id, url, **kwargs):
         calls.append((source_id, url, kwargs))
         return ("indexed", 999)
 
@@ -907,6 +971,4 @@ async def test_update_document_success_indexed(monkeypatch: pytest.MonkeyPatch) 
     resp = await api_views.update_document(req)
     payload = _json(resp)
     assert payload["action"] == "indexed"
-    assert calls == [
-        (55, "https://allowed.com/a", {"discover_source": "vchat_test"})
-    ]
+    assert calls == [(55, "https://allowed.com/a", {"discover_source": "vchat_test"})]

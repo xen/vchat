@@ -687,7 +687,7 @@
 
 <h4 id="summary">Summary</h4>
 
-<p>The repository ships concrete values for secret_key, cookie_key, and vchat_secret in the default production config. If a runtime misses local.yaml overrides, those committed values protect sessions, CSRF/chat/API tokens, and widget signatures.</p>
+<p>The repository ships concrete values for secret_key and cookie_key in the default production config. If a runtime misses local.yaml overrides, those committed values protect sessions, CSRF/chat/API tokens, and widget signatures.</p>
 
 <h4 id="validation">Validation</h4>
 
@@ -1305,7 +1305,7 @@
 
 <h2 id="open-questions-and-follow-up">Open Questions And Follow Up</h2>
 
-<ul><li>Confirm whether public widgets are intended to access the whole global KB. If not, run a focused fix review around <code>vchat/views/chat/ctx.py</code> and <code>WidgetIntegration</code> source scoping.</li><li>Reproduce <code>VCHAT-CRAWLER-SITEMAP-OFFHOST-SSRF-002</code> with a local disposable Scrapy run to decide whether it should be raised from low-confidence medium to high-confidence medium/high.</li><li>Check the live deployment config for default <code>secret_key</code>, <code>cookie_key</code>, and <code>vchat_secret</code> usage before prioritizing key rotation. This scan did not access remote servers by policy.</li><li>Run a dependency advisory scan with <code>pip-audit</code> or the project-approved equivalent after installing it in the project virtualenv. The tool was not installed during this scan.</li></ul>
+<ul><li>Confirm whether public widgets are intended to access the whole global KB. If not, run a focused fix review around <code>vchat/views/chat/ctx.py</code> and <code>WidgetIntegration</code> source scoping.</li><li>Reproduce <code>VCHAT-CRAWLER-SITEMAP-OFFHOST-SSRF-002</code> with a local disposable Scrapy run to decide whether it should be raised from low-confidence medium to high-confidence medium/high.</li><li>Check the live deployment config for default <code>secret_key</code> and <code>cookie_key</code> usage before prioritizing key rotation. This scan did not access remote servers by policy.</li><li>Run a dependency advisory scan with <code>pip-audit</code> or the project-approved equivalent after installing it in the project virtualenv. The tool was not installed during this scan.</li></ul>
 
 <h2 id="artifact-index">Artifact Index</h2>
 

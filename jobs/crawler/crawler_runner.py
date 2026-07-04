@@ -24,13 +24,13 @@ from jobs.crawler.source_settings import (
     DEFAULT_CRAWLER_DOWNLOAD_DELAY,
     DEFAULT_CRAWLER_DOWNLOAD_TIMEOUT,
 )
-from vchat.settings import config as project_config
+from vchat.settings import cfg
 from vchat.logging import configure_logging
 
 configure_logging(
     logging.INFO,
-    log_format=project_config.get("log_format", "text"),
-    config_path=project_config.get("log_config"),
+    log_format=cfg.log_format,
+    config_path=cfg.log_config,
 )
 
 if len(sys.argv) < 3:
@@ -48,11 +48,9 @@ if len(sys.argv) > 3:
 
 print(f"Starting crawler for URL: {url}, Source ID: {source_id}")
 
-user_agent = project_config.get("crawler_user_agent") or "Dzen-AI/1.0"
-
 settings = Settings()
 settings.setmodule(my_settings)
-settings.set("USER_AGENT", user_agent)
+settings.set("USER_AGENT", cfg.crawler_user_agent)
 concurrent_requests = config.get(
     "crawler_concurrent_requests", DEFAULT_CRAWLER_CONCURRENT_REQUESTS
 )
@@ -65,7 +63,7 @@ download_timeout = config.get(
 settings.set("DOWNLOAD_TIMEOUT", max(1, int(float(download_timeout))))
 settings.set(
     "DOWNLOAD_MAXSIZE",
-    max(1, int(project_config.get("raw_content_max_bytes", 10 * 1024 * 1024) or 1)),
+    cfg.raw_content_max_bytes,
 )
 settings.set("ROBOTSTXT_OBEY", not bool(config.get("ignore_robots_txt", False)))
 

@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from jobs.embedder.model import resolve_embedding_device
-from vchat.settings import config
+from vchat.settings import cfg
 
 
 THREAD_LIMIT_ENV = {
@@ -22,57 +22,14 @@ THREAD_LIMIT_ENV = {
 }
 
 
-def _coerce_positive_int(value: str | int | None, default: int) -> int:
-    try:
-        parsed = int(value) if value is not None else default
-    except (TypeError, ValueError):
-        return default
-    return max(1, parsed)
+def resolve_embedder_instance_count() -> int:
+    if isinstance(cfg.embedding_worker_instances, int):
+        return cfg.embedding_worker_instances
 
-
-def _coerce_non_negative_int(value: str | int | None, default: int) -> int:
-    try:
-        parsed = int(value) if value is not None else default
-    except (TypeError, ValueError):
-        return default
-    return max(0, parsed)
-
-
-def resolve_embedder_instance_count(
-    *,
-    configured: str | int | None = None,
-    cpu_count: int | None = None,
-    reserve_cpus: int | None = None,
-    device: str | None = None,
-) -> int:
-    configured_value = configured
-    if configured_value is None:
-        configured_value = os.getenv(
-            "EMBEDDER_INSTANCES",
-            config.get("embedding_worker_instances", "auto"),
-        )
-    if configured_value not in {None, "", "auto"}:
-        return _coerce_positive_int(configured_value, 1)
-
-    resolved_device = resolve_embedding_device(device)
-    if resolved_device != "cpu":
+    if resolve_embedding_device() != "cpu":
         return 1
 
-    total_cpus = max(1, int(cpu_count or os.cpu_count() or 1))
-    reserve = _coerce_non_negative_int(
-        reserve_cpus
-        if reserve_cpus is not None
-        else os.getenv(
-            "EMBEDDER_CPU_RESERVE",
-            config.get("embedding_worker_cpu_reserve", 1),
-        ),
-        1,
-    )
-    return max(1, total_cpus - reserve)
-
-
-def _build_worker_name(hostname: str, index: int) -> str:
-    return f"vchat-embedder-{hostname}-{os.getpid()}-{index}@{hostname}"
+    return max(1, (os.cpu_count() or 1) - cfg.embedding_worker_cpu_reserve)
 
 
 def main() -> int:
@@ -91,7 +48,7 @@ def main() -> int:
     processes: list[subprocess.Popen[str]] = []
     stopping = False
 
-    def _terminate_all(sig: int, _frame) -> None:
+    def _terminate_all(_ignore_sig: int, _frame) -> None:
         nonlocal stopping
         if stopping:
             return
@@ -106,7 +63,7 @@ def main() -> int:
     print(
         f"Starting {instance_count} embedder worker(s) on {hostname} "
         f"(pool={pool}, concurrency={concurrency}, "
-        f"device={os.getenv('EMBEDDING_DEVICE') or resolve_embedding_device()})"
+        f"device={resolve_embedding_device()})"
     )
     for index in range(1, instance_count + 1):
         cmd = [
@@ -121,7 +78,7 @@ def main() -> int:
             f"--concurrency={concurrency}",
             "--max-tasks-per-child=1",
             "-n",
-            _build_worker_name(hostname, index),
+            f"vchat-embedder-{hostname}-{os.getpid()}-{index}@{hostname}",
         ]
         proc = subprocess.Popen(cmd, cwd=project_root, env=env, text=True)
         processes.append(proc)

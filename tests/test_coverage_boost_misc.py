@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from jobs.embedder import model as embeddings
+from vchat.views.chat import ctx as chat_ctx
 from vchat.views.chat import guardrails
 from jobs.documents.types import guess_document_type
 from vchat.models.base import (
@@ -57,8 +58,8 @@ def test_guardrails_reason_detection_branches(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(embeddings.config, "embedding_model_dir", "data")
-    monkeypatch.setitem(embeddings.config, "embedding_max_seq_length", 123)
+    monkeypatch.setattr(embeddings.cfg, "embedding_device", "cpu")
+    monkeypatch.setattr(embeddings.cfg, "embedding_max_seq_length", 123)
     calls = {}
 
     class _FakeST:
@@ -69,25 +70,34 @@ def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
             calls["trust_remote_code"] = trust_remote_code
 
     monkeypatch.setattr(embeddings, "SentenceTransformer", _FakeST)
-    model = embeddings.load_embedding_model(device="cpu")
+    model = embeddings.load_embedding_model()
     assert isinstance(model, _FakeST)
-    assert calls["model_path"] == "data"
+    assert calls["model_path"] == "models/embedder"
+    assert calls["device"] == "cpu"
     assert calls["tokenizer_kwargs"] == {"truncation": True, "max_length": 123}
     assert model.max_seq_length == 123
 
 
-def test_resolve_embedding_device_prefers_env_override(
+def test_resolve_embedding_device_uses_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("EMBEDDING_DEVICE", "cpu")
-    monkeypatch.setitem(embeddings.config, "embedding_device", "mps")
+    monkeypatch.setattr(embeddings.cfg, "embedding_device", "cpu")
+    assert embeddings.resolve_embedding_device() == "cpu"
+
+
+def test_resolve_embedding_device_auto_uses_detector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(embeddings.cfg, "embedding_device", "auto")
+    monkeypatch.setattr(embeddings, "detect_best_device", lambda: "cpu")
+
     assert embeddings.resolve_embedding_device() == "cpu"
 
 
 def test_resolve_embedding_device_rejects_unavailable_mps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("EMBEDDING_DEVICE", raising=False)
+    monkeypatch.setattr(embeddings.cfg, "embedding_device", "mps")
     monkeypatch.setattr(
         embeddings.torch,
         "backends",
@@ -95,13 +105,13 @@ def test_resolve_embedding_device_rejects_unavailable_mps(
     )
 
     with pytest.raises(RuntimeError, match="mps"):
-        embeddings.resolve_embedding_device("mps")
+        embeddings.resolve_embedding_device()
 
 
 def test_resolve_embedding_device_rejects_unavailable_cuda(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("EMBEDDING_DEVICE", raising=False)
+    monkeypatch.setattr(embeddings.cfg, "embedding_device", "cuda")
     monkeypatch.setattr(
         embeddings.torch,
         "cuda",
@@ -109,14 +119,29 @@ def test_resolve_embedding_device_rejects_unavailable_cuda(
     )
 
     with pytest.raises(RuntimeError, match="cuda"):
-        embeddings.resolve_embedding_device("cuda")
+        embeddings.resolve_embedding_device()
+
+
+def test_loadrerank_rejects_unavailable_configured_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_ctx, "_rerank_model", None)
+    monkeypatch.setattr(chat_ctx.cfg, "reranker_device", "cuda")
+    monkeypatch.setattr(
+        chat_ctx.torch,
+        "cuda",
+        SimpleNamespace(is_available=lambda: False),
+    )
+
+    with pytest.raises(RuntimeError, match="Reranker device cuda"):
+        chat_ctx.loadrerank()
 
 
 def test_openai_guardrails_cache_and_extract(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     _ = tmp_path
-    monkeypatch.setitem(guardrails.config, "openai_guardrails_enabled", True)
+    monkeypatch.setattr(guardrails.cfg, "openai_guardrails_enabled", True)
     monkeypatch.setattr(guardrails, "_cached_client", None)
     monkeypatch.setattr(guardrails, "_cached_key", None)
 

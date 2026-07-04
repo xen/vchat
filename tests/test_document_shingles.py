@@ -189,9 +189,9 @@ def test_chunk_document_text_skips_boilerplate_blocks(monkeypatch) -> None:
     monkeypatch.setattr(
         embedding_chunking, "get_embed_tokenizer", lambda: _WordTokenizer()
     )
-    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_TOKENS", 200)
-    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_OVERLAP_TOKENS", 0)
-    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_CHARS", 10000)
+    monkeypatch.setattr(embedding_chunking.cfg, "embedding_chunk_max_tokens", 200)
+    monkeypatch.setattr(embedding_chunking.cfg, "embedding_chunk_overlap_tokens", 0)
+    monkeypatch.setattr(embedding_chunking.cfg, "embedding_chunk_max_chars", 10000)
 
     boilerplate_block = "навигация главная страница контакты о нас услуги"
     content_block = "михаил кашкин консультирует стартапы и обучает программированию"
@@ -226,9 +226,9 @@ def test_chunk_document_text_no_filter_when_hashes_empty(monkeypatch) -> None:
     monkeypatch.setattr(
         embedding_chunking, "get_embed_tokenizer", lambda: _WordTokenizer()
     )
-    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_TOKENS", 200)
-    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_OVERLAP_TOKENS", 0)
-    monkeypatch.setattr(embedding_chunking, "EMBEDDING_CHUNK_MAX_CHARS", 10000)
+    monkeypatch.setattr(embedding_chunking.cfg, "embedding_chunk_max_tokens", 200)
+    monkeypatch.setattr(embedding_chunking.cfg, "embedding_chunk_overlap_tokens", 0)
+    monkeypatch.setattr(embedding_chunking.cfg, "embedding_chunk_max_chars", 10000)
 
     text = "## A\nнавигация главная страница контакты о нас\n## B\nуникальный контент страницы"
     chunks_no_filter = embedding_chunking.chunk_document_text(

@@ -13,16 +13,13 @@ from jinja2 import Environment
 from redis.asyncio import from_url as redis_from_url
 
 from vchat.settings import (
-    CONFIG_KEY,
     LOGGER_KEY,
     REDIS_KEY,
-    SETTINGS_KEY,
     SIGNER_KEY,
     STATIC_VERSION_KEY,
 )
 from vchat.db import engine
 from vchat.views.metrics import validate_multiprocess_setup
-from vchat.views.projects.settings import init_settings_cache
 from vchat.utils import (
     make_full_url,
     protect,
@@ -37,27 +34,21 @@ logger = logging.getLogger(__name__)
 
 async def create_app() -> Application:
     from .routes import setup_routes
-    from .settings import config
+    from .settings import cfg
 
     validate_multiprocess_setup()
 
-    redis = redis_from_url(config["redis_uri"])
+    redis = redis_from_url(cfg.redis_uri)
     # 5 MB should be enough for everyone // Bill Gates
     app = web.Application(
-        client_max_size=config["max_upload_size"], middlewares=get_middlewares(config)
+        client_max_size=cfg.max_upload_size, middlewares=get_middlewares(cfg)
     )
-    domain = None
-    if not DEBUG:
-        domain = config.get("cookie_domain")
-        if not domain:
-            logger.warning("cookie_domain must be set in production")
+    if not DEBUG and not cfg.cookie_domain:
+        logger.warning("cookie_domain must be set in production")
 
-    app[CONFIG_KEY] = config
     app[LOGGER_KEY] = logger
     app[REDIS_KEY] = redis
-    app[SIGNER_KEY] = URLSafeTimedSerializer(config["secret_key"])
-    app[SETTINGS_KEY] = {}
-    await init_settings_cache(app)
+    app[SIGNER_KEY] = URLSafeTimedSerializer(cfg.secret_key)
 
     # Setup base Jinja2
     aiohttp_jinja2.setup(
@@ -86,7 +77,7 @@ async def create_app() -> Application:
     # Setup routes
     setup_routes(app)
 
-    async def warmup_db(app):
+    async def warmup_db(_ignore_app):
         import asyncio
 
         asyncio.get_running_loop().slow_callback_duration = 0.5
@@ -95,7 +86,7 @@ async def create_app() -> Application:
         async with async_session_factory() as session:
             await session.execute(sa.text("SELECT 1"))
 
-    async def warmup_chat_models(app):
+    async def warmup_chat_models(_ignore_app):
         from vchat.views.chat.ctx import warmup_models
 
         warmup_models()
@@ -103,7 +94,7 @@ async def create_app() -> Application:
     async def close_redis(app):
         await app[REDIS_KEY].aclose()
 
-    async def dispose_db(app):
+    async def dispose_db(_ignore_app):
         await engine.dispose()
 
     app.on_startup.append(warmup_db)
@@ -121,7 +112,6 @@ async def init_jinja(request):
         return ""
 
     return {
-        "config": request.app[CONFIG_KEY],
         "len": len,
         "debug": DEBUG,
         "meta": request.get("meta"),
@@ -135,6 +125,5 @@ async def init_jinja(request):
         "external": lambda x, **kwargs: make_full_url(request, x, **kwargs),
         "url_for": lambda x, **kwargs: request.app.router[x].url_for(**kwargs),
         "csrf_token": csrf_token,
-        "project_settings": request.app[SETTINGS_KEY],
         "static_version": request.app.get(STATIC_VERSION_KEY, ""),
     }

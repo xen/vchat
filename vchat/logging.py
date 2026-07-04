@@ -55,7 +55,9 @@ class JsonLogFormatter(logging.Formatter):
 
         for key, value in record.__dict__.items():
             if key not in _RESERVED_LOG_RECORD_ATTRS and not key.startswith("_"):
-                payload[key] = _sanitize_log_text(value) if isinstance(value, str) else value
+                payload[key] = (
+                    _sanitize_log_text(value) if isinstance(value, str) else value
+                )
 
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
@@ -73,7 +75,9 @@ class PlainLogFormatter(logging.Formatter):
             extras.append(f"request_id={_sanitize_log_text(request_id)!r}")
         for key, value in record.__dict__.items():
             if key not in _RESERVED_LOG_RECORD_ATTRS and not key.startswith("_"):
-                safe_value = _sanitize_log_text(value) if isinstance(value, str) else value
+                safe_value = (
+                    _sanitize_log_text(value) if isinstance(value, str) else value
+                )
                 extras.append(f"{key}={safe_value!r}")
 
         extras_text = f" {' '.join(extras)}" if extras else ""

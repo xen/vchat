@@ -4,8 +4,6 @@
 #
 #    pip-compile --generate-hashes --output-file=requirements/dev.txt --unsafe-package=pip requirements/dev.in
 #
---extra-index-url https://download.pytorch.org/whl/cpu
-
 accelerate==1.12.0 \
     --hash=sha256:3e2091cd341423207e2f084a6654b1efcd250dc326f2a37d6dde446e07cabb11 \
     --hash=sha256:70988c352feb481887077d2ab845125024b2a137a5090d6d7a32b57d03a45df6
@@ -184,10 +182,6 @@ annotated-types==0.7.0 \
     # via
     #   -r requirements/requirements.txt
     #   pydantic
-annoy==1.17.3 ; sys_platform == "linux" \
-    --hash=sha256:9cbfebefe0a5f843eba29c6be4c84d601f4f41ad4ded0486f1b88c3b07739c15 \
-    --hash=sha256:c33a5d4d344c136c84976bfb2825760142a8bb25335165e24e11c9afbfa8c2e9
-    # via -r requirements/requirements.txt
 antlr4-python3-runtime==4.9.3 \
     --hash=sha256:f224469b4168294902bb1efa80a8bf7855f24c99aef99cbefc1bcd3cce77881b
     # via
@@ -626,6 +620,7 @@ click==8.3.1 \
     #   click-plugins
     #   click-repl
     #   import-linter
+    #   ocrmac
     #   pip-tools
     #   typer
     #   typer-slim
@@ -1327,9 +1322,7 @@ greenlet==3.3.0 \
     --hash=sha256:dcd2bdbd444ff340e8d6bdf54d2f206ccddbb3ccfdcd3c25bf4afaa7b8f0cf45 \
     --hash=sha256:e29f3018580e8412d6aaf5641bb7745d38c85228dacf51a73bd4e26ddf2a6a8e \
     --hash=sha256:e8e18ed6995e9e2c0b4ed264d2cf89260ab3ac7e13555b8032b25a74c6d18655
-    # via
-    #   -r requirements/requirements.txt
-    #   sqlalchemy
+    # via -r requirements/requirements.txt
 griffelib==2.0.2 \
     --hash=sha256:3cf20b3bc470e83763ffbf236e0076b1211bac1bc67de13daf494640f2de707e \
     --hash=sha256:925c857658fb1ba40c0772c37acbc2ab650bd794d9c1b9726922e36ea4117ea1
@@ -2600,6 +2593,12 @@ numpy==2.2.6 \
     #   thinc
     #   torchvision
     #   transformers
+ocrmac==1.0.1 \
+    --hash=sha256:1cef25426f7ae6bbd57fe3dc5553b25461ae8ad0d2b428a9bbadbf5907349024 \
+    --hash=sha256:507fe5e4cbd67b2d03f6729a52bbc11f9d0b58241134eb958a5daafd4b9d93d9
+    # via
+    #   -r requirements/requirements.txt
+    #   docling
 omegaconf==2.3.0 \
     --hash=sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b \
     --hash=sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7
@@ -2957,6 +2956,7 @@ pillow==12.2.0 \
     #   docling-core
     #   docling-ibm-models
     #   docling-parse
+    #   ocrmac
     #   python-pptx
     #   rapidocr
     #   torchvision
@@ -3712,6 +3712,81 @@ pymorphy3-dicts-ru==2.4.417150.4580142 \
     # via
     #   -r requirements/requirements.txt
     #   pymorphy3
+pyobjc-core==12.2.1 \
+    --hash=sha256:047c226eeb58a2993ace5e8904e71cc9426ee20d064c617f8fbf32717d37093e \
+    --hash=sha256:1188613805336270279570467e4455b74cb6c0f60913ac74c917ee1c37cfaecb \
+    --hash=sha256:24b76a63caf0b5369d4a377c7c0438cd70df81539057af3db839bfaa3579e04a \
+    --hash=sha256:2b8fc0531c27277325e113ac00b8a72a82e6145f0a88175b9425d8de814ff69a \
+    --hash=sha256:7a7b9b018402342cf32bf1956366896350fbe5c0478cb3ef59778f77abed7f07 \
+    --hash=sha256:9bef500f979e22d54f9da3aaebf6a48f873234b324858bd69256055a318955c7 \
+    --hash=sha256:a64232bb27ed101d4adc7d42b0e64a6d3331aac7bee7861c037a6777a163f10b \
+    --hash=sha256:aa5c889961d79d7704f17eeb27f80ee791335819c1bb14babeff7b9ea665b5f0 \
+    --hash=sha256:af101222762665a4125157906cb4b23f5d5a63d3851d5e0504f72a1eaaa2cfd2 \
+    --hash=sha256:efe465e3ecc6fc73f7c7622620345d134a8d34564ab1c29d8247e45f4ed55071
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-cocoa
+    #   pyobjc-framework-coreml
+    #   pyobjc-framework-quartz
+    #   pyobjc-framework-vision
+pyobjc-framework-cocoa==12.2.1 \
+    --hash=sha256:05443c1494532779cccff83e9792fdd6f0a4800cac56620132bf28e0bf966e9d \
+    --hash=sha256:28b9b8bab1c36efb94744786918752d0c1842f5fbb67e7d5ca97b5f736512080 \
+    --hash=sha256:3b74a78fa7803e547b32e5e8ec1b49987b52fe318383e793bc6cd49b80efbd9f \
+    --hash=sha256:a6c584e2af0813cb2f6103b184e632665a26f58c1bd5b08ffd6e95a19c617f7b \
+    --hash=sha256:b386c324d64ae565c1f6b7dfb77be68f640a1c7c23caa6966ab661131f519561 \
+    --hash=sha256:b6023657b8d6cc049a21bd6b4752425f2f53c42f9f0b02d64c7608cc484bf103 \
+    --hash=sha256:b94b37fe5730e5ae1fb0052912cd174e6ec329b0bfba4a012ae5db1014b5864b \
+    --hash=sha256:c685ccd8e266a07cf912a2c5a13b1f2eff2a868a1aff163b4801b4687bd425e1 \
+    --hash=sha256:dc2eaca2f13c7bcd8e41e51a372e47825dea9dd3126108760eed7ba883d2945c \
+    --hash=sha256:dc6da84f4fc62cc25463bbb85e77a57b8d5ac6caf9a60702daf2edb601332f15
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-coreml
+    #   pyobjc-framework-quartz
+    #   pyobjc-framework-vision
+pyobjc-framework-coreml==12.2.1 \
+    --hash=sha256:1ff65a16661abcc7c2dfe90e87b821d596bc17d1fed44c3a7ba36bd60b002a99 \
+    --hash=sha256:3d04c58b18ce9a136ea9184f604658d50b8753ad4634638ac50e360298a3eb81 \
+    --hash=sha256:4c9299321ced92439c203342183fdaa47aa8f125b6ef831c55bcc91a69e196e9 \
+    --hash=sha256:52dbdd00da500253ed8b21193ee0a4ba5c45e155fbe0d64448ba2c6666552f36 \
+    --hash=sha256:554b423411890d26a03628bb43f848d45656980b4cd43e8f91f84b52347f0b66 \
+    --hash=sha256:6e2d71048e80c27c7c0fdd01b9ec5d309c873cb2c4da64578f13d842298a9186 \
+    --hash=sha256:711be8528b0cbbc49b5bd4669309f0ad0de6ed76499ffb706b0dd2f1b294293f \
+    --hash=sha256:ca06f106c8d0e2e818212e6cfe9270bd333983ffd086be7b474fc9df34cbc5cc \
+    --hash=sha256:d1cda08f258e30f5c92925d377a35bf5cd4a244911a4fb2196505431d2462ed8 \
+    --hash=sha256:ef3c2b6a160891b44173235603d10174929656b9c206d6f2f443fe2aa903c2cb
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-vision
+pyobjc-framework-quartz==12.2.1 \
+    --hash=sha256:54c9bc7f507192691841ee4eba5bf36990b259df83ac728efed2d7ea1cd021e4 \
+    --hash=sha256:60f29408b4f9ed5391a29c6b63e2aa56ddfb8b66b3fb47962930427981e14462 \
+    --hash=sha256:8105c98b798f2bf81c05c54bddeeadbf62f0b5dfec13bd6e719dd2cdf7e1cddf \
+    --hash=sha256:b3b8b6f71e66147f8ff9e6213864cc8527e3a0b1ee90835b93ce221f4802d9b0 \
+    --hash=sha256:bbc214f1a216b5d3651bc832d0ac4589f029f3f37cd6cbb370aac12a7c77942c \
+    --hash=sha256:bfc0d2badd819823d21df8069dcf9544ce360ed747a8895c51bdb25d8d125f45 \
+    --hash=sha256:c8fed57ac8a1927e4fe4f48ab4042cbc1087d881743182b6f3f2e6e227a9209f \
+    --hash=sha256:ca61624a0b0e6286d8a0f97f47eb9011e4e81e9a339db436d48af527e7065bb1 \
+    --hash=sha256:ceb56939c337b36d9d81185ade31f77dc52c85cf79bb16e53e9b32f54b6bb3f5 \
+    --hash=sha256:de9c8cca7e95290c8d540466af11c7cdfe3a5458e6f56c34006d5b45243f9ed9
+    # via
+    #   -r requirements/requirements.txt
+    #   pyobjc-framework-vision
+pyobjc-framework-vision==12.2.1 \
+    --hash=sha256:2dd7ce3563afbbcbc10d9bb5e777b3d0cd77d4d5a9f7b0c32d0f65eeb5d34f0f \
+    --hash=sha256:5aafb8fd87b5580b98a9f4a6de18013fd000f78a5f0930b2160fa82775de84fd \
+    --hash=sha256:86f221d7ced483e7292194293b791a255e0bd1e4011048533501679e378d40fd \
+    --hash=sha256:a041188213ae84153d5fe74cd69468827c150cb7157e2649e40a2a3cedb8f55d \
+    --hash=sha256:a319b6e809ac03c41fbbcb1b8e449c8bc9b6e2b0e06c3c67cbe4ce8e040a1f78 \
+    --hash=sha256:c9792afbc3ba16483095d9a90c3f7a562383a6d7e86d2783824fab9b4b562219 \
+    --hash=sha256:da4f6811c23bdfa701ed727d6e46a83729606476cee435c2461f0f25579b8080 \
+    --hash=sha256:debfd59dd7d962a6053bf733370148c11a9ec44091b517a0966f48d81c305879 \
+    --hash=sha256:e288cb41349d6e84cfac0822a0c1fb476bf5fa094913b19e8c2899e90a1a9e8f \
+    --hash=sha256:fa2e56d891eab12a0ddac2373c69957c108f70dea56f5a9a6081a3c2f905c98b
+    # via
+    #   -r requirements/requirements.txt
+    #   ocrmac
 pyopenssl==26.1.0 \
     --hash=sha256:115563879b2c8ccb207975705d3e491434d8c9d7c79667c902ecbf5f3bbd2ece \
     --hash=sha256:737f0a2275c5bc54f3b02137687e1a765931fb3949b9a92a825e4d33b9eec08b

@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlsplit
 
 from jobs.crawler.tasks import crawl_page_task
-from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
+from vchat.settings import REDIS_KEY, SIGNER_KEY, cfg
 from vchat.utils import json_response
 from vchat.models import Page, Source, WidgetIntegration
 from vchat.widget_state import (
@@ -20,9 +20,9 @@ from vchat.views.projects.page_status import PageStatus
 from vchat.views.triggers.rules import (
     canonical_page_url,
     find_page_by_url,
-    load_default_trigger_templates,
+    load_trigger_templates,
     page_trigger_items,
-    render_default_triggers,
+    render_triggers,
     source_trigger_rules_match_url,
 )
 
@@ -110,11 +110,11 @@ Host: chat.vbudushee.ru
 """
 
 
-async def robots_txt(request):
+async def robots_txt(_ignore_request):
     return web.Response(text=robots, content_type="text/plain")
 
 
-async def favicon(request):
+async def favicon(_ignore_request):
     raise web.HTTPFound("/static/favicon.ico")
 
 
@@ -174,6 +174,20 @@ async def widget_js(request):
 
 
 async def widget_triggers_resolve(request):
+    code = request.query.get("code", "").strip()
+    widget = await request["db"].scalar(
+        sa.select(WidgetIntegration).where(
+            WidgetIntegration.code == code,
+            WidgetIntegration.is_enabled.is_(True),
+        )
+    )
+    if widget is None:
+        return await _json_response_after_rollback(
+            request,
+            {
+                "triggers": [],
+            },
+        )
     page_url = request.query.get("url", "")
     title = request.query.get("title", "")
     page = await find_page_by_url(request["db"], page_url)
@@ -227,19 +241,15 @@ async def widget_triggers_resolve(request):
                 "triggers": [],
             },
         )
-    if (
-        page is None
-        and source is not None
-        and request.app[CONFIG_KEY]["widget_page_discovery_enabled"]
-    ):
+    if page is None and source is not None and cfg.widget_page_discovery_enabled:
         page = await _discover_widget_page(request, source=source, page_url=page_url)
 
     default_title = title or (page.title if page is not None else "") or ""
     return await _json_response_after_rollback(
         request,
         {
-            "triggers": render_default_triggers(
-                load_default_trigger_templates(request.app),
+            "triggers": render_triggers(
+                load_trigger_templates(widget.trigger_templates),
                 default_title,
             ),
         },

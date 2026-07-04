@@ -12,7 +12,7 @@ from itsdangerous import BadSignature
 from multidict import MultiDict
 from yarl import URL
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY, SIGNER_KEY
+from vchat.settings import REDIS_KEY, SIGNER_KEY
 from vchat.widget_state import (
     WIDGET_STATE_DISABLED,
     WIDGET_STATE_ENABLED,
@@ -52,7 +52,6 @@ class _App(dict):
         super().__init__(
             {
                 SIGNER_KEY: _Signer(),
-                CONFIG_KEY: {"secret_key": b"k" * 32},
                 REDIS_KEY: _Redis(),
             }
         )
@@ -161,13 +160,15 @@ async def test_project_action_rejects_missing_csrf() -> None:
 
 
 @pytest.mark.asyncio
-async def test_project_action_user_create_respects_disabled_config() -> None:
+async def test_project_action_user_create_respects_disabled_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     db = _DB()
     req = _Request(
         action="user_create",
         post_data={"email": "new@example.com", "password": "long-enough-password"},
     )
-    req.app[CONFIG_KEY]["admin_user_create_enabled"] = False
+    monkeypatch.setattr(project_views.cfg, "admin_user_create_enabled", False)
     req["db"] = db
     req["user"] = SimpleNamespace(id=1)
 
@@ -288,9 +289,7 @@ async def test_file_document_delete_accepts_form_csrf(
 
 
 @pytest.mark.asyncio
-async def test_project_action_ignore_document_toggle(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_project_action_ignore_document_toggle() -> None:
     from vchat.views.projects.page_status import PageStatus, PageStatusError
 
     doc = SimpleNamespace(id=10, status=PageStatus.crawler, status_error=None)
@@ -306,7 +305,7 @@ async def test_project_action_ignore_document_toggle(
 
 
 @pytest.mark.asyncio
-async def test_project_action_delete_document(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_project_action_delete_document() -> None:
     doc = SimpleNamespace(id=11)
     req = _Request(action="delete_document", item_id="11")
     db = _DB(scalar_values=[doc])
@@ -467,7 +466,7 @@ async def test_project_integration_create_requires_form_csrf(
     context = await _raw(project_views.project_integration)(req)
 
     assert "project" not in context
-    assert set(context) == {"project_secret", "form", "widgets"}
+    assert set(context) == {"form", "widgets"}
     assert context["form"].errors
 
 
@@ -524,6 +523,9 @@ async def test_project_integration_add_uses_initial_welcome_message(
         "Добро пожаловать в чат, задавайте вопросы"
     ]
     assert db.added[0].waiting_messages == ["Готовлю ответ"]
+    assert db.added[0].trigger_templates == list(
+        project_views.forms.DEFAULT_TRIGGER_TEMPLATES
+    )
     assert (
         db.added[0].error_message
         == "Извините, сейчас не удалось получить ответ. Попробуйте отправить сообщение позже."
@@ -556,6 +558,7 @@ async def test_project_widget_edit_saves_footer_text(
         system_prompt="",
         suggestions_enabled=False,
         suggestions_prompt="",
+        trigger_templates=[],
         pinned_messages=[],
         updated_at=None,
     )
@@ -569,6 +572,8 @@ async def test_project_widget_edit_saves_footer_text(
                 ("welcome_messages-1", "<strong>Second</strong>"),
                 ("waiting_messages-0", "Готовлю ответ"),
                 ("waiting_messages-1", "Проверяю источники"),
+                ("trigger_templates-0", "Первый {title}?"),
+                ("trigger_templates-1", "Второй {title}?"),
                 ("error_message", "<strong>Сбой</strong><script>x</script>"),
                 ("pinned_messages-0-text", "<strong>Pinned</strong>"),
                 ("pinned_messages-0-color", "primary"),
@@ -623,6 +628,7 @@ async def test_project_widget_edit_saves_footer_text(
     assert widget.is_enabled is False
     assert widget.welcome_messages == ["Hello", "<strong>Second</strong>"]
     assert widget.waiting_messages == ["Готовлю ответ", "Проверяю источники"]
+    assert widget.trigger_templates == ["Первый {title}?", "Второй {title}?"]
     assert widget.error_message == "<strong>Сбой</strong>"
     assert widget.pinned_messages == [
         {"text": "<strong>Pinned</strong>", "color": "primary"}
@@ -653,6 +659,7 @@ async def test_project_widget_edit_invalid_post_returns_context_without_commit(
         system_prompt="Prompt",
         suggestions_enabled=False,
         suggestions_prompt="Suggestions",
+        trigger_templates=["Default {title}?"],
         pinned_messages=[],
         updated_at=None,
     )
@@ -664,6 +671,7 @@ async def test_project_widget_edit_invalid_post_returns_context_without_commit(
                 ("agent_name", "Agent"),
                 ("welcome_messages-0", "Hello"),
                 ("waiting_messages-0", "Готовлю ответ"),
+                ("trigger_templates-0", "Default {title}?"),
                 ("error_message", "Ошибка"),
                 ("footer_text", "Footer"),
                 ("system_prompt", "Prompt"),
@@ -1161,6 +1169,7 @@ async def test_project_action_refresh_page(
         meta={"foo": "bar"},
         updated_at=None,
     )
+    document.patch_meta = lambda **kwargs: document.meta.update(kwargs)
     req = _Request(action="refresh_page", item_id="17")
     db = _DB(scalar_values=[document])
     req["db"] = db

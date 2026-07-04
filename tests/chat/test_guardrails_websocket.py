@@ -10,6 +10,7 @@ import aiohttp
 import pytest
 from itsdangerous import URLSafeSerializer
 
+from vchat.settings import cfg
 from vchat.views.chat.guardrails import GuardrailDecision
 from vchat.views.chat import views as chat_views
 
@@ -128,7 +129,7 @@ class _FakeContext:
 
 
 def _make_request() -> Any:
-    payload = URLSafeSerializer(chat_views.SECRET_KEY).dumps(
+    payload = URLSafeSerializer(cfg.secret_key).dumps(
         [1, "chat-1"], salt="vchat"
     )
     return type(
@@ -208,11 +209,14 @@ def _setup_common(
 
     monkeypatch.setattr(chat_views, "enrich_source_payloads", _fake_enrich_source_payloads)
 
-    monkeypatch.setattr(chat_views, "embed_query", lambda text: [0.1, 0.2])
+    async def _embed_query_async(_text: str) -> list[float]:
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(chat_views, "embed_query_async", _embed_query_async)
     monkeypatch.setattr(
         chat_views,
         "build_generation_context",
-        lambda app: _FakeContext(_FakeProvider(), _FakeModel()),
+        lambda widget=None: _FakeContext(_FakeProvider(), _FakeModel()),
     )
 
     async def _fake_metrics(**kwargs) -> None:

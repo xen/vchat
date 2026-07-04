@@ -25,7 +25,6 @@ from jobs.celery import app
 from jobs.db import create_sync_engine
 from jobs.embedder.chunking import (
     ChunkData,
-    EMBEDDING_DOCUMENT_MAX_CHARS,
     EmbedderDocumentError,
     chunk_document_text,
     count_token_ids,
@@ -54,7 +53,7 @@ from vchat.views.projects.page_status import (
     PageStatus,
     PageStatusError,
 )
-from vchat.settings import config
+from vchat.settings import cfg
 from jobs.crawler.source_blocking import (
     apply_source_blocking_result,
     check_source_blocking,
@@ -79,35 +78,12 @@ _DOCUMENT_INDEX_LOCK_NAMESPACE = _advisory_lock_namespace("vchat:document-index"
 _BOILERPLATE_REBUILD_LOCK_NAMESPACE = _advisory_lock_namespace(
     "vchat:boilerplate-rebuild"
 )
-REDIS_URL = config.get("redis_uri", "redis://localhost:6379/0")
 ENSURE_PENDING_CHUNKS_SCHEDULE_KEY = "vchat:embed:ensure_pending_chunks:scheduled"
 REFRESH_PROJECT_INDEX_SCHEDULE_KEY = "vchat:embed:refresh_project_index:scheduled"
 INDEX_DOCUMENT_SCHEDULE_KEY_PREFIX = "vchat:embed:index_document:scheduled:"
 INDEX_CONTENT_HASH_META_KEY = "embedding_index_content_hash"
-ENSURE_PENDING_CHUNKS_SCHEDULE_TTL = max(
-    30, int(config.get("embedding_ensure_pending_chunks_ttl_seconds", 120) or 120)
-)
-REFRESH_PROJECT_INDEX_SCHEDULE_TTL = max(
-    60, int(config.get("embedding_refresh_project_index_ttl_seconds", 300) or 300)
-)
-INDEX_DOCUMENT_SCHEDULE_TTL = max(
-    300,
-    int(
-        config.get(
-            "embedding_index_document_schedule_ttl_seconds",
-            config.get("celery_visibility_timeout", 21600),
-        )
-        or config.get("celery_visibility_timeout", 21600)
-    ),
-)
 METADATA_ONLY_INDEX_POLICY = "metadata_only"
 INDEX_POLICY_REASON_META_KEY = "embedding_index_policy_reason"
-METADATA_ONLY_CSV_MIN_CHARS = max(
-    1, int(config.get("metadata_only_csv_min_chars", 50000) or 50000)
-)
-METADATA_ONLY_RAW_SIZE_MIN_BYTES = max(
-    1, int(config.get("metadata_only_raw_size_min_bytes", 1_000_000) or 1_000_000)
-)
 STATISTICAL_DUMP_SAMPLE_MAX_LINES = 200
 STATISTICAL_DUMP_MIN_ROWS = 50
 STATISTICAL_DUMP_MIN_COLUMNS = 6
@@ -154,10 +130,6 @@ LOW_VALUE_STATUS_TITLE_TERMS = (
     "unauthorized",
     "bad gateway",
     "service unavailable",
-)
-PAGE_SHINGLE_INSERT_BATCH_SIZE = max(
-    100,
-    int(config.get("page_shingle_insert_batch_size", 2000) or 2000),
 )
 _BOILERPLATE_HASH_CACHE: dict[int, frozenset[int]] = {}
 
@@ -220,22 +192,22 @@ def _metadata_only_index_reason(doc: Page | PageChunkContext) -> str | None:
         or _looks_like_statistical_dump(content)
     )
     if csv_hint and (
-        content_len > METADATA_ONLY_CSV_MIN_CHARS
-        or content_len > EMBEDDING_DOCUMENT_MAX_CHARS
-        or raw_content_size > METADATA_ONLY_RAW_SIZE_MIN_BYTES
+        content_len > cfg.metadata_only_csv_min_chars
+        or content_len > cfg.embedding_document_max_chars
+        or raw_content_size > cfg.metadata_only_raw_size_min_bytes
     ):
         return "csv_statistical_dump"
 
     document_hint = path.endswith(DOWNLOADABLE_DOCUMENT_EXTENSIONS) or any(
         term in content_type for term in DOWNLOADABLE_DOCUMENT_CONTENT_TYPE_TERMS
     )
-    if document_hint and content_len > EMBEDDING_DOCUMENT_MAX_CHARS:
+    if document_hint and content_len > cfg.embedding_document_max_chars:
         return "large_downloadable_document"
 
     if "/assets/vendor/" in path or "/node_modules/" in path:
         return "vendor_asset"
 
-    if doc_type == "code" and content_len > METADATA_ONLY_CSV_MIN_CHARS:
+    if doc_type == "code" and content_len > cfg.metadata_only_csv_min_chars:
         return "large_code_asset"
 
     if (
@@ -391,18 +363,6 @@ def _indexable_content_for_size_policy(doc: Page | PageChunkContext) -> str:
     return normalize_html_document_for_chunking(getattr(doc, "content", "") or "")
 
 
-def _document_exceeds_indexable_size_limit(doc: Page | PageChunkContext) -> bool:
-    return len(_indexable_content_for_size_policy(doc)) > EMBEDDING_DOCUMENT_MAX_CHARS
-
-
-def _status_error_blocks_indexing(doc: PageChunkContext) -> bool:
-    if doc.status_error is None:
-        return False
-    if doc.status_error == PageStatusError.too_big:
-        return _document_exceeds_indexable_size_limit(doc)
-    return True
-
-
 def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | None:
     row = session.execute(
         select(
@@ -437,18 +397,17 @@ def fetch_page_context(session: Session, page_id: int) -> PageChunkContext | Non
     if not doc.content:
         logging.warning("Page %s has no content", page_id)
         return None
-    if _metadata_only_index_reason(
-        doc
-    ) is None and _document_exceeds_indexable_size_limit(doc):
-        mark_page_too_big(
-            session,
-            doc.id,
-            content=_indexable_content_for_size_policy(doc),
-        )
-        return None
-    if _metadata_only_index_reason(doc) is None and _status_error_blocks_indexing(doc):
-        logging.info("Page %s has status_error=%s, skipping", page_id, doc.status_error)
-        return None
+    metadata_only_reason = _metadata_only_index_reason(doc)
+    if metadata_only_reason is None:
+        indexable_content = _indexable_content_for_size_policy(doc)
+        if len(indexable_content) > cfg.embedding_document_max_chars:
+            mark_page_too_big(session, doc.id, content=indexable_content)
+            return None
+        if doc.status_error is not None and doc.status_error != PageStatusError.too_big:
+            logging.info(
+                "Page %s has status_error=%s, skipping", page_id, doc.status_error
+            )
+            return None
     return doc
 
 
@@ -650,7 +609,7 @@ def page_chunks_match_current_content(session: Session, doc: PageChunkContext) -
     return bool(chunk_count)
 
 
-def mark_page_chunks_current(session: Session, doc: Page | PageChunkContext) -> None:
+def mark_page_chunks_current(doc: Page | PageChunkContext) -> None:
     meta = dict(doc.meta or {})
     content_hash = getattr(doc, "content_hash", None) or getattr(doc, "hash_value")
     meta[INDEX_CONTENT_HASH_META_KEY] = content_hash
@@ -717,12 +676,12 @@ def materialize_page_chunks(
 ) -> int:
     content = page.content or ""
     metadata_only_reason = _metadata_only_index_reason(page)
-    if metadata_only_reason is None and _document_exceeds_indexable_size_limit(page):
-        mark_page_too_big(
-            session,
-            page.id,
-            content=_indexable_content_for_size_policy(page),
-        )
+    indexable_content = _indexable_content_for_size_policy(page)
+    if (
+        metadata_only_reason is None
+        and len(indexable_content) > cfg.embedding_document_max_chars
+    ):
+        mark_page_too_big(session, page.id, content=indexable_content)
         return 0
 
     boilerplate_hashes: frozenset[int] = frozenset()
@@ -751,7 +710,7 @@ def materialize_page_chunks(
 
     if not chunks:
         logging.info("No content to index for Page %s", page.id)
-        mark_page_chunks_current(session, page)
+        mark_page_chunks_current(page)
         session.execute(
             sa.update(Page)
             .where(Page.id == page.id)
@@ -796,7 +755,7 @@ def materialize_page_chunks(
             page.id,
         )
 
-    mark_page_chunks_current(session, page)
+    mark_page_chunks_current(page)
     session.execute(
         sa.update(Page)
         .where(Page.id == page.id)
@@ -879,7 +838,7 @@ def rebuild_boilerplate_for_source(session: Session, source_id: int) -> int:
         distinct_shingles.update(row["shingle_hash"] for row in rows)
         for row in rows:
             batch.append(row)
-            if len(batch) >= PAGE_SHINGLE_INSERT_BATCH_SIZE:
+            if len(batch) >= cfg.page_shingle_insert_batch_size:
                 session.execute(sa.insert(PageShingle), batch)
                 batch.clear()
 
@@ -1010,12 +969,12 @@ def schedule_pending_chunk_tasks(task_count: int) -> int:
 
 
 def schedule_ensure_pending_chunks() -> bool:
-    redis_client = redis.from_url(REDIS_URL)
+    redis_client = redis.from_url(cfg.redis_uri)
     try:
         acquired = redis_client.set(
             ENSURE_PENDING_CHUNKS_SCHEDULE_KEY,
             "1",
-            ex=ENSURE_PENDING_CHUNKS_SCHEDULE_TTL,
+            ex=cfg.embedding_ensure_pending_chunks_ttl_seconds,
             nx=True,
         )
         if not acquired:
@@ -1028,12 +987,12 @@ def schedule_ensure_pending_chunks() -> bool:
 
 
 def schedule_refresh_project_index() -> bool:
-    redis_client = redis.from_url(REDIS_URL)
+    redis_client = redis.from_url(cfg.redis_uri)
     try:
         acquired = redis_client.set(
             REFRESH_PROJECT_INDEX_SCHEDULE_KEY,
             "1",
-            ex=REFRESH_PROJECT_INDEX_SCHEDULE_TTL,
+            ex=cfg.embedding_refresh_project_index_ttl_seconds,
             nx=True,
         )
         if not acquired:
@@ -1050,13 +1009,13 @@ def index_document_schedule_key(document_id: int) -> str:
 
 
 def schedule_index_document(document_id: int) -> bool:
-    redis_client = redis.from_url(REDIS_URL)
+    redis_client = redis.from_url(cfg.redis_uri)
     schedule_key = index_document_schedule_key(document_id)
     try:
         acquired = redis_client.set(
             schedule_key,
             "1",
-            ex=INDEX_DOCUMENT_SCHEDULE_TTL,
+            ex=cfg.embedding_index_document_schedule_ttl_seconds,
             nx=True,
         )
         if not acquired:
@@ -1119,8 +1078,7 @@ def crawl_source_task(source_id: int, skip_sitemap_sync: bool = False):
             session.commit()
             if blocked_reason is not None:
                 print(
-                    f"Source {source_id} blocked before crawl: "
-                    f"{blocked_reason.value}"
+                    f"Source {source_id} blocked before crawl: {blocked_reason.value}"
                 )
                 return
 
@@ -1420,7 +1378,7 @@ def crawl_page_task(page_id: int):
 @app.task(name="jobs.crawler.tasks.index_document", queue="celery")
 def index_document(document_id: int):
     engine = create_sync_engine()
-    redis_client = redis.from_url(REDIS_URL)
+    redis_client = redis.from_url(cfg.redis_uri)
     try:
         with Session(bind=engine) as session:
             try:
@@ -1457,7 +1415,7 @@ def index_document(document_id: int):
 @app.task(name="jobs.crawler.tasks.ensure_pending_chunks", queue="celery")
 def ensure_pending_chunks():
     engine = create_sync_engine()
-    redis_client = redis.from_url(REDIS_URL)
+    redis_client = redis.from_url(cfg.redis_uri)
     try:
         with Session(bind=engine) as session:
             pending_chunk_count, scheduled = ensure_pending_chunk_workers(
@@ -1510,7 +1468,7 @@ def index_project():
 @app.task(name="jobs.crawler.tasks.refresh_project_index", queue="celery")
 def refresh_project_index():
     engine = create_sync_engine()
-    redis_client = redis.from_url(REDIS_URL)
+    redis_client = redis.from_url(cfg.redis_uri)
     try:
         with Session(bind=engine) as session:
             chunk_counts = (
@@ -1904,12 +1862,8 @@ def reapply_source_rules_task(source_id: int) -> int:
 # Sitemap sync
 # ---------------------------------------------------------------------------
 
-_CRAWLER_USER_AGENT = config.get("crawler_user_agent", "Dzen-AI/1.0")
 _SITEMAP_MAX_ENTRIES = 50_000
 _SITEMAP_BODY_TOO_LARGE_STATUS = 413
-_CRAWLER_DOWNLOAD_MAX_BYTES = int(
-    config.get("raw_content_max_bytes", 10 * 1024 * 1024) or 10 * 1024 * 1024
-)
 
 
 def _fetch_sitemap(
@@ -1920,7 +1874,7 @@ def _fetch_sitemap(
     Returns (status_code, body_or_None, etag_or_None).
     304 → body is None.
     """
-    headers = {"User-Agent": _CRAWLER_USER_AGENT}
+    headers = {"User-Agent": cfg.crawler_user_agent}
     if last_etag:
         headers["If-None-Match"] = last_etag
 
@@ -1939,14 +1893,14 @@ def _fetch_sitemap(
             content_length = resp.headers.get("Content-Length") or ""
             if (
                 content_length.isdigit()
-                and int(content_length) > _CRAWLER_DOWNLOAD_MAX_BYTES
+                and int(content_length) > cfg.raw_content_max_bytes
             ):
                 return _SITEMAP_BODY_TOO_LARGE_STATUS, None, etag, location
             body = resp.raw.read(
-                _CRAWLER_DOWNLOAD_MAX_BYTES + 1,
+                cfg.raw_content_max_bytes + 1,
                 decode_content=True,
             )
-            if len(body) > _CRAWLER_DOWNLOAD_MAX_BYTES:
+            if len(body) > cfg.raw_content_max_bytes:
                 return _SITEMAP_BODY_TOO_LARGE_STATUS, None, etag, location
             return 200, body, etag, location
         return resp.status_code, None, etag, location
@@ -1991,7 +1945,7 @@ def _discover_sitemaps_from_robots(
     source_uri: str,
 ) -> tuple[list[str], int | None, str | None]:
     robots_url = urljoin(source_uri.rstrip("/") + "/", "robots.txt")
-    headers = {"User-Agent": _CRAWLER_USER_AGENT}
+    headers = {"User-Agent": cfg.crawler_user_agent}
     with requests.get(
         robots_url,
         headers=headers,
@@ -2004,18 +1958,15 @@ def _discover_sitemaps_from_robots(
             return [], None, None
 
         content_length = resp.headers.get("Content-Length") or ""
-        if (
-            content_length.isdigit()
-            and int(content_length) > _CRAWLER_DOWNLOAD_MAX_BYTES
-        ):
+        if content_length.isdigit() and int(content_length) > cfg.raw_content_max_bytes:
             print(f"robots.txt too large: {robots_url}")
             return [], None, None
 
         raw_body = resp.raw.read(
-            _CRAWLER_DOWNLOAD_MAX_BYTES + 1,
+            cfg.raw_content_max_bytes + 1,
             decode_content=True,
         )
-        if len(raw_body) > _CRAWLER_DOWNLOAD_MAX_BYTES:
+        if len(raw_body) > cfg.raw_content_max_bytes:
             print(f"robots.txt too large: {robots_url}")
             return [], None, None
 
@@ -2027,7 +1978,7 @@ def _discover_sitemaps_from_robots(
 
 def _probe_common_sitemaps(source_uri: str) -> list[str]:
     discovered: list[str] = []
-    headers = {"User-Agent": _CRAWLER_USER_AGENT}
+    headers = {"User-Agent": cfg.crawler_user_agent}
     for path in ("/sitemap.xml", "/sitemap_index.xml"):
         url = urljoin(source_uri.rstrip("/") + "/", path.lstrip("/"))
         with requests.get(
@@ -2042,14 +1993,14 @@ def _probe_common_sitemaps(source_uri: str) -> list[str]:
             content_length = resp.headers.get("Content-Length") or ""
             if (
                 content_length.isdigit()
-                and int(content_length) > _CRAWLER_DOWNLOAD_MAX_BYTES
+                and int(content_length) > cfg.raw_content_max_bytes
             ):
                 continue
             body = resp.raw.read(
-                _CRAWLER_DOWNLOAD_MAX_BYTES + 1,
+                cfg.raw_content_max_bytes + 1,
                 decode_content=True,
             )
-            if len(body) > _CRAWLER_DOWNLOAD_MAX_BYTES:
+            if len(body) > cfg.raw_content_max_bytes:
                 continue
             content_type = (resp.headers.get("Content-Type") or "").lower()
         if (
@@ -2161,7 +2112,9 @@ def _refresh_source_discovery(
             Sitemap(
                 source_id=source.id,
                 url=normalized_sitemap_url,
-                discovered_via="robots_txt" if sitemap_url in sitemap_urls else "auto_probe",
+                discovered_via="robots_txt"
+                if sitemap_url in sitemap_urls
+                else "auto_probe",
             ),
         )
 
@@ -2188,7 +2141,7 @@ def _refresh_source_discovery(
         blocked_page_ids = [
             page_id
             for page_id, page_uri in queued_pages
-            if page_uri and not parser.can_fetch(_CRAWLER_USER_AGENT, page_uri)
+            if page_uri and not parser.can_fetch(cfg.crawler_user_agent, page_uri)
         ]
         if blocked_page_ids:
             session.execute(

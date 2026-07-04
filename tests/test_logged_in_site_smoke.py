@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from jobs.db import create_sync_engine
 from vchat import app as app_mod
 from vchat.models import User
-from vchat.settings import config
+from vchat.settings import cfg
 
 
 EXCLUDED_ROUTE_NAMES = {
@@ -222,11 +222,11 @@ def _delete_smoke_chats() -> None:
 
 def _logged_in_cookie(user_id: int, session_id: str) -> str:
     storage = EncryptedCookieStorage(
-        config["cookie_key"],
-        cookie_name=config["cookie_name"],
+        cfg.cookie_key,
+        cookie_name=cfg.cookie_name,
         domain=None,
         secure=False,
-        max_age=int(config["session_max_age_seconds"]),
+        max_age=cfg.session_max_age_seconds,
         path="/",
     )
     session = Session(None, data=None, new=True, max_age=storage.max_age)
@@ -243,7 +243,7 @@ def _logged_in_cookie(user_id: int, session_id: str) -> str:
         ).decode("utf-8"),
         max_age=session.max_age,
     )
-    return response.cookies[config["cookie_name"]].value
+    return response.cookies[cfg.cookie_name].value
 
 
 def _site_page_urls(app: web.Application, fixtures: _SmokeFixtures) -> list[tuple[str, str]]:
@@ -305,9 +305,9 @@ async def test_public_entry_pages_do_not_return_500(
 ) -> None:
     monkeypatch.setattr(app_mod, "validate_multiprocess_setup", lambda: None)
     monkeypatch.setattr(app_mod, "redis_from_url", lambda _url: _FakeRedis())
-    monkeypatch.setitem(config, "enable_https_middleware", False)
-    monkeypatch.setitem(config, "cookie_domain", None)
-    monkeypatch.setitem(config, "cookie_secure", False)
+    monkeypatch.setattr(cfg, "enable_https_middleware", False)
+    monkeypatch.setattr(cfg, "cookie_domain", None)
+    monkeypatch.setattr(cfg, "cookie_secure", False)
 
     app = await app_mod.create_app()
     app.on_startup.clear()
@@ -342,9 +342,9 @@ async def test_logged_in_site_pages_do_not_return_500(
 ) -> None:
     monkeypatch.setattr(app_mod, "validate_multiprocess_setup", lambda: None)
     monkeypatch.setattr(app_mod, "redis_from_url", lambda _url: _FakeRedis())
-    monkeypatch.setitem(config, "enable_https_middleware", False)
-    monkeypatch.setitem(config, "cookie_domain", None)
-    monkeypatch.setitem(config, "cookie_secure", False)
+    monkeypatch.setattr(cfg, "enable_https_middleware", False)
+    monkeypatch.setattr(cfg, "cookie_domain", None)
+    monkeypatch.setattr(cfg, "cookie_secure", False)
 
     fixtures = _load_smoke_fixtures()
     _delete_smoke_chats()
@@ -353,7 +353,7 @@ async def test_logged_in_site_pages_do_not_return_500(
     client = await aiohttp_client(app)
     client.session.cookie_jar.update_cookies(
         {
-            config["cookie_name"]: _logged_in_cookie(
+            cfg.cookie_name: _logged_in_cookie(
                 fixtures.user_id,
                 fixtures.session_id,
             )

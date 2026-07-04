@@ -7,10 +7,11 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 from aiohttp import web
 from yarl import URL
 
-from vchat.settings import CONFIG_KEY, REDIS_KEY
+from vchat.settings import REDIS_KEY
 from jobs.indexing import documents as indexing_documents
 from vchat.views import metrics
 from vchat import settings
@@ -75,11 +76,11 @@ async def test_flash_and_admin_event(monkeypatch: pytest.MonkeyPatch) -> None:
     req = _Req(
         app={
             REDIS_KEY: redis,
-            CONFIG_KEY: {"trusted_proxy_cidrs": ["127.0.0.1/32"]},
         },
         headers={"X-Forwarded-For": "10.0.0.1, 10.0.0.2"},
         remote="127.0.0.1",
     )
+    monkeypatch.setattr(utils.cfg, "trusted_proxy_cidrs", ["127.0.0.1/32"])
     req["user"] = SimpleNamespace(id=1, email="admin@example.com")
     req["db"] = _DB()
 
@@ -97,9 +98,12 @@ async def test_flash_and_admin_event(monkeypatch: pytest.MonkeyPatch) -> None:
     assert db_added[1].event_name == "file_update @ /files/10"
 
 
-def test_client_ip_ignores_forwarded_headers_from_untrusted_peer() -> None:
+def test_client_ip_ignores_forwarded_headers_from_untrusted_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(utils.cfg, "trusted_proxy_cidrs", ["10.0.0.0/24"])
     req = _Req(
-        app={CONFIG_KEY: {"trusted_proxy_cidrs": ["10.0.0.0/24"]}},
+        app={},
         headers={"X-Forwarded-For": "203.0.113.10, 10.0.0.2"},
         remote="127.0.0.1",
     )
@@ -107,9 +111,12 @@ def test_client_ip_ignores_forwarded_headers_from_untrusted_peer() -> None:
     assert utils.get_client_ip(req) == "127.0.0.1"
 
 
-def test_client_ip_accepts_forwarded_headers_from_trusted_proxy() -> None:
+def test_client_ip_accepts_forwarded_headers_from_trusted_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(utils.cfg, "trusted_proxy_cidrs", ["127.0.0.1/32"])
     req = _Req(
-        app={CONFIG_KEY: {"trusted_proxy_cidrs": ["127.0.0.1/32"]}},
+        app={},
         headers={"X-Forwarded-For": "203.0.113.10, 10.0.0.2"},
         remote="127.0.0.1",
     )
@@ -117,9 +124,12 @@ def test_client_ip_accepts_forwarded_headers_from_trusted_proxy() -> None:
     assert utils.get_client_ip(req) == "203.0.113.10"
 
 
-def test_client_ip_ignores_invalid_forwarded_header_from_trusted_proxy() -> None:
+def test_client_ip_ignores_invalid_forwarded_header_from_trusted_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(utils.cfg, "trusted_proxy_cidrs", ["127.0.0.1/32"])
     req = _Req(
-        app={CONFIG_KEY: {"trusted_proxy_cidrs": ["127.0.0.1/32"]}},
+        app={},
         headers={"X-Forwarded-For": "not-an-ip"},
         remote="127.0.0.1",
     )
@@ -142,7 +152,7 @@ async def test_login_required_redirects_when_unauthorized(
     monkeypatch.setattr(utils, "get_session", _get_session)
 
     @utils.login_required()
-    async def _protected(request):
+    async def _protected(_request):
         return web.Response(text="ok")
 
     req = _Req(app=_App(), path="/stats")
@@ -152,10 +162,12 @@ async def test_login_required_redirects_when_unauthorized(
     assert "next=%2Fstats" in exc.value.location
 
 
-def test_make_full_url_and_meta_decorator() -> None:
+def test_make_full_url_and_meta_decorator(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(utils.cfg, "public_url", "https://local.vchat.com")
+
     class _App(dict):
         def __init__(self):
-            super().__init__({CONFIG_KEY: {"public_url": "https://local.vchat.com"}})
+            super().__init__()
             self.router = {"doc": _Route("/doc/{doc_id}")}
 
     req = _Req(app=_App())
@@ -199,9 +211,12 @@ def test_merge_chat_meta_stores_validated_source_page_url() -> None:
     )
 
 
-def test_merge_chat_meta_does_not_trust_forwarded_ip_from_untrusted_peer() -> None:
+def test_merge_chat_meta_does_not_trust_forwarded_ip_from_untrusted_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(utils.cfg, "trusted_proxy_cidrs", [])
     req = _Req(
-        app={CONFIG_KEY: {"trusted_proxy_cidrs": []}},
+        app={},
         headers={"X-Forwarded-For": "203.0.113.50", "User-Agent": "Mozilla/5.0"},
         remote="127.0.0.1",
     )
@@ -222,16 +237,17 @@ def test_ai_provider_functions() -> None:
     assert provider.id == "openai"
     assert model.id == "gpt-4o-mini"
     default_provider, default_model = resolve_ai_settings(
-        settings.config["chat_provider"], settings.config["chat_model"]
+        settings.cfg.chat_provider, settings.cfg.chat_model
     )
-    assert default_provider.id == settings.config["chat_provider"]
-    assert default_model.id == settings.config["chat_model"]
+    assert default_provider.id == settings.cfg.chat_provider
+    assert default_model.id == settings.cfg.chat_model
     assert get_provider("openai").id == "openai"
 
 
 def test_settings_yaml_load_and_validation() -> None:
     import io
 
+    assert settings.YamlLoader is yaml.CSafeLoader
     loaded = settings.yaml_load(
         io.StringIO("flag: true\nraw: !env ${DOES_NOT_EXIST:-x}\n")
     )
@@ -242,14 +258,13 @@ def test_settings_yaml_load_and_validation() -> None:
 def test_settings_env_overrides_use_lowercase_internal_keys() -> None:
     script = """
 import json
-from vchat.settings import config
+from vchat.settings import cfg
 print(json.dumps({
-    "database_uri": config["database_uri"],
-    "cookie_secure": config["cookie_secure"],
-    "mode": config["mode"],
-    "secret_key": config["secret_key"],
-    "cookie_key": config["cookie_key"],
-    "vchat_secret": config["vchat_secret"],
+    "database_uri": cfg.database_uri,
+    "cookie_secure": cfg.cookie_secure,
+    "mode": cfg.mode,
+    "secret_key": cfg.secret_key,
+    "cookie_key": cfg.cookie_key,
 }))
 """
     env = {
@@ -259,7 +274,6 @@ print(json.dumps({
         "MODE": "production",
         "SECRET_KEY": "env-secret-key",
         "COOKIE_KEY": "env-cookie-key",
-        "VCHAT_SECRET": "env-project-secret",
     }
 
     result = subprocess.run(
@@ -277,13 +291,12 @@ print(json.dumps({
         "mode": "production",
         "secret_key": "env-secret-key",
         "cookie_key": "env-cookie-key",
-        "vchat_secret": "env-project-secret",
     }
 
 
 def test_settings_production_rejects_default_security_keys() -> None:
     env = {**os.environ, "MODE": "production"}
-    for key in ("SECRET_KEY", "COOKIE_KEY", "VCHAT_SECRET"):
+    for key in ("SECRET_KEY", "COOKIE_KEY"):
         env.pop(key, None)
 
     result = subprocess.run(
@@ -296,7 +309,6 @@ def test_settings_production_rejects_default_security_keys() -> None:
     assert result.returncode != 0
     assert "secret_key" in result.stderr
     assert "cookie_key" in result.stderr
-    assert "vchat_secret" in result.stderr
 
 
 def test_settings_production_rejects_placeholder_security_keys() -> None:
@@ -307,7 +319,6 @@ def test_settings_production_rejects_placeholder_security_keys() -> None:
             "MODE": "production",
             "SECRET_KEY": "changed-secret",
             "COOKIE_KEY": "change-me",
-            "VCHAT_SECRET": "changed-project",
         },
         capture_output=True,
         text=True,
@@ -315,6 +326,45 @@ def test_settings_production_rejects_placeholder_security_keys() -> None:
 
     assert result.returncode != 0
     assert "cookie_key" in result.stderr
+
+
+def test_settings_rejects_invalid_typed_env_override() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import vchat.settings"],
+        env={**os.environ, "RAW_CONTENT_MAX_BYTES": "not-an-int"},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Config validation failed" in result.stderr
+    assert "raw_content_max_bytes" in result.stderr
+
+
+def test_settings_rejects_invalid_embedder_instance_count() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import vchat.settings"],
+        env={**os.environ, "EMBEDDING_WORKER_INSTANCES": "0"},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Config validation failed" in result.stderr
+    assert "embedding_worker_instances" in result.stderr
+
+
+def test_settings_rejects_invalid_embedding_device() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import vchat.settings"],
+        env={**os.environ, "EMBEDDING_DEVICE": "metal"},
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Config validation failed" in result.stderr
+    assert "embedding_device" in result.stderr
 
 
 def test_settings_stage_allows_default_security_keys() -> None:
@@ -336,7 +386,6 @@ def test_settings_production_accepts_overridden_security_keys() -> None:
             "MODE": "production",
             "SECRET_KEY": "changed-secret",
             "COOKIE_KEY": "changed-cookie",
-            "VCHAT_SECRET": "changed-project",
         },
         capture_output=True,
         text=True,
@@ -351,7 +400,7 @@ def test_metrics_helpers() -> None:
 
 
 def test_raw_content_limit_comes_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(indexing_documents.config, "raw_content_max_bytes", 3)
+    monkeypatch.setattr(indexing_documents.cfg, "raw_content_max_bytes", 3)
 
     stored, meta = indexing_documents.raw_content_payload(b"abcd")
 
@@ -363,7 +412,7 @@ def test_raw_content_limit_comes_from_config(monkeypatch: pytest.MonkeyPatch) ->
 def test_raw_content_payload_stores_within_configured_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setitem(indexing_documents.config, "raw_content_max_bytes", 4)
+    monkeypatch.setattr(indexing_documents.cfg, "raw_content_max_bytes", 4)
 
     stored, meta = indexing_documents.raw_content_payload(b"abcd")
 
@@ -389,9 +438,9 @@ def test_crawler_queue_collector_uses_broker_db_and_default_and_embeddings_queue
         def close(self) -> None:
             closed.append(True)
 
-    monkeypatch.setitem(metrics.config, "celery_redis_uri", "redis://example/")
-    monkeypatch.setitem(metrics.config, "celery_broker_db", 42)
-    monkeypatch.setitem(metrics.config, "redis_uri", "redis://app/30")
+    monkeypatch.setattr(metrics.cfg, "celery_redis_uri", "redis://example/")
+    monkeypatch.setattr(metrics.cfg, "celery_broker_db", 42)
+    monkeypatch.setattr(metrics.cfg, "redis_uri", "redis://app/30")
     monkeypatch.setattr(
         metrics.redis_lib.Redis,
         "from_url",

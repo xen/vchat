@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 
 import torch
@@ -8,7 +7,7 @@ from sentence_transformers import SentenceTransformer
 from jobs.embedder.tokenizer import (
     load_embedding_tokenizer as load_embedding_tokenizer,
 )
-from vchat.settings import config
+from vchat.settings import cfg
 
 
 def detect_best_device() -> str:
@@ -22,57 +21,46 @@ def detect_best_device() -> str:
     return "cpu"
 
 
-def resolve_embedding_device(preferred: str | None = None) -> str:
-    normalized = (preferred or "").strip().lower()
-    if not normalized:
-        normalized = (os.getenv("EMBEDDING_DEVICE") or "").strip().lower()
-    if not normalized:
-        normalized = (config.get("embedding_device") or "").strip().lower()
+def resolve_torch_backend(device: str, *, purpose: str) -> str:
+    if device == "cpu":
+        return device
+    if device == "cuda" and torch.cuda.is_available():
+        return device
+    mps_backend = getattr(torch.backends, "mps", None)
+    if device == "mps" and mps_backend and mps_backend.is_available():
+        return device
+    raise RuntimeError(f"{purpose} device {device} was requested but is unavailable")
 
-    if normalized in {"auto", ""}:
+
+def resolve_embedding_device() -> str:
+    if cfg.embedding_device == "auto":
         return detect_best_device()
-
-    if normalized == "cuda":
-        if not torch.cuda.is_available():
-            raise RuntimeError("Embedding device cuda was requested but is unavailable")
-        return "cuda"
-
-    if normalized == "mps":
-        mps_backend = getattr(torch.backends, "mps", None)
-        if not (mps_backend and mps_backend.is_available()):
-            raise RuntimeError("Embedding device mps was requested but is unavailable")
-        return "mps"
-
-    if normalized == "cpu":
-        return "cpu"
-
-    return detect_best_device()
+    return resolve_torch_backend(cfg.embedding_device, purpose="Embedding")
 
 
 def load_embedding_model(
     *,
-    device: str | None = None,
     tokenizer_kwargs: dict[str, Any] | None = None,
 ) -> SentenceTransformer:
-    resolved_device = resolve_embedding_device(device)
-    max_seq_length = int(config.get("embedding_max_seq_length") or 0)
+    resolved_device = resolve_embedding_device()
     effective_tokenizer_kwargs = dict(tokenizer_kwargs or {})
-    if max_seq_length > 0:
+    if cfg.embedding_max_seq_length > 0:
         effective_tokenizer_kwargs.setdefault("truncation", True)
-        effective_tokenizer_kwargs.setdefault("max_length", max_seq_length)
+        effective_tokenizer_kwargs.setdefault(
+            "max_length", cfg.embedding_max_seq_length
+        )
     logging.info(
-        "Loading embedding model %s on %s",
-        config["embedding_model_dir"],
+        "Loading embedding model models/embedder on %s",
         resolved_device,
     )
     model = SentenceTransformer(
-        config["embedding_model_dir"],
+        "models/embedder",
         device=resolved_device,
         tokenizer_kwargs=effective_tokenizer_kwargs or None,
         trust_remote_code=True,
     )
-    if max_seq_length > 0:
-        model.max_seq_length = max_seq_length
+    if cfg.embedding_max_seq_length > 0:
+        model.max_seq_length = cfg.embedding_max_seq_length
     return model
 
 

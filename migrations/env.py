@@ -19,7 +19,7 @@ if not importlib.util.find_spec("vchat"):
 from vchat.models.base import DateTime_, Base
 
 target_metadata = Base.metadata
-from vchat.settings import config as core_conf
+from vchat.settings import cfg
 
 sa.DateTime_ = DateTime_
 
@@ -94,7 +94,7 @@ async def run_migrations_online():
     and associate a connection with the context.
 
     """
-    connectable = create_async_engine(core_conf["database_uri"], echo=True)
+    connectable = create_async_engine(cfg.database_uri, echo=True)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_migrations_online)

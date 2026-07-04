@@ -19,7 +19,7 @@ FRONTEND_DIST_PATH = Path(__file__).parent.parent / "frontend" / "dist"
 FRONTEND_CHAT_DIST_PATH = Path(__file__).parent.parent / "frontend_chat" / "dist"
 
 
-async def _static_favicon(request: web.Request) -> web.FileResponse:
+async def _static_favicon(_ignore_request: web.Request) -> web.FileResponse:
     return web.FileResponse(FRONTEND_DIST_PATH / "favicon.ico")
 
 
@@ -215,4 +215,3 @@ def setup_routes(app: web.Application) -> None:
 
     # static files
     _add_static_build_routes(app)
-

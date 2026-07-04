@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar, Iterable
 
+import requests
 import tiktoken
 
-from vchat.settings import config
+from vchat.settings import cfg
+from vchat.tracing import request_id_headers
+from vchat.views.chat.oauth import get_gigachat_access_token_sync
 
 
 @dataclass(frozen=True)
@@ -64,6 +67,61 @@ class BaseAIProvider:
             "base_url": self.base_url,
         }
 
+    @property
+    def chat_completion_timeout_seconds(self) -> float:
+        return 30.0
+
+    @property
+    def chat_completion_verify_ssl_certs(self) -> bool:
+        return True
+
+    def chat_completion_bearer_token_sync(self) -> str:
+        if not self.api_key:
+            raise RuntimeError(f"Missing API key for provider '{self.id}'")
+        return self.api_key
+
+    def request_chat_completion_sync(
+        self,
+        *,
+        model: ModelInfo,
+        messages: list[dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        response_format: dict[str, Any] | None = None,
+    ) -> str:
+        if not self.supports_chat:
+            raise RuntimeError(f"Provider '{self.id}' does not support chat")
+        if not self.base_url:
+            raise RuntimeError(f"Missing base URL for provider '{self.id}'")
+
+        payload: dict[str, Any] = {
+            "model": model.id,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if response_format is not None:
+            payload["response_format"] = response_format
+
+        resp = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                **request_id_headers(),
+                "Authorization": f"Bearer {self.chat_completion_bearer_token_sync()}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=self.chat_completion_timeout_seconds,
+            verify=self.chat_completion_verify_ssl_certs,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(
+                f"Provider '{self.id}' chat completion failed: "
+                f"{resp.status_code} {resp.text}"
+            )
+        data = resp.json()
+        return str(data["choices"][0]["message"]["content"])
+
     def token_count(self, text: str, model: ModelInfo | None = None) -> int:
         target = model or (self.models[0] if self.models else None)
         tokenizer_name = target.tokenizer_name if target else None
@@ -98,11 +156,11 @@ class OpenAIProvider(BaseAIProvider):
         return list(self._models)
 
     def _load_api_key(self) -> str | None:
-        return config.get("openai_api_key")
+        return cfg.openai_api_key
 
     @property
     def base_url(self) -> str:
-        return config.get("openai_base_url", "https://api.openai.com/v1")
+        return cfg.openai_base_url
 
 
 class YandexGPTProvider(BaseAIProvider):
@@ -132,11 +190,11 @@ class YandexGPTProvider(BaseAIProvider):
         return list(self._models)
 
     def _load_api_key(self) -> str | None:
-        return config.get("yandex_api_key")
+        return cfg.yandex_api_key
 
     @property
     def base_url(self) -> str | None:
-        return config.get("yandex_base_url")
+        return cfg.yandex_base_url
 
 
 class GigaChatProvider(BaseAIProvider):
@@ -163,10 +221,9 @@ class GigaChatProvider(BaseAIProvider):
 
     @property
     def models(self) -> list[ModelInfo]:
-        raw = config.get("gigachat_models")
-        if isinstance(raw, list) and raw:
+        if isinstance(cfg.gigachat_models, list) and cfg.gigachat_models:
             items: list[ModelInfo] = []
-            for entry in raw:
+            for entry in cfg.gigachat_models:
                 if isinstance(entry, str) and entry.strip():
                     items.append(
                         ModelInfo(
@@ -206,12 +263,26 @@ class GigaChatProvider(BaseAIProvider):
         return list(self._models)
 
     def _load_api_key(self) -> str | None:
-        return config.get("gigachat_api_key")
+        return cfg.gigachat_api_key
 
     @property
     def base_url(self) -> str | None:
-        return config.get(
-            "gigachat_base_url", "https://gigachat.devices.sberbank.ru/api/v1"
+        return cfg.gigachat_base_url
+
+    @property
+    def chat_completion_timeout_seconds(self) -> float:
+        return cfg.gigachat_request_timeout_seconds
+
+    @property
+    def chat_completion_verify_ssl_certs(self) -> bool:
+        return cfg.gigachat_verify_ssl_certs
+
+    def chat_completion_bearer_token_sync(self) -> str:
+        if not self.api_key:
+            raise RuntimeError("Missing GigaChat authorization key (Basic)")
+        return get_gigachat_access_token_sync(
+            basic_auth_key=self.api_key,
+            oauth_timeout_seconds=cfg.gigachat_oauth_timeout_seconds,
         )
 
 

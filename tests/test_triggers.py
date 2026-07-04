@@ -2,15 +2,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from jobs.triggers import generation as trigger_generation
 from jobs.triggers.generation import (
     parse_generated_trigger_texts,
     request_trigger_generation,
 )
+from vchat.views.chat import ai as chat_ai
+from vchat.views.chat import oauth as chat_oauth
+from vchat.views.chat.ai import GigaChatProvider
 from vchat.views.triggers.rules import (
     TriggerPatternError,
     canonical_page_url,
-    render_default_triggers,
+    render_triggers,
     trigger_key,
     trigger_pattern_matches_url,
     trigger_prompt_hash,
@@ -22,8 +24,8 @@ from vchat.views.triggers.rules import (
 from vchat.models.source_config import CrawlerRule, SourceConfig
 
 
-def test_render_default_triggers_substitutes_title_and_dedupes():
-    rows = render_default_triggers(
+def test_render_triggers_substitutes_title_and_dedupes():
+    rows = render_triggers(
         [
             "Хотите узнать о {title}?",
             "Хотите узнать о {title}?",
@@ -175,14 +177,13 @@ def test_request_trigger_generation_passes_gigachat_ssl_setting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured = []
-    provider = SimpleNamespace(
-        id="gigachat",
-        supports_chat=True,
-        request_meta=lambda: {
-            "api_key": "basic-key",
-            "base_url": "https://gigachat.example.local/api/v1",
-        },
+    monkeypatch.setattr(chat_ai.cfg, "gigachat_api_key", "basic-key")
+    monkeypatch.setattr(
+        chat_ai.cfg,
+        "gigachat_base_url",
+        "https://gigachat.example.local/api/v1",
     )
+    provider = GigaChatProvider()
     model = SimpleNamespace(id="GigaChat-Pro")
 
     class _Resp:
@@ -199,18 +200,13 @@ def test_request_trigger_generation_passes_gigachat_ssl_setting(
         if url.endswith("/oauth"):
             return _Resp({"access_token": "access-token", "expires_in": 60})
         return _Resp(
-            {
-                "choices": [
-                    {"message": {"content": "{\"triggers\": [\"Триггер\"]}"}}
-                ]
-            }
+            {"choices": [{"message": {"content": '{"triggers": ["Триггер"]}'}}]}
         )
 
-    monkeypatch.setitem(
-        trigger_generation.config, "gigachat_verify_ssl_certs", False
-    )
-    monkeypatch.setattr(trigger_generation, "_gigachat_token_cache", None)
-    monkeypatch.setattr(trigger_generation.requests, "post", _post)
+    monkeypatch.setattr(chat_ai.cfg, "gigachat_verify_ssl_certs", False)
+    monkeypatch.setattr(chat_oauth, "_token_cache", None)
+    monkeypatch.setattr(chat_ai.requests, "post", _post)
+    monkeypatch.setattr(chat_oauth.requests, "post", _post)
 
     raw = request_trigger_generation(
         provider,
@@ -218,7 +214,7 @@ def test_request_trigger_generation_passes_gigachat_ssl_setting(
         [{"role": "user", "content": "x"}],
     )
 
-    assert raw == "{\"triggers\": [\"Триггер\"]}"
+    assert raw == '{"triggers": ["Триггер"]}'
     assert captured[0][1]["verify"] is False
     assert captured[1][1]["verify"] is False
     assert captured[1][1]["json"]["response_format"]["type"] == "json_schema"

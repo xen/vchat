@@ -7,7 +7,7 @@ from celery import Celery
 from celery.schedules import crontab
 from celery.signals import task_postrun, task_prerun
 
-from vchat.settings import config
+from vchat.settings import cfg
 from vchat.tracing import REQUEST_ID_HEADER, request_id_ctx
 
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -16,17 +16,17 @@ if PROJECT_ROOT not in sys.path or sys.path.index(PROJECT_ROOT) == 0:
     # Keep project root on sys.path even after Celery removes its temporary entry.
     sys.path.append(PROJECT_ROOT)
 
-os.environ["CELERY_WORKER_LOGLEVEL"] = config["loglevel"]
+os.environ["CELERY_WORKER_LOGLEVEL"] = cfg.loglevel
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
 app = Celery(
     "jobs.celery",
-    broker=config["celery_redis_uri"] + str(config["celery_broker_db"]),
-    backend=config["celery_redis_uri"] + str(config["celery_backend_db"]),
+    broker=cfg.celery_redis_uri + str(cfg.celery_broker_db),
+    backend=cfg.celery_redis_uri + str(cfg.celery_backend_db),
 )
 app.conf.broker_transport_options = {
-    "visibility_timeout": int(config.get("celery_visibility_timeout", 3600))
+    "visibility_timeout": cfg.celery_visibility_timeout
 }
 
 # Autodiscover tasks from job packages so workers pick up every queue
@@ -37,14 +37,10 @@ app.conf.imports = ("jobs.crawler.tasks", "jobs.embedder.tasks", "jobs.triggers.
 app.conf.worker_prefetch_multiplier = 1
 app.conf.task_acks_late = True
 app.conf.broker_connection_retry_on_startup = True
-app.conf.task_default_queue = config.get("celery_default_queue", "celery")
-app.conf.worker_concurrency = int(config.get("celery_worker_concurrency", 4) or 4)
-app.conf.worker_max_tasks_per_child = int(
-    config.get("celery_worker_max_tasks_per_child", 100) or 100
-)
-app.conf.worker_max_memory_per_child = int(
-    config.get("celery_worker_max_memory_per_child_kb", 524288) or 524288
-)
+app.conf.task_default_queue = cfg.celery_default_queue
+app.conf.worker_concurrency = cfg.celery_worker_concurrency
+app.conf.worker_max_tasks_per_child = cfg.celery_worker_max_tasks_per_child
+app.conf.worker_max_memory_per_child = cfg.celery_worker_max_memory_per_child_kb
 
 app.conf.beat_schedule = {
     "process_pending_chunks": {

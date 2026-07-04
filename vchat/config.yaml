@@ -38,8 +38,6 @@ widget_page_discovery_enabled: false
 celery_redis_uri: redis://localhost:6379/
 celery_broker_db: 31
 celery_backend_db: 32
-celery_max_retries: 3
-celery_retry_delay: 5
 celery_default_queue: celery
 celery_visibility_timeout: 21600 # seconds; keep long-running embedder jobs from being redelivered
 celery_worker_concurrency: 4
@@ -55,7 +53,6 @@ sql_echo: false
 time_zone: Europe/Moscow
 
 public_url: "https://www.vchat.com"
-public_cdn: "https://www.vchat.com" # for near future
 allowed_origins:
   - "https://www.vchat.com"
   - "https://vchat.com"
@@ -63,9 +60,6 @@ allowed_origins:
 # CIDR ranges of reverse proxies whose forwarded client-IP headers are trusted.
 # Keep empty unless the deployment ingress/proxy source ranges are known.
 trusted_proxy_cidrs: []
-media_prefix: "/media"
-media_root: "media"
-post_per_page: 10
 
 # OpenAI Configuration
 chat_provider: "openai"
@@ -82,9 +76,7 @@ gigachat_verify_ssl_certs: true
 openai_guardrails_enabled: true
 guardrails_ru_pii_enabled: true
 embedding_model_id: "deepvk/USER-bge-m3"
-embedding_model_dir: "models/user-bge-m3"
 reranker_model_id: "BAAI/bge-reranker-v2-m3"
-reranker_model_dir: "models/bge-reranker-v2-m3"
 # Embedding / pgvector dimension for stored vectors and similarity queries.
 vec_dim: 1024
 embedding_max_seq_length: 8192
@@ -102,6 +94,13 @@ page_shingle_insert_batch_size: 2000
 embedding_model_reset_after_documents: 20
 embedding_worker_instances: auto
 embedding_worker_cpu_reserve: 1
+# Request-path query embedding is intentionally serialized inside each backend
+# process. Increase these only after a server-like benchmark for the target host.
+request_embedding_concurrency: 1
+request_embedding_executor_workers: 1
+request_embedding_queue_timeout_seconds: 20
+request_embedding_queue_warn_seconds: 1
+request_embedding_torch_threads: 1
 yandex_api_key: ""
 # Base64-ключ из кабинета GigaChat для заголовка Authorization: Basic <key>
 gigachat_api_key: ""
@@ -122,7 +121,3 @@ ldap_attr_name: "displayName"
 # Optional LDAP/AD group gate. Leave empty to allow any matched LDAP user.
 ldap_required_group_dn: ""
 ldap_member_of_attr: "memberOf"
-
-# vchat project integration keys
-vchat_chat: "yMlHl1BjbY"
-vchat_secret: "pFMgA5ILeRKn0Zrw3cpA0MZsQ7VPRlOSXM0nh2RJNMQ"

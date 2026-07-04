@@ -13,7 +13,7 @@ from vchat.app import create_app
 from vchat.db import async_session_factory
 from vchat.logging import configure_logging
 from vchat.models import User
-from vchat.settings import config
+from vchat.settings import cfg
 
 logger = logging.getLogger()
 password_context = CryptContext(schemes=["pbkdf2_sha512"], deprecated="auto")
@@ -21,8 +21,8 @@ logger.setLevel(logging.INFO)
 logging.getLogger("aiohttp").setLevel(logging.INFO)
 configure_logging(
     logging.INFO,
-    log_format=config.get("log_format", "text"),
-    config_path=config.get("log_config"),
+    log_format=cfg.log_format,
+    config_path=cfg.log_config,
 )
 
 try:
@@ -113,21 +113,16 @@ if args.create_user:
 if args.model:
     from huggingface_hub import snapshot_download
 
-    embedding_model_id = config["embedding_model_id"]
-    embedding_model_dir = config["embedding_model_dir"]
-    reranker_model_id = config["reranker_model_id"]
-    reranker_model_dir = config["reranker_model_dir"]
-
-    logging.info("Downloading embedding model %s", embedding_model_id)
+    logging.info("Downloading embedding model %s", cfg.embedding_model_id)
     snapshot_download(
-        repo_id=embedding_model_id,
-        local_dir=embedding_model_dir,
+        repo_id=cfg.embedding_model_id,
+        local_dir="models/embedder",
     )
 
-    logging.info("Downloading reranker model %s", reranker_model_id)
+    logging.info("Downloading reranker model %s", cfg.reranker_model_id)
     snapshot_download(
-        repo_id=reranker_model_id,
-        local_dir=reranker_model_dir,
+        repo_id=cfg.reranker_model_id,
+        local_dir="models/reranker",
         ignore_patterns=[
             "onnx/*",
             "openvino/*",

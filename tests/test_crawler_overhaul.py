@@ -1046,7 +1046,7 @@ class TestCrawlRunCreation:
         }
 
         with (
-            patch("jobs.indexing.documents.raw_content_max_bytes", return_value=10),
+            patch("jobs.indexing.documents.cfg.raw_content_max_bytes", 10),
             patch("jobs.crawler.pipelines.Session", return_value=session),
             patch("jobs.crawler.pipelines.extract_binary_url_document") as binary_mock,
             patch("jobs.crawler.pipelines.extract_url_document") as html_mock,
@@ -1115,7 +1115,7 @@ class TestCrawlRunCreation:
         }
 
         with (
-            patch("jobs.indexing.documents.raw_content_max_bytes", return_value=10),
+            patch("jobs.indexing.documents.cfg.raw_content_max_bytes", 10),
             patch("jobs.crawler.pipelines.Session", return_value=session),
             patch("jobs.crawler.pipelines.extract_url_document") as html_mock,
             patch("jobs.crawler.pipelines.extract_binary_url_document") as binary_mock,

@@ -4,18 +4,9 @@ from typing import Any
 import sqlalchemy as sa
 
 from vchat.models import Chunk
-from vchat.settings import config
+from vchat.settings import cfg
 
 PENDING_CHUNKS_INFLIGHT_KEY = "vchat:embed:pending_chunks:inflight"
-PENDING_CHUNKS_BATCH_SIZE = max(
-    1, int(config.get("embedding_pending_chunks_batch_size", 8) or 8)
-)
-PENDING_CHUNKS_MAX_INFLIGHT = max(
-    1, int(config.get("embedding_pending_chunks_max_inflight", 32) or 32)
-)
-PENDING_CHUNKS_COUNTER_TTL = max(
-    60, int(config.get("embedding_pending_chunks_counter_ttl_seconds", 600) or 600)
-)
 
 
 def count_pending_chunks(session: Any) -> int:
@@ -48,8 +39,10 @@ def pending_chunk_task_target(pending_chunk_count: int) -> int:
     if pending_chunk_count <= 0:
         return 0
     return min(
-        PENDING_CHUNKS_MAX_INFLIGHT,
-        max(1, math.ceil(pending_chunk_count / PENDING_CHUNKS_BATCH_SIZE)),
+        cfg.embedding_pending_chunks_max_inflight,
+        max(
+            1, math.ceil(pending_chunk_count / cfg.embedding_pending_chunks_batch_size)
+        ),
     )
 
 
@@ -80,7 +73,7 @@ def reserve_pending_chunk_slots(redis_client: Any, target: int) -> int:
             1,
             PENDING_CHUNKS_INFLIGHT_KEY,
             target,
-            PENDING_CHUNKS_COUNTER_TTL,
+            cfg.embedding_pending_chunks_counter_ttl_seconds,
         )
         or 0
     )
@@ -109,7 +102,7 @@ def release_pending_chunk_slots(redis_client: Any, slots: int = 1) -> int:
             1,
             PENDING_CHUNKS_INFLIGHT_KEY,
             slots,
-            PENDING_CHUNKS_COUNTER_TTL,
+            cfg.embedding_pending_chunks_counter_ttl_seconds,
         )
         or 0
     )
