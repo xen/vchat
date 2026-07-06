@@ -526,7 +526,8 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
         return [0.1, 0.2]
 
     async def _vec(db, query_vec, top_k=10, allowed_source_ids=None):
-        _ = db, query_vec, top_k
+        _ = db, query_vec
+        assert top_k == 25
         seen_source_scopes.append(("vector", allowed_source_ids))
         return [
             ctx_mod.Snippet(
@@ -552,7 +553,8 @@ async def test_get_context_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
         ]
 
     async def _ft(db, prompt_text, top_m=10, allowed_source_ids=None):
-        _ = db, prompt_text, top_m
+        _ = db, prompt_text
+        assert top_m == 15
         seen_source_scopes.append(("fulltext", allowed_source_ids))
         return [
             ctx_mod.Snippet(

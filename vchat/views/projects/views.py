@@ -139,7 +139,6 @@ __all__ = [
     "project_document_detail",
     "project_documents_csv",
     "project_files_json",
-    "project_chat",
     "project_stats",
     "project_integration",
     "project_widget_edit",
@@ -3065,82 +3064,6 @@ async def project_document_content_rest(request):
 async def project_document_detail(request):
     document_id = int(request.match_info.get("document_id"))
     return await _document_detail_context(request, document_id)
-
-
-@meta(title="Чат")
-@login_required()
-@aiohttp_jinja2.template("chat/chat.html")
-async def project_chat(request):
-    chat_id = (request.match_info.get("chat_id") or "").strip()
-    if chat_id:
-        chat = await request["db"].scalar(sa.select(Chat).where(Chat.id == chat_id))
-        if not chat:
-            raise web.HTTPNotFound(text="Chat not found")
-        chat.meta = merge_chat_meta(
-            chat.meta,
-            request,
-            {"source_page_url": request.rel_url.query.get("source_page_url")},
-        )
-        await request["db"].commit()
-    else:
-        user_uid_param = request.rel_url.query.get("user_uid", "").strip()
-        user_uid = user_uid_param or str(request["user"].id)
-
-        project = _project_context()
-        chat = Chat(
-            title=f"Chat for {project.title}",
-            user_uid=user_uid,
-            meta=merge_chat_meta(
-                {},
-                request,
-                {"source_page_url": request.rel_url.query.get("source_page_url")},
-            ),
-        )
-        request["db"].add(chat)
-        await request["db"].commit()
-        await request["db"].refresh(chat)
-        location = request.app.router["project_chat_with_id"].url_for(chat_id=chat.id)
-        raise web.HTTPFound(location=location)
-
-    serializer = URLSafeSerializer(cfg.secret_key)
-    payload = serializer.dumps([request["user"].id, chat.id], salt="vchat")
-    signed_chat_id = serializer.dumps(chat.id, salt="chat")
-    initial_messages = await _initial_messages_for_chat(
-        request["db"],
-        chat=chat,
-        serializer=serializer,
-    )
-
-    project = _project_context()
-    provider_obj, model_obj = resolve_ai_settings(project.provider, project.model)
-
-    return {
-        "project": project,
-        "chat": chat,
-        "widget": SimpleNamespace(
-            agent_name="",
-            welcome_messages=list(forms.WIDGET_WELCOME_MESSAGES),
-            waiting_messages=list(forms.WIDGET_WAITING_MESSAGES),
-            error_message=forms.WIDGET_ERROR_MESSAGE,
-            footer_text=forms.WIDGET_FOOTER_TEXT,
-            pinned_messages=[],
-        ),
-        "payload": payload,
-        "agent_name": "",
-        "welcome_message": "",
-        "footer_text": forms.WIDGET_FOOTER_TEXT,
-        "error_message": forms.WIDGET_ERROR_MESSAGE,
-        "pinned_messages": [],
-        "ai_provider_options": get_ai_provider_options(),
-        "current_ai_provider": provider_obj.id,
-        "current_ai_model": model_obj.id,
-        "current_ai_model_label": model_obj.label,
-        "current_ai_provider_label": provider_obj.title,
-        "allow_ai_switch": False,
-        "ai_settings_url": None,
-        "initial_messages": initial_messages,
-        "signed_chat_id": signed_chat_id,
-    }
 
 
 @meta(title="Код виджета")

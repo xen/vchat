@@ -51,22 +51,15 @@ ROUTE_PARAMS = {
     "project_document_content": ("document_id",),
     "project_document_content_rest": ("document_id",),
     "file_document": ("document_id",),
-    "project_chat_with_id": ("chat_id",),
     "project_history_detail": ("chat_id",),
     "public_widget_chat": ("code",),
     "project_widget_edit": ("widget_id",),
 }
 
-NO_FOLLOW_REDIRECTS = {
-    "project_chat",
-}
-
 SMOKE_CHAT_USER_UID = "site-smoke-test"
 MIN_LOGGED_IN_SITE_PAGE_COUNT = 20
 
-ROUTE_QUERY_STRINGS = {
-    "project_chat": f"?user_uid={SMOKE_CHAT_USER_UID}",
-}
+ROUTE_QUERY_STRINGS: dict[str, str] = {}
 
 TEXT_RESPONSE_TYPES = {
     "application/javascript",
@@ -366,10 +359,7 @@ async def test_logged_in_site_pages_do_not_return_500(
     try:
         for route_name, url in _site_page_urls(app, fixtures):
             try:
-                response = await client.get(
-                    url,
-                    allow_redirects=route_name not in NO_FOLLOW_REDIRECTS,
-                )
+                response = await client.get(url)
             except Exception as exc:
                 failures.append(f"{route_name} {url} raised {type(exc).__name__}: {exc}")
                 continue

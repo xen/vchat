@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from vchat.views.chat import views as chat_views
 
 
@@ -53,14 +55,20 @@ def test_chat_completion_messages_do_not_echo_system_prompt_to_visible_roles() -
     outbound = chat_views.build_chat_completion_messages(
         chat_views.SYSTEM_PROMPT,
         messages,
+        current_date=date(2026, 7, 6),
     )
 
-    assert outbound[0] == {"role": "system", "content": chat_views.SYSTEM_PROMPT}
+    current_date_line = "Сегодняшняя дата: 2026-07-06."
+    assert outbound[0] == {
+        "role": "system",
+        "content": f"{chat_views.SYSTEM_PROMPT}\n\n{current_date_line}",
+    }
     visible_messages = [
         message for message in outbound if message["role"] in {"user", "assistant"}
     ]
     assert visible_messages == messages
     assert all(
         chat_views.SYSTEM_PROMPT not in str(message.get("content") or "")
+        and current_date_line not in str(message.get("content") or "")
         for message in visible_messages
     )

@@ -763,6 +763,8 @@ def test_widget_integration_table_shows_enabled_state() -> None:
         url=lambda name, **kwargs: URL(
             f"/integration/{kwargs['widget_id']}"
             if name == "project_widget_edit"
+            else "/demo"
+            if name == "demo_page"
             else "/integration"
         ),
         csrf_token=lambda: "token",
@@ -773,12 +775,14 @@ def test_widget_integration_table_shows_enabled_state() -> None:
             SimpleNamespace(
                 id=1,
                 name="Active",
+                code="active-code",
                 agent_name="Agent",
                 is_enabled=True,
             ),
             SimpleNamespace(
                 id=2,
                 name="Paused",
+                code="paused-code",
                 agent_name="Agent",
                 is_enabled=False,
             ),
@@ -789,10 +793,50 @@ def test_widget_integration_table_shows_enabled_state() -> None:
     assert "Состояние" in rendered
     assert "Включен" in rendered
     assert "Отключен" in rendered
-    assert 'colspan="3"' in env.get_template("projects/integration.html").render(
+    assert "badge" not in rendered
+    assert "text-success" in rendered
+    assert 'class="btn btn-primary btn-sm"' in rendered
+    assert 'href="/demo?code=active-code"' in rendered
+    assert 'href="/demo?code=paused-code"' in rendered
+    assert "Демо" in rendered
+    assert 'colspan="4"' in env.get_template("projects/integration.html").render(
         widgets=[],
         form=project_forms.WidgetIntegrationAdd(meta={"csrf": False}),
     )
+
+
+def test_active_chats_open_history_detail_instead_of_chat_page() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader({"admin.html": "{% block content %}{% endblock %}"}),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: URL(
+            f"/history/{kwargs['chat_id']}"
+            if name == "project_history_detail"
+            else f"/unexpected/{name}"
+        ),
+    )
+
+    rendered = env.get_template("projects/chats.html").render(
+        active_chats=[
+            SimpleNamespace(
+                id="chat-1",
+                title="Active chat",
+                user_uid="guest_12345678",
+                created_at=datetime(2026, 1, 1, 12, 30),
+            )
+        ]
+    )
+
+    assert 'href="/history/chat-1"' in rendered
+    assert "/chat/chat-1" not in rendered
 
 
 def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
@@ -870,6 +914,9 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert 'Ваше сообщение' in rendered
     assert "setAttribute('role', 'group')" in rendered
     assert 'Предложенные действия' in rendered
+    assert "function clearSuggestedActions()" in rendered
+    assert "logEl.querySelectorAll('.vchat-suggested-actions')" in rendered
+    assert "clearSuggestedActions();" in rendered
     assert "setAttribute('role', 'list')" in rendered
     assert "Связанные страницы" in rendered
     assert "Связанные страницы ответа" in rendered
@@ -893,6 +940,17 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert "window.vchatRenderAssistantMarkdown(text)" in rendered
     assert "marked.parse" not in rendered
     assert "escapeHtml(source.uri)" in rendered
+
+
+def test_chat_suggested_actions_stack_vertically() -> None:
+    css = (Path(__file__).resolve().parents[1] / "frontend_chat" / "src" / "chat.css").read_text()
+
+    suggested_actions_rule = re.search(r"\.vchat-suggested-actions\s*\{(?P<body>[^}]+)\}", css)
+    assert suggested_actions_rule is not None
+    rule_body = suggested_actions_rule.group("body")
+    assert "display: flex;" in rule_body
+    assert "flex-direction: column;" in rule_body
+    assert "align-items: flex-end;" in rule_body
 
 
 def test_widget_loader_template_exposes_dialog_and_iframe_accessibility() -> None:

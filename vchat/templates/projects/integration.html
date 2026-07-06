@@ -21,6 +21,7 @@
               <th class="text-left">{{ 'Виджет' }}</th>
               <th class="text-left">{{ 'Название чата' }}</th>
               <th class="text-left">{{ 'Состояние' }}</th>
+              <th class="text-left">{{ 'Демо' }}</th>
             </tr>
           </thead>
           <tbody>
@@ -41,15 +42,25 @@
               </td>
               <td class="align-top">
                 {% if widget.is_enabled %}
-                <span class="badge badge-success badge-outline">{{ 'Включен' }}</span>
+                <span class="text-sm text-success">{{ 'Включен' }}</span>
                 {% else %}
-                <span class="badge badge-neutral">{{ 'Отключен' }}</span>
+                <span class="text-sm text-base-content/70">{{ 'Отключен' }}</span>
                 {% endif %}
+              </td>
+              <td class="align-top">
+                <a
+                  href="{{ url('demo_page') }}?code={{ widget.code }}"
+                  class="btn btn-primary btn-sm"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  {{ 'Демо' }}
+                </a>
               </td>
             </tr>
             {% else %}
             <tr>
-              <td colspan="3" class="py-8 text-center text-base-content/60">
+              <td colspan="4" class="py-8 text-center text-base-content/60">
                 {{ 'Коды виджета не созданы' }}
               </td>
             </tr>

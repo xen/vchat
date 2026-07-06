@@ -872,6 +872,8 @@ Kubernetes `Secret` и стандартных библиотеках Python. В 
 | `embedding_worker_instances`            | Количество embedder worker внутри pod            | В Kubernetes обычно задавайте `EMBEDDER_INSTANCES=1` и масштабируйте pods         |
 | `embedding_worker_cpu_reserve`          | Резерв CPU для автоматического режима embedder   | Не используйте auto при жестких лимитах pod без проверки                          |
 | `log_format`                            | Формат логов                                     | Для Kubernetes/Grafana Loki обычно `json`                                         |
+| `log_config`                            | Файл `logging.ini`                               | По умолчанию `vchat/logging.ini`; содержит formatter `plain` и `json`             |
+| `loglevel`                              | Уровень логирования                              | Обычно `INFO`; для диагностики временно можно повысить до `DEBUG`                 |
 | `chat_provider`                         | Провайдер LLM                                    | Для GigaChat ставьте `gigachat`                                                   |
 | `chat_model`                            | Модель LLM                                       | Должна соответствовать договорной модели промышленного контура                    |
 | `chat_suggestions_provider`             | Провайдер LLM для подсказок                      | Для легких подсказок ставьте `gigachat`                                           |
@@ -1066,6 +1068,36 @@ deploy/prometheus_alerts.yml
 ```yaml
 log_format: "json"
 ```
+
+Типы логирования:
+
+| Тип                         | Когда использовать                                                                 | Как выглядит                                                                                                                       |
+| --------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `text` / `plain`            | Локальная разработка, ручное чтение `stderr`, короткая диагностика без log shipper | Одна строка текста с временем, уровнем, именем logger и дополнительными `extra`-полями. Это значение по умолчанию в `vchat/config.yaml`. |
+| `json`                      | Kubernetes, Grafana Loki, Elastic, Vector, Fluent Bit и другие сборщики логов      | Один JSON-объект на строку через `JsonLogFormatter`. Подходит для фильтрации по полям.                                             |
+| Структурированные события   | События приложения, которые пишутся через `log_json(...)`                          | В режиме `json` становятся отдельными полями JSON; в режиме `text` добавляются как `key=value` к строке лога.                      |
+| Аудит-события `AdminEvent`  | Долгоживущий журнал административных и security-событий                            | Записи в PostgreSQL, не зависят от `log_format` и не заменяют pod logs.                                                            |
+
+Переключение на JSON-логи выполняется конфигурацией приложения, без изменения
+кода. В Kubernetes значение уже задано в `deploy/k8s/base/configmap.yaml`:
+
+```yaml
+log_format: "json"
+```
+
+Для другого окружения добавьте или измените это значение в `local.yaml`.
+Если нужно вернуться к человекочитаемому выводу, установите:
+
+```yaml
+log_format: "text"
+```
+
+`configure_logging(...)` читает `log_format` и выбирает formatter из
+`vchat/logging.ini`: `json` для `JsonLogFormatter` или `plain` для
+`PlainLogFormatter`. При `json` каждая строка содержит минимум поля
+`timestamp`, `level`, `logger` и `message`; если в контексте запроса есть
+`request_id`, он также попадает в запись. Дополнительные поля из `extra` и
+`log_json(...)` сохраняются как отдельные JSON-поля.
 
 Быстрые команды:
 

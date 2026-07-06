@@ -3,8 +3,9 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field as dataclass_field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, List, Optional
+from zoneinfo import ZoneInfo
 import aiohttp_jinja2
 
 import aiohttp
@@ -219,9 +220,17 @@ def build_generation_context(
     )
 
 
+def current_date_prompt_line(current_date: date | None = None) -> str:
+    if current_date is None:
+        current_date = datetime.now(ZoneInfo(cfg.time_zone)).date()
+    return f"Сегодняшняя дата: {current_date.isoformat()}."
+
+
 def build_chat_completion_messages(
     system_prompt: str,
     messages: list[dict[str, Any]],
+    *,
+    current_date: date | None = None,
 ) -> list[dict[str, Any]]:
     developer_contents = [
         str(message.get("content") or "")
@@ -231,8 +240,9 @@ def build_chat_completion_messages(
     outbound_messages = [
         message for message in messages if message.get("role") != "developer"
     ]
-    if developer_contents:
-        system_prompt = "\n\n".join([system_prompt, *developer_contents])
+    system_prompt = "\n\n".join(
+        [system_prompt, current_date_prompt_line(current_date), *developer_contents]
+    )
     return [{"role": "system", "content": system_prompt}, *outbound_messages]
 
 
@@ -1266,7 +1276,6 @@ async def retrieve_chat_context(
     *,
     user_text: str,
     gen_context: GenerationContext,
-    widget: WidgetIntegration | None,
 ):
     skip_rag = is_trivial_query(user_text)
     async with async_session_factory() as ctx_db:
@@ -1282,8 +1291,6 @@ async def retrieve_chat_context(
             "vector_top_k": 0 if skip_rag else 10,
             "ft_top_m": 0 if skip_rag else 10,
         }
-        if widget is not None:
-            context_kwargs["allowed_source_ids"] = []
         return await get_context(**context_kwargs)
 
 
@@ -1772,7 +1779,6 @@ async def handle_chat_message(
         context_result = await retrieve_chat_context(
             user_text=incoming.text,
             gen_context=gen_context,
-            widget=widget,
         )
         stats.finish_stage("context_retrieval", stage_started_at)
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import deque
 from dataclasses import dataclass
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
@@ -526,10 +527,20 @@ def test_build_chat_completion_messages_normalizes_developer_role() -> None:
         {"role": "user", "content": "question"},
     ]
 
-    outbound = chat_views.build_chat_completion_messages("sys", messages)
+    outbound = chat_views.build_chat_completion_messages(
+        "sys",
+        messages,
+        current_date=date(2026, 7, 6),
+    )
 
     assert outbound == [
-        {"role": "system", "content": "sys\n\n[policy]\n{}\n\n[context]\ntext"},
+        {
+            "role": "system",
+            "content": (
+                "sys\n\nСегодняшняя дата: 2026-07-06.\n\n"
+                "[policy]\n{}\n\n[context]\ntext"
+            ),
+        },
         {"role": "user", "content": "previous"},
         {"role": "user", "content": "question"},
     ]
@@ -783,6 +794,38 @@ def test_user_message_count_ignores_context_messages() -> None:
     ]
 
     assert chat_views._user_message_count(messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_retrieve_chat_context_does_not_empty_scope_widget_rag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_kwargs: dict[str, Any] = {}
+
+    class _Db:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+    async def _get_context(**kwargs):
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(used_chunks=[], sources=[], coverage={}, messages=[])
+
+    monkeypatch.setattr(chat_views, "async_session_factory", lambda: _Db())
+    monkeypatch.setattr(chat_views, "get_context", _get_context)
+    chat_token = chat_views.chat_id_ctx.set("chat-1")
+    try:
+        await chat_views.retrieve_chat_context(
+            user_text="когда был создан фонд?",
+            gen_context=_FakeCtx(_FakeProvider(), _FakeModel()),
+        )
+    finally:
+        chat_views.chat_id_ctx.reset(chat_token)
+
+    assert "allowed_source_ids" not in captured_kwargs
 
 
 @pytest.mark.parametrize(

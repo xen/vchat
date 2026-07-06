@@ -164,9 +164,9 @@ async def test_frontend_widget_js_renders_with_widget_path(
     def _render(template, _request, context):
         captured["template"] = template
         captured["context"] = context
-        return "ok"
+        return "console.log('ok');"
 
-    monkeypatch.setattr(frontend.aiohttp_jinja2, "render_template", _render)
+    monkeypatch.setattr(frontend.aiohttp_jinja2, "render_string", _render)
 
     class _Db:
         async def scalar(self, stmt):
@@ -192,7 +192,9 @@ async def test_frontend_widget_js_renders_with_widget_path(
         }
     )
     result = await frontend.widget_js(request)
-    assert result == "ok"
+    assert result.status == 200
+    assert result.content_type == "application/javascript"
+    assert result.text == "console.log('ok');"
     assert captured["template"] == "js/widget.js"
     assert captured["context"]["widget_chat_path"] == "/chat/widget"
     assert captured["context"]["widget_code"] == "widget-code"

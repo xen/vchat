@@ -162,7 +162,7 @@ async def widget_js(request):
 
     widget_chat_path = str(request.app.router["public_widget_chat"].url_for(code=code))
     trigger_resolve_path = str(request.app.router["widget_triggers_resolve"].url_for())
-    return aiohttp_jinja2.render_template(
+    text = aiohttp_jinja2.render_string(
         "js/widget.js",
         request,
         {
@@ -171,6 +171,7 @@ async def widget_js(request):
             "trigger_resolve_path": trigger_resolve_path,
         },
     )
+    return web.Response(text=text, content_type="application/javascript")
 
 
 async def widget_triggers_resolve(request):

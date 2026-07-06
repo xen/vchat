@@ -174,14 +174,7 @@ def setup_routes(app: web.Application) -> None:
         name="actions",
     )
 
-    # chat pages + monitor
-    add("GET", "/chat", projects.project_chat, name="project_chat")
-    add(
-        "GET",
-        r"/chat/{chat_id:[a-zA-Z0-9-]+}",
-        projects.project_chat,
-        name="project_chat_with_id",
-    )
+    # widget chat pages + monitor
     add(
         "GET",
         r"/chat/widget/{code:[a-zA-Z0-9_-]+}",

@@ -52,6 +52,8 @@ RERANK_TABLE_MODE_BONUS: dict[str, float] = {
 RERANK_SUMMARY_ZERO_OVERLAP_PENALTY = 0.12
 RERANK_QUERY_ECHO_PENALTY = 0.20
 RERANK_DOC_MIN_RATIO_TO_BEST = 0.55
+VECTOR_RERANK_CANDIDATE_MULTIPLIER = 5
+FT_RERANK_CANDIDATE_MULTIPLIER = 3
 
 logger = logging.getLogger(__name__)
 
@@ -1130,7 +1132,7 @@ async def get_context(
             kb_vector_supply(
                 db=db,
                 query_vec=query_vec,
-                top_k=vector_top_k,
+                top_k=vector_top_k * VECTOR_RERANK_CANDIDATE_MULTIPLIER,
                 allowed_source_ids=allowed_source_ids,
             )
         )
@@ -1138,7 +1140,7 @@ async def get_context(
             fulltext_supply(
                 db=db,
                 prompt_text=prompt,
-                top_m=ft_top_m,
+                top_m=ft_top_m * FT_RERANK_CANDIDATE_MULTIPLIER,
                 allowed_source_ids=allowed_source_ids,
             )
         )
