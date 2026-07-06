@@ -27,6 +27,22 @@
       position: relative;
     }
 
+    .vchat-prompt-limit-wrap .vchat-prompt {
+      padding-right: 3rem;
+    }
+
+    .vchat-prompt-send {
+      position: absolute;
+      right: 0.5rem;
+      bottom: 0.5rem;
+      z-index: 2;
+      width: 2rem;
+      min-width: 2rem;
+      height: 2rem;
+      min-height: 2rem;
+      padding: 0;
+    }
+
     .vchat-prompt-highlight {
       position: absolute;
       inset: 0;
@@ -110,15 +126,18 @@
           class="vchat-prompt textarea textarea-bordered textarea-md w-full resize-none focus:outline-none" rows="1"
           placeholder="{{ 'Введите сообщение…' }}" aria-labelledby="prompt-label"
           aria-describedby="composer-footer" autocomplete="off"></textarea>
+        <button id="send" type="submit" class="vchat-prompt-send btn btn-circle btn-soft btn-primary btn-sm"
+          aria-label="{{ 'Отправить' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"
+            aria-hidden="true">
+            <path d="M3.105 2.289a.75.75 0 0 0-.826.95l1.414 4.925A1.5 1.5 0 0 0 5.135 9.25h6.115a.75.75 0 0 1 0 1.5H5.135a1.5 1.5 0 0 0-1.442 1.086l-1.414 4.926a.75.75 0 0 0 .826.95 28.89 28.89 0 0 0 15.293-7.154.75.75 0 0 0 0-1.115A28.897 28.897 0 0 0 3.105 2.289z" />
+          </svg>
+        </button>
       </div>
       <div class="vchat-composer-toolbar">
         <div class="min-w-0">
           <div id="composer-footer" class="vchat-footer-text text-xs leading-snug text-base-content/60">{{ widget.footer_text|safe }}</div>
         </div>
-        <button id="send" type="submit" class="btn btn-soft btn-primary btn-sm"
-          aria-label="{{ 'Отправить' }}">
-          {{ 'Отправить' }}
-        </button>
       </div>
     </form>
   </div>

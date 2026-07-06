@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -742,6 +743,11 @@ def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     assert 'aria-labelledby="prompt-label"' in rendered
     assert 'aria-describedby="composer-footer"' in rendered
     assert 'id="composer-footer"' in rendered
+    assert 'class="vchat-prompt-send btn btn-circle btn-soft btn-primary btn-sm"' in rendered
+    send_markup = re.search(r'<button id="send".*?</button>', rendered, re.S)
+    assert send_markup is not None
+    assert "<svg" in send_markup.group(0)
+    assert re.search(r">\s*Отправить\s*</button>", send_markup.group(0)) is None
     assert 'id="composer-limit"' not in rendered
     assert "userMessageInputMaxChars = 4050" in rendered
     assert "vchat-prompt-highlight-overflow" in rendered
