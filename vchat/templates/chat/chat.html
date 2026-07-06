@@ -460,11 +460,11 @@
         btn.className = 'vchat-suggested-action';
         btn.textContent = action;
         btn.onclick = () => {
+          clearSuggestedActions();
           submitMessage({
             text: action,
             suggestedActionMsgId: targetMsgId,
           });
-          actionsDiv.remove();
         };
         actionsDiv.appendChild(btn);
       });
@@ -478,6 +478,10 @@
         logEl.appendChild(actionsDiv);
       }
       logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearSuggestedActions() {
+      logEl.querySelectorAll('.vchat-suggested-actions').forEach((node) => node.remove());
     }
 
     function renderBotMarkdown(bubble, rawText) {
