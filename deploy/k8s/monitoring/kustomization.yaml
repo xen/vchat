@@ -5,3 +5,19 @@ namespace: vchat
 
 resources:
   - servicemonitor.yaml
+  - grafana-deployment.yaml
+  - grafana-service.yaml
+
+configMapGenerator:
+  - name: vchat-grafana-datasources
+    files:
+      - prometheus.yaml=grafana/provisioning/datasources/prometheus.yaml
+  - name: vchat-grafana-dashboard-providers
+    files:
+      - vchat.yaml=grafana/provisioning/dashboards/vchat.yaml
+  - name: vchat-grafana-dashboards
+    files:
+      - vchat-grafana.json=grafana/dashboards/vchat-grafana.json
+
+generatorOptions:
+  disableNameSuffixHash: true

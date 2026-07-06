@@ -69,6 +69,29 @@ If Prometheus Operator is installed, apply the monitoring overlay:
 kubectl apply -k deploy/k8s/monitoring
 ```
 
+The monitoring overlay also starts a private Grafana instance with the VChat
+dashboard provisioned from
+`deploy/k8s/monitoring/grafana/dashboards/vchat-grafana.json`.
+Before applying it in a shared cluster, create admin credentials:
+
+```bash
+kubectl -n vchat create secret generic vchat-grafana-secret \
+  --from-literal=admin-user='admin' \
+  --from-literal=admin-password='change-this-password'
+```
+
+The bundled datasource defaults to
+`http://prometheus-operated.monitoring.svc:9090`. If the cluster uses another
+Prometheus service name, patch `GF_DATASOURCE_PROMETHEUS_URL` in
+`deploy/k8s/monitoring/grafana-deployment.yaml` or in an environment-specific
+overlay.
+
+Grafana is exposed as a `ClusterIP` service only:
+
+```bash
+kubectl -n vchat port-forward svc/vchat-grafana 3000:3000
+```
+
 ## Metrics exposure
 
 The app still exposes `/metrics` on the container port. In Kubernetes it is meant
