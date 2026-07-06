@@ -43,6 +43,7 @@ from vchat.views.chat.ai import (
     DEFAULT_OPENAI_MODEL,
     get_ai_provider_options,
     resolve_ai_settings,
+    suggested_actions_from_payload,
 )
 from vchat.views.chat.sources import enrich_source_payloads
 from vchat.settings import REDIS_KEY, SIGNER_KEY, cfg
@@ -718,26 +719,7 @@ def _message_suggested_actions(row: ChatMsg) -> list[str]:
         return []
     if not isinstance(payload, dict):
         return []
-    actions = payload.get("suggested_actions")
-    if not isinstance(actions, list):
-        return []
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for raw_action in actions:
-        if not isinstance(raw_action, str):
-            continue
-        action = raw_action.strip()
-        if not action:
-            continue
-        key = action.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized.append(action)
-        if len(normalized) >= 3:
-            break
-    return normalized
+    return suggested_actions_from_payload(payload.get("suggested_actions"))
 
 
 async def _initial_messages_for_chat(

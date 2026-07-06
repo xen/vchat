@@ -3,6 +3,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field as dataclass_field
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 import aiohttp_jinja2
 
@@ -22,6 +23,7 @@ from jobs.documents.content import chunk_text_sha256
 from vchat.views.chat.ai import (
     BaseAIProvider,
     ModelInfo,
+    SuggestedActionsParseError,
     resolve_ai_settings,
     suggested_actions_from_payload,
 )
@@ -234,13 +236,41 @@ def build_chat_completion_messages(
     return [{"role": "system", "content": system_prompt}, *outbound_messages]
 
 
+@dataclass(frozen=True)
+class SuggestionGenerationResult:
+    actions: list[str]
+    error: dict[str, Any] | None = None
+
+
+def _suggestion_error_payload(
+    *,
+    kind: str,
+    ctx: GenerationContext,
+    detail: str,
+    status: int | None = None,
+    raw_response: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "kind": kind,
+        "provider": ctx.suggestions_provider_id,
+        "model": ctx.suggestions_model_id,
+        "detail": detail[:500],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if status is not None:
+        payload["status"] = status
+    if raw_response:
+        payload["raw_response"] = raw_response[:1000]
+    return payload
+
+
 async def generate_suggestions(
     *,
     user_text: str,
     assistant_text: str,
     sources: list[dict[str, Any]],
     ctx: GenerationContext,
-) -> List[str]:
+) -> SuggestionGenerationResult:
     """
     Generate 3 short, relevant follow-up actions/questions for the user.
     Uses a lightweight call to a fast model.
@@ -248,11 +278,26 @@ async def generate_suggestions(
     try:
         if ctx.suggestions_provider is None:
             raise RuntimeError("suggestions provider is not configured")
-        return await ctx.suggestions_provider.request_chat_completion(
+        suggestions = await ctx.suggestions_provider.request_chat_completion(
             ctx=ctx,
             user_text=user_text,
             assistant_text=assistant_text,
             sources=sources,
+        )
+        actions = suggested_actions_from_payload({"actions": suggestions})
+        if actions:
+            return SuggestionGenerationResult(actions=actions)
+        return SuggestionGenerationResult(
+            actions=[],
+            error=_suggestion_error_payload(
+                kind="invalid_response",
+                ctx=ctx,
+                detail="Suggestion provider returned fewer than 3 unique actions",
+                raw_response=json.dumps(
+                    {"actions": suggestions},
+                    ensure_ascii=False,
+                ),
+            ),
         )
     except aiohttp.ClientResponseError as e:
         logger.warning(
@@ -262,11 +307,44 @@ async def generate_suggestions(
             e.status,
             (e.message or "").strip()[:500],
         )
+        return SuggestionGenerationResult(
+            actions=[],
+            error=_suggestion_error_payload(
+                kind="provider_http_error",
+                ctx=ctx,
+                status=e.status,
+                detail=(e.message or "").strip() or "Provider HTTP error",
+            ),
+        )
     except asyncio.TimeoutError:
         logger.warning(
             "Failed to generate suggestions due to timeout: provider=%s model=%s",
             ctx.suggestions_provider_id,
             ctx.suggestions_model_id,
+        )
+        return SuggestionGenerationResult(
+            actions=[],
+            error=_suggestion_error_payload(
+                kind="timeout",
+                ctx=ctx,
+                detail="Suggestion provider request timed out",
+            ),
+        )
+    except SuggestedActionsParseError as e:
+        logger.warning(
+            "Failed to parse suggestions: provider=%s model=%s error=%s",
+            ctx.suggestions_provider_id,
+            ctx.suggestions_model_id,
+            e,
+        )
+        return SuggestionGenerationResult(
+            actions=[],
+            error=_suggestion_error_payload(
+                kind="invalid_response",
+                ctx=ctx,
+                detail=str(e),
+                raw_response=e.raw_response,
+            ),
         )
     except Exception as e:
         logger.warning(
@@ -275,8 +353,14 @@ async def generate_suggestions(
             ctx.suggestions_model_id,
             e,
         )
-
-    return []
+        return SuggestionGenerationResult(
+            actions=[],
+            error=_suggestion_error_payload(
+                kind="provider_error",
+                ctx=ctx,
+                detail=str(e) or type(e).__name__,
+            ),
+        )
 
 
 logger = logging.getLogger("vchat.chat")
@@ -680,6 +764,31 @@ async def save_chat_message_suggestions(
         await db.commit()
 
 
+async def save_chat_message_suggestions_error(
+    *,
+    assistant_msg_id: int,
+    error: dict[str, Any],
+    full_context_payload: dict[str, Any] | None = None,
+) -> None:
+    async with async_session_factory() as db:
+        if full_context_payload is None:
+            full_context = await db.scalar(
+                sa.select(ChatMsg.full_context).where(ChatMsg.id == assistant_msg_id)
+            )
+            payload = json.loads(full_context) if full_context else {}
+            if not isinstance(payload, dict):
+                payload = {}
+        else:
+            payload = dict(full_context_payload)
+        payload["suggested_actions_error"] = error
+        await db.execute(
+            sa.update(ChatMsg)
+            .where(ChatMsg.id == assistant_msg_id)
+            .values(full_context=json.dumps(payload, ensure_ascii=False))
+        )
+        await db.commit()
+
+
 async def load_trigger_response_cache(
     *,
     page_id: int,
@@ -882,6 +991,7 @@ class IncomingChatMessage:
     text: str
     trigger_page_id: int | None = None
     trigger_key: str | None = None
+    selected_suggestion_msg_id: int | None = None
 
 
 @dataclass
@@ -978,10 +1088,24 @@ def parse_incoming_chat_message(request, raw_text: str) -> IncomingChatMessage |
     except ValueError:
         parsed_payload = None
 
-    if not (
-        isinstance(parsed_payload, dict)
-        and parsed_payload.get("type") == "trigger_prompt"
-    ):
+    if not isinstance(parsed_payload, dict):
+        return IncomingChatMessage(text=raw_text)
+
+    if parsed_payload.get("type") == "suggested_action":
+        user_text = str(parsed_payload.get("text") or "")
+        raw_source_msg_id = parsed_payload.get("source_msg_id")
+        source_msg_id = None
+        if raw_source_msg_id is not None:
+            try:
+                source_msg_id = int(raw_source_msg_id)
+            except (TypeError, ValueError):
+                source_msg_id = None
+        return IncomingChatMessage(
+            text=user_text,
+            selected_suggestion_msg_id=source_msg_id,
+        )
+
+    if parsed_payload.get("type") != "trigger_prompt":
         return IncomingChatMessage(text=raw_text)
 
     user_text = str(parsed_payload.get("text") or "")
@@ -1224,7 +1348,7 @@ async def persist_chat_exchange(
     query_embedding: list[float],
     sources: list[dict[str, Any]],
     guardrail_reasons: set[str],
-) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, int, dict[str, Any]]:
     full_context_payload = _assistant_full_context_payload(
         context_policy=state.context_policy,
         coverage=state.coverage,
@@ -1248,7 +1372,7 @@ async def persist_chat_exchange(
             )
             .returning(ChatMsg.id)
         )
-        res_user.scalar_one()
+        user_msg_id = res_user.scalar_one()
 
         res_ai = await db.execute(
             sa.insert(ChatMsg)
@@ -1278,7 +1402,40 @@ async def persist_chat_exchange(
         )
         assistant_msg_id = res_ai.scalar_one()
         await db.commit()
-    return assistant_msg_id, full_context_payload
+    return user_msg_id, assistant_msg_id, full_context_payload
+
+
+async def mark_selected_suggested_action(
+    *,
+    source_msg_id: int,
+    selected_text: str,
+    user_msg_id: int,
+) -> None:
+    async with async_session_factory() as db:
+        msg = await db.scalar(
+            sa.select(ChatMsg).where(
+                ChatMsg.id == source_msg_id,
+                ChatMsg.chat_id == chat_id_ctx.get(),
+                ChatMsg.role == "assistant",
+            )
+        )
+        if msg is None:
+            raise ValueError("Suggested action source message not found")
+
+        payload = json.loads(msg.full_context) if msg.full_context else {}
+        if not isinstance(payload, dict):
+            payload = {}
+        suggestions = suggested_actions_from_payload(payload.get("suggested_actions"))
+        if selected_text not in suggestions:
+            raise ValueError("Selected action was not suggested by source message")
+
+        payload["selected_suggested_action"] = {
+            "text": selected_text,
+            "user_msg_id": user_msg_id,
+            "selected_at": datetime.now(timezone.utc).isoformat(),
+        }
+        msg.full_context = json.dumps(payload, ensure_ascii=False)
+        await db.commit()
 
 
 async def send_final_chat_response(
@@ -1328,17 +1485,24 @@ def schedule_suggested_actions(
         return
 
     async def suggest_and_send_actions() -> None:
-        suggestions = await generate_suggestions(
+        result = await generate_suggestions(
             user_text=user_text,
             assistant_text=assistant_text,
             sources=sources,
             ctx=gen_context,
         )
-        if not suggestions:
+        if result.error:
+            await save_chat_message_suggestions_error(
+                assistant_msg_id=assistant_msg_id,
+                error=result.error,
+                full_context_payload=full_context_payload,
+            )
+            return
+        if not result.actions:
             return
         await save_chat_message_suggestions(
             assistant_msg_id=assistant_msg_id,
-            suggestions=suggestions,
+            suggestions=result.actions,
             full_context_payload=full_context_payload,
         )
         try:
@@ -1346,7 +1510,7 @@ def schedule_suggested_actions(
                 with_request_id(
                     {
                         "type": "suggested_actions",
-                        "actions": suggestions,
+                        "actions": result.actions,
                         "msg_id": assistant_msg_id,
                     }
                 )
@@ -1652,13 +1816,19 @@ async def handle_chat_message(
             return
 
         stage_started_at = time.monotonic()
-        assistant_msg_id, full_context_payload = await persist_chat_exchange(
+        user_msg_id, assistant_msg_id, full_context_payload = await persist_chat_exchange(
             user_text=incoming.text,
             state=state,
             query_embedding=context_result.query_embedding,
             sources=sources,
             guardrail_reasons=guardrail_reasons,
         )
+        if incoming.selected_suggestion_msg_id is not None:
+            await mark_selected_suggested_action(
+                source_msg_id=incoming.selected_suggestion_msg_id,
+                selected_text=incoming.text,
+                user_msg_id=user_msg_id,
+            )
         stats.finish_stage("persist_messages", stage_started_at)
 
         stage_started_at = time.monotonic()

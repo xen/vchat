@@ -192,7 +192,26 @@ async def test_history_detail_masks_pii_and_maps_guardrail_labels() -> None:
         SimpleNamespace(
             role="assistant",
             text="Ответ",
-            full_context="guardrail_blocked_output|passport_ru",
+            full_context=json.dumps(
+                {
+                    "suggested_actions": [
+                        "Какие программы фонда связаны с этим ответом?",
+                        "Показать источники ответа",
+                        "Какие направления работы фонда появились позже?",
+                    ],
+                    "selected_suggested_action": {
+                        "text": "Показать источники ответа",
+                        "user_msg_id": 22,
+                    },
+                    "suggested_actions_error": {
+                        "kind": "invalid_response",
+                        "provider": "gigachat",
+                        "model": "GigaChat-2",
+                        "detail": "Suggestion payload must contain exactly 3 unique actions",
+                        "raw_response": '{"actions":["one"]}',
+                    },
+                }
+            ),
             guardrail_reasons=["passport_ru"],
             guardrail_triggered=True,
             guardrail_stage="output",
@@ -225,6 +244,13 @@ async def test_history_detail_masks_pii_and_maps_guardrail_labels() -> None:
     assert isinstance(payload["messages"][0].has_masked_pii, bool)
     assert payload["messages"][1].guardrail_hit is True
     assert payload["messages"][1].guardrail_rules
+    assert payload["messages"][1].suggested_actions == [
+        "Какие программы фонда связаны с этим ответом?",
+        "Показать источники ответа",
+        "Какие направления работы фонда появились позже?",
+    ]
+    assert payload["messages"][1].selected_suggested_action["user_msg_id"] == 22
+    assert payload["messages"][1].suggested_actions_error["kind"] == "invalid_response"
 
 
 @pytest.mark.asyncio
@@ -343,6 +369,8 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
             guardrail_hit=False,
             context_sources=[],
             vote=True,
+            suggested_actions=[],
+            selected_suggested_action=None,
         ),
         SimpleNamespace(
             role="assistant",
@@ -353,6 +381,22 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
             guardrail_hit=False,
             context_sources=[],
             vote=False,
+            suggested_actions=[
+                "Какие программы фонда связаны с этим ответом?",
+                "Показать источники ответа",
+                "Какие направления работы фонда появились позже?",
+            ],
+            selected_suggested_action={
+                "text": "Показать источники ответа",
+                "user_msg_id": 22,
+            },
+            suggested_actions_error={
+                "kind": "invalid_response",
+                "provider": "gigachat",
+                "model": "GigaChat-2",
+                "detail": "Suggestion payload must contain exactly 3 unique actions",
+                "raw_response": '{"actions":["one"]}',
+            },
         ),
     ]
 
@@ -370,6 +414,48 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
     assert 'style="width: 90%' not in rendered
     assert "chat-footer" not in rendered
     assert "justify-self: stretch" not in rendered
+    assert "Подсказки под ответом" in rendered
+    assert "Какие программы фонда связаны с этим ответом?" in rendered
+    assert "выбрана" in rendered
+    assert "Следующее сообщение: #22" in rendered
+    assert "Подсказки не сохранены" in rendered
+    assert "invalid_response" in rendered
+    assert "GigaChat-2" in rendered
+    assert "{&#34;actions&#34;:[&#34;one&#34;]}" in rendered
+
+
+def test_default_suggestions_prompt_requires_three_new_next_steps() -> None:
+    prompt = project_forms.DEFAULT_SUGGESTIONS_PROMPT
+
+    assert "Сгенерируй ровно 3 коротких" in prompt
+    assert "не предлагай вопрос, на который финальный ответ уже дал ответ" in prompt
+    assert "Каждая подсказка должна вести к новому следующему шагу" in prompt
+
+
+def test_message_suggested_actions_requires_three_actions_for_initial_chat_state() -> None:
+    one_action = SimpleNamespace(
+        role="assistant",
+        full_context=json.dumps({"suggested_actions": ["Повторить уже отвеченный вопрос?"]}),
+    )
+    three_actions = SimpleNamespace(
+        role="assistant",
+        full_context=json.dumps(
+            {
+                "suggested_actions": [
+                    "Показать источник про основание фонда",
+                    "Какие направления работы фонда появились позже?",
+                    "Какие программы фонда связаны с историей фонда?",
+                ]
+            }
+        ),
+    )
+
+    assert project_views._message_suggested_actions(one_action) == []
+    assert project_views._message_suggested_actions(three_actions) == [
+        "Показать источник про основание фонда",
+        "Какие направления работы фонда появились позже?",
+        "Какие программы фонда связаны с историей фонда?",
+    ]
 
 
 def test_widget_edit_template_renders_pinned_message_color_options() -> None:

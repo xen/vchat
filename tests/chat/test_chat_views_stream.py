@@ -17,7 +17,9 @@ from vchat.models.source_config import SourceConfig
 from vchat.llm_cache import cache_candidate_payload
 from vchat.views.triggers.rules import trigger_key
 from vchat.views.chat.ai import (
+    GigaChatProvider,
     render_suggestions_prompt,
+    suggested_actions_from_payload,
     suggested_actions_response_format,
 )
 from vchat.views.chat import views as chat_views
@@ -77,6 +79,18 @@ class _FakeCtx:
     @property
     def model_id(self) -> str:
         return self.model.id
+
+    @property
+    def suggestions_provider_id(self) -> str:
+        return (
+            self.suggestions_provider.id
+            if self.suggestions_provider
+            else self.provider_id
+        )
+
+    @property
+    def suggestions_model_id(self) -> str:
+        return self.suggestions_model.id if self.suggestions_model else self.model_id
 
     def request_meta(self) -> dict[str, Any]:
         return self.provider.request_meta()
@@ -530,6 +544,185 @@ def test_suggested_actions_schema_is_strict() -> None:
     assert schema["required"] == ["actions"]
     assert schema["additionalProperties"] is False
     assert schema["properties"]["actions"]["maxItems"] == 3
+    assert schema["properties"]["actions"]["minItems"] == 3
+
+
+def test_suggested_actions_parser_requires_three_unique_actions() -> None:
+    assert suggested_actions_from_payload(
+        {
+            "actions": [
+                "Какие программы фонда связаны с этим ответом?",
+                "Показать источник про основание фонда",
+                "Какие направления работы фонда появились позже?",
+            ]
+        }
+    ) == [
+        "Какие программы фонда связаны с этим ответом?",
+        "Показать источник про основание фонда",
+        "Какие направления работы фонда появились позже?",
+    ]
+    assert (
+        suggested_actions_from_payload(
+            {
+                "actions": [
+                    "Какие программы фонда связаны с этим ответом?",
+                    "Какие программы фонда связаны с этим ответом?",
+                    "Показать источник про основание фонда",
+                ]
+            }
+        )
+        == []
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_suggestions_returns_invalid_response_error() -> None:
+    class _InvalidSuggestionsProvider(_FakeProvider):
+        async def request_chat_completion(self, **kwargs: Any) -> list[str]:
+            _ = kwargs
+            return ["Одна подсказка", "Вторая подсказка"]
+
+    ctx = _FakeCtx(
+        provider=_InvalidSuggestionsProvider(),
+        model=_FakeModel(),
+        suggestions_provider=_InvalidSuggestionsProvider(),
+        suggestions_model=_FakeModel(id="suggestions-model"),
+    )
+
+    result = await chat_views.generate_suggestions(
+        user_text="Когда был создан фонд?",
+        assistant_text="Фонд был создан в 2015 году.",
+        sources=[],
+        ctx=ctx,
+    )
+
+    assert result.actions == []
+    assert result.error is not None
+    assert result.error["kind"] == "invalid_response"
+    assert result.error["provider"] == "openai"
+    assert result.error["model"] == "suggestions-model"
+    assert "Одна подсказка" in result.error["raw_response"]
+
+
+def test_parse_incoming_chat_message_tracks_selected_suggestion() -> None:
+    parsed = chat_views.parse_incoming_chat_message(
+        SimpleNamespace(app={}),
+        json.dumps(
+            {
+                "type": "suggested_action",
+                "source_msg_id": "42",
+                "text": "Какие программы фонда связаны с этим ответом?",
+            }
+        ),
+    )
+
+    assert parsed is not None
+    assert parsed.text == "Какие программы фонда связаны с этим ответом?"
+    assert parsed.selected_suggestion_msg_id == 42
+
+
+@pytest.mark.asyncio
+async def test_save_chat_message_suggestions_error_updates_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executed: dict[str, Any] = {}
+
+    class _Db:
+        def __init__(self) -> None:
+            self.commits = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+        async def execute(self, stmt):
+            executed["stmt"] = stmt
+            self.values = stmt.compile().params
+            return SimpleNamespace()
+
+        async def commit(self) -> None:
+            self.commits += 1
+
+    db = _Db()
+    monkeypatch.setattr(chat_views, "async_session_factory", lambda: db)
+
+    await chat_views.save_chat_message_suggestions_error(
+        assistant_msg_id=42,
+        error={
+            "kind": "invalid_response",
+            "provider": "gigachat",
+            "model": "GigaChat-2",
+            "detail": "Suggestion payload must contain exactly 3 unique actions",
+            "raw_response": '{"actions":["one"]}',
+        },
+        full_context_payload={"policy": {"reason_code": "ok"}},
+    )
+
+    saved_payload = json.loads(db.values["full_context"])
+    assert saved_payload["policy"]["reason_code"] == "ok"
+    assert saved_payload["suggested_actions_error"]["kind"] == "invalid_response"
+    assert saved_payload["suggested_actions_error"]["raw_response"] == (
+        '{"actions":["one"]}'
+    )
+    assert db.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_selected_suggested_action_updates_source_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    msg = SimpleNamespace(
+        id=42,
+        chat_id="chat-1",
+        role="assistant",
+        full_context=json.dumps(
+            {
+                "suggested_actions": [
+                    "Какие программы фонда связаны с этим ответом?",
+                    "Показать источники ответа",
+                    "Какие направления работы фонда появились позже?",
+                ]
+            }
+        ),
+    )
+
+    class _Db:
+        def __init__(self) -> None:
+            self.commits = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+        async def scalar(self, stmt):
+            _ = stmt
+            return msg
+
+        async def commit(self) -> None:
+            self.commits += 1
+
+    db = _Db()
+    monkeypatch.setattr(chat_views, "async_session_factory", lambda: db)
+    chat_token = chat_views.chat_id_ctx.set("chat-1")
+    try:
+        await chat_views.mark_selected_suggested_action(
+            source_msg_id=42,
+            selected_text="Показать источники ответа",
+            user_msg_id=99,
+        )
+    finally:
+        chat_views.chat_id_ctx.reset(chat_token)
+
+    payload = json.loads(msg.full_context)
+    assert payload["selected_suggested_action"]["text"] == "Показать источники ответа"
+    assert payload["selected_suggested_action"]["user_msg_id"] == 99
+    assert db.commits == 1
 
 
 def test_suggestions_prompt_appends_structured_context_block() -> None:
@@ -546,6 +739,16 @@ def test_suggestions_prompt_appends_structured_context_block() -> None:
     assert "Что дальше?" in rendered
     assert "Можно открыть раздел с правилами." in rendered
     assert "Правила" in rendered
+
+
+def test_gigachat_suggestions_instruction_requires_ascii_json_quotes() -> None:
+    provider = object.__new__(GigaChatProvider)
+    instruction = provider.chat_completion_format_instruction
+
+    assert '{"actions": ["Короткая подсказка", "Короткая подсказка", "Короткая подсказка"]}' in instruction
+    assert "ASCII U+0022" in instruction
+    assert "елочки «»" in instruction
+    assert "Markdown" in instruction
 
 
 def test_cache_candidate_payload_marks_strict_rag_answer_candidate() -> None:

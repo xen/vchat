@@ -75,7 +75,7 @@ class ModelInfo:
 
 
 class SuggestedActionsPayload(BaseModel):
-    actions: list[str] = Field(default_factory=list)
+    actions: list[str] = Field(default_factory=list, min_length=3, max_length=3)
 
     @field_validator("actions")
     @classmethod
@@ -97,7 +97,13 @@ class SuggestedActionsPayload(BaseModel):
             normalized.append(action)
             if len(normalized) >= 3:
                 break
-        return normalized
+        return normalized[:3]
+
+
+class SuggestedActionsParseError(ValueError):
+    def __init__(self, message: str, *, raw_response: str = "") -> None:
+        super().__init__(message)
+        self.raw_response = raw_response
 
 
 def suggested_actions_response_format() -> dict[str, Any]:
@@ -130,6 +136,8 @@ def suggested_actions_from_payload(payload: Any) -> list[str]:
         parsed = SuggestedActionsPayload.model_validate(payload)
     except ValidationError:
         return []
+    if len(parsed.actions) != 3:
+        return []
     return parsed.actions
 
 
@@ -142,7 +150,6 @@ SUGGESTIONS_PROMPT_CONTEXT_TEMPLATE = """Последний вопрос пол�
 Использованные источники:
 {{sources}}
 """
-
 
 def _truncate_middle(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
@@ -301,9 +308,20 @@ class BaseAIProvider:
         normalized = content.strip()
         if normalized.startswith("```"):
             normalized = normalized.strip("`json \n")
-        suggestions = suggested_actions_from_payload(json.loads(normalized))
+        try:
+            parsed_payload = json.loads(normalized)
+        except json.JSONDecodeError as exc:
+            raise SuggestedActionsParseError(
+                "Suggestion provider returned invalid JSON",
+                raw_response=normalized,
+            ) from exc
+
+        suggestions = suggested_actions_from_payload(parsed_payload)
         if not suggestions:
-            raise ValueError("Suggestion payload does not contain actions")
+            raise SuggestedActionsParseError(
+                "Suggestion payload must contain exactly 3 unique actions",
+                raw_response=normalized,
+            )
         return suggestions
 
     async def request_chat_completion(
@@ -686,7 +704,11 @@ class GigaChatProvider(BaseAIProvider):
 
     @property
     def chat_completion_format_instruction(self) -> str:
-        return 'Верни только JSON-объект вида {"actions": ["..."]}.'
+        return """Верни только валидный JSON-объект без Markdown:
+{"actions": ["Короткая подсказка", "Короткая подсказка", "Короткая подсказка"]}
+
+Для синтаксиса JSON используй только обычные двойные кавычки ASCII U+0022.
+Не используй типографские кавычки, елочки «», одинарные кавычки или переносы строк внутри JSON-строк."""
 
     def structured_json_response_format(
         self,

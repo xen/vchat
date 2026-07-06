@@ -219,9 +219,11 @@ def _setup_common(
     monkeypatch.setattr(chat_views, "async_session_factory", _FakeSessionFactory(state))
     monkeypatch.setattr(chat_views, "redis", redis)
 
-    async def _fake_generate_suggestions(*args, **kwargs) -> list[str]:
+    async def _fake_generate_suggestions(
+        *args, **kwargs
+    ) -> chat_views.SuggestionGenerationResult:
         _ = args, kwargs
-        return []
+        return chat_views.SuggestionGenerationResult(actions=[])
 
     monkeypatch.setattr(chat_views, "generate_suggestions", _fake_generate_suggestions)
 
@@ -531,14 +533,17 @@ async def test_websocket_returns_document_recommendations_and_sources(
             },
         }
 
-    async def _suggestions(**kwargs: Any) -> list[str]:
+    async def _suggestions(**kwargs: Any) -> chat_views.SuggestionGenerationResult:
         assert kwargs["user_text"] == "Покажи раздел про отпуск из employee-handbook"
         assert kwargs["assistant_text"] == "Раздел по отпуску найден в handbook."
         assert kwargs["sources"][0]["title"] == "Employee Handbook: Paid Time Off"
-        return [
-            "Открыть Employee Handbook: Paid Time Off",
-            "Показать правила переноса отпуска",
-        ]
+        return chat_views.SuggestionGenerationResult(
+            actions=[
+                "Открыть Employee Handbook: Paid Time Off",
+                "Показать правила переноса отпуска",
+                "Проверить правила согласования отпуска",
+            ]
+        )
 
     monkeypatch.setattr(chat_views, "check_input_guardrails", _input_ok)
     monkeypatch.setattr(chat_views, "check_output_guardrails", _output_ok)

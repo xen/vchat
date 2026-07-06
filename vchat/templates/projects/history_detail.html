@@ -117,6 +117,55 @@
                             </div>
                         </div>
                         {% endif %}
+                        {% if msg.suggested_actions %}
+                        <div class="rounded border border-base-300 bg-base-100 px-3 py-3 text-xs text-base-content">
+                            <div class="font-semibold opacity-80">Подсказки под ответом</div>
+                            <div class="mt-2 flex flex-col gap-1.5">
+                                {% for action in msg.suggested_actions %}
+                                {% set is_selected = msg.selected_suggested_action and msg.selected_suggested_action.text == action %}
+                                <div class="flex items-start gap-2 rounded border border-base-300 bg-base-100 px-2 py-1.5">
+                                    {% if is_selected %}
+                                    <span class="badge badge-primary badge-xs mt-0.5">выбрана</span>
+                                    {% else %}
+                                    <span class="badge badge-outline badge-xs mt-0.5">показана</span>
+                                    {% endif %}
+                                    <span class="break-words">{{ action }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% if msg.selected_suggested_action and msg.selected_suggested_action.user_msg_id %}
+                            <div class="mt-2 text-[11px] opacity-70">
+                                Следующее сообщение: #{{ msg.selected_suggested_action.user_msg_id }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% if msg.suggested_actions_error %}
+                        <div class="rounded border border-error/30 bg-error/10 px-3 py-3 text-xs text-base-content">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <div class="font-semibold text-error">Подсказки не сохранены</div>
+                                {% if msg.suggested_actions_error.kind %}
+                                <span class="badge badge-error badge-xs">{{ msg.suggested_actions_error.kind }}</span>
+                                {% endif %}
+                                {% if msg.suggested_actions_error.status %}
+                                <span class="badge badge-outline badge-xs">HTTP {{ msg.suggested_actions_error.status }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="mt-2 grid gap-1">
+                                {% if msg.suggested_actions_error.provider or msg.suggested_actions_error.model %}
+                                <div class="break-words opacity-80">
+                                    {{ msg.suggested_actions_error.provider or 'provider' }} / {{ msg.suggested_actions_error.model or 'model' }}
+                                </div>
+                                {% endif %}
+                                {% if msg.suggested_actions_error.detail %}
+                                <div class="break-words">{{ msg.suggested_actions_error.detail }}</div>
+                                {% endif %}
+                                {% if msg.suggested_actions_error.raw_response %}
+                                <pre class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-base-100 p-2 text-[11px]">{{ msg.suggested_actions_error.raw_response }}</pre>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                     {% if msg.vote is defined and msg.vote is not none %}
                     <div class="flex gap-2 items-center">

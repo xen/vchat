@@ -10,6 +10,7 @@ from aiohttp import web
 from sqlalchemy.orm import aliased
 
 from vchat.db import async_session_factory
+from vchat.views.chat.ai import suggested_actions_from_payload
 from vchat.views.chat.guardrails import mask_russian_pii
 from vchat.views.chat.sources import enrich_source_payloads
 from vchat.models import Chat, ChatMsg, Page
@@ -101,6 +102,36 @@ def _history_message_sources(row: ChatMsg) -> list[dict[str, object]]:
             }
         )
     return sources
+
+
+def _history_message_suggestions(row: ChatMsg) -> tuple[list[str], dict | None]:
+    if not row.full_context:
+        return [], None
+    try:
+        payload = json.loads(row.full_context)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return [], None
+    if not isinstance(payload, dict):
+        return [], None
+
+    selected = payload.get("selected_suggested_action")
+    return suggested_actions_from_payload(payload.get("suggested_actions")), (
+        selected if isinstance(selected, dict) else None
+    )
+
+
+def _history_message_suggestions_error(row: ChatMsg) -> dict | None:
+    if not row.full_context:
+        return None
+    try:
+        payload = json.loads(row.full_context)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    error = payload.get("suggested_actions_error")
+    return error if isinstance(error, dict) else None
 
 
 async def _mark_deleted_history_sources(db, messages: list[ChatMsg]) -> None:
@@ -485,6 +516,9 @@ async def history_detail(request):
         msg.guardrail_rules = [
             GUARDRAIL_REASON_LABELS.get(rule, rule) for rule in unique_reasons
         ]
+        msg.suggested_actions = []
+        msg.selected_suggested_action = None
+        msg.suggested_actions_error = None
         msg.context_sources = _history_message_sources(msg)
         if msg.context_sources:
             msg.context_sources = await enrich_source_payloads(
@@ -504,6 +538,10 @@ async def history_detail(request):
                     else {}
                 )
                 msg.reason_code = policy.get("reason_code")
+                msg.suggested_actions, msg.selected_suggested_action = (
+                    _history_message_suggestions(msg)
+                )
+                msg.suggested_actions_error = _history_message_suggestions_error(msg)
 
     await _mark_deleted_history_sources(request["db"], messages)
 

@@ -460,8 +460,10 @@
         btn.className = 'vchat-suggested-action';
         btn.textContent = action;
         btn.onclick = () => {
-          promptEl.value = action;
-          submitMessage();
+          submitMessage({
+            text: action,
+            suggestedActionMsgId: targetMsgId,
+          });
           actionsDiv.remove();
         };
         actionsDiv.appendChild(btn);
@@ -851,7 +853,9 @@
 
       const payload = options.triggerId
         ? JSON.stringify({ type: 'trigger_prompt', page_token: options.pageToken || null, trigger_key: options.triggerId, text })
-        : text;
+        : options.suggestedActionMsgId
+          ? JSON.stringify({ type: 'suggested_action', source_msg_id: options.suggestedActionMsgId, text })
+          : text;
 
       sendPayload(payload);
       if (providedText === null) {
