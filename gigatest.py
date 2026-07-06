@@ -33,11 +33,10 @@ async def main() -> None:
     )
 
     logger.info(
-        "Starting GigaChat diagnostic test: base_url=%s verify_ssl=%s oauth_timeout=%.1fs request_timeout=%.1fs",
+        "Starting GigaChat diagnostic test: base_url=%s verify_ssl=%s request_timeout=%.1fs",
         base_url,
         cfg.gigachat_verify_ssl_certs,
-        cfg.gigachat_oauth_timeout_seconds,
-        cfg.gigachat_request_timeout_seconds,
+        cfg.llm_request_timeout_seconds,
     )
 
     provider = GigaChatProvider()
@@ -53,9 +52,7 @@ async def main() -> None:
                     "Authorization": f"Bearer {access_token}",
                 },
                 ssl=cfg.gigachat_verify_ssl_certs,
-                timeout=aiohttp.ClientTimeout(
-                    total=cfg.gigachat_request_timeout_seconds
-                ),
+                timeout=aiohttp.ClientTimeout(total=cfg.llm_request_timeout_seconds),
             ) as resp:
                 models_text = await resp.text()
                 if resp.status >= 400:
@@ -104,9 +101,7 @@ async def main() -> None:
                 },
                 json=payload,
                 ssl=cfg.gigachat_verify_ssl_certs,
-                timeout=aiohttp.ClientTimeout(
-                    total=cfg.gigachat_request_timeout_seconds
-                ),
+                timeout=aiohttp.ClientTimeout(total=cfg.llm_request_timeout_seconds),
             ) as resp:
                 response_text = await resp.text()
                 if resp.status >= 400:

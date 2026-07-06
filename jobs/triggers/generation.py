@@ -73,7 +73,10 @@ def build_trigger_generation_messages(page: Page) -> list[dict[str, str]]:
 
 
 def generate_trigger_texts_for_page(page: Page) -> list[str]:
-    provider, model = resolve_ai_settings(cfg.chat_provider, cfg.chat_model)
+    provider, model = resolve_ai_settings(
+        cfg.chat_suggestions_provider,
+        cfg.chat_suggestions_model,
+    )
     raw = request_trigger_generation(
         provider, model, build_trigger_generation_messages(page)
     )
@@ -90,12 +93,8 @@ def request_trigger_generation(
         messages=messages,
         temperature=0.4,
         max_tokens=600,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "trigger_generation_response",
-                "schema": _trigger_response_schema(),
-                "strict": True,
-            },
-        },
+        response_format=provider.structured_json_response_format(
+            name="trigger_generation_response",
+            schema=_trigger_response_schema(),
+        ),
     )

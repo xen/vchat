@@ -89,6 +89,7 @@ class AppConfig(BaseModel):
     chat_suggestions_model: str = "GigaChat-2"
     chat_response_max_tokens: int = Field(900, ge=1)
     chat_suggestions_max_context_chars: int = Field(3000, ge=1)
+    llm_request_timeout_seconds: float = Field(60.0, gt=0)
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = "https://api.openai.com/v1"
@@ -99,9 +100,6 @@ class AppConfig(BaseModel):
     gigachat_oauth_url: str = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
     gigachat_scope: str = "GIGACHAT_API_CORP"
     gigachat_verify_ssl_certs: bool = True
-    gigachat_oauth_timeout_seconds: float = Field(15.0, gt=0)
-    gigachat_request_timeout_seconds: float = Field(60.0, gt=0)
-    gigachat_suggest_timeout_seconds: float = Field(10.0, gt=0)
     gigachat_test_model: str = "GigaChat-2-Pro"
     gigachat_test_question: str | None = None
     gigachat_models: list[str | dict[str, Any]] = Field(default_factory=list)

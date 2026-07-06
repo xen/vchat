@@ -2,7 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from jobs.triggers import generation as trigger_generation
 from jobs.triggers.generation import (
+    generate_trigger_texts_for_page,
     parse_generated_trigger_texts,
     request_trigger_generation,
 )
@@ -215,4 +217,50 @@ def test_request_trigger_generation_passes_gigachat_ssl_setting(
     assert raw == '{"triggers": ["Триггер"]}'
     assert captured[0][1]["verify"] is False
     assert captured[1][1]["verify"] is False
-    assert captured[1][1]["json"]["response_format"]["type"] == "json_schema"
+    assert captured[1][1]["json"]["response_format"] == {"type": "json_object"}
+    assert captured[1][1]["json"]["model"] == "GigaChat-2-Pro"
+
+
+def test_generate_trigger_texts_uses_suggestions_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+    monkeypatch.setattr(trigger_generation.cfg, "chat_provider", "openai")
+    monkeypatch.setattr(trigger_generation.cfg, "chat_model", "gpt-4o")
+    monkeypatch.setattr(trigger_generation.cfg, "chat_suggestions_provider", "gigachat")
+    monkeypatch.setattr(trigger_generation.cfg, "chat_suggestions_model", "GigaChat-2")
+
+    class _Provider:
+        id = "gigachat"
+
+        def structured_json_response_format(self, *, name, schema):
+            _ = name, schema
+            return {"type": "json_object"}
+
+        def request_chat_completion_sync(
+            self,
+            *,
+            model,
+            messages,
+            temperature,
+            max_tokens,
+            response_format,
+        ):
+            _ = messages, temperature, max_tokens, response_format
+            captured["model"] = model.id
+            return '{"triggers": ["Узнать подробнее"]}'
+
+    def _resolve(provider_id, model_id):
+        captured["provider"] = provider_id
+        return _Provider(), SimpleNamespace(id=model_id)
+
+    monkeypatch.setattr(trigger_generation, "resolve_ai_settings", _resolve)
+
+    page = SimpleNamespace(
+        uri="https://example.test/page",
+        title="Тестовая страница",
+        content="Описание страницы",
+    )
+
+    assert generate_trigger_texts_for_page(page) == ["Узнать подробнее"]
+    assert captured == {"provider": "gigachat", "model": "GigaChat-2"}

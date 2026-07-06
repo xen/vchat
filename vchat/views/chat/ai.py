@@ -246,8 +246,8 @@ class BaseAIProvider:
         }
 
     @property
-    def chat_completion_timeout_seconds(self) -> float:
-        return 30.0
+    def request_timeout_seconds(self) -> float:
+        return cfg.llm_request_timeout_seconds
 
     @property
     def chat_completion_verify_ssl_certs(self) -> bool:
@@ -266,10 +266,6 @@ class BaseAIProvider:
         return self.chat_completion_bearer_token_sync()
 
     @property
-    def chat_suggestion_timeout_seconds(self) -> float:
-        return 10.0
-
-    @property
     def chat_completion_temperature(self) -> float:
         return 0.2
 
@@ -280,6 +276,21 @@ class BaseAIProvider:
     @property
     def chat_completion_response_format(self) -> dict[str, Any]:
         return suggested_actions_response_format()
+
+    def structured_json_response_format(
+        self,
+        *,
+        name: str,
+        schema: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": name,
+                "schema": schema,
+                "strict": True,
+            },
+        }
 
     @property
     def chat_completion_format_instruction(self) -> str:
@@ -337,9 +348,7 @@ class BaseAIProvider:
                     "Content-Type": "application/json",
                 },
                 json=payload,
-                timeout=aiohttp.ClientTimeout(
-                    total=self.chat_suggestion_timeout_seconds
-                ),
+                timeout=aiohttp.ClientTimeout(total=self.request_timeout_seconds),
                 ssl=self.chat_completion_verify_ssl_certs,
             ) as resp:
                 if resp.status >= 400:
@@ -386,7 +395,7 @@ class BaseAIProvider:
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=self.chat_completion_timeout_seconds,
+            timeout=self.request_timeout_seconds,
             verify=self.chat_completion_verify_ssl_certs,
         )
         if resp.status_code >= 400:
@@ -552,10 +561,6 @@ class GigaChatProvider(BaseAIProvider):
         return cfg.gigachat_base_url
 
     @property
-    def chat_completion_timeout_seconds(self) -> float:
-        return cfg.gigachat_request_timeout_seconds
-
-    @property
     def chat_completion_verify_ssl_certs(self) -> bool:
         return cfg.gigachat_verify_ssl_certs
 
@@ -586,7 +591,7 @@ class GigaChatProvider(BaseAIProvider):
             },
             data={"scope": cfg.gigachat_scope.strip()},
             verify=cfg.gigachat_verify_ssl_certs,
-            timeout=cfg.gigachat_oauth_timeout_seconds,
+            timeout=self.request_timeout_seconds,
         )
         if resp.status_code >= 400:
             raise RuntimeError(
@@ -647,7 +652,7 @@ class GigaChatProvider(BaseAIProvider):
                 },
                 data={"scope": cfg.gigachat_scope.strip()},
                 ssl=cfg.gigachat_verify_ssl_certs,
-                timeout=aiohttp.ClientTimeout(total=cfg.gigachat_oauth_timeout_seconds),
+                timeout=aiohttp.ClientTimeout(total=self.request_timeout_seconds),
             ) as resp:
                 raw_text = await resp.text()
                 if resp.status >= 400:
@@ -676,16 +681,21 @@ class GigaChatProvider(BaseAIProvider):
             return _gigachat_token_cache.access_token
 
     @property
-    def chat_suggestion_timeout_seconds(self) -> float:
-        return cfg.gigachat_suggest_timeout_seconds
-
-    @property
     def chat_completion_response_format(self) -> dict[str, Any]:
         return {"type": "json_object"}
 
     @property
     def chat_completion_format_instruction(self) -> str:
         return 'Верни только JSON-объект вида {"actions": ["..."]}.'
+
+    def structured_json_response_format(
+        self,
+        *,
+        name: str,
+        schema: dict[str, Any],
+    ) -> dict[str, Any]:
+        _ = name, schema
+        return {"type": "json_object"}
 
 
 PROVIDER_CLASSES: tuple[type[BaseAIProvider], ...] = (

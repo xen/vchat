@@ -469,11 +469,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                         "stream_options": {"include_usage": True},
                     },
                     timeout=aiohttp.ClientTimeout(
-                        total=(
-                            cfg.gigachat_request_timeout_seconds
-                            if provider_id == "gigachat"
-                            else 60.0
-                        )
+                        total=cfg.llm_request_timeout_seconds
                     ),
                     ssl=(
                         cfg.gigachat_verify_ssl_certs
@@ -567,11 +563,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
                     "Provider request timeout: provider=%s model=%s timeout_seconds=%s",
                     provider_id,
                     model,
-                    (
-                        cfg.gigachat_request_timeout_seconds
-                        if provider_id == "gigachat"
-                        else 60.0
-                    ),
+                    cfg.llm_request_timeout_seconds,
                 )
                 raise
             except aiohttp.ClientError:

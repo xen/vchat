@@ -115,7 +115,7 @@ def _check_robots_txt(
         resp = requests.get(
             robots_url,
             headers=headers,
-            timeout=15,
+            timeout=cfg.crawler_download_timeout,
             allow_redirects=False,
         )
     except requests.RequestException:
@@ -175,7 +175,7 @@ def check_source_blocking(
         resp = requests.get(
             source_uri,
             headers=headers,
-            timeout=15,
+            timeout=cfg.crawler_download_timeout,
             allow_redirects=False,
         )
     except requests.RequestException as exc:

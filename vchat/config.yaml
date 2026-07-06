@@ -67,6 +67,7 @@ chat_model: "GigaChat-2-Pro"
 chat_suggestions_provider: "gigachat"
 chat_suggestions_model: "GigaChat-2"
 chat_response_max_tokens: 900
+llm_request_timeout_seconds: 60
 openai_api_key: ""
 openai_model: "gpt-4o-mini"
 openai_base_url: "https://api.openai.com/v1"

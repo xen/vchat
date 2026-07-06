@@ -1881,7 +1881,7 @@ def _fetch_sitemap(
     with requests.get(
         url,
         headers=headers,
-        timeout=30,
+        timeout=cfg.crawler_download_timeout,
         allow_redirects=False,
         stream=True,
     ) as resp:
@@ -1949,7 +1949,7 @@ def _discover_sitemaps_from_robots(
     with requests.get(
         robots_url,
         headers=headers,
-        timeout=15,
+        timeout=cfg.crawler_download_timeout,
         allow_redirects=False,
         stream=True,
     ) as resp:
@@ -1984,7 +1984,7 @@ def _probe_common_sitemaps(source_uri: str) -> list[str]:
         with requests.get(
             url,
             headers=headers,
-            timeout=15,
+            timeout=cfg.crawler_download_timeout,
             allow_redirects=False,
             stream=True,
         ) as resp:
