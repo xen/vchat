@@ -1051,6 +1051,29 @@ def test_demo_page_exposes_system_message_controls() -> None:
     assert 'document.getElementById("vchat-widget-iframe")' in rendered
 
 
+def test_demo_page_exposes_reset_chat_button() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(templates_dir)),
+        autoescape=True,
+    )
+
+    rendered = env.get_template("demo.html").render(
+        widgets=[{"id": 1, "name": "Demo widget", "code": "widget-code"}],
+        trigger_pages=[],
+        selected_widget_code="widget-code",
+        selected_trigger_url="",
+        selected_trigger_url_is_listed=False,
+    )
+
+    assert 'data-reset-chat' in rendered
+    assert "Сбросить чат" in rendered
+    assert "function resetActiveChatStorage(code)" in rendered
+    assert 'const prefix = `vchat:${code}:active_chat:`;' in rendered
+    assert "window.localStorage.removeItem(key);" in rendered
+    assert "window.location.reload();" in rendered
+
+
 def test_demo_page_system_messages_do_not_require_trigger_page() -> None:
     templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
     env = jinja2.Environment(

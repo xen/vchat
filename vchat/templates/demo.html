@@ -135,6 +135,19 @@
       opacity: 0.45;
     }
 
+    .widget-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .widget-loader .secondary-button {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+    }
+
     .widget-loader .hint {
       margin: 0;
       font: 400 14px/1.5 Arial, sans-serif;
@@ -274,7 +287,12 @@
           >
         </label>
 
-        <button type="submit" {% if not widgets %}disabled{% endif %}>Загрузить</button>
+        <div class="widget-actions">
+          <button type="submit" {% if not widgets %}disabled{% endif %}>Загрузить</button>
+          {% if selected_widget_code %}
+          <button type="button" class="secondary-button" data-reset-chat>Сбросить чат</button>
+          {% endif %}
+        </div>
         {% if selected_widget_code %}
         <p class="hint">Загружен виджет <code>{{ selected_widget_code }}</code>.</p>
         {% else %}
@@ -338,6 +356,7 @@
 
     const widgetCode = {{ selected_widget_code|tojson }};
     const sourcePageUrl = {{ selected_trigger_url|tojson }};
+    const resetChatButton = document.querySelector("[data-reset-chat]");
     const container = document.getElementById("vchat-chat");
     if (sourcePageUrl && container) {
       container.setAttribute("data-source-page-url", sourcePageUrl);
@@ -348,6 +367,28 @@
       script.defer = true;
       document.body.append(script);
     }
+
+    function resetActiveChatStorage(code) {
+      if (!code) {
+        return;
+      }
+      const prefix = `vchat:${code}:active_chat:`;
+      try {
+        for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+          const key = window.localStorage.key(index);
+          if (key?.startsWith(prefix)) {
+            window.localStorage.removeItem(key);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to reset demo chat storage", error);
+      }
+    }
+
+    resetChatButton?.addEventListener("click", () => {
+      resetActiveChatStorage(widgetCode);
+      window.location.reload();
+    });
 
     const systemMessages = document.querySelector("[data-system-messages]");
     const systemMessagesStatus = document.querySelector("[data-system-messages-status]");
