@@ -286,6 +286,7 @@ async def _widget_integrations(db_session) -> list[WidgetIntegration]:
 
 def _queue_source_crawl_from_ui(source_id: int) -> None:
     chain(
+        reapply_source_rules_task.si(source_id),
         sitemap_sync_task.si(source_id),
         crawl_source_task.si(source_id, skip_sitemap_sync=True),
     ).apply_async()
