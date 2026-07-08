@@ -151,17 +151,17 @@ class GenerationContext:
     provider: BaseAIProvider
     model: ModelInfo
     system_prompt: str
-    suggestions_provider: BaseAIProvider | None = None
-    suggestions_model: ModelInfo | None = None
+    aux_provider: BaseAIProvider | None = None
+    aux_model: ModelInfo | None = None
     suggestions_enabled: bool = True
     suggestions_prompt: str = ""
     error_message: str = WIDGET_ERROR_MESSAGE
 
     def __post_init__(self) -> None:
-        if self.suggestions_provider is None:
-            self.suggestions_provider = self.provider
-        if self.suggestions_model is None:
-            self.suggestions_model = self.model
+        if self.aux_provider is None:
+            self.aux_provider = self.provider
+        if self.aux_model is None:
+            self.aux_model = self.model
 
     @property
     def provider_id(self) -> str:
@@ -171,18 +171,6 @@ class GenerationContext:
     def model_id(self) -> str:
         return self.model.id
 
-    @property
-    def suggestions_provider_id(self) -> str:
-        if self.suggestions_provider is None:
-            return self.provider_id
-        return self.suggestions_provider.id
-
-    @property
-    def suggestions_model_id(self) -> str:
-        if self.suggestions_model is None:
-            return self.model_id
-        return self.suggestions_model.id
-
     def request_meta(self) -> dict[str, Any]:
         return self.provider.request_meta()
 
@@ -191,9 +179,9 @@ def build_generation_context(
     widget: WidgetIntegration | None = None,
 ) -> GenerationContext:
     provider, model = resolve_ai_settings(cfg.chat_provider, cfg.chat_model)
-    suggestions_provider, suggestions_model = resolve_ai_settings(
-        cfg.chat_suggestions_provider,
-        cfg.chat_suggestions_model,
+    aux_provider, aux_model = resolve_ai_settings(
+        cfg.chat_aux_provider,
+        cfg.chat_aux_model,
     )
     custom_prompt = (widget.system_prompt if widget is not None else "") or ""
     system_prompt = (
@@ -212,8 +200,8 @@ def build_generation_context(
         provider,
         model,
         system_prompt,
-        suggestions_provider=suggestions_provider,
-        suggestions_model=suggestions_model,
+        aux_provider=aux_provider,
+        aux_model=aux_model,
         suggestions_enabled=suggestions_enabled,
         suggestions_prompt=suggestions_prompt,
         error_message=error_message,
@@ -262,8 +250,8 @@ def _suggestion_error_payload(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "kind": kind,
-        "provider": ctx.suggestions_provider_id,
-        "model": ctx.suggestions_model_id,
+        "provider": ctx.aux_provider.id,
+        "model": ctx.aux_model.id,
         "detail": detail[:500],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -286,9 +274,9 @@ async def generate_suggestions(
     Uses a lightweight call to a fast model.
     """
     try:
-        if ctx.suggestions_provider is None:
+        if ctx.aux_provider is None:
             raise RuntimeError("suggestions provider is not configured")
-        suggestions = await ctx.suggestions_provider.request_chat_completion(
+        suggestions = await ctx.aux_provider.request_chat_completion(
             ctx=ctx,
             user_text=user_text,
             assistant_text=assistant_text,
@@ -312,8 +300,8 @@ async def generate_suggestions(
     except aiohttp.ClientResponseError as e:
         logger.warning(
             "Failed to generate suggestions: provider=%s model=%s status=%s detail=%s",
-            ctx.suggestions_provider_id,
-            ctx.suggestions_model_id,
+            ctx.aux_provider.id,
+            ctx.aux_model.id,
             e.status,
             (e.message or "").strip()[:500],
         )
@@ -329,8 +317,8 @@ async def generate_suggestions(
     except asyncio.TimeoutError:
         logger.warning(
             "Failed to generate suggestions due to timeout: provider=%s model=%s",
-            ctx.suggestions_provider_id,
-            ctx.suggestions_model_id,
+            ctx.aux_provider.id,
+            ctx.aux_model.id,
         )
         return SuggestionGenerationResult(
             actions=[],
@@ -343,8 +331,8 @@ async def generate_suggestions(
     except SuggestedActionsParseError as e:
         logger.warning(
             "Failed to parse suggestions: provider=%s model=%s error=%s",
-            ctx.suggestions_provider_id,
-            ctx.suggestions_model_id,
+            ctx.aux_provider.id,
+            ctx.aux_model.id,
             e,
         )
         return SuggestionGenerationResult(
@@ -359,8 +347,8 @@ async def generate_suggestions(
     except Exception as e:
         logger.warning(
             "Failed to generate suggestions: provider=%s model=%s error=%s",
-            ctx.suggestions_provider_id,
-            ctx.suggestions_model_id,
+            ctx.aux_provider.id,
+            ctx.aux_model.id,
             e,
         )
         return SuggestionGenerationResult(
@@ -446,15 +434,24 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
     if not base_url:
         raise web.HTTPBadRequest(text="Missing base URL for selected provider")
 
-    model = ctx.model_id or cfg.openai_model
+    model = ctx.model_id
     current_system_prompt = ctx.system_prompt or SYSTEM_PROMPT
     model_max_tokens = getattr(ctx.model, "max_tokens", cfg.chat_response_max_tokens)
     max_response_tokens = min(cfg.chat_response_max_tokens, model_max_tokens)
-    guardrails_client = (
-        get_guardrails_client(api_key=api_key, base_url=base_url)
-        if provider_id == "openai"
-        else None
-    )
+    guardrails_client = None
+    if cfg.openai_guardrails_enabled:
+        async with aiohttp.ClientSession() as session:
+            guardrails_api_key = await ctx.provider.chat_completion_bearer_token(session)
+        guardrails_base_url = ctx.provider.base_url
+        if not guardrails_base_url:
+            raise web.HTTPBadRequest(
+                text=f"Missing base URL for provider '{ctx.provider.id}'"
+            )
+        guardrails_client = get_guardrails_client(
+            api_key=guardrails_api_key,
+            base_url=guardrails_base_url,
+            model=ctx.aux_model.id,
+        )
     assistant_message: dict[str, Any] = {"role": "assistant", "content": ""}
     pending_tool_calls: dict[int, dict] = {}
 
@@ -1035,6 +1032,7 @@ class ChatProcessingState:
     messages: List[dict] = dataclass_field(default_factory=list)
     context_policy: dict[str, Any] = dataclass_field(default_factory=dict)
     coverage: dict[str, Any] = dataclass_field(default_factory=dict)
+    messages_persisted: bool = False
 
 
 def load_chat_generation_context(widget: WidgetIntegration | None):
@@ -1144,6 +1142,94 @@ async def send_chat_error(
     if extra:
         payload.update(extra)
     await ws.send_json(with_request_id(payload))
+
+
+async def persist_chat_error_exchange(
+    *,
+    user_text: str,
+    assistant_text: str,
+    error: str,
+    assistant_provider: str | None,
+    assistant_model: str | None,
+) -> tuple[int, int]:
+    request_id = get_request_id()
+    full_context_payload: dict[str, Any] = {
+        "policy": {"reason_code": f"chat_error_{error}"},
+        "error": error,
+    }
+    if request_id:
+        full_context_payload["request_id"] = request_id
+
+    async with async_session_factory() as db:
+        res_user = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=user_text,
+                role="user",
+                full_context="",
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                guardrail_triggered=False,
+                guardrail_stage=None,
+                guardrail_reasons=None,
+                embedding=None,
+                text_hash=chunk_text_sha256(user_text),
+            )
+            .returning(ChatMsg.id)
+        )
+        user_msg_id = res_user.scalar_one()
+
+        res_ai = await db.execute(
+            sa.insert(ChatMsg)
+            .values(
+                text=assistant_text,
+                role="assistant",
+                full_context=json.dumps(
+                    full_context_payload,
+                    ensure_ascii=False,
+                ),
+                chat_id=chat_id_ctx.get(),
+                user_uid=str(user_id_ctx.get()),
+                created_at=sa.func.now(),
+                used_chunks=[],
+                tokens=0,
+                provider=assistant_provider,
+                model=assistant_model,
+                guardrail_triggered=False,
+                guardrail_stage=None,
+                guardrail_reasons=None,
+            )
+            .returning(ChatMsg.id)
+        )
+        assistant_msg_id = res_ai.scalar_one()
+        await db.commit()
+
+    return user_msg_id, assistant_msg_id
+
+
+async def persist_and_send_chat_error(
+    ws: web.WebSocketResponse,
+    *,
+    incoming: IncomingChatMessage,
+    state: ChatProcessingState,
+    gen_context,
+    error: str,
+) -> None:
+    if not state.messages_persisted:
+        await persist_chat_error_exchange(
+            user_text=incoming.text,
+            assistant_text=gen_context.error_message,
+            error=error,
+            assistant_provider=state.assistant_provider or gen_context.provider_id,
+            assistant_model=state.assistant_model or gen_context.model_id,
+        )
+        state.messages_persisted = True
+    await send_chat_error(
+        ws,
+        error=error,
+        content=gen_context.error_message,
+    )
 
 
 async def persist_guardrail_messages(
@@ -1486,8 +1572,8 @@ def schedule_suggested_actions(
 ) -> None:
     if (
         not gen_context.suggestions_enabled
-        or gen_context.suggestions_provider is None
-        or not gen_context.suggestions_provider.supports_chat
+        or gen_context.aux_provider is None
+        or not gen_context.aux_provider.supports_chat
     ):
         return
 
@@ -1829,6 +1915,7 @@ async def handle_chat_message(
             sources=sources,
             guardrail_reasons=guardrail_reasons,
         )
+        state.messages_persisted = True
         if incoming.selected_suggestion_msg_id is not None:
             await mark_selected_suggested_action(
                 source_msg_id=incoming.selected_suggestion_msg_id,
@@ -1899,18 +1986,22 @@ async def handle_chat_message(
         if e.status in {400, 403, 422}:
             guardrail_reasons.add("provider_block")
         gen_context = load_chat_generation_context(widget)
-        await send_chat_error(
+        await persist_and_send_chat_error(
             ws,
+            incoming=incoming,
+            state=state,
+            gen_context=gen_context,
             error="provider_response_error",
-            content=gen_context.error_message,
         )
     except (asyncio.TimeoutError, aiohttp.ClientError):
         state.request_status = "provider_connection_error"
         gen_context = load_chat_generation_context(widget)
-        await send_chat_error(
+        await persist_and_send_chat_error(
             ws,
+            incoming=incoming,
+            state=state,
+            gen_context=gen_context,
             error="provider_connection_error",
-            content=gen_context.error_message,
         )
     except RequestEmbeddingTimeoutError:
         state.request_status = "request_embedding_timeout"
@@ -1918,19 +2009,23 @@ async def handle_chat_message(
             "Request embedding queue timeout: request_id=%s", get_request_id()
         )
         gen_context = load_chat_generation_context(widget)
-        await send_chat_error(
+        await persist_and_send_chat_error(
             ws,
+            incoming=incoming,
+            state=state,
+            gen_context=gen_context,
             error="request_embedding_timeout",
-            content=gen_context.error_message,
         )
     except Exception:
         state.request_status = "internal_error"
         logger.exception("Chat request failed: request_id=%s", get_request_id())
         gen_context = load_chat_generation_context(widget)
-        await send_chat_error(
+        await persist_and_send_chat_error(
             ws,
+            incoming=incoming,
+            state=state,
+            gen_context=gen_context,
             error="internal_error",
-            content=gen_context.error_message,
         )
     finally:
         log_chat_request_result(

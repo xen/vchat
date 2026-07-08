@@ -1,9 +1,13 @@
 import logging
 import re
 import json
+import html
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
+from urllib.parse import urlparse
 
 import aiohttp_jinja2
+import markdown
 import redis.asyncio as aioredis
 import sqlalchemy as sa
 from aiohttp import web
@@ -54,6 +58,73 @@ GUARDRAIL_FILTER_OPTIONS: list[tuple[str, str]] = [
     ("input_blocked", "Блокировка входного сообщения"),
     ("output_blocked", "Блокировка ответа"),
 ]
+HISTORY_FIRST_MESSAGE_PREVIEW_LENGTH = 150
+
+HISTORY_MARKDOWN_TAGS = {"p", "ul", "ol", "li", "strong", "em", "code", "pre"}
+HISTORY_MARKDOWN_VOID_TAGS = {"br"}
+HISTORY_MARKDOWN_LINK_PROTOCOLS = {"http", "https", "mailto"}
+
+
+class _HistoryMarkdownAllowlistParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.open_tags: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in HISTORY_MARKDOWN_VOID_TAGS:
+            self.parts.append(f"<{tag}>")
+            return
+        if tag == "a":
+            href = ""
+            for name, value in attrs:
+                if name == "href" and value:
+                    href = value.strip()
+                    break
+            parsed = urlparse(href)
+            if parsed.scheme not in HISTORY_MARKDOWN_LINK_PROTOCOLS:
+                return
+            escaped_href = html.escape(href, quote=True)
+            self.parts.append(
+                f'<a href="{escaped_href}" target="_blank" rel="noopener noreferrer" class="link link-primary">'
+            )
+            self.open_tags.append(tag)
+            return
+        if tag in HISTORY_MARKDOWN_TAGS:
+            self.parts.append(f"<{tag}>")
+            self.open_tags.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "a" and tag not in HISTORY_MARKDOWN_TAGS:
+            return
+        if tag not in self.open_tags:
+            return
+        while self.open_tags:
+            open_tag = self.open_tags.pop()
+            self.parts.append(f"</{open_tag}>")
+            if open_tag == tag:
+                break
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(html.escape(data))
+
+    def sanitized(self) -> str:
+        while self.open_tags:
+            self.parts.append(f"</{self.open_tags.pop()}>")
+        return "".join(self.parts)
+
+
+def _render_history_markdown(value: str | None) -> str:
+    escaped_markdown = html.escape(value or "", quote=False)
+    rendered = markdown.markdown(
+        escaped_markdown,
+        extensions=["fenced_code"],
+        output_format="html",
+    )
+    parser = _HistoryMarkdownAllowlistParser()
+    parser.feed(rendered)
+    parser.close()
+    return parser.sanitized()
 
 
 def _history_message_sources(row: ChatMsg) -> list[dict[str, object]]:
@@ -134,6 +205,39 @@ def _history_message_suggestions_error(row: ChatMsg) -> dict | None:
     return error if isinstance(error, dict) else None
 
 
+def _mark_inferred_selected_suggestions(messages: list[ChatMsg]) -> None:
+    next_user_text: str | None = None
+    for msg in reversed(messages):
+        if msg.role == "user":
+            next_user_text = (msg.text or "").strip()
+            continue
+        if (
+            msg.role != "assistant"
+            or msg.selected_suggested_action
+            or not msg.suggested_actions
+            or not next_user_text
+        ):
+            continue
+        if next_user_text in msg.suggested_actions:
+            msg.selected_suggested_action = {"text": next_user_text}
+
+
+def _history_chat_user_label(chat: Chat) -> str:
+    meta = chat.meta if isinstance(chat.meta, dict) else {}
+    name = (meta.get("name") or "").strip()
+    email = (meta.get("email") or "").strip()
+    if name and email:
+        return f"{name} ({email})"
+    return name or email or chat.user_uid
+
+
+def _history_first_message_preview(text: str | None) -> str:
+    value = re.sub(r"\s+", " ", text or "").strip()
+    if len(value) <= HISTORY_FIRST_MESSAGE_PREVIEW_LENGTH:
+        return value
+    return f"{value[:HISTORY_FIRST_MESSAGE_PREVIEW_LENGTH].rstrip()}..."
+
+
 async def _mark_deleted_history_sources(db, messages: list[ChatMsg]) -> None:
     page_urls = {
         source["page_url"]
@@ -183,10 +287,12 @@ async def history_list(request):
 
     per_page = 20
     search_query = request.query.get("search", "").strip()
+    legacy_identity_query = request.query.get("fingerprint", "").strip()
+    if not search_query and legacy_identity_query:
+        search_query = legacy_identity_query
     date_from_raw = request.query.get("date_from", "").strip()
     date_to_raw = request.query.get("date_to", "").strip()
     guardrail_reason = request.query.get("guardrail_reason", "").strip()
-    fingerprint = request.query.get("fingerprint", "").strip()
     valid_guardrail_reasons = {item[0] for item in GUARDRAIL_FILTER_OPTIONS}
     if guardrail_reason not in valid_guardrail_reasons:
         guardrail_reason = ""
@@ -270,15 +376,29 @@ async def history_list(request):
     search_filter = None
     if search_query:
         search_tsquery = sa.func.websearch_to_tsquery("simple", search_query)
+        identity_like = f"%{search_query}%"
         chat_search_text = (
             sa.func.coalesce(Chat.title, "")
             + sa.literal(" ")
             + sa.func.coalesce(Chat.user_uid, "")
+            + sa.literal(" ")
+            + sa.func.coalesce(Chat.meta["device_fingerprint"].astext, "")
+            + sa.literal(" ")
+            + sa.func.coalesce(Chat.meta["ip_address"].astext, "")
+            + sa.literal(" ")
+            + sa.func.coalesce(Chat.meta["name"].astext, "")
+            + sa.literal(" ")
+            + sa.func.coalesce(Chat.meta["email"].astext, "")
         )
         chat_vector = sa.func.to_tsvector("simple", chat_search_text)
         search_msg = aliased(ChatMsg)
+        msg_search_text = (
+            sa.func.coalesce(search_msg.text, "")
+            + sa.literal(" ")
+            + sa.func.coalesce(search_msg.full_context, "")
+        )
         msg_vector = sa.func.to_tsvector(
-            "simple", sa.func.coalesce(search_msg.text, "")
+            "simple", msg_search_text
         )
         search_in_messages = sa.exists(
             sa.select(sa.literal(1)).where(
@@ -289,6 +409,12 @@ async def history_list(request):
         )
         search_filter = sa.or_(
             chat_vector.op("@@")(search_tsquery),
+            Chat.title.ilike(identity_like),
+            Chat.user_uid.ilike(identity_like),
+            Chat.meta["device_fingerprint"].astext.ilike(identity_like),
+            Chat.meta["ip_address"].astext.ilike(identity_like),
+            Chat.meta["name"].astext.ilike(identity_like),
+            Chat.meta["email"].astext.ilike(identity_like),
             search_in_messages,
         )
 
@@ -320,11 +446,6 @@ async def history_list(request):
         total_query = total_query.where(Chat.created_at >= created_from)
     if created_to_exclusive is not None:
         total_query = total_query.where(Chat.created_at < created_to_exclusive)
-    if fingerprint:
-        total_query = total_query.where(
-            Chat.meta["device_fingerprint"].astext == fingerprint
-        )
-
     if guardrail_filter:
         total_query = total_query.having(sa.func.count(guardrail_case) > 0)
 
@@ -350,6 +471,17 @@ async def history_list(request):
         .where(aggregate_msg.chat_id == Chat.id)
         .scalar_subquery()
     )
+    first_user_msg = aliased(ChatMsg)
+    first_user_message = (
+        sa.select(first_user_msg.text)
+        .where(
+            first_user_msg.chat_id == Chat.id,
+            first_user_msg.role == "user",
+        )
+        .order_by(first_user_msg.created_at.asc(), first_user_msg.id.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
 
     stmt = (
         sa.select(
@@ -359,6 +491,7 @@ async def history_list(request):
             sa.func.count(guardrail_case).label("guardrail_hits"),
             message_count.label("message_count"),
             token_count.label("token_count"),
+            first_user_message.label("first_user_message"),
         )
         .outerjoin(
             ChatMsg, sa.and_(Chat.id == ChatMsg.chat_id, ChatMsg.role == "assistant")
@@ -389,9 +522,6 @@ async def history_list(request):
         stmt = stmt.where(Chat.created_at >= created_from)
     if created_to_exclusive is not None:
         stmt = stmt.where(Chat.created_at < created_to_exclusive)
-    if fingerprint:
-        stmt = stmt.where(Chat.meta["device_fingerprint"].astext == fingerprint)
-
     if guardrail_filter:
         stmt = stmt.having(sa.func.count(guardrail_case) > 0)
     result = await request["db"].execute(stmt)
@@ -409,6 +539,10 @@ async def history_list(request):
         chat.device_type = (chat.meta or {}).get("device_type")
         chat.device_fingerprint = (chat.meta or {}).get("device_fingerprint")
         chat.ip_address = (chat.meta or {}).get("ip_address")
+        chat.user_label = _history_chat_user_label(chat)
+        chat.first_user_message_preview = _history_first_message_preview(
+            row.first_user_message
+        )
         chats.append(chat)
 
     base_filters: dict[str, str] = {}
@@ -420,8 +554,6 @@ async def history_list(request):
         base_filters["date_to"] = date_to_value
     if guardrail_reason:
         base_filters["guardrail_reason"] = guardrail_reason
-    if fingerprint:
-        base_filters["fingerprint"] = fingerprint
 
     def _query_for_page(target_page: int):
         query = {}
@@ -457,7 +589,6 @@ async def history_list(request):
         "search_query": search_query,
         "date_from": date_from_value,
         "date_to": date_to_value,
-        "fingerprint": fingerprint,
     }
 
 
@@ -499,6 +630,7 @@ async def history_detail(request):
             msg.text_display = masked_text
         else:
             msg.text_display = msg.text
+            msg.text_html = _render_history_markdown(msg.text_display)
 
         reasons = []
         if msg.guardrail_reasons:
@@ -520,6 +652,9 @@ async def history_detail(request):
         msg.selected_suggested_action = None
         msg.suggested_actions_error = None
         msg.context_sources = _history_message_sources(msg)
+        msg.is_error = False
+        msg.error_kind = None
+        msg.request_id = None
         if msg.context_sources:
             msg.context_sources = await enrich_source_payloads(
                 request["db"],
@@ -538,12 +673,16 @@ async def history_detail(request):
                     else {}
                 )
                 msg.reason_code = policy.get("reason_code")
+                msg.error_kind = payload.get("error")
+                msg.request_id = payload.get("request_id")
+                msg.is_error = bool(msg.error_kind)
                 msg.suggested_actions, msg.selected_suggested_action = (
                     _history_message_suggestions(msg)
                 )
                 msg.suggested_actions_error = _history_message_suggestions_error(msg)
 
     await _mark_deleted_history_sources(request["db"], messages)
+    _mark_inferred_selected_suggestions(messages)
 
     return {
         "chat": chat,

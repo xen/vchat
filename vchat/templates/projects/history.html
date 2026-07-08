@@ -9,14 +9,14 @@
 <div class="card bg-base-100 shadow">
     <div class="card-body">
         <form method="get" action="{{ url('project_history') }}" class="mb-4 grid grid-cols-1 gap-3 md:grid-cols-6">
-            <label class="input input-bordered w-full flex items-center gap-2 md:col-span-2">
+            <label class="input input-bordered w-full flex items-center gap-2 md:col-span-3">
                 <iconify-icon icon="lucide:search" class="size-4 text-base-content/60"></iconify-icon>
                 <input
                     type="search"
                     name="search"
                     value="{{ search_query }}"
                     class="grow"
-                    placeholder="Поиск по чатам и сообщениям">
+                    placeholder="Поиск по сообщениям, пользователю, FP или IP">
             </label>
             <label class="input input-bordered w-full flex items-center gap-2">
                 <span class="text-sm text-base-content/70">От</span>
@@ -44,15 +44,6 @@
                     {% endfor %}
                 </select>
             </label>
-            <label class="input input-bordered w-full flex items-center gap-2">
-                <span class="text-sm text-base-content/70">FP</span>
-                <input
-                    type="text"
-                    name="fingerprint"
-                    value="{{ fingerprint }}"
-                    class="grow"
-                    placeholder="fingerprint">
-            </label>
             <div class="md:col-span-6 flex items-center gap-2">
                 <label class="label cursor-pointer gap-2">
                     <input
@@ -72,15 +63,19 @@
             <table class="table">
                 <thead>
                     <tr>
-                        <th>Пользователь</th>
+                        <th>Пользователь / FP / IP</th>
                         <th>Дата</th>
-                        <th>Fingerprint / IP</th>
+                        <th>Первое сообщение</th>
                         <th>Статистика</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for chat in chats %}
-                    <tr class="hover cursor-pointer" onclick="window.location.href='{{ url('project_history_detail', chat_id=chat.id) }}'">
+                    {% set detail_url = url('project_history_detail', chat_id=chat.id) %}
+                    <tr
+                        class="hover cursor-pointer"
+                        data-history-detail-url="{{ detail_url }}"
+                        onclick="if (!event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0 && !event.target.closest('a, button, input, select, textarea')) window.location.href = this.dataset.historyDetailUrl;">
                         <td>
                             <div class="flex items-center gap-3">
                                 {# <div class="avatar placeholder">
@@ -89,7 +84,30 @@
                                     </div>
                                 </div> #}
                                 <div>
-                                    <div class="font-bold">{{ chat.title or chat.user_uid }}</div>
+                                    <a href="{{ detail_url }}" class="link link-hover font-bold">{{ chat.user_label or chat.title or chat.user_uid }}</a>
+                                    <div class="mt-1 text-xs text-base-content/60">
+                                        {% if chat.device_fingerprint %}
+                                        <a
+                                            href="{{ url('project_history', query_={'search': chat.device_fingerprint}) }}"
+                                            class="link link-primary break-all">
+                                            {{ chat.device_fingerprint }}
+                                        </a>
+                                        {% else %}
+                                        <span class="opacity-40">—</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="text-xs text-base-content/60">
+                                        {% if chat.ip_address %}
+                                        <a
+                                            href="{{ url('project_history', query_={'search': chat.ip_address}) }}"
+                                            class="link link-primary break-all">
+                                            {{ chat.ip_address }}
+                                        </a>
+                                        {% else %}
+                                        <span class="opacity-40">—</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="text-xs text-base-content/60">{{ chat.browser or 'unknown' }} / {{ chat.device_type or 'unknown' }}</div>
                                     {% if chat.guardrail_triggered %}
                                     <span class="badge badge-warning badge-xs mt-1">guardrail</span>
                                     {% endif %}
@@ -98,18 +116,8 @@
                         </td>
                         <td>{{ chat.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>
-                            <div class="text-xs flex flex-col gap-1">
-                                {% if chat.device_fingerprint %}
-                                <a
-                                    href="{{ url('project_history', query_={'fingerprint': chat.device_fingerprint}) }}"
-                                    class="link link-primary break-all">
-                                    {{ chat.device_fingerprint }}
-                                </a>
-                                {% else %}
-                                <span class="opacity-40">—</span>
-                                {% endif %}
-                                <span class="opacity-60">{{ chat.ip_address or '—' }}</span>
-                                <span class="opacity-60">{{ chat.browser or 'unknown' }} / {{ chat.device_type or 'unknown' }}</span>
+                            <div class="max-w-md text-sm leading-snug text-base-content/80">
+                                {{ chat.first_user_message_preview or '—' }}
                             </div>
                         </td>
                         <td>

@@ -37,8 +37,16 @@ class _FakeProvider:
     id: str = "openai"
     supports_chat: bool = True
 
+    @property
+    def base_url(self) -> str:
+        return "https://api.example.local/v1"
+
     def request_meta(self) -> dict[str, Any]:
-        return {"api_key": "k", "base_url": "https://api.example.local/v1"}
+        return {"api_key": "k", "base_url": self.base_url}
+
+    async def chat_completion_bearer_token(self, session: Any) -> str:
+        _ = session
+        return "k"
 
 
 @dataclass
@@ -62,16 +70,16 @@ class _FakeCtx:
     model: _FakeModel
     system_prompt: str = "sys"
     error_message: str = "User-safe error"
-    suggestions_provider: _FakeProvider | None = None
-    suggestions_model: _FakeModel | None = None
+    aux_provider: _FakeProvider | None = None
+    aux_model: _FakeModel | None = None
     suggestions_enabled: bool = True
     suggestions_prompt: str = ""
 
     def __post_init__(self) -> None:
-        if self.suggestions_provider is None:
-            self.suggestions_provider = self.provider
-        if self.suggestions_model is None:
-            self.suggestions_model = self.model
+        if self.aux_provider is None:
+            self.aux_provider = self.provider
+        if self.aux_model is None:
+            self.aux_model = self.model
 
     @property
     def provider_id(self) -> str:
@@ -80,18 +88,6 @@ class _FakeCtx:
     @property
     def model_id(self) -> str:
         return self.model.id
-
-    @property
-    def suggestions_provider_id(self) -> str:
-        return (
-            self.suggestions_provider.id
-            if self.suggestions_provider
-            else self.provider_id
-        )
-
-    @property
-    def suggestions_model_id(self) -> str:
-        return self.suggestions_model.id if self.suggestions_model else self.model_id
 
     def request_meta(self) -> dict[str, Any]:
         return self.provider.request_meta()
@@ -483,13 +479,13 @@ def test_build_generation_context_appends_answer_format_policy_to_custom_prompt(
     assert ctx.error_message == "Custom error"
 
 
-def test_build_generation_context_uses_separate_suggestions_model(
+def test_build_generation_context_uses_separate_aux_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(chat_views.cfg, "chat_provider", "openai")
     monkeypatch.setattr(chat_views.cfg, "chat_model", "gpt-4o")
-    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_provider", "gigachat")
-    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_model", "GigaChat-2")
+    monkeypatch.setattr(chat_views.cfg, "chat_aux_provider", "gigachat")
+    monkeypatch.setattr(chat_views.cfg, "chat_aux_model", "GigaChat-2")
     monkeypatch.setattr(
         chat_views,
         "resolve_ai_settings",
@@ -503,17 +499,17 @@ def test_build_generation_context_uses_separate_suggestions_model(
 
     assert ctx.provider_id == "openai"
     assert ctx.model_id == "gpt-4o"
-    assert ctx.suggestions_provider_id == "gigachat"
-    assert ctx.suggestions_model_id == "GigaChat-2"
+    assert ctx.aux_provider.id == "gigachat"
+    assert ctx.aux_model.id == "GigaChat-2"
 
 
-def test_build_generation_context_requires_suggestions_settings(
+def test_build_generation_context_requires_aux_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(chat_views.cfg, "chat_provider", "openai")
     monkeypatch.setattr(chat_views.cfg, "chat_model", "gpt-4o")
-    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_provider", "")
-    monkeypatch.setattr(chat_views.cfg, "chat_suggestions_model", "")
+    monkeypatch.setattr(chat_views.cfg, "chat_aux_provider", "")
+    monkeypatch.setattr(chat_views.cfg, "chat_aux_model", "")
 
     with pytest.raises(ValueError):
         chat_views.build_generation_context()
@@ -596,8 +592,8 @@ async def test_generate_suggestions_returns_invalid_response_error() -> None:
     ctx = _FakeCtx(
         provider=_InvalidSuggestionsProvider(),
         model=_FakeModel(),
-        suggestions_provider=_InvalidSuggestionsProvider(),
-        suggestions_model=_FakeModel(id="suggestions-model"),
+        aux_provider=_InvalidSuggestionsProvider(),
+        aux_model=_FakeModel(id="suggestions-model"),
     )
 
     result = await chat_views.generate_suggestions(
@@ -912,8 +908,16 @@ async def test_ai_chat_stream_guardrails_client_mode(
     guardrails_client = SimpleNamespace(
         chat=SimpleNamespace(completions=_Completions())
     )
+    captured_guardrails_client: dict[str, Any] = {}
+
+    def _get_guardrails_client(**kwargs):
+        captured_guardrails_client.update(kwargs)
+        return guardrails_client
+
     monkeypatch.setattr(
-        chat_views, "get_guardrails_client", lambda api_key, base_url: guardrails_client
+        chat_views,
+        "get_guardrails_client",
+        _get_guardrails_client,
     )
 
     events = [
@@ -923,7 +927,11 @@ async def test_ai_chat_stream_guardrails_client_mode(
                 {"role": "developer", "content": "[context]\nctx"},
                 {"role": "user", "content": "hi"},
             ],
-            _FakeCtx(_FakeProvider(), _FakeModel()),
+            _FakeCtx(
+                _FakeProvider(),
+                _FakeModel(),
+                aux_model=_FakeModel(id="suggestions-model"),
+            ),
         )
     ]
 
@@ -945,10 +953,13 @@ async def test_ai_chat_stream_guardrails_client_mode(
     last = events[-1]
     assert last["event"] == "assistant_message"
     assert last["message"]["content"] == "Hello world"
-    assert captured_request["messages"][:2] == [
-        {"role": "system", "content": "sys\n\n[context]\nctx"},
-        {"role": "user", "content": "hi"},
-    ]
+    assert captured_request["messages"][0]["role"] == "system"
+    assert captured_request["messages"][0]["content"].startswith(
+        "sys\n\nСегодняшняя дата: "
+    )
+    assert captured_guardrails_client["model"] == "suggestions-model"
+    assert captured_request["messages"][0]["content"].endswith("\n\n[context]\nctx")
+    assert captured_request["messages"][1] == {"role": "user", "content": "hi"}
     assert captured_request["max_tokens"] == settings.cfg.chat_response_max_tokens
     assert all(
         message["role"] != "developer" for message in captured_request["messages"]
@@ -956,11 +967,69 @@ async def test_ai_chat_stream_guardrails_client_mode(
 
 
 @pytest.mark.asyncio
+async def test_ai_chat_stream_uses_provider_compatible_guardrails_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chat_views.cfg, "openai_guardrails_enabled", True)
+    captured_guardrails_client: dict[str, Any] = {}
+
+    async def _gen():
+        yield SimpleNamespace(
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    finish_reason=None,
+                    delta=SimpleNamespace(
+                        role="assistant",
+                        content="ok",
+                        refusal=None,
+                        tool_calls=[],
+                    ),
+                )
+            ],
+        )
+
+    class _Completions:
+        async def create(self, **kwargs):
+            _ = kwargs
+            return _gen()
+
+    guardrails_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=_Completions())
+    )
+
+    def _get_guardrails_client(**kwargs):
+        captured_guardrails_client.update(kwargs)
+        return guardrails_client
+
+    monkeypatch.setattr(chat_views, "get_guardrails_client", _get_guardrails_client)
+
+    events = [
+        event
+        async for event in chat_views.ai_chat_stream(
+            [{"role": "user", "content": "hi"}],
+            _FakeCtx(
+                _FakeGigaChatProvider(),
+                _FakeModel(id="GigaChat-2-Pro"),
+                aux_model=_FakeModel(id="GigaChat-2"),
+            ),
+        )
+    ]
+
+    assert events[-1]["event"] == "assistant_message"
+    assert captured_guardrails_client == {
+        "api_key": "access-token",
+        "base_url": "https://api.example.local/v1",
+        "model": "GigaChat-2",
+    }
+
+
+@pytest.mark.asyncio
 async def test_ai_chat_stream_raw_mode_and_error_branch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        chat_views, "get_guardrails_client", lambda api_key, base_url: None
+        chat_views, "get_guardrails_client", lambda **kwargs: None
     )
 
     lines = [
@@ -1061,10 +1130,10 @@ async def test_ai_chat_stream_raw_mode_and_error_branch(
     assert events[-1]["event"] == "assistant_message"
     assert events[-1]["message"]["content"] == "AB"
     posted_messages = session.posts[0]["json"]["messages"]
-    assert posted_messages[:2] == [
-        {"role": "system", "content": "sys\n\n[context]\nctx"},
-        {"role": "user", "content": "x"},
-    ]
+    assert posted_messages[0]["role"] == "system"
+    assert posted_messages[0]["content"].startswith("sys\n\nСегодняшняя дата: ")
+    assert posted_messages[0]["content"].endswith("\n\n[context]\nctx")
+    assert posted_messages[1] == {"role": "user", "content": "x"}
     assert (
         session.posts[0]["json"]["max_tokens"] == settings.cfg.chat_response_max_tokens
     )
@@ -1338,6 +1407,17 @@ async def test_websocket_sends_neutral_provider_response_error(
         "build_generation_context",
         lambda widget=None: _FakeCtx(_FakeProvider(), _FakeModel()),
     )
+    persisted_errors = []
+
+    async def _persist_chat_error_exchange(**kwargs):
+        persisted_errors.append(kwargs)
+        return 10, 11
+
+    monkeypatch.setattr(
+        chat_views,
+        "persist_chat_error_exchange",
+        _persist_chat_error_exchange,
+    )
 
     async def _provider_error(*, text: str, provider: Any) -> GuardrailDecision:
         _ = text, provider
@@ -1365,6 +1445,15 @@ async def test_websocket_sends_neutral_provider_response_error(
     assert "status" not in payload
     assert "openai" not in payload["error"]
     assert "provider secret response" not in str(payload)
+    assert persisted_errors == [
+        {
+            "user_text": "hello",
+            "assistant_text": "User-safe error",
+            "error": "provider_response_error",
+            "assistant_provider": "openai",
+            "assistant_model": "gpt-4o-mini",
+        }
+    ]
 
 
 @pytest.mark.asyncio

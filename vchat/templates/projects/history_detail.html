@@ -1,4 +1,81 @@
 {% extends "admin.html" %}
+{% block extramedia %}
+{{ super() }}
+<style>
+  .history-message-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .history-message-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .history-message-bubble {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .history-message-markdown {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .history-message-markdown a,
+  .history-message-markdown code {
+    overflow-wrap: anywhere;
+  }
+
+  .history-message-markdown p {
+    margin: 0.45rem 0;
+  }
+
+  .history-message-markdown ul,
+  .history-message-markdown ol {
+    margin: 0.45rem 0;
+    padding-inline-start: 1.25rem;
+  }
+
+  .history-message-markdown ul {
+    list-style: disc;
+  }
+
+  .history-message-markdown ol {
+    list-style: decimal;
+  }
+
+  .history-message-markdown li + li {
+    margin-top: 0.25rem;
+  }
+
+  .history-message-markdown pre {
+    margin: 0.5rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+    border-radius: 0.25rem;
+    background: color-mix(in oklab, currentColor 8%, transparent);
+    padding: 0.75rem;
+  }
+
+  .history-message-markdown code {
+    border-radius: 0.2rem;
+    background: color-mix(in oklab, currentColor 8%, transparent);
+    padding: 0.08rem 0.25rem;
+    font-size: 0.9em;
+  }
+
+  .history-message-markdown pre code {
+    background: transparent;
+    padding: 0;
+  }
+
+  .history-source-summary {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+</style>
+{% endblock %}
 {% block content %}
 
 <div class="flex flex-col gap-6">
@@ -22,7 +99,18 @@
                     <span class="font-medium">—</span>
                 {% endif %}
             </span>
-            <span class="break-all"><span class="opacity-70">IP:</span> <span class="font-medium">{{ chat_meta.ip_address or '—' }}</span></span>
+            <span class="break-all">
+                <span class="opacity-70">IP:</span>
+                {% if chat_meta.ip_address %}
+                    <a
+                        href="{{ url('project_history', query_={'search': chat_meta.ip_address}) }}"
+                        class="link link-primary font-medium">
+                        {{ chat_meta.ip_address }}
+                    </a>
+                {% else %}
+                    <span class="font-medium">—</span>
+                {% endif %}
+            </span>
             <span><span class="opacity-70">Браузер:</span> <span class="font-medium">{{ chat_meta.browser or 'unknown' }}</span></span>
             <span><span class="opacity-70">Устройство:</span> <span class="font-medium">{{ chat_meta.device_type or 'unknown' }}</span></span>
             {% if chat_meta.source_page_url %}
@@ -45,16 +133,14 @@
         <div class="card-body p-4 space-y-4">
             {% for msg in messages %}
                 {% set is_user = msg.role == 'user' %}
+                {% set bubble_tone = 'chat-bubble-error text-error-content' if msg.is_error else ('chat-bubble-primary' if not is_user else '') %}
                 <div class="chat {{ 'chat-start' if is_user else 'chat-end' }}">
-                    <div class="chat-header">
-                        {{ msg.role|title }}
-                        <time class="text-xs opacity-50">{{ msg.created_at.strftime('%H:%M:%S') }}</time>
-                    </div>
                     <div
-                        class="flex flex-col items-start gap-1"
-                        style="grid-column: {{ '1' if is_user else '2' }}; grid-row: 2; justify-self: {{ 'start' if is_user else 'end' }}; max-width: 90%;">
-                    <div class="chat-bubble {{ 'chat-bubble-primary' if not is_user else '' }} flex max-w-none flex-col gap-2">
-                        <div class="markdown-body">
+                        class="flex flex-col {{ 'items-start' if is_user else 'items-end' }} gap-1"
+                        style="grid-column: {{ '1' if is_user else '2' }}; grid-row: 2; justify-self: {{ 'start' if is_user else 'end' }}; width: min(90%, 42rem);">
+                    <div class="history-message-bubble chat-bubble {{ bubble_tone }} flex flex-col gap-2">
+                        <div
+                            class="markdown-body history-message-markdown">
                             {% if msg.has_masked_pii %}
                                 {% for segment in msg.text_segments %}
                                     {% if segment.masked %}
@@ -64,84 +150,95 @@
                                     {% endif %}
                                 {% endfor %}
                             {% else %}
-                            {{ msg.text_display or msg.text }}
+                            {{ msg.text_html|safe }}
                             {% endif %}
                         </div>
-                        {% if msg.guardrail_hit %}
-                        <div class="rounded border border-warning/30 bg-warning/10 px-3 py-2 text-xs">
-                            <div class="font-semibold text-warning">Сработал guardrail</div>
-                            {% if msg.guardrail_stage_display %}
-                            <div class="text-base-content/80 mt-1">Этап: {{ msg.guardrail_stage_display }}</div>
-                            {% endif %}
-                            {% if msg.guardrail_rules %}
-                            <div class="text-base-content/80 mt-1">Правила: {{ msg.guardrail_rules|join(', ') }}</div>
-                            {% endif %}
-                        </div>
+                        {% if msg.request_id and msg.request_id not in (msg.text_display or '') %}
+                        <div class="mt-2 text-xs opacity-70">Request ID: {{ msg.request_id }}</div>
                         {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 {{ 'justify-start' if is_user else 'justify-end' }}">
+                        <time class="text-xs opacity-50">{{ msg.created_at.strftime('%H:%M:%S') }}</time>
+                        {% if msg.vote is defined and msg.vote is not none %}
+                            {% if msg.vote is sameas true %}
+                            <span class="badge badge-success badge-sm px-1.5" title="Лайк">
+                                <iconify-icon icon="lucide:thumbs-up" class="size-3.5"></iconify-icon>
+                            </span>
+                            {% elif msg.vote is sameas false %}
+                            <span class="badge badge-error badge-sm px-1.5" title="Дизлайк">
+                                <iconify-icon icon="lucide:thumbs-down" class="size-3.5"></iconify-icon>
+                            </span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    {% if msg.guardrail_hit %}
+                    <div class="mt-2 w-full rounded border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-base-content">
+                        <div class="font-semibold text-warning">Сработал guardrail</div>
+                        {% if msg.guardrail_stage_display %}
+                        <div class="text-base-content/80 mt-1">Этап: {{ msg.guardrail_stage_display }}</div>
+                        {% endif %}
+                        {% if msg.guardrail_rules %}
+                        <div class="text-base-content/80 mt-1">Правила: {{ msg.guardrail_rules|join(', ') }}</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if msg.context_sources or msg.suggested_actions %}
+                    <div class="history-service-block mt-2 w-full rounded-box bg-base-100 px-3 py-3 text-xs text-base-content shadow-sm">
                         {% if msg.context_sources %}
-                        <div class="rounded border border-base-300 bg-base-100 px-3 py-3 text-xs text-base-content">
-                            <div class="flex items-center justify-between gap-3">
-                                <div class="font-semibold opacity-80">Структурированные источники</div>
-                                {% if msg.reason_code %}
-                                <span class="badge badge-outline badge-xs">{{ msg.reason_code }}</span>
+                        <div class="font-semibold opacity-80">Источники</div>
+                        <div class="mt-2 flex flex-col gap-1">
+                            {% for source in msg.context_sources %}
+                            <div class="px-3 py-1 text-base-content">
+                                {% if source.source_title %}
+                                <div class="text-[11px] font-medium uppercase tracking-wide opacity-60">{{ source.source_title }}</div>
+                                {% endif %}
+                                <div class="flex flex-wrap items-center gap-2 font-medium">
+                                    {% if source.page_url or source.uri %}
+                                    <a
+                                        href="{{ source.page_url or source.uri }}"
+                                        target="_blank"
+                                        rel="noopener"
+                                        class="link link-primary break-words">
+                                        {{ source.title or source.display_path or 'Страница' }}
+                                    </a>
+                                    {% else %}
+                                    <span class="break-words">{{ source.title or source.display_path or 'Страница' }}</span>
+                                    {% endif %}
+                                    {% if source.page_deleted %}
+                                    <span class="badge badge-warning badge-xs">удалена</span>
+                                    {% endif %}
+                                </div>
+                                {% set section_label = source.section_path or source.display_path %}
+                                {% if section_label and section_label != source.title %}
+                                <div class="mt-1 break-words opacity-70">{{ section_label }}</div>
+                                {% endif %}
+                                {% if source.summary %}
+                                <div class="history-source-summary mt-1 break-words opacity-80">{{ source.summary }}</div>
                                 {% endif %}
                             </div>
-                            <div class="mt-2 flex flex-col gap-2">
-                                {% for source in msg.context_sources %}
-                                <a
-                                    href="{{ source.page_url or source.uri }}"
-                                    target="_blank"
-                                    rel="noopener"
-                                    class="rounded-box border border-base-300 bg-base-100 px-3 py-2 text-base-content hover:border-primary/40">
-                                    <div class="flex items-center gap-2 font-medium">
-                                        <span>{{ source.display_path or source.title or 'Источник' }}</span>
-                                        {% if source.page_deleted %}
-                                        <span class="badge badge-warning badge-xs">удалена</span>
-                                        {% endif %}
-                                    </div>
-                                    {% if source.page_url or source.uri %}
-                                    <div class="mt-1 break-all font-mono text-[11px] opacity-70">
-                                        {{ source.page_url or source.uri }}
-                                    </div>
-                                    {% endif %}
-                                    <div class="mt-1 flex flex-wrap gap-2 opacity-70">
-                                        {% if source.kind %}
-                                        <span class="badge badge-outline badge-xs">{{ source.kind }}</span>
-                                        {% endif %}
-                                        {% if source.section_path %}
-                                        <span>{{ source.section_path }}</span>
-                                        {% endif %}
-                                    </div>
-                                </a>
-                                {% endfor %}
-                            </div>
+                            {% endfor %}
                         </div>
                         {% endif %}
                         {% if msg.suggested_actions %}
-                        <div class="rounded border border-base-300 bg-base-100 px-3 py-3 text-xs text-base-content">
-                            <div class="font-semibold opacity-80">Подсказки под ответом</div>
-                            <div class="mt-2 flex flex-col gap-1.5">
-                                {% for action in msg.suggested_actions %}
-                                {% set is_selected = msg.selected_suggested_action and msg.selected_suggested_action.text == action %}
-                                <div class="flex items-start gap-2 rounded border border-base-300 bg-base-100 px-2 py-1.5">
-                                    {% if is_selected %}
-                                    <span class="badge badge-primary badge-xs mt-0.5">выбрана</span>
-                                    {% else %}
-                                    <span class="badge badge-outline badge-xs mt-0.5">показана</span>
-                                    {% endif %}
-                                    <span class="break-words">{{ action }}</span>
-                                </div>
-                                {% endfor %}
+                        <div class="{{ 'mt-3' if msg.context_sources else '' }} font-semibold opacity-80">Подсказки</div>
+                        <div class="mt-2 flex flex-col gap-1.5">
+                            {% for action in msg.suggested_actions %}
+                            {% set is_selected = msg.selected_suggested_action and msg.selected_suggested_action.text == action %}
+                            <div class="flex items-start gap-2 rounded px-2 py-1.5 {{ 'bg-base-200' if is_selected else '' }}">
+                                {% if is_selected %}
+                                <iconify-icon icon="lucide:check-square" class="mt-0.5 size-4 shrink-0 text-primary"></iconify-icon>
+                                {% else %}
+                                <iconify-icon icon="lucide:circle" class="mt-1 size-3 shrink-0 text-base-content/40"></iconify-icon>
+                                {% endif %}
+                                <span class="break-words">{{ action }}</span>
                             </div>
-                            {% if msg.selected_suggested_action and msg.selected_suggested_action.user_msg_id %}
-                            <div class="mt-2 text-[11px] opacity-70">
-                                Следующее сообщение: #{{ msg.selected_suggested_action.user_msg_id }}
-                            </div>
-                            {% endif %}
+                            {% endfor %}
                         </div>
                         {% endif %}
-                        {% if msg.suggested_actions_error %}
-                        <div class="rounded border border-error/30 bg-error/10 px-3 py-3 text-xs text-base-content">
+                    </div>
+                    {% endif %}
+                    {% if msg.suggested_actions_error %}
+                    <div class="mt-2 w-full rounded border border-error/30 bg-error/10 px-3 py-3 text-xs text-base-content">
                             <div class="flex flex-wrap items-center gap-2">
                                 <div class="font-semibold text-error">Подсказки не сохранены</div>
                                 {% if msg.suggested_actions_error.kind %}
@@ -165,20 +262,6 @@
                                 {% endif %}
                             </div>
                         </div>
-                        {% endif %}
-                    </div>
-                    {% if msg.vote is defined and msg.vote is not none %}
-                    <div class="flex gap-2 items-center">
-                        {% if msg.vote is sameas true %}
-                        <span class="badge badge-success badge-sm px-1.5" title="Лайк">
-                            <iconify-icon icon="lucide:thumbs-up" class="size-3.5"></iconify-icon>
-                        </span>
-                        {% elif msg.vote is sameas false %}
-                        <span class="badge badge-error badge-sm px-1.5" title="Дизлайк">
-                            <iconify-icon icon="lucide:thumbs-down" class="size-3.5"></iconify-icon>
-                        </span>
-                        {% endif %}
-                    </div>
                     {% endif %}
                     </div>
                 </div>

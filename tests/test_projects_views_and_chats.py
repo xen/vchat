@@ -115,6 +115,7 @@ async def test_history_list_builds_pagination_and_filters() -> None:
                     guardrail_hits=1,
                     message_count=3,
                     token_count=42,
+                    first_user_message="Первое сообщение пользователя",
                 )
             ]
 
@@ -152,6 +153,7 @@ async def test_history_list_builds_pagination_and_filters() -> None:
                 "date_to": "2026/01",
                 "guardrail": "1",
                 "guardrail_reason": "passport_ru",
+                "fingerprint": "legacy-fp",
             }
             self.app = _App(router=_Router({"project_history": _Route("/history")}))
             self._store = {"db": _Db()}
@@ -172,9 +174,66 @@ async def test_history_list_builds_pagination_and_filters() -> None:
     assert payload["guardrail_filter"] is True
     assert payload["date_from"] == "2026/01"
     assert payload["date_to"] == "2026/03"
+    assert payload["search_query"] == "отпуск"
     assert payload["chats"][0].guardrail_triggered is True
     assert payload["chats"][0].message_count == 3
     assert payload["chats"][0].token_count == 42
+    assert payload["chats"][0].user_label == "u"
+    assert payload["chats"][0].first_user_message_preview == "Первое сообщение пользователя"
+
+
+@pytest.mark.asyncio
+async def test_history_list_uses_legacy_fingerprint_param_as_search() -> None:
+    class _RowsResult:
+        def all(self):
+            return []
+
+    class _Db:
+        async def scalar(self, stmt):
+            _ = stmt
+            return 0
+
+        async def execute(self, stmt):
+            _ = stmt
+            return _RowsResult()
+
+    class _Route:
+        def url_for(self):
+            return URL("/history")
+
+    class _HistoryReq:
+        query = {"fingerprint": "2405:9800:b671:daea:9486:4d0:ceb0:ed15"}
+        app = SimpleNamespace(router={"project_history": _Route()})
+        _store = {"db": _Db()}
+
+        def __getitem__(self, item):
+            return self._store[item]
+
+    raw = chats_views.history_list.__wrapped__.__wrapped__.__wrapped__
+    payload = await raw(_HistoryReq())
+
+    assert payload["search_query"] == "2405:9800:b671:daea:9486:4d0:ceb0:ed15"
+
+
+def test_history_chat_user_label_prefers_passed_widget_user() -> None:
+    chat = SimpleNamespace(
+        user_uid="user-123",
+        meta={"name": "Иван Иванов", "email": "ivan@example.com"},
+    )
+    guest_chat = SimpleNamespace(user_uid="guest_12345678", meta={})
+
+    assert chats_views._history_chat_user_label(chat) == "Иван Иванов (ivan@example.com)"
+    assert chats_views._history_chat_user_label(guest_chat) == "guest_12345678"
+
+
+def test_history_first_message_preview_normalizes_and_truncates() -> None:
+    text = "  первое\nсообщение  " + ("а" * 170)
+    preview = chats_views._history_first_message_preview(text)
+
+    assert "\n" not in preview
+    assert "  " not in preview
+    assert len(preview) <= 153
+    assert preview.endswith("...")
 
 
 @pytest.mark.asyncio
@@ -343,7 +402,13 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
         loader=jinja2.ChoiceLoader(
             [
                 jinja2.DictLoader(
-                    {"admin.html": "{% block content %}{% endblock %}"}
+                    {
+                        "admin.html": (
+                            "{% block extramedia %}{% endblock %}"
+                            "{% block content %}{% endblock %}"
+                            "{% block extra_bottom %}{% endblock %}"
+                        )
+                    }
                 ),
                 jinja2.FileSystemLoader(str(templates_dir)),
             ]
@@ -352,10 +417,10 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
     )
     env.globals.update(
         _=lambda value: value,
-        url=lambda name, **kwargs: URL(
-            f"/history/{kwargs['chat_id']}"
+        url=lambda name, **kwargs: (
+            URL(f"/history/{kwargs['chat_id']}")
             if name == "project_history_detail"
-            else "/history"
+            else URL("/history").with_query(kwargs.get("query_") or {})
         ),
     )
     now = datetime(2026, 5, 31, 15, 30, 43, tzinfo=timezone.utc)
@@ -364,19 +429,39 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
             role="assistant",
             created_at=now,
             has_masked_pii=False,
-            text_display="Ответ",
-            text="Ответ",
+            text_display="**Ответ**\n\n- пункт",
+            text_html="<p><strong>Ответ</strong></p><ul><li>пункт</li></ul>",
+            text="**Ответ**\n\n- пункт",
             guardrail_hit=False,
-            context_sources=[],
+            context_sources=[
+                {
+                    "source_title": "Friendly Docs",
+                    "title": "Doc A",
+                    "display_path": "Doc A / Section",
+                    "page_url": "https://docs.example.com/a",
+                    "uri": "https://docs.example.com/a",
+                    "section_path": "Section",
+                    "summary": "Короткое описание страницы.",
+                    "page_deleted": False,
+                }
+            ],
+            reason_code="ok",
             vote=True,
-            suggested_actions=[],
-            selected_suggested_action=None,
+            suggested_actions=[
+                "Какие образовательные проекты поддерживает фонд?",
+                "Какие конкурсы и гранты организует фонд?",
+                "Какие международные проекты реализуются совместно с фондом?",
+            ],
+            selected_suggested_action={
+                "text": "Какие образовательные проекты поддерживает фонд?",
+            },
         ),
         SimpleNamespace(
             role="assistant",
             created_at=now,
             has_masked_pii=False,
             text_display="Ответ",
+            text_html="<p>Ответ</p>",
             text="Ответ",
             guardrail_hit=False,
             context_sources=[],
@@ -402,7 +487,7 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
 
     rendered = env.get_template("projects/history_detail.html").render(
         chat=SimpleNamespace(id="chat-1", title="Demo", user_uid="u", created_at=now),
-        chat_meta={},
+        chat_meta={"ip_address": "2405:9800:b671:daea:9486:4d0:ceb0:ed15"},
         messages=messages,
     )
 
@@ -414,14 +499,124 @@ def test_history_detail_template_renders_vote_icons_without_feedback_text() -> N
     assert 'style="width: 90%' not in rendered
     assert "chat-footer" not in rendered
     assert "justify-self: stretch" not in rendered
-    assert "Подсказки под ответом" in rendered
+    assert "history-message-bubble chat-bubble" in rendered
+    assert "width: 100%" in rendered
+    assert "overflow-wrap: normal" in rendered
+    assert "width: min(90%, 42rem)" in rendered
+    assert ">Assistant<" not in rendered
+    assert ">User<" not in rendered
+    assert "chat-header" not in rendered
+    assert '<time class="text-xs opacity-50">15:30:43</time>' in rendered
+    assert rendered.index('<time class="text-xs opacity-50">15:30:43</time>') < rendered.index("Источники")
+    assert rendered.index('icon="lucide:thumbs-up"') < rendered.index("Источники")
+    assert "/static/chat/chat.js" not in rendered
+    assert "history-markdown.js" not in rendered
+    assert "data-history-markdown" not in rendered
+    assert "<strong>Ответ</strong>" in rendered
+    assert "<ul><li>пункт</li></ul>" in rendered
+    assert "search=2405:9800:b671:daea:9486:4d0:ceb0:ed15" in rendered
+    assert "Источники" in rendered
+    assert "Связанные страницы" not in rendered
+    assert "Структурированные источники" not in rendered
+    assert ">ok<" not in rendered
+    assert "Friendly Docs" in rendered
+    assert "Doc A" in rendered
+    assert "Короткое описание страницы." in rendered
+    assert "mt-2 flex flex-col gap-1" in rendered
+    assert "px-3 py-1 text-base-content" in rendered
+    assert "border-b border-base-200" not in rendered
+    assert "rounded-box bg-base-200 px-3 py-2 text-base-content" not in rendered
+    assert "history-source-summary" in rendered
+    assert "-webkit-line-clamp: 2" in rendered
+    assert "font-mono" not in rendered
+    assert "Подсказки" in rendered
+    assert "Подсказки под ответом" not in rendered
+    assert "history-service-block" in rendered
+    assert "mt-0 rounded-t-none" not in rendered
+    assert rendered.count("history-service-block") == 2
+    assert "border-t border-base-200" not in rendered
     assert "Какие программы фонда связаны с этим ответом?" in rendered
-    assert "выбрана" in rendered
-    assert "Следующее сообщение: #22" in rendered
+    assert 'icon="lucide:check-square"' in rendered
+    assert 'icon="lucide:circle"' in rendered
+    assert "выбрана" not in rendered
+    assert "показана" not in rendered
+    assert "Следующее сообщение" not in rendered
     assert "Подсказки не сохранены" in rendered
     assert "invalid_response" in rendered
     assert "GigaChat-2" in rendered
     assert "{&#34;actions&#34;:[&#34;one&#34;]}" in rendered
+
+
+def test_history_detail_template_renders_chat_error_like_widget() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader(
+                    {"admin.html": "{% block content %}{% endblock %}"}
+                ),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: (
+            URL(f"/history/{kwargs['chat_id']}")
+            if name == "project_history_detail"
+            else URL("/history").with_query(kwargs.get("query_") or {})
+        ),
+    )
+    now = datetime(2026, 7, 8, 17, 41, 53, tzinfo=timezone.utc)
+
+    rendered = env.get_template("projects/history_detail.html").render(
+        chat=SimpleNamespace(id="chat-1", title="Demo", user_uid="u", created_at=now),
+        chat_meta={},
+        messages=[
+            SimpleNamespace(
+                role="assistant",
+                created_at=now,
+                has_masked_pii=False,
+                text_display="Извините, сейчас не удалось получить ответ.",
+                text_html=chats_views._render_history_markdown(
+                    "Извините, сейчас не удалось получить ответ."
+                ),
+                text="Извините, сейчас не удалось получить ответ.",
+                guardrail_hit=False,
+                context_sources=[],
+                suggested_actions=[],
+                suggested_actions_error=None,
+                vote=None,
+                is_error=True,
+                request_id="f6924e151d76be0992d6cffc2feca285",
+            )
+        ],
+    )
+
+    assert "chat-bubble-error text-error-content" in rendered
+    assert "Request ID: f6924e151d76be0992d6cffc2feca285" in rendered
+    assert "Источники" not in rendered
+
+
+def test_history_detail_infers_selected_suggestion_from_next_user_message() -> None:
+    assistant = SimpleNamespace(
+        role="assistant",
+        suggested_actions=[
+            "Расскажи подробнее, как ты проводишь день, когда у тебя отличное настроение?",
+            "Другой вариант",
+        ],
+        selected_suggested_action=None,
+    )
+    user = SimpleNamespace(
+        role="user",
+        text="Расскажи подробнее, как ты проводишь день, когда у тебя отличное настроение?",
+    )
+
+    chats_views._mark_inferred_selected_suggestions([assistant, user])
+
+    assert assistant.selected_suggested_action == {
+        "text": "Расскажи подробнее, как ты проводишь день, когда у тебя отличное настроение?"
+    }
 
 
 def test_default_suggestions_prompt_requires_three_new_next_steps() -> None:
@@ -839,6 +1034,80 @@ def test_active_chats_open_history_detail_instead_of_chat_page() -> None:
     assert "/chat/chat-1" not in rendered
 
 
+def test_history_list_rows_keep_open_in_new_tab_link_behavior() -> None:
+    templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.ChoiceLoader(
+            [
+                jinja2.DictLoader({"admin.html": "{% block content %}{% endblock %}"}),
+                jinja2.FileSystemLoader(str(templates_dir)),
+            ]
+        ),
+        autoescape=True,
+    )
+    env.globals.update(
+        url=lambda name, **kwargs: (
+            URL(f"/history/{kwargs['chat_id']}")
+            if name == "project_history_detail"
+            else URL("/history").with_query(kwargs.get("query_") or {})
+        ),
+    )
+
+    rendered = env.get_template("projects/history.html").render(
+        chats=[
+            SimpleNamespace(
+                id="chat-1",
+                title="History chat",
+                user_uid="guest_12345678",
+                created_at=datetime(2026, 1, 1, 12, 30),
+                guardrail_triggered=False,
+                device_fingerprint="fp-1",
+                ip_address="127.0.0.1",
+                browser="Chrome",
+                device_type="desktop",
+                user_label="Иван Иванов",
+                first_user_message_preview=(
+                    "Расскажи подробнее, как ты проводишь день, когда у тебя отличное настроение?"
+                ),
+                message_count=2,
+                token_count=42,
+                upvotes=0,
+                downvotes=0,
+            )
+        ],
+        search_query="",
+        date_from="",
+        date_to="",
+        guardrail_filter_options=[],
+        guardrail_reason="",
+        guardrail_filter=False,
+        pagination=SimpleNamespace(
+            total=1,
+            range_start=1,
+            range_end=1,
+            total_pages=1,
+        ),
+    )
+
+    assert 'href="/history/chat-1"' in rendered
+    assert 'data-history-detail-url="/history/chat-1"' in rendered
+    assert "Пользователь / FP / IP" in rendered
+    assert "Fingerprint / IP" not in rendered
+    assert "Первое сообщение" in rendered
+    assert "Иван Иванов" in rendered
+    assert "fp-1" in rendered
+    assert "127.0.0.1" in rendered
+    assert "search=127.0.0.1" in rendered
+    assert "search=fp-1" in rendered
+    assert "Расскажи подробнее, как ты проводишь день" in rendered
+    assert "Поиск по сообщениям, пользователю, FP или IP" in rendered
+    assert "name=\"fingerprint\"" not in rendered
+    assert "event.ctrlKey" in rendered
+    assert "event.metaKey" in rendered
+    assert "event.target.closest('a, button, input, select, textarea')" in rendered
+    assert "window.location.href=&#39;/history/chat-1&#39;" not in rendered
+
+
 def test_public_chat_template_exposes_widget_accessibility_contracts() -> None:
     templates_dir = Path(__file__).resolve().parents[1] / "vchat" / "templates"
     env = jinja2.Environment(
@@ -1147,16 +1416,33 @@ def test_history_detail_template_escapes_stored_chat_html() -> None:
                 created_at=now,
                 has_masked_pii=False,
                 text_display="<script>alert('I am evil')</script>",
+                text_html=chats_views._render_history_markdown(
+                    "<script>alert('I am evil')</script>"
+                ),
                 text="<script>alert('I am evil')</script>",
                 guardrail_hit=False,
                 context_sources=[],
+                suggested_actions=[],
                 vote=None,
             )
         ],
     )
 
     assert "<script>alert" not in rendered
-    assert "&lt;script&gt;alert(&#39;I am evil&#39;)&lt;/script&gt;" in rendered
+    assert "&lt;script&gt;alert(&#x27;I am evil&#x27;)&lt;/script&gt;" in rendered
+    assert "data-history-markdown" not in rendered
+
+
+def test_render_history_markdown_keeps_safe_subset_and_rejects_unsafe_links() -> None:
+    rendered = chats_views._render_history_markdown(
+        "**Жирный**\n\n- пункт\n\n[ok](https://example.com)\n\n[x](javascript:alert(1))"
+    )
+
+    assert "<strong>Жирный</strong>" in rendered
+    assert "<ul>" in rendered and "<li>пункт</li>" in rendered
+    assert 'href="https://example.com"' in rendered
+    assert "javascript:alert" not in rendered
+    assert ">x</a>" not in rendered
 
 
 def test_document_pipeline_steps_returns_error_description() -> None:
