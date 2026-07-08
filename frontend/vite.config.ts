@@ -36,6 +36,7 @@ const input = {
       file,
     ]),
   ),
+  auth: resolve(__dirname, "src/auth.js"),
   index: resolve(__dirname, "src/index.js"),
 };
 
