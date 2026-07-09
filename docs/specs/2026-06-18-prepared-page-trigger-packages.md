@@ -29,7 +29,7 @@
 
 - `AGENTS.md`: правила проекта, запрет удаленного серверного доступа без явного
   запроса, Python tooling только через `venv/bin/...`.
-- `kb/index.md`, `kb/workflow.md`: широкие задачи фиксируются в `specs/`.
+- `kb/index.md`, `kb/workflow.md`: широкие задачи фиксируются в `docs/specs/`.
 - `kb/backend.md`, `kb/invariants.md`: публичный виджет не должен ходить в
   глобальную базу знаний без явного source scope.
 - `kb/frontend.md`: `frontend_chat/` и `vchat/templates/js/widget.js` относятся

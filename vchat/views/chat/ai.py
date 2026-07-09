@@ -348,7 +348,7 @@ class BaseAIProvider:
                 [rendered_prompt, self.chat_completion_format_instruction]
             )
         payload: dict[str, Any] = {
-            "model": ctx.suggestions_model.id,
+            "model": ctx.aux_model.id,
             "messages": [{"role": "user", "content": rendered_prompt}],
             "temperature": self.chat_completion_temperature,
             "max_tokens": self.chat_completion_max_tokens,
