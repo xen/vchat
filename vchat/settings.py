@@ -85,8 +85,8 @@ class AppConfig(BaseModel):
 
     chat_provider: str = "gigachat"
     chat_model: str = "GigaChat-2-Pro"
-    chat_suggestions_provider: str = "gigachat"
-    chat_suggestions_model: str = "GigaChat-2"
+    chat_aux_provider: str = "gigachat"
+    chat_aux_model: str = "GigaChat-2"
     chat_response_max_tokens: int = Field(900, ge=1)
     chat_suggestions_max_context_chars: int = Field(3000, ge=1)
     llm_request_timeout_seconds: float = Field(60.0, gt=0)

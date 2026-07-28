@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -23,11 +24,12 @@ from vchat.settings import cfg
 logger = logging.getLogger("vchat.views.chat.guardrails")
 
 _cached_client: Any | None = None
-_cached_key: tuple[str, str] | None = None
+_cached_key: tuple[str, str, str] | None = None
 _presidio_analyzer: Any | None = None
 _presidio_anonymizer: Any | None = None
+_AUX_MODEL_PLACEHOLDER = "__aux_model__"
 
-_OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
+_OPENAI_GUARDRAILS_PIPELINE_TEMPLATE: dict[str, Any] = {
     "version": 1,
     "pre_flight": {
         "version": 1,
@@ -73,7 +75,7 @@ _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
                 "name": "Prompt Injection Detection",
                 "config": {
                     "confidence_threshold": 0.7,
-                    "model": "gpt-4.1-mini",
+                    "model": _AUX_MODEL_PLACEHOLDER,
                     "include_reasoning": False,
                 },
             },
@@ -86,7 +88,7 @@ _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
                 "name": "Jailbreak",
                 "config": {
                     "confidence_threshold": 0.7,
-                    "model": "gpt-4.1-mini",
+                    "model": _AUX_MODEL_PLACEHOLDER,
                     "include_reasoning": False,
                 },
             },
@@ -94,11 +96,14 @@ _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
                 "name": "Custom Prompt Check",
                 "config": {
                     "confidence_threshold": 0.7,
-                    "model": "gpt-4.1-mini",
+                    "model": _AUX_MODEL_PLACEHOLDER,
                     "system_prompt_details": (
-                        "Ты ассистент клиентской поддержки. Срабатывай, если "
-                        "вопросы не относятся к обращениям клиентов, поддержке "
-                        "продукта и вопросам, связанным с сервисом."
+                        "Ты доменный ассистент чат-виджета. Разрешай вопросы, "
+                        "которые относятся к системному промпту виджета, текущей "
+                        "странице, подключенным источникам, базе знаний, "
+                        "документации, обучающим материалам, продукту, сервису "
+                        "или клиентской поддержке. Срабатывай только если запрос "
+                        "явно не связан с этим доменом."
                     ),
                     "include_reasoning": False,
                 },
@@ -112,7 +117,7 @@ _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
                 "name": "NSFW Text",
                 "config": {
                     "confidence_threshold": 0.7,
-                    "model": "gpt-4.1-mini",
+                    "model": _AUX_MODEL_PLACEHOLDER,
                     "include_reasoning": False,
                 },
             },
@@ -120,7 +125,7 @@ _OPENAI_GUARDRAILS_PIPELINE: dict[str, Any] = {
                 "name": "Prompt Injection Detection",
                 "config": {
                     "confidence_threshold": 0.7,
-                    "model": "gpt-4.1-mini",
+                    "model": _AUX_MODEL_PLACEHOLDER,
                     "include_reasoning": False,
                 },
             },
@@ -136,18 +141,34 @@ class GuardrailDecision:
     message: str | None = None
 
 
-def get_guardrails_client(*, api_key: str, base_url: str) -> Any | None:
+def build_openai_guardrails_pipeline(*, model: str) -> dict[str, Any]:
+    pipeline = deepcopy(_OPENAI_GUARDRAILS_PIPELINE_TEMPLATE)
+    for stage in ("pre_flight", "input", "output"):
+        for guardrail in pipeline[stage]["guardrails"]:
+            config = guardrail.get("config")
+            if isinstance(config, dict) and "model" in config:
+                config["model"] = model
+    return pipeline
+
+
+def get_guardrails_client(
+    *,
+    api_key: str,
+    base_url: str,
+    model: str,
+) -> Any | None:
     if not cfg.openai_guardrails_enabled:
         return None
 
     global _cached_client, _cached_key
-    key = (api_key, base_url)
+    key = (api_key, base_url, model)
     if _cached_client is not None and _cached_key == key:
         return _cached_client
 
+    pipeline = build_openai_guardrails_pipeline(model=model)
     try:
         _cached_client = GuardrailsAsyncOpenAI(
-            config=_OPENAI_GUARDRAILS_PIPELINE,
+            config=pipeline,
             raise_guardrail_errors=False,
             api_key=api_key,
             base_url=base_url,

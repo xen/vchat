@@ -626,13 +626,132 @@ async def fulltext_supply(
         return []
 
     profile = queryprofile(prompt_text)
-    query_text = profile["lexical_query"]
-    logger.info("FTS query rewrite: %r -> %r", prompt_text, query_text)
+    query_text = prompt_text.strip()
+    chunk_candidate_limit = max(top_m * 6, 100)
+    page_candidate_limit = max(top_m * 4, 50)
+    page_chunks_per_page = 3
+    logger.info("pg_search query rewrite: %r -> %r", prompt_text, query_text)
 
     sql = sa.text(
         """
-        WITH candidates AS (
-            SELECT c.id, c.text, NULL::varchar AS chat_id, c.page_id AS document_id, c.chunk_ix,
+        WITH page_field_hits AS (
+            SELECT p.id AS page_id,
+                   pdb.score(p.id)::float8 AS page_score
+            FROM page p
+            WHERE p.status_error IS NULL
+              AND (p.content_value IS NULL OR p.content_value > 0.1)
+              AND (:source_filter_disabled = true OR p.source_id = ANY(:source_ids))
+              AND p.title ||| :q
+            UNION ALL
+            SELECT p.id AS page_id,
+                   pdb.score(p.id)::float8 AS page_score
+            FROM page p
+            WHERE p.status_error IS NULL
+              AND (p.content_value IS NULL OR p.content_value > 0.1)
+              AND (:source_filter_disabled = true OR p.source_id = ANY(:source_ids))
+              AND p.uri_slug ||| :q
+            UNION ALL
+            SELECT p.id AS page_id,
+                   pdb.score(p.id)::float8 AS page_score
+            FROM page p
+            WHERE p.status_error IS NULL
+              AND (p.content_value IS NULL OR p.content_value > 0.1)
+              AND (:source_filter_disabled = true OR p.source_id = ANY(:source_ids))
+              AND p.content ||| :q
+        ),
+        page_hits AS (
+            SELECT page_id,
+                   max(page_score) AS page_score
+            FROM page_field_hits
+            GROUP BY page_id
+            ORDER BY page_score DESC
+            LIMIT :page_candidate_limit
+        ),
+        chunk_field_hits AS (
+            SELECT c.id AS chunk_id,
+                   pdb.score(c.id)::float8 AS chunk_score
+            FROM chunk c
+            WHERE c.page_id IS NOT NULL
+              AND c.is_duplicate = false
+              AND c.header_text ||| :q
+            UNION ALL
+            SELECT c.id AS chunk_id,
+                   pdb.score(c.id)::float8 AS chunk_score
+            FROM chunk c
+            WHERE c.page_id IS NOT NULL
+              AND c.is_duplicate = false
+              AND c.section_path ||| :q
+            UNION ALL
+            SELECT c.id AS chunk_id,
+                   pdb.score(c.id)::float8 AS chunk_score
+            FROM chunk c
+            WHERE c.page_id IS NOT NULL
+              AND c.is_duplicate = false
+              AND c.entity_terms_text ||| :q
+            UNION ALL
+            SELECT c.id AS chunk_id,
+                   pdb.score(c.id)::float8 AS chunk_score
+            FROM chunk c
+            WHERE c.page_id IS NOT NULL
+              AND c.is_duplicate = false
+              AND c.text ||| :q
+        ),
+        chunk_hits AS (
+            SELECT chunk_field_hits.chunk_id,
+                   max(chunk_field_hits.chunk_score) AS chunk_score
+            FROM chunk_field_hits
+            JOIN chunk c ON c.id = chunk_field_hits.chunk_id
+            JOIN page d ON c.page_id = d.id
+            WHERE d.status_error IS NULL
+              AND (d.content_value IS NULL OR d.content_value > 0.1)
+              AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
+            GROUP BY chunk_field_hits.chunk_id
+            ORDER BY chunk_score DESC
+            LIMIT :chunk_candidate_limit
+        ),
+        page_expanded AS (
+            SELECT ranked.chunk_id,
+                   ranked.page_score
+            FROM (
+                SELECT c.id AS chunk_id,
+                       ph.page_score,
+                       row_number() OVER (
+                           PARTITION BY c.page_id
+                           ORDER BY
+                               CASE
+                                   WHEN c.kind IN ('section_summary', 'summary', 'file_summary') THEN 0
+                                   WHEN c.kind IN ('table', 'table_rows') THEN 1
+                                   ELSE 2
+                               END,
+                               c.chunk_ix,
+                               c.id
+                       ) AS rn
+                FROM page_hits ph
+                JOIN chunk c ON c.page_id = ph.page_id
+                WHERE c.is_duplicate = false
+            ) ranked
+            WHERE ranked.rn <= :page_chunks_per_page
+        ),
+        combined AS (
+            SELECT hits.chunk_id,
+                   max(hits.chunk_score) AS chunk_score,
+                   max(hits.page_score) AS page_score
+            FROM (
+                SELECT chunk_id,
+                       chunk_score,
+                       NULL::float8 AS page_score
+                FROM chunk_hits
+                UNION ALL
+                SELECT chunk_id,
+                       NULL::float8 AS chunk_score,
+                       page_score
+                FROM page_expanded
+            ) hits
+            GROUP BY hits.chunk_id
+        ),
+        candidates AS (
+            SELECT c.id, c.text, NULL::varchar AS chat_id,
+                   c.page_id AS document_id, c.chunk_ix,
                    c.start_offset, c.end_offset, c.kind, c.header_text,
                    c.section_path, c.entity_terms, c.token_count,
                    NULL::float8 AS dist,
@@ -646,17 +765,15 @@ async def fulltext_supply(
                        ELSE 0
                    END AS kind_rank,
                    (
-                       ts_rank_cd(c.fts, websearch_to_tsquery('russian', :q))
-                       + ts_rank_cd(c.fts, websearch_to_tsquery('english', :q))
+                       coalesce(combined.chunk_score, 0.0)
+                       + (coalesce(combined.page_score, 0.0) * 0.35)
                    ) AS text_rank
-            FROM chunk c
-            LEFT JOIN page d ON c.page_id = d.id
+            FROM combined
+            JOIN chunk c ON c.id = combined.chunk_id
+            JOIN page d ON c.page_id = d.id
             WHERE c.page_id IS NOT NULL
-              AND (
-                   c.fts @@ websearch_to_tsquery('russian', :q)
-                OR c.fts @@ websearch_to_tsquery('english', :q)
-            )
               AND c.is_duplicate = false
+              AND d.status_error IS NULL
               AND (d.content_value IS NULL OR d.content_value > 0.1)
               AND (:source_filter_disabled = true OR d.source_id = ANY(:source_ids))
             ORDER BY kind_rank DESC, text_rank DESC, c.id DESC
@@ -693,12 +810,28 @@ async def fulltext_supply(
         ) AS summary_chunk ON true
         ORDER BY candidates.kind_rank DESC, candidates.text_rank DESC, candidates.id DESC
         """
+    ).bindparams(
+        sa.bindparam("q", type_=sa.Text()),
+        sa.bindparam("m", type_=sa.Integer()),
+        sa.bindparam("table_mode", type_=sa.Boolean()),
+        sa.bindparam("page_candidate_limit", type_=sa.Integer()),
+        sa.bindparam("chunk_candidate_limit", type_=sa.Integer()),
+        sa.bindparam("page_chunks_per_page", type_=sa.Integer()),
+        sa.bindparam("source_filter_disabled", type_=sa.Boolean()),
+        sa.bindparam("source_ids", type_=sa.ARRAY(sa.Integer())),
     )
     rows = (
         (
             await db.execute(
                 sql,
-                {"q": query_text, "m": top_m, "table_mode": profile["table_mode"]}
+                {
+                    "q": query_text,
+                    "m": top_m,
+                    "table_mode": profile["table_mode"],
+                    "page_candidate_limit": page_candidate_limit,
+                    "chunk_candidate_limit": chunk_candidate_limit,
+                    "page_chunks_per_page": page_chunks_per_page,
+                }
                 | {
                     "source_filter_disabled": allowed_source_ids is None,
                     "source_ids": allowed_source_ids or [],

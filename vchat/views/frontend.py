@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlsplit
 
 from jobs.crawler.tasks import crawl_page_task
+from jobs.indexing.search_fields import normalize_uri_slug
 from vchat.settings import REDIS_KEY, SIGNER_KEY, cfg
 from vchat.utils import json_response
 from vchat.models import Page, Source, WidgetIntegration
@@ -67,6 +68,7 @@ async def _discover_widget_page(
     page = Page(
         source_id=source.id,
         uri=uri,
+        uri_slug=normalize_uri_slug(uri),
         status=PageStatus.crawler,
         has_triggers=True,
         discover_by="widget",

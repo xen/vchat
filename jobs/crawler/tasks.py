@@ -46,6 +46,7 @@ from jobs.documents.content import (
     document_too_big_message,
     normalize_chunk_text_for_hash,
 )
+from jobs.indexing.search_fields import entity_terms_to_text, normalize_uri_slug
 from vchat.models.data import Chunk, CrawlRun, Page, PageShingle, Sitemap, Source
 from vchat.views.metrics import record_crawl_run
 from vchat.views.projects.page_status import (
@@ -731,6 +732,7 @@ def materialize_page_chunks(
                 header_text=chunk_data.header_text,
                 section_path=chunk_data.section_path,
                 entity_terms=chunk_data.entity_terms,
+                entity_terms_text=entity_terms_to_text(chunk_data.entity_terms),
                 token_count=chunk_data.token_count,
                 text=chunk_data.text,
                 text_hash=chunk_text_hash(chunk_data.text),
@@ -2325,6 +2327,7 @@ def _sync_sitemaps_for_source(session: Session, source_id: int) -> None:
                     page = Page(
                         source_id=page_source_id,
                         uri=page_url,
+                        uri_slug=normalize_uri_slug(page_url),
                         discover_by="sitemap",
                         discover_source=sm.url,
                     )

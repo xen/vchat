@@ -20,6 +20,7 @@ from jobs.indexing.documents import (
     raw_content_payload,
     sync_document_has_chunks,
 )
+from jobs.indexing.search_fields import normalize_uri_slug
 from jobs.documents.content import (
     content_sha256,
     document_too_big_message,
@@ -130,6 +131,7 @@ def get_or_create_page(
         page = Page(
             source_id=source_id,
             uri=uri,
+            uri_slug=normalize_uri_slug(uri),
             discover_by=discover_by,
             discover_source=discover_source,
         )
@@ -178,6 +180,7 @@ def sync_page_links(
                 target_page = Page(
                     source_id=target_source_id,
                     uri=target_uri,
+                    uri_slug=normalize_uri_slug(target_uri),
                     discover_by="page",
                     discover_source=source_page.uri,
                 )
@@ -614,6 +617,7 @@ class DatabasePipeline:
                     )
 
                 page.content = markdown_content
+                page.uri_slug = normalize_uri_slug(page.uri or url)
                 page.raw_content = raw_content
                 page.raw_content_size = raw_content_meta["size"]
                 page.raw_content_type = content_type
