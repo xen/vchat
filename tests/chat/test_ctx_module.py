@@ -88,7 +88,7 @@ async def test_context_supplies_apply_allowed_source_scope(
         ctx_mod,
         "queryprofile",
         lambda text: {
-            "lexical_query": text,
+            "lexical_query": f"{text} OR legacy rewrite",
             "table_mode": False,
         },
     )
@@ -107,9 +107,16 @@ async def test_context_supplies_apply_allowed_source_scope(
     )
 
     vector_kb_params = db.calls[0][1]
+    fulltext_sql = str(db.calls[1][0])
     fulltext_params = db.calls[1][1]
     assert vector_kb_params["source_filter_disabled"] is False
     assert vector_kb_params["source_ids"] == []
+    assert "pdb.score" in fulltext_sql
+    assert "||| :q" in fulltext_sql
+    assert "UNION ALL" in fulltext_sql
+    assert "ts_rank_cd" not in fulltext_sql
+    assert "websearch_to_tsquery" not in fulltext_sql
+    assert fulltext_params["q"] == "policy"
     assert fulltext_params["source_filter_disabled"] is False
     assert fulltext_params["source_ids"] == [7, 8]
 

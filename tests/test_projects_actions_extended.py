@@ -23,6 +23,48 @@ from vchat.widget_state import (
 from vchat.views.projects import views as project_views
 
 
+def test_queue_source_crawl_from_ui_reapplies_rules_before_crawl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queued_tasks = []
+    applied = []
+
+    class _Chain:
+        def apply_async(self):
+            applied.append(True)
+
+    monkeypatch.setattr(
+        project_views.reapply_source_rules_task,
+        "si",
+        lambda source_id: ("reapply", source_id),
+    )
+    monkeypatch.setattr(
+        project_views.sitemap_sync_task,
+        "si",
+        lambda source_id: ("sitemap", source_id),
+    )
+    monkeypatch.setattr(
+        project_views.crawl_source_task,
+        "si",
+        lambda source_id, **kwargs: ("crawl", source_id, kwargs),
+    )
+
+    def _chain(*tasks):
+        queued_tasks.extend(tasks)
+        return _Chain()
+
+    monkeypatch.setattr(project_views, "chain", _chain)
+
+    project_views._queue_source_crawl_from_ui(7)
+
+    assert queued_tasks == [
+        ("reapply", 7),
+        ("sitemap", 7),
+        ("crawl", 7, {"skip_sitemap_sync": True}),
+    ]
+    assert applied == [True]
+
+
 def _csv_rows(text: str) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(text)))
 

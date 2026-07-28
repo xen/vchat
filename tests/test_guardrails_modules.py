@@ -79,6 +79,7 @@ def test_get_guardrails_client_disabled(monkeypatch: pytest.MonkeyPatch) -> None
     client = guardrails.get_guardrails_client(
         api_key="k",
         base_url="https://example.com",
+        model="suggestions-model",
     )
     assert client is None
 
@@ -98,5 +99,37 @@ def test_get_guardrails_client_init_failure(
     client = guardrails.get_guardrails_client(
         api_key="k",
         base_url="https://example.com",
+        model="suggestions-model",
     )
     assert client is None
+
+
+def test_openai_guardrails_pipeline_uses_selected_model() -> None:
+    pipeline = guardrails.build_openai_guardrails_pipeline(model="suggestions-model")
+
+    configured_models = [
+        item["config"]["model"]
+        for stage in ("pre_flight", "input", "output")
+        for item in pipeline[stage]["guardrails"]
+        if "model" in item["config"]
+    ]
+
+    assert configured_models
+    assert set(configured_models) == {"suggestions-model"}
+    assert guardrails._AUX_MODEL_PLACEHOLDER not in str(pipeline)
+
+
+def test_custom_prompt_check_allows_widget_knowledge_domain() -> None:
+    input_guardrails = guardrails._OPENAI_GUARDRAILS_PIPELINE_TEMPLATE["input"][
+        "guardrails"
+    ]
+    custom_prompt_check = next(
+        item for item in input_guardrails if item["name"] == "Custom Prompt Check"
+    )
+
+    details = custom_prompt_check["config"]["system_prompt_details"]
+
+    assert "текущей странице" in details
+    assert "подключенным источникам" in details
+    assert "обучающим материалам" in details
+    assert "только если запрос явно не связан" in details

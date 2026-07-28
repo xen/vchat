@@ -119,16 +119,16 @@ class _FakeModel:
 class _FakeContext:
     provider: _FakeProvider
     model: _FakeModel
-    suggestions_provider: _FakeProvider | None = None
-    suggestions_model: _FakeModel | None = None
+    aux_provider: _FakeProvider | None = None
+    aux_model: _FakeModel | None = None
     suggestions_enabled: bool = True
     error_message: str = "User-safe error"
 
     def __post_init__(self) -> None:
-        if self.suggestions_provider is None:
-            self.suggestions_provider = self.provider
-        if self.suggestions_model is None:
-            self.suggestions_model = self.model
+        if self.aux_provider is None:
+            self.aux_provider = self.provider
+        if self.aux_model is None:
+            self.aux_model = self.model
 
     @property
     def provider_id(self) -> str:
@@ -137,18 +137,6 @@ class _FakeContext:
     @property
     def model_id(self) -> str:
         return self.model.id
-
-    @property
-    def suggestions_provider_id(self) -> str:
-        return (
-            self.suggestions_provider.id
-            if self.suggestions_provider
-            else self.provider_id
-        )
-
-    @property
-    def suggestions_model_id(self) -> str:
-        return self.suggestions_model.id if self.suggestions_model else self.model_id
 
 
 def _make_request() -> Any:

@@ -155,14 +155,18 @@ def test_openai_guardrails_cache_and_extract(
     one = guardrails.get_guardrails_client(
         api_key="k",
         base_url="https://example.com",
+        model="suggestions-model",
     )
     two = guardrails.get_guardrails_client(
         api_key="k",
         base_url="https://example.com",
+        model="suggestions-model",
     )
     assert one is two
     assert len(created) == 1
-    assert created[0]["config"] == guardrails._OPENAI_GUARDRAILS_PIPELINE
+    assert created[0]["config"] == guardrails.build_openai_guardrails_pipeline(
+        model="suggestions-model"
+    )
 
     stage, reason = guardrails.extract_tripwire_details(
         SimpleNamespace(

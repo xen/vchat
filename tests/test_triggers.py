@@ -221,14 +221,14 @@ def test_request_trigger_generation_passes_gigachat_ssl_setting(
     assert captured[1][1]["json"]["model"] == "GigaChat-2-Pro"
 
 
-def test_generate_trigger_texts_uses_suggestions_model(
+def test_generate_trigger_texts_uses_aux_model_instead_of_chat_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, str] = {}
-    monkeypatch.setattr(trigger_generation.cfg, "chat_provider", "openai")
-    monkeypatch.setattr(trigger_generation.cfg, "chat_model", "gpt-4o")
-    monkeypatch.setattr(trigger_generation.cfg, "chat_suggestions_provider", "gigachat")
-    monkeypatch.setattr(trigger_generation.cfg, "chat_suggestions_model", "GigaChat-2")
+    monkeypatch.setattr(trigger_generation.cfg, "chat_provider", "main-provider")
+    monkeypatch.setattr(trigger_generation.cfg, "chat_model", "main-model")
+    monkeypatch.setattr(trigger_generation.cfg, "chat_aux_provider", "aux-provider")
+    monkeypatch.setattr(trigger_generation.cfg, "chat_aux_model", "aux-model")
 
     class _Provider:
         id = "gigachat"
@@ -263,4 +263,4 @@ def test_generate_trigger_texts_uses_suggestions_model(
     )
 
     assert generate_trigger_texts_for_page(page) == ["Узнать подробнее"]
-    assert captured == {"provider": "gigachat", "model": "GigaChat-2"}
+    assert captured == {"provider": "aux-provider", "model": "aux-model"}
