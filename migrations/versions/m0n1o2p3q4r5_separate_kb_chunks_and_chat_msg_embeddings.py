@@ -41,6 +41,50 @@ def upgrade() -> None:
     op.drop_column("chunk", "chat_id")
     op.execute(
         """
+        CREATE OR REPLACE FUNCTION public.promote_duplicate_chunk_on_delete()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+            DECLARE
+                promoted_id integer;
+            BEGIN
+                IF OLD.is_duplicate = false
+                   AND OLD.text_hash IS NOT NULL
+                   AND OLD.page_id IS NOT NULL THEN
+                    SELECT id
+                    INTO promoted_id
+                    FROM chunk
+                    WHERE text_hash = OLD.text_hash
+                      AND is_duplicate = true
+                      AND page_id IS NOT NULL
+                      AND id <> OLD.id
+                    ORDER BY id
+                    LIMIT 1;
+
+                    IF promoted_id IS NOT NULL THEN
+                        UPDATE chunk
+                        SET
+                            is_duplicate = false,
+                            duplicate_of_chunk_id = NULL,
+                            embedding = OLD.embedding
+                        WHERE id = promoted_id;
+
+                        UPDATE chunk
+                        SET duplicate_of_chunk_id = promoted_id
+                        WHERE text_hash = OLD.text_hash
+                          AND is_duplicate = true
+                          AND page_id IS NOT NULL
+                          AND id <> promoted_id;
+                    END IF;
+                END IF;
+
+                RETURN OLD;
+            END;
+        $$;
+        """
+    )
+    op.execute(
+        """
         CREATE INDEX ix_chunk_embedding_kb_hnsw_cosine
         ON chunk
         USING hnsw (embedding vector_cosine_ops)
@@ -73,6 +117,53 @@ def downgrade() -> None:
     op.create_index("ix_chunk_msg_id", "chunk", ["msg_id"])
     op.create_index("ix_chunk_chat_id", "chunk", ["chat_id"])
     op.create_index("ix_chunk_chat_kind", "chunk", ["chat_id", "kind"])
+    op.execute(
+        """
+        CREATE OR REPLACE FUNCTION public.promote_duplicate_chunk_on_delete()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+            DECLARE
+                promoted_id integer;
+            BEGIN
+                IF OLD.is_duplicate = false
+                   AND OLD.text_hash IS NOT NULL
+                   AND OLD.chat_id IS NULL
+                   AND OLD.page_id IS NOT NULL THEN
+                    SELECT id
+                    INTO promoted_id
+                    FROM chunk
+                    WHERE text_hash = OLD.text_hash
+                      AND is_duplicate = true
+                      AND chat_id IS NULL
+                      AND page_id IS NOT NULL
+                      AND id <> OLD.id
+                    ORDER BY id
+                    LIMIT 1;
+
+                    IF promoted_id IS NOT NULL THEN
+                        UPDATE chunk
+                        SET
+                            is_duplicate = false,
+                            duplicate_of_chunk_id = NULL,
+                            embedding = OLD.embedding
+                        WHERE id = promoted_id;
+
+                        UPDATE chunk
+                        SET duplicate_of_chunk_id = promoted_id
+                        WHERE text_hash = OLD.text_hash
+                          AND is_duplicate = true
+                          AND chat_id IS NULL
+                          AND page_id IS NOT NULL
+                          AND id <> promoted_id;
+                    END IF;
+                END IF;
+
+                RETURN OLD;
+            END;
+        $$;
+        """
+    )
     op.execute(
         """
         CREATE INDEX ix_chunk_embedding_chat_hnsw_cosine

@@ -12,6 +12,7 @@ from cryptography.fernet import Fernet
 from pydantic import BaseModel, ValidationError, field_validator, model_validator
 
 from jobs.crawler.tasks import crawl_page_task
+from jobs.indexing.search_fields import normalize_uri_slug
 from vchat.settings import REDIS_KEY, cfg
 from vchat.utils import json_response
 from vchat.models import ApiClient, Page, Source
@@ -416,6 +417,7 @@ async def update_document(request: web.Request) -> web.Response:
         page = Page(
             source_id=source_id,
             uri=url,
+            uri_slug=normalize_uri_slug(url),
             status=PageStatus.crawler,
             status_error=None,
             discover_by="api",

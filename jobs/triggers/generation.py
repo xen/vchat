@@ -74,8 +74,8 @@ def build_trigger_generation_messages(page: Page) -> list[dict[str, str]]:
 
 def generate_trigger_texts_for_page(page: Page) -> list[str]:
     provider, model = resolve_ai_settings(
-        cfg.chat_suggestions_provider,
-        cfg.chat_suggestions_model,
+        cfg.chat_aux_provider,
+        cfg.chat_aux_model,
     )
     raw = request_trigger_generation(
         provider, model, build_trigger_generation_messages(page)

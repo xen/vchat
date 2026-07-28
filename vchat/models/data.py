@@ -6,7 +6,7 @@ import pycld2 as cld2
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey
-from sqlalchemy.dialects.postgresql import ENUM, JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import ENUM, JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -249,6 +249,12 @@ class Page(Base, Created, Updated):
         sa.String(64), nullable=True, index=True
     )
     title: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    uri_slug: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        default="",
+        server_default=sa.text("''"),
+    )
 
     # New crawler fields
     http_status: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
@@ -375,6 +381,12 @@ class Chunk(Base, Created, Updated):
         sa.ARRAY(sa.String()),
         nullable=True,
     )
+    entity_terms_text: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+        default="",
+        server_default=sa.text("''"),
+    )
     token_count: Mapped[int] = mapped_column(
         sa.Integer,
         nullable=False,
@@ -399,7 +411,6 @@ class Chunk(Base, Created, Updated):
         nullable=True,
         index=True,
     )
-    fts: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024), nullable=True)
 
 

@@ -591,8 +591,7 @@ CREATE TABLE public.widget_integration (
 '::text NOT NULL,
     footer_text text DEFAULT '<a href="https://vbudushee.ru/faq/">Пользовательское соглашение</a>.<br>Отправить Enter, новая строка Shift+Enter'::text NOT NULL,
     welcome_messages jsonb DEFAULT '[]'::jsonb NOT NULL,
-    waiting_messages jsonb DEFAULT '["Готовлю ответ"]'::jsonb NOT NULL,
-    trigger_templates jsonb DEFAULT '["Хотите узнать больше о {title}?","Помочь разобраться с {title}?","Есть вопросы по {title}?","Показать главное про {title}?","Обсудим детали страницы {title}?","Найти важное в {title}?"]'::jsonb NOT NULL
+    waiting_messages jsonb DEFAULT '["Готовлю ответ"]'::jsonb NOT NULL
 );
 
 
