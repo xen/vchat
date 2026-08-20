@@ -1308,7 +1308,6 @@ async def _load_llm_cache_context(request: web.Request) -> dict[str, Any]:
             sa.func.coalesce(sa.func.sum(LLMCacheEntry.potential_saved_tokens), 0)
         )
     )
-    await db_session.rollback()
     return {
         "active_section": str(request.app.router["project_llm_cache"].url_for()),
         "entries": entries,

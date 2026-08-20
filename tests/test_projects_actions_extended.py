@@ -178,6 +178,29 @@ class _DB:
         self.rollbacks += 1
 
 
+@pytest.mark.asyncio
+async def test_load_llm_cache_context_keeps_entries_loaded_for_template() -> None:
+    entry = SimpleNamespace(id=5, source_scope={"chunks_count": 2})
+    request = _Request(action="unused")
+    db = _DB(
+        scalar_values=[3, 2, 8, 5, 13],
+        execute_rows=[[entry]],
+    )
+    request["db"] = db
+
+    context = await project_views._load_llm_cache_context(request)
+
+    assert context["entries"] == [entry]
+    assert context["stats"] == {
+        "total_entries": 3,
+        "enabled_entries": 2,
+        "observed_total": 8,
+        "potential_saved_requests": 5,
+        "potential_saved_tokens": 13,
+    }
+    assert db.rollbacks == 0
+
+
 def _raw_project_action():
     return project_views.project_action.__wrapped__
 
