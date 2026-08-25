@@ -866,3 +866,38 @@ class TestReapplySourceRulesTask:
 
         assert updated == 0
         assert page.status_error == PageStatusError.excluded_ignored
+
+
+class TestRefreshProjectIndex:
+    def test_finds_pages_without_chunks_with_not_exists_query(self):
+        engine_mock = MagicMock()
+        session_mock = MagicMock()
+        redis_client = MagicMock()
+        session_mock.__enter__ = lambda s: session_mock
+        session_mock.__exit__ = MagicMock(return_value=False)
+        session_mock.execute.side_effect = [
+            MagicMock(scalars=lambda: MagicMock(all=lambda: [])),
+            MagicMock(scalars=lambda: MagicMock(all=lambda: [])),
+            MagicMock(scalars=lambda: MagicMock(all=lambda: [])),
+        ]
+
+        with (
+            patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
+            patch("jobs.crawler.tasks.Session", return_value=session_mock),
+            patch("jobs.crawler.tasks.redis.from_url", return_value=redis_client),
+        ):
+            from jobs.crawler import tasks as crawler_tasks
+
+            crawler_tasks.refresh_project_index()
+
+        stmt = session_mock.execute.call_args_list[0].args[0]
+        query = str(stmt)
+        assert "NOT (EXISTS" in query
+        assert "GROUP BY" not in query
+        assert "JOIN" not in query
+        session_mock.commit.assert_called_once()
+        engine_mock.dispose.assert_called_once()
+        redis_client.delete.assert_called_once_with(
+            crawler_tasks.REFRESH_PROJECT_INDEX_SCHEDULE_KEY
+        )
+        redis_client.close.assert_called_once()

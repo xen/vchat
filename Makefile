@@ -70,7 +70,7 @@ embedder: venv/bin/activate ## start dedicated embedder workers for this host
 embedder-worker: venv/bin/activate ## start a single dedicated embedder worker
 	@HOST=$$(hostname -s); \
 	NODE_NAME=$${EMBEDDER_NODENAME:-vchat-embedder-$${HOST}-$$$$-$${EMBEDDER_INSTANCE_INDEX:-1}@$${HOST}}; \
-	. venv/bin/activate && celery -A jobs.celery worker --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n "$$NODE_NAME"
+	. venv/bin/activate && celery -A jobs.celery worker --include=jobs.embedder.tasks --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n "$$NODE_NAME"
 
 celery_stop: venv/bin/activate ## stop celery
 	. venv/bin/activate && celery -A jobs.celery control shutdown

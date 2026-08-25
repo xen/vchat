@@ -95,7 +95,10 @@ embedding_ensure_pending_chunks_ttl_seconds: 120
 embedding_index_document_schedule_ttl_seconds: 21600
 page_shingle_insert_batch_size: 2000
 embedding_model_reset_after_documents: 20
-embedding_worker_instances: auto
+# A single model process is the safe default for a developer machine: the local
+# model artifact is large and each worker loads its own copy.  Raise this only
+# through an explicit environment-specific override after measuring RAM usage.
+embedding_worker_instances: 1
 embedding_worker_cpu_reserve: 1
 # Request-path query embedding is intentionally serialized inside each backend
 # process. Increase these only after a server-like benchmark for the target host.

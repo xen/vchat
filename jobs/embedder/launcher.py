@@ -71,6 +71,7 @@ def main() -> int:
             "-A",
             "jobs.celery",
             "worker",
+            "--include=jobs.embedder.tasks",
             "--loglevel=INFO",
             "-Q",
             "embeddings",

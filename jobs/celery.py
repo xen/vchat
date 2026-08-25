@@ -29,9 +29,11 @@ app.conf.broker_transport_options = {
     "visibility_timeout": cfg.celery_visibility_timeout
 }
 
-# Autodiscover tasks from job packages so workers pick up every queue
-app.autodiscover_tasks(["jobs", "jobs.crawler", "jobs.embedder", "jobs.triggers"])
-app.conf.imports = ("jobs.crawler.tasks", "jobs.embedder.tasks", "jobs.triggers.tasks")
+# The default worker only consumes the `celery` queue.  Do not import
+# `jobs.embedder.tasks` here: importing its ML stack in every default worker
+# needlessly duplicates PyTorch/SentenceTransformers memory.  The dedicated
+# embedder worker includes that module explicitly in its command line.
+app.conf.imports = ("jobs.crawler.tasks", "jobs.triggers.tasks")
 
 
 app.conf.worker_prefetch_multiplier = 1

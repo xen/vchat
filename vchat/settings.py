@@ -127,7 +127,7 @@ class AppConfig(BaseModel):
     embedding_index_document_schedule_ttl_seconds: int = Field(21_600, ge=300)
     page_shingle_insert_batch_size: int = Field(2000, ge=100)
     embedding_model_reset_after_documents: int = Field(20, ge=0)
-    embedding_worker_instances: Annotated[int, Field(ge=1)] | Literal["auto"] = "auto"
+    embedding_worker_instances: Annotated[int, Field(ge=1)] | Literal["auto"] = 1
     embedding_worker_cpu_reserve: int = Field(1, ge=0)
     request_embedding_concurrency: int = Field(1, ge=1)
     request_embedding_executor_workers: int = Field(1, ge=1)

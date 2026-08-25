@@ -15,6 +15,10 @@ def test_boilerplate_rebuild_task_is_registered_for_crawler_queue() -> None:
     assert "jobs.embedder.tasks.rebuild_boilerplate_index" not in celery_app.tasks
 
 
+def test_default_worker_does_not_import_embedder_ml_tasks() -> None:
+    assert "jobs.embedder.tasks" not in celery_app.conf.imports
+
+
 def test_celery_request_id_binding_uses_signal_task_id() -> None:
     task = SimpleNamespace(
         request=SimpleNamespace(headers={"x-request-id": "req-worker-1"})
