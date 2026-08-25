@@ -1543,26 +1543,14 @@ def refresh_source_index(source_id: int):
                 logging.warning("Source %s not found", source_id)
                 return
 
-            chunk_counts = (
-                sa.select(
-                    Chunk.page_id,
-                    sa.func.count(Chunk.id).label("chunk_count"),
-                )
-                .join(Page, Chunk.page_id == Page.id)
-                .where(Page.source_id == source_id)
-                .group_by(Chunk.page_id)
-                .subquery()
-            )
-
             docs_without_chunks = (
                 session.execute(
                     sa.select(Page.id)
-                    .outerjoin(chunk_counts, chunk_counts.c.page_id == Page.id)
                     .where(Page.source_id == source_id)
                     .where(Page.status_error.is_(None))
                     .where(Page.content.isnot(None))
                     .where(Page.content != "")
-                    .where(sa.func.coalesce(chunk_counts.c.chunk_count, 0) == 0)
+                    .where(~sa.exists().where(Chunk.page_id == Page.id))
                 )
                 .scalars()
                 .all()

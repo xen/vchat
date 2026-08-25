@@ -901,3 +901,34 @@ class TestRefreshProjectIndex:
             crawler_tasks.REFRESH_PROJECT_INDEX_SCHEDULE_KEY
         )
         redis_client.close.assert_called_once()
+
+
+class TestRefreshSourceIndex:
+    def test_finds_source_pages_without_chunks_with_not_exists_query(self):
+        source = MagicMock()
+        engine_mock = MagicMock()
+        session_mock = MagicMock()
+        session_mock.__enter__ = lambda s: session_mock
+        session_mock.__exit__ = MagicMock(return_value=False)
+        session_mock.get.return_value = source
+        session_mock.execute.side_effect = [
+            MagicMock(scalars=lambda: MagicMock(all=lambda: [])),
+            MagicMock(scalars=lambda: MagicMock(all=lambda: [])),
+        ]
+
+        with (
+            patch("jobs.crawler.tasks.create_sync_engine", return_value=engine_mock),
+            patch("jobs.crawler.tasks.Session", return_value=session_mock),
+        ):
+            from jobs.crawler import tasks as crawler_tasks
+
+            crawler_tasks.refresh_source_index(42)
+
+        stmt = session_mock.execute.call_args_list[0].args[0]
+        query = str(stmt)
+        assert "NOT (EXISTS" in query
+        assert "GROUP BY" not in query
+        assert "JOIN" not in query
+        assert "page.source_id = :source_id_1" in query
+        session_mock.commit.assert_called_once()
+        engine_mock.dispose.assert_called_once()
