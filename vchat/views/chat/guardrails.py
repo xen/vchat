@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import re
+from ssl import SSLContext
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 from guardrails import GuardrailsAsyncOpenAI
 from presidio_analyzer import (
     AnalyzerEngine,
@@ -24,7 +26,7 @@ from vchat.settings import cfg
 logger = logging.getLogger("vchat.views.chat.guardrails")
 
 _cached_client: Any | None = None
-_cached_key: tuple[str, str, str] | None = None
+_cached_key: tuple[str, str, str, bool | int] | None = None
 _presidio_analyzer: Any | None = None
 _presidio_anonymizer: Any | None = None
 _AUX_MODEL_PLACEHOLDER = "__aux_model__"
@@ -156,12 +158,14 @@ def get_guardrails_client(
     api_key: str,
     base_url: str,
     model: str,
+    verify_ssl: bool | SSLContext = True,
 ) -> Any | None:
     if not cfg.openai_guardrails_enabled:
         return None
 
     global _cached_client, _cached_key
-    key = (api_key, base_url, model)
+    cache_verify_ssl = verify_ssl if isinstance(verify_ssl, bool) else id(verify_ssl)
+    key = (api_key, base_url, model, cache_verify_ssl)
     if _cached_client is not None and _cached_key == key:
         return _cached_client
 
@@ -172,6 +176,10 @@ def get_guardrails_client(
             raise_guardrail_errors=False,
             api_key=api_key,
             base_url=base_url,
+            http_client=httpx.AsyncClient(
+                verify=verify_ssl,
+                timeout=cfg.llm_request_timeout_seconds,
+            ),
         )
     except Exception as exc:
         logger.warning("Failed to initialize GuardrailsAsyncOpenAI: %s", exc)

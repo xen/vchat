@@ -451,6 +451,7 @@ async def ai_chat_stream(messages: List[dict], ctx: GenerationContext):
             api_key=guardrails_api_key,
             base_url=guardrails_base_url,
             model=ctx.aux_model.id,
+            verify_ssl=ctx.provider.chat_completion_verify_ssl_certs,
         )
     assistant_message: dict[str, Any] = {"role": "assistant", "content": ""}
     pending_tool_calls: dict[int, dict] = {}

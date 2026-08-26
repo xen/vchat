@@ -52,6 +52,7 @@ class _FakeProvider:
 @dataclass
 class _FakeGigaChatProvider(_FakeProvider):
     id: str = "gigachat"
+    chat_completion_verify_ssl_certs: bool = False
 
     async def chat_completion_bearer_token(self, session: Any) -> str:
         _ = session
@@ -1021,6 +1022,7 @@ async def test_ai_chat_stream_uses_provider_compatible_guardrails_client(
         "api_key": "access-token",
         "base_url": "https://api.example.local/v1",
         "model": "GigaChat-2",
+        "verify_ssl": False,
     }
 
 

@@ -152,21 +152,33 @@ def test_openai_guardrails_cache_and_extract(
             created.append(kwargs)
 
     monkeypatch.setattr(guardrails, "GuardrailsAsyncOpenAI", _FakeClient)
+    http_client_options = []
+
+    class _FakeHttpClient:
+        def __init__(self, **kwargs):
+            http_client_options.append(kwargs)
+
+    monkeypatch.setattr(guardrails.httpx, "AsyncClient", _FakeHttpClient)
     one = guardrails.get_guardrails_client(
         api_key="k",
         base_url="https://example.com",
         model="suggestions-model",
+        verify_ssl=False,
     )
     two = guardrails.get_guardrails_client(
         api_key="k",
         base_url="https://example.com",
         model="suggestions-model",
+        verify_ssl=False,
     )
     assert one is two
     assert len(created) == 1
     assert created[0]["config"] == guardrails.build_openai_guardrails_pipeline(
         model="suggestions-model"
     )
+    assert http_client_options == [
+        {"verify": False, "timeout": guardrails.cfg.llm_request_timeout_seconds}
+    ]
 
     stage, reason = guardrails.extract_tripwire_details(
         SimpleNamespace(

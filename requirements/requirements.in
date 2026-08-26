@@ -36,6 +36,7 @@ sqlparse
 tiktoken
 openai
 openai-guardrails
+httpx
 spacy
 pycld2
 transformers>=4.44.0,<5
