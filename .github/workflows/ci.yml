@@ -73,3 +73,7 @@ jobs:
           ssh-keyscan -H 46.4.201.181 >> ~/.ssh/known_hosts
       - name: Deploy master
         run: ssh -o BatchMode=yes deploy@46.4.201.181 'cd /var/www/vchat && bin/deploy.sh'
+      - name: Verify public HTTPS endpoint
+        run: |
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 \
+            https://vchat.dzen.dev/health/ready
