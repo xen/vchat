@@ -363,3 +363,87 @@ production headroom. Для реального sizing стоит добавля�
 | EPYC 7401P 2.0GHz CPU, raw peak | 48 процессов | 1.51 msg/s | 79.4 GB | 7 | 67 | 133 | 332 | 664 |
 | EPYC 7401P 2.0GHz CPU, practical | 24 процесса | 1.29 msg/s | 40.4 GB | 8 | 78 | 156 | 389 | 778 |
 | Intel i7-3770 3.4GHz CPU | 4 процесса | 0.40 msg/s | 7.0 GB | 25 | 250 | 499 | 1247 | 2494 |
+
+## Production CUDA run: vchat.dzen.dev, 2026-08-31
+
+### Перенос и запуск индексации
+
+На новый production-host `46.4.201.181` перенесены только канонические
+записи, необходимые для чистого построения индекса:
+
+- `source`: `38` записей, IDs сохранены (локальный и целевой count совпадают);
+- `users`: `4` записи, IDs сохранены (локальный и целевой count совпадают).
+
+Сессии пользователей, старые `page`, `chunk`, `page_shingle`, ссылки и векторы
+не переносились. Это производные артефакты: они строятся повторно из текущих
+источников, а signed session не переносима на host с другим `cookie_key`.
+
+Для всех `38` непоставленных на паузу sources запущена штатная цепочка
+`reapply_source_rules -> sitemap_sync -> crawl_source`. Контрольный срез в
+начале run: `227` страниц (`11 ready`, `119 crawler`, `97 parsing`), chunk-ов
+и embeddings ещё нет; default Celery queue содержит задачи crawler/parsing.
+Все три production-сервиса находятся в `active`.
+
+### GPU runtime
+
+В машине обнаружена NVIDIA GeForce GTX 1080 (Pascal, compute capability `6.1`,
+8 GiB VRAM). До этого на host отсутствовали driver и CUDA runtime, поэтому
+приложение работало на `torch 2.6.0+cpu`.
+
+Установлены Ubuntu `nvidia-driver-580` (`580.173.02`) и kernel headers для
+`6.8.0-138-generic`; DKMS успешно собрал модуль. Production wheel закреплён в
+`requirements/req_linux.txt` как точный `torch`, `torchvision` и `torchaudio`
+`2.6.0+cu126`; нестрогий pin `2.6.0` был недостаточен, потому что позволял
+оставить уже установленный `+cpu` wheel. После CI deploy подтверждено:
+
+```text
+torch: 2.6.0+cu126
+CUDA runtime: 12.6
+device: NVIDIA GeForce GTX 1080
+compute capability: 6.1
+```
+
+### Измерение `deepvk/USER-bge-m3` на CUDA
+
+Стенд: warm `SentenceTransformer.encode`, русские входы около `3000` символов,
+три повтора на batch, `normalize_embeddings=True`, `max_seq_length=8192`.
+
+| Batch | Median, s | Embeddings/s | Peak allocated VRAM |
+| ----: | --------: | -----------: | ------------------: |
+| 1 | 0.1272 | 7.863 | 1411 MiB |
+| 2 | 0.2530 | 7.904 | 1445 MiB |
+| 4 | 0.5035 | **7.944** | 1511 MiB |
+| 8 | 1.3516 | 5.919 | 1639 MiB |
+| 16 | 3.0430 | 5.258 | 1898 MiB |
+| 32 | 6.4518 | 4.960 | 2418 MiB |
+| 48 | 8.5937 | 5.586 | 2935 MiB |
+| 64 | 9.8089 | 6.525 | 3454 MiB |
+
+Вывод: для этой Pascal-карты увеличение одного encode batch свыше четырёх
+длинных текстов не повышает throughput; VRAM остаётся с запасом, но растёт
+padding/compute стоимость. Это измеренный максимум, а не догадка по объёму
+памяти.
+
+### Выбранная production-конфигурация
+
+```yaml
+embedding_device: cuda
+reranker_device: cuda
+embedding_worker_instances: 1
+embedding_pending_chunks_batch_size: 64
+embedding_encode_batch_max_chars: 12000
+embedding_model_reset_after_documents: 0
+```
+
+`12000` characters сохраняет наиболее производительный micro-batch порядка
+четырёх 3000-character chunks. Размер Celery task повышен до `64`, чтобы один
+прогретый worker обрабатывал несколько таких micro-batch-ов без лишней
+оркестрации. Один worker выбран намеренно: у хоста одна GTX 1080, а независимые
+CUDA worker-процессы конкурировали бы за ту же карту. Reset модели отключён,
+чтобы не платить model-load между документами; дальнейший reindex-monitoring
+должен контролировать VRAM и температуру.
+
+Во время контрольного среза две загруженные production-модели занимали около
+`3663 MiB / 8192 MiB`, температура GPU была `55 C`; это оставляет достаточный
+запас для выбранного embedding worker, но не оправдывает второй параллельный
+CUDA worker без отдельного замера.
