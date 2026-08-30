@@ -87,6 +87,9 @@ embedding_chunk_max_tokens: 3500
 embedding_chunk_overlap_tokens: 400
 embedding_chunk_max_chars: 12000
 embedding_encode_batch_max_chars: 12000
+# The character cap alone is unsafe for mixed-length CUDA batches: one long
+# chunk makes attention pad every short chunk in the same encode call.
+embedding_encode_batch_max_chunks: 12
 embedding_document_max_chars: 100000
 embedding_pending_chunks_batch_size: 8
 embedding_pending_chunks_max_inflight: 32

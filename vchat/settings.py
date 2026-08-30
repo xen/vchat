@@ -118,6 +118,7 @@ class AppConfig(BaseModel):
     embedding_block_max_chars: int = Field(48_000, ge=1)
     embedding_entity_scan_max_chars: int = Field(24_000, ge=1)
     embedding_encode_batch_max_chars: int = Field(12_000, ge=1)
+    embedding_encode_batch_max_chunks: int = Field(12, ge=1)
     embedding_document_max_chars: int = Field(100_000, ge=1)
     embedding_pending_chunks_batch_size: int = Field(8, ge=1)
     embedding_pending_chunks_max_inflight: int = Field(32, ge=1)

@@ -379,6 +379,7 @@ def test_make_embed_vectors_splits_large_encode_batches(
             )
 
     monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chars", 10)
+    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chunks", 12)
     monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
 
     vectors = embedder_tasks.make_embed_vectors(["1234", "5678", "abcdef", "gh"])
@@ -388,6 +389,33 @@ def test_make_embed_vectors_splits_large_encode_batches(
         (["1234", "5678"], 2, False),
         (["abcdef", "gh"], 2, False),
     ]
+
+
+def test_make_embed_vectors_caps_mixed_length_encode_batch_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[list[str], int]] = []
+
+    class _Model:
+        def encode(
+            self,
+            texts,
+            normalize_embeddings=True,
+            batch_size=1,
+            show_progress_bar=True,
+        ):
+            _ = normalize_embeddings, show_progress_bar
+            calls.append((list(texts), batch_size))
+            return np.array([[float(index)] for index, _text in enumerate(texts)])
+
+    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chars", 100)
+    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chunks", 2)
+    monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
+
+    vectors = embedder_tasks.make_embed_vectors(["long", "a", "b", "c", "d"])
+
+    assert vectors == [[0.0], [1.0], [0.0], [1.0], [0.0]]
+    assert calls == [(["long", "a"], 2), (["b", "c"], 2), (["d"], 1)]
 
 
 def test_process_pending_chunk_batch_embeds_duplicate_text_once(

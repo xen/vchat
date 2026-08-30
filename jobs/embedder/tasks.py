@@ -100,7 +100,10 @@ def make_embed_vectors(texts: list[str]) -> list[List[float]]:
     current_chars = 0
     for text in texts:
         text_len = len(text or "")
-        if current and current_chars + text_len > cfg.embedding_encode_batch_max_chars:
+        if current and (
+            len(current) >= cfg.embedding_encode_batch_max_chunks
+            or current_chars + text_len > cfg.embedding_encode_batch_max_chars
+        ):
             batches.append(current)
             current = []
             current_chars = 0

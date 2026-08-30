@@ -447,3 +447,49 @@ CUDA worker-процессы конкурировали бы за ту же ка
 `3663 MiB / 8192 MiB`, температура GPU была `55 C`; это оставляет достаточный
 запас для выбранного embedding worker, но не оправдывает второй параллельный
 CUDA worker без отдельного замера.
+
+### Уточняющий production benchmark: mixed-length CUDA batching
+
+Повторный замер выполнен на том же host после появления реальных документов в
+очереди. Это важно: `78%` ожидающих chunks короче `1000` символов (медиана
+`545`), но среди них встречаются длинные chunks. Поэтому одной только границы
+по суммарным символам недостаточно: один длинный input увеличивает padding для
+всего CUDA batch.
+
+Пять warm repeat-ов на каждую точку, `normalize_embeddings=True`, в GPU уже
+загружен production backend с reranker. Результат ниже — медианный чистый
+encode, без записи в PostgreSQL.
+
+| Precision | Chars/chunk | Batch | Chunks/s | Chars/s | Peak model VRAM |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| FP32 | 512 | 8 | **49.47** | 25,329 | 1,423 MiB |
+| FP32 | 512 | 12 | 49.03 | 25,102 | 1,445 MiB |
+| FP32 | 1,024 | 12 | 26.08 | **26,705** | 1,515 MiB |
+| FP32 | 2,048 | 6 | 12.45 | 25,495 | 1,515 MiB |
+| FP32 | 3,000 | 2 | 7.17 | 21,516 | 1,444 MiB |
+| FP16 | 512 | 16 | 28.30 | 14,490 | 738 MiB |
+| FP16 | 3,000 | 4 | 2.22 | 6,660 | 759 MiB |
+
+FP16 экономит память, но на Pascal GTX 1080 оказывается примерно вдвое
+медленнее FP32; production использует FP32. В исходной реализации большой
+task из `64` chunks мог передать десятки mixed-length inputs в один encode. На
+реальной очереди это воспроизводимо приводило к CUDA OOM из-за padding, хотя
+суммарный размер текста был небольшим.
+
+Добавлен независимый лимит `embedding_encode_batch_max_chunks: 12` наряду с
+`embedding_encode_batch_max_chars: 12000`. Он сохраняет максимум для коротких
+chunks и ограничивает память mixed-length batch. При этом task-size остаётся
+`64`, чтобы worker забирал достаточно работы без лишней оркестрации; encode
+внутри него разбивается на безопасные micro-batch-ы не более 12 inputs.
+
+Целевая конфигурация production:
+
+```yaml
+embedding_device: cuda
+reranker_device: cuda
+embedding_worker_instances: 1
+embedding_pending_chunks_batch_size: 64
+embedding_encode_batch_max_chars: 12000
+embedding_encode_batch_max_chunks: 12
+embedding_model_reset_after_documents: 0
+```
