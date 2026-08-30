@@ -83,6 +83,7 @@ venv
 # configs
 local.yaml
 local_*.*
+!tests/rag_quality/local_db_slice_eval.py
 .env
 
 # telethon session
