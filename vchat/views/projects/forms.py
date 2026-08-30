@@ -107,6 +107,10 @@ class WidgetIntegrationAdd(Form):
         default=WIDGET_AGENT_NAME,
         description="Показывается пользователю в окне чата.",
     )
+    suggestions_prompt = TextAreaField(
+        "Промпт подсказок",
+        default=DEFAULT_SUGGESTIONS_PROMPT,
+    )
 
 
 class WidgetIntegrationEdit(Form):

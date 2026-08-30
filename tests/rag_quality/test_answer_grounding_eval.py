@@ -16,12 +16,21 @@ def _cases() -> list[dict]:
 class _StreamProvider:
     id = "openai"
     supports_chat = True
+    chat_completion_verify_ssl_certs = True
+
+    @property
+    def base_url(self) -> str:
+        return "https://example.invalid/v1"
 
     def request_meta(self) -> dict[str, str]:
         return {
             "api_key": "test-key",
             "base_url": "https://example.invalid/v1",
         }
+
+    async def chat_completion_bearer_token(self, session: object) -> str:
+        del session
+        return "test-key"
 
 
 class _StreamModel:
@@ -153,7 +162,7 @@ async def test_fake_streamed_answer_eval(
     monkeypatch.setattr(
         chat_views,
         "get_guardrails_client",
-        lambda api_key, base_url: guardrails_client,
+        lambda **_kwargs: guardrails_client,
     )
 
     events = [

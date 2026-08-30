@@ -1199,6 +1199,7 @@ async def test_ai_chat_stream_passes_gigachat_ssl_setting(
 
     monkeypatch.setattr(chat_views.cfg, "gigachat_verify_ssl_certs", False)
     monkeypatch.setattr(chat_views.aiohttp, "ClientSession", lambda: _Session())
+    monkeypatch.setattr(chat_views, "get_guardrails_client", lambda **_kwargs: None)
 
     events = [
         event
