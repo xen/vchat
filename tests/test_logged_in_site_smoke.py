@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -170,8 +171,17 @@ def _create_smoke_auth_session(user_id: int) -> str:
 def _load_smoke_fixtures() -> _SmokeFixtures:
     user_id = _upsert_smoke_user()
     session_id = _create_smoke_auth_session(user_id)
+    _delete_smoke_chats()
+    smoke_chat_id = str(uuid.uuid4())
     engine = create_sync_engine()
-    with engine.connect() as conn:
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "INSERT INTO chat (id, title, user_uid, meta, created_at, updated_at) "
+                "VALUES (:id, '', :user_uid, '{}'::jsonb, now(), now())"
+            ),
+            {"id": smoke_chat_id, "user_uid": SMOKE_CHAT_USER_UID},
+        )
         source_id = conn.execute(
             sa.text("SELECT id FROM source ORDER BY id LIMIT 1")
         ).scalar_one_or_none()
@@ -180,13 +190,6 @@ def _load_smoke_fixtures() -> _SmokeFixtures:
                 "SELECT id FROM page "
                 "WHERE coalesce(status_error, '') != 'duplicate_content' "
                 "ORDER BY id LIMIT 1"
-            )
-        ).scalar_one_or_none()
-        chat_id = conn.execute(
-            sa.text(
-                "SELECT id FROM chat "
-                "WHERE NOT (meta ? 'widget_code') "
-                "ORDER BY created_at DESC NULLS LAST LIMIT 1"
             )
         ).scalar_one_or_none()
         widget_row = conn.execute(
@@ -198,7 +201,7 @@ def _load_smoke_fixtures() -> _SmokeFixtures:
         session_id=session_id,
         source_id=source_id,
         document_id=document_id,
-        chat_id=chat_id,
+        chat_id=smoke_chat_id,
         widget_id=widget_row.id if widget_row else None,
         code=widget_row.code if widget_row else None,
     )
