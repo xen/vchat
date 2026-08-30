@@ -1,0 +1,67 @@
+name: test-and-deploy
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: paradedb/paradedb:0.25.6
+        env:
+          POSTGRES_DB: vchat
+          POSTGRES_USER: vchat
+          POSTGRES_PASSWORD: vchat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vchat -d vchat"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URI: postgresql+asyncpg://vchat:vchat@127.0.0.1:5432/vchat
+      REDIS_URI: redis://127.0.0.1:6379/30
+      CELERY_REDIS_URI: redis://127.0.0.1:6379/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+      - run: uv venv venv --python 3.11
+      - run: uv pip sync requirements/dev.txt --python venv/bin/python
+      - run: make db
+      - run: make test
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - name: Configure deployment SSH key
+        env:
+          DEPLOY_KEY: ${{ secrets.VCHAT_DEPLOY_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 46.4.201.181 >> ~/.ssh/known_hosts
+      - name: Deploy master
+        run: ssh -o BatchMode=yes deploy@46.4.201.181 'cd /var/www/vchat && bin/deploy.sh'

@@ -1,0 +1,22 @@
+[Unit]
+Description=vchat web application
+After=network-online.target vchat-postgres.service redis-server.service
+Requires=vchat-postgres.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/var/www/vchat
+Environment=PYTHONUNBUFFERED=1
+Environment=HF_HOME=/var/www/vchat/.cache/huggingface
+Environment=SENTENCE_TRANSFORMERS_HOME=/var/www/vchat/.cache/sentence-transformers
+Environment=PROMETHEUS_MULTIPROC_DIR=/var/www/vchat/.cache/prometheus
+ExecStart=/var/www/vchat/venv/bin/python entry.py --host 127.0.0.1 --port 9080
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

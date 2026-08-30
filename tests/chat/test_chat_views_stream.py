@@ -36,6 +36,7 @@ class _WsMessage:
 class _FakeProvider:
     id: str = "openai"
     supports_chat: bool = True
+    chat_completion_verify_ssl_certs: bool = True
 
     @property
     def base_url(self) -> str:

@@ -1,0 +1,25 @@
+[Unit]
+Description=vchat dedicated embedding worker
+After=network-online.target vchat-postgres.service redis-server.service
+Requires=vchat-postgres.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/var/www/vchat
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONMALLOC=malloc
+Environment=TOKENIZERS_PARALLELISM=false
+Environment=OMP_NUM_THREADS=1
+Environment=MKL_NUM_THREADS=1
+Environment=HF_HOME=/var/www/vchat/.cache/huggingface
+Environment=SENTENCE_TRANSFORMERS_HOME=/var/www/vchat/.cache/sentence-transformers
+ExecStart=/var/www/vchat/venv/bin/python -m jobs.embedder.launcher
+Restart=always
+RestartSec=5
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

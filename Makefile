@@ -14,7 +14,7 @@ venv/bin/activate:
 	uv venv venv --python=python3.11
 
 init: ## prepare project
-	. venv/bin/activate && pre-commit install
+	. venv/bin/activate && pre-commit install --install-hooks --hook-type pre-commit --hook-type pre-push
 	@echo "Updating pre-commit hooks..."
 	. venv/bin/activate && pre-commit autoupdate
 
