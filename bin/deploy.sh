@@ -17,6 +17,7 @@ fi
 
 git fetch --prune origin "$BRANCH"
 git reset --hard "origin/$BRANCH"
+install -d -m 0755 .cache/huggingface .cache/sentence-transformers .cache/prometheus
 make frontend
 make deploy
 

@@ -50,7 +50,7 @@ sudo -u deploy docker exec vchat-postgres psql -U vchat -d vchat -v ON_ERROR_STO
 local_config="$DEPLOY_PATH/local.yaml"
 if [[ ! -f "$local_config" ]]; then
   secret_key="$(openssl rand -base64 48 | tr -d '\n')"
-  cookie_key="$(openssl rand -base64 48 | tr -d '\n')"
+  cookie_key="$(openssl rand -base64 32 | tr -d '\n')"
   umask 077
   cat > "$local_config" <<EOF
 mode: production
