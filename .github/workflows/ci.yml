@@ -36,18 +36,24 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URI: postgresql+asyncpg://vchat:vchat@127.0.0.1:5432/vchat
-      REDIS_URI: redis://127.0.0.1:6379/30
+      REDIS_URI: redis://127.0.0.1:6379/0
       CELERY_REDIS_URI: redis://127.0.0.1:6379/
+      CELERY_BROKER_DB: 1
+      CELERY_BACKEND_DB: 2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: astral-sh/setup-uv@v5
       - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libldap2-dev libsasl2-dev
       - run: uv venv venv --python 3.11
       - run: uv pip sync requirements/dev.txt --python venv/bin/python
+      - run: make frontend
       - run: make db
       - run: make test
 
