@@ -37,6 +37,7 @@ def main() -> int:
     celery_bin = project_root / "venv" / "bin" / "celery"
     pool = os.getenv("EMBEDDER_POOL", "solo")
     concurrency = os.getenv("EMBEDDER_CONCURRENCY", "1")
+    max_tasks_per_child = int(os.getenv("EMBEDDER_MAX_TASKS_PER_CHILD", "1"))
     hostname = socket.gethostname().split(".")[0] or "localhost"
     instance_count = resolve_embedder_instance_count()
 
@@ -63,6 +64,7 @@ def main() -> int:
     print(
         f"Starting {instance_count} embedder worker(s) on {hostname} "
         f"(pool={pool}, concurrency={concurrency}, "
+        f"max_tasks_per_child={max_tasks_per_child}, "
         f"device={resolve_embedding_device()})"
     )
     for index in range(1, instance_count + 1):
@@ -77,10 +79,11 @@ def main() -> int:
             "embeddings",
             f"--pool={pool}",
             f"--concurrency={concurrency}",
-            "--max-tasks-per-child=1",
             "-n",
             f"vchat-embedder-{hostname}-{os.getpid()}-{index}@{hostname}",
         ]
+        if max_tasks_per_child > 0:
+            cmd.insert(-2, f"--max-tasks-per-child={max_tasks_per_child}")
         proc = subprocess.Popen(cmd, cwd=project_root, env=env, text=True)
         processes.append(proc)
 

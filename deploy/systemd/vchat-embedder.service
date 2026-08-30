@@ -14,6 +14,9 @@ Environment=PYTHONMALLOC=malloc
 Environment=TOKENIZERS_PARALLELISM=false
 Environment=OMP_NUM_THREADS=1
 Environment=MKL_NUM_THREADS=1
+Environment=EMBEDDER_POOL=prefork
+Environment=EMBEDDER_CONCURRENCY=1
+Environment=EMBEDDER_MAX_TASKS_PER_CHILD=0
 Environment=HF_HOME=/var/www/vchat/.cache/huggingface
 Environment=SENTENCE_TRANSFORMERS_HOME=/var/www/vchat/.cache/sentence-transformers
 ExecStart=/var/www/vchat/venv/bin/python -m jobs.embedder.launcher
