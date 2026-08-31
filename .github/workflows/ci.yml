@@ -41,14 +41,14 @@ jobs:
       CELERY_BROKER_DB: 1
       CELERY_BACKEND_DB: 2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
       - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libldap2-dev libsasl2-dev
       - run: uv venv venv --python 3.11
