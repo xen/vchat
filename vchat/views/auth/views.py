@@ -280,8 +280,8 @@ async def login(request):
 
         next_location = (request.rel_url.query.get("next") or "").strip()
         if next_location.startswith("/") and not next_location.startswith("//"):
-            raise web.HTTPFound(location=next_location)
-        raise web.HTTPFound(location=request.app.router["index"].url_for())
+            return web.HTTPFound(location=next_location)
+        return web.HTTPFound(location=request.app.router["index"].url_for())
 
     return {"form": form, "ldap_enabled": cfg.auth_ldap_enabled}
 
@@ -361,8 +361,8 @@ async def login_ldap(request):
 
         next_location = (request.rel_url.query.get("next") or "").strip()
         if next_location.startswith("/") and not next_location.startswith("//"):
-            raise web.HTTPFound(location=next_location)
-        raise web.HTTPFound(location=request.app.router["index"].url_for())
+            return web.HTTPFound(location=next_location)
+        return web.HTTPFound(location=request.app.router["index"].url_for())
 
     return {"form": form, "basic_enabled": cfg.auth_basic_enabled}
 

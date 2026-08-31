@@ -647,9 +647,9 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # strip decorators (meta + template)
     login_fn = auth_views.login.__wrapped__.__wrapped__
-    with pytest.raises(web.HTTPFound) as exc:
-        await login_fn(request)
-    assert str(exc.value.location) == "/"
+    response = await login_fn(request)
+    assert isinstance(response, web.HTTPFound)
+    assert str(response.location) == "/"
     assert request["user"].id == 5
     assert created_session["user_id"] == 5
     assert created_session["session_id"] == db.added[0].session_id
@@ -663,9 +663,9 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
         query={"next": "/sessions/"},
     )
     request_next["db"] = db
-    with pytest.raises(web.HTTPFound) as exc:
-        await login_fn(request_next)
-    assert str(exc.value.location) == "/sessions/"
+    response = await login_fn(request_next)
+    assert isinstance(response, web.HTTPFound)
+    assert str(response.location) == "/sessions/"
 
     class _LogoutSession(dict):
         def invalidate(self):
