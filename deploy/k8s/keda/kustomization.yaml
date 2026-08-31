@@ -6,4 +6,3 @@ namespace: vchat
 resources:
   - ../base
   - scaledobject-celery.yaml
-  - scaledobject-embedder.yaml

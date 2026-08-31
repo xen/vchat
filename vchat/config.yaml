@@ -79,6 +79,8 @@ gigachat_verify_ssl_certs: true
 openai_guardrails_enabled: true
 guardrails_ru_pii_enabled: true
 embedding_model_id: "deepvk/USER-bge-m3"
+embedding_service_url: "http://127.0.0.1:18091"
+embedding_service_timeout_seconds: 30
 reranker_model_id: "BAAI/bge-reranker-v2-m3"
 # Embedding / pgvector dimension for stored vectors and similarity queries.
 vec_dim: 1024
@@ -97,19 +99,11 @@ embedding_pending_chunks_counter_ttl_seconds: 600
 embedding_ensure_pending_chunks_ttl_seconds: 120
 embedding_index_document_schedule_ttl_seconds: 21600
 page_shingle_insert_batch_size: 2000
-embedding_model_reset_after_documents: 20
-# A single model process is the safe default for a developer machine: the local
-# model artifact is large and each worker loads its own copy.  Raise this only
-# through an explicit environment-specific override after measuring RAM usage.
-embedding_worker_instances: 1
-embedding_worker_cpu_reserve: 1
-# Request-path query embedding is intentionally serialized inside each backend
-# process. Increase these only after a server-like benchmark for the target host.
+# Request-path embedding is serialized by default before it enters the shared
+# service. Increase only after measuring the service on the target host.
 request_embedding_concurrency: 1
-request_embedding_executor_workers: 1
 request_embedding_queue_timeout_seconds: 20
 request_embedding_queue_warn_seconds: 1
-request_embedding_torch_threads: 1
 yandex_api_key: ""
 # Base64-ключ из кабинета GigaChat для заголовка Authorization: Basic <key>
 gigachat_api_key: ""

@@ -1,13 +1,11 @@
 .PHONY: clean setup run db lint user security-check \
         ensure-pip pip-compile autoupgrade \
         celery revision downgrade deploy \
-		frontend embedder embedder-worker docs \
+		frontend docs \
 		agent agent-check
 
 MERMAID_FILTER_RENDERER ?= mmdc
 
-EMBEDDER_POOL ?= solo
-EMBEDDER_CONCURRENCY ?= 1
 LOG_DIR ?= logs
 
 venv/bin/activate:
@@ -67,23 +65,7 @@ celery: venv/bin/activate ## start celery (default queue + beat)
 	LOG_FILE="$(LOG_DIR)/celery-$$(date +%Y%m%d-%H%M%S)-$$$$.log"; \
 	echo "Writing Celery log to $$LOG_FILE"; \
 	set -o pipefail; \
-	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery -n "$$NODE_NAME" 2>&1 | tee "$$LOG_FILE"
-
-embedder: venv/bin/activate ## start dedicated embedder workers for this host
-	@mkdir -p "$(LOG_DIR)"
-	@LOG_FILE="$(LOG_DIR)/embedder-$$(date +%Y%m%d-%H%M%S)-$$$$.log"; \
-	echo "Writing embedder log to $$LOG_FILE"; \
-	set -o pipefail; \
-	. venv/bin/activate && PYTHONMALLOC=malloc python -m jobs.embedder.launcher 2>&1 | tee "$$LOG_FILE"
-
-embedder-worker: venv/bin/activate ## start a single dedicated embedder worker
-	@mkdir -p "$(LOG_DIR)"
-	@HOST=$$(hostname -s); \
-	NODE_NAME=$${EMBEDDER_NODENAME:-vchat-embedder-$${HOST}-$$$$-$${EMBEDDER_INSTANCE_INDEX:-1}@$${HOST}}; \
-	LOG_FILE="$(LOG_DIR)/embedder-worker-$$(date +%Y%m%d-%H%M%S)-$$$$.log"; \
-	echo "Writing embedder worker log to $$LOG_FILE"; \
-	set -o pipefail; \
-	. venv/bin/activate && celery -A jobs.celery worker --include=jobs.embedder.tasks --loglevel=INFO -Q embeddings --pool=$(EMBEDDER_POOL) --concurrency=$(EMBEDDER_CONCURRENCY) --max-tasks-per-child=1 -n "$$NODE_NAME" 2>&1 | tee "$$LOG_FILE"
+	. venv/bin/activate && celery -A jobs.celery worker --beat --loglevel=DEBUG -Q celery,embeddings -n "$$NODE_NAME" 2>&1 | tee "$$LOG_FILE"
 
 celery_stop: venv/bin/activate ## stop celery
 	. venv/bin/activate && celery -A jobs.celery control shutdown

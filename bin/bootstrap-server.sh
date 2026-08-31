@@ -68,9 +68,8 @@ celery_redis_uri: "redis://127.0.0.1:6379/"
 celery_broker_db: 31
 celery_backend_db: 32
 celery_worker_concurrency: 2
-embedding_worker_instances: 1
+embedding_service_url: "http://127.0.0.1:8091"
 request_embedding_concurrency: 1
-request_embedding_executor_workers: 1
 log_format: "json"
 EOF
   chown deploy:deploy "$local_config"
@@ -79,7 +78,6 @@ fi
 
 install -m 0644 "$DEPLOY_PATH/deploy/systemd/vchat-backend.service" /etc/systemd/system/
 install -m 0644 "$DEPLOY_PATH/deploy/systemd/vchat-celery.service" /etc/systemd/system/
-install -m 0644 "$DEPLOY_PATH/deploy/systemd/vchat-embedder.service" /etc/systemd/system/
 install -m 0644 "$DEPLOY_PATH/deploy/nginx/vchat-http.conf" /etc/nginx/sites-available/vchat
 ln -sfn /etc/nginx/sites-available/vchat /etc/nginx/sites-enabled/vchat
 rm -f /etc/nginx/sites-enabled/default

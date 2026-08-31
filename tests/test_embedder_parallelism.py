@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 from sqlalchemy.dialects import postgresql
 
 from jobs.crawler import tasks as crawler_tasks
-from jobs.embedder import launcher
 from jobs.embedder import tasks as embedder_tasks
 from jobs.embedder import queue as embedding_queue
 
@@ -358,64 +356,21 @@ def test_index_page_inner_materializes_when_chunks_are_stale(
     assert materialized == [(session, context)]
 
 
-def test_make_embed_vectors_splits_large_encode_batches(
+def test_make_embed_vectors_sends_one_batch_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[tuple[list[str], int, bool]] = []
-
-    class _Model:
-        def encode(
-            self,
-            texts,
-            normalize_embeddings=True,
-            batch_size=1,
-            show_progress_bar=True,
-        ):
-            _ = normalize_embeddings
-            calls.append((list(texts), batch_size, show_progress_bar))
-            return np.array(
-                [[float(index)] for index, _text in enumerate(texts)],
-                dtype=np.float32,
-            )
-
-    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chars", 10)
-    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chunks", 12)
-    monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
+    calls: list[tuple[list[str], str]] = []
+    monkeypatch.setattr(
+        embedder_tasks,
+        "embed_texts",
+        lambda texts, *, priority: calls.append((texts, priority))
+        or [[float(index)] for index, _ in enumerate(texts)],
+    )
 
     vectors = embedder_tasks.make_embed_vectors(["1234", "5678", "abcdef", "gh"])
 
-    assert vectors == [[0.0], [1.0], [0.0], [1.0]]
-    assert calls == [
-        (["1234", "5678"], 2, False),
-        (["abcdef", "gh"], 2, False),
-    ]
-
-
-def test_make_embed_vectors_caps_mixed_length_encode_batch_size(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[list[str], int]] = []
-
-    class _Model:
-        def encode(
-            self,
-            texts,
-            normalize_embeddings=True,
-            batch_size=1,
-            show_progress_bar=True,
-        ):
-            _ = normalize_embeddings, show_progress_bar
-            calls.append((list(texts), batch_size))
-            return np.array([[float(index)] for index, _text in enumerate(texts)])
-
-    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chars", 100)
-    monkeypatch.setattr(embedder_tasks.cfg, "embedding_encode_batch_max_chunks", 2)
-    monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
-
-    vectors = embedder_tasks.make_embed_vectors(["long", "a", "b", "c", "d"])
-
-    assert vectors == [[0.0], [1.0], [0.0], [1.0], [0.0]]
-    assert calls == [(["long", "a"], 2), (["b", "c"], 2), (["d"], 1)]
+    assert vectors == [[0.0], [1.0], [2.0], [3.0]]
+    assert calls == [(["1234", "5678", "abcdef", "gh"], "batch")]
 
 
 def test_process_pending_chunk_batch_embeds_duplicate_text_once(
@@ -479,11 +434,6 @@ def test_process_pending_chunk_batch_embeds_duplicate_text_once(
         lambda session, page_ids: completed_inputs.append((session, page_ids))
         or [10, 11],
     )
-    monkeypatch.setattr(embedder_tasks, "release_torch_cache", lambda: None)
-    monkeypatch.setattr(
-        embedder_tasks, "maybe_reset_embed_model_after_document", lambda: False
-    )
-
     processed = embedder_tasks.process_pending_chunk_batch(
         _Session(),
         batch_size=10,
@@ -497,95 +447,15 @@ def test_process_pending_chunk_batch_embeds_duplicate_text_once(
     assert commits == [True, True]
 
 
-def test_make_embed_vector_disables_progress_bar(
+def test_make_embed_vector_uses_batch_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[tuple[list[str], int, bool]] = []
-
-    class _Model:
-        def encode(
-            self,
-            texts,
-            normalize_embeddings=True,
-            batch_size=1,
-            show_progress_bar=True,
-        ):
-            _ = normalize_embeddings
-            calls.append((list(texts), batch_size, show_progress_bar))
-            return np.array([[0.25]], dtype=np.float32)
-
-    monkeypatch.setattr(embedder_tasks, "get_embed_model", lambda: _Model())
-
-    assert embedder_tasks.make_embed_vector("payload") == [0.25]
-    assert calls == [(["payload"], 1, False)]
-
-
-def test_embedding_result_to_vectors_rejects_nan() -> None:
-    with pytest.raises(ValueError, match="NaN"):
-        embedder_tasks.embedding_result_to_vectors(
-            np.array([[0.1, np.nan]], dtype=np.float32)
-        )
-
-
-def test_resolve_embedder_instance_count_auto_for_cpu(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(launcher.cfg, "embedding_worker_instances", "auto")
-    monkeypatch.setattr(launcher.cfg, "embedding_worker_cpu_reserve", 2)
-    monkeypatch.setattr(launcher.os, "cpu_count", lambda: 8)
-    monkeypatch.setattr(launcher, "resolve_embedding_device", lambda: "cpu")
-
-    assert launcher.resolve_embedder_instance_count() == 6
-
-
-def test_resolve_embedder_instance_count_auto_keeps_single_gpu_worker(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(launcher.cfg, "embedding_worker_instances", "auto")
-    monkeypatch.setattr(launcher.cfg, "embedding_worker_cpu_reserve", 0)
-    monkeypatch.setattr(launcher.os, "cpu_count", lambda: 16)
-    monkeypatch.setattr(launcher, "resolve_embedding_device", lambda: "mps")
-
-    assert launcher.resolve_embedder_instance_count() == 1
-
-
-def test_resolve_embedder_instance_count_honors_explicit_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(launcher.cfg, "embedding_worker_instances", 5)
-
-    assert launcher.resolve_embedder_instance_count() == 5
-
-
-def test_maybe_reset_embed_model_after_document_respects_threshold(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(embedder_tasks.cfg, "embedding_model_reset_after_documents", 2)
-    monkeypatch.setattr(embedder_tasks, "_completed_documents_since_reset", 0)
-    resets: list[bool] = []
-    monkeypatch.setattr(
-        embedder_tasks, "reset_embed_model", lambda: resets.append(True)
-    )
-
-    assert embedder_tasks.maybe_reset_embed_model_after_document() is False
-    assert resets == []
-    assert embedder_tasks._completed_documents_since_reset == 1
-
-    assert embedder_tasks.maybe_reset_embed_model_after_document() is True
-    assert resets == [True]
-    assert embedder_tasks._completed_documents_since_reset == 0
-
-
-def test_maybe_reset_embed_model_after_document_can_be_disabled(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(embedder_tasks.cfg, "embedding_model_reset_after_documents", 0)
-    monkeypatch.setattr(embedder_tasks, "_completed_documents_since_reset", 0)
+    calls: list[tuple[list[str], str]] = []
     monkeypatch.setattr(
         embedder_tasks,
-        "reset_embed_model",
-        lambda: (_ for _ in ()).throw(RuntimeError("should not reset")),
+        "embed_texts",
+        lambda texts, *, priority: calls.append((texts, priority)) or [[0.25]],
     )
 
-    assert embedder_tasks.maybe_reset_embed_model_after_document() is False
-    assert embedder_tasks._completed_documents_since_reset == 0
+    assert embedder_tasks.make_embed_vector("payload") == [0.25]
+    assert calls == [(["payload"], "batch")]

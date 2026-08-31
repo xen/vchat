@@ -12,7 +12,6 @@ resources:
   - deployment-web.yaml
   - deployment-celery.yaml
   - deployment-celery-beat.yaml
-  - deployment-embedder.yaml
   - job-migrate.yaml
   - hpa-web.yaml
   - networkpolicy.yaml

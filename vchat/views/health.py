@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any
 
 import sqlalchemy as sa
@@ -9,7 +8,7 @@ from aiohttp import web
 from redis.asyncio import from_url as redis_from_url
 
 from jobs.celery import app as celery_app
-from jobs.embedder.model import resolve_embedding_device
+from jobs.embedder.client import ready as embedding_service_ready
 from vchat.settings import REDIS_KEY, cfg
 from vchat.views.chat import ctx as chat_ctx
 from vchat.views.chat.ai import resolve_ai_settings
@@ -18,8 +17,8 @@ CheckResult = dict[str, Any]
 QueueSnapshot = dict[str, int]
 WorkerQueues = dict[str, list[str]]
 
-EMBEDDER_QUEUE = "embeddings"
 CRAWLER_QUEUE = "crawler"
+EMBEDDER_QUEUE = "embeddings"
 
 
 async def live(request: web.Request) -> web.Response:
@@ -112,56 +111,23 @@ async def _check_celery_workers() -> CheckResult:
     return _ok(workers=worker_queues, default_workers=default_workers)
 
 
-async def _check_embedder_workers() -> CheckResult:
+async def _check_embedding_service() -> CheckResult:
     try:
-        worker_queues = await asyncio.to_thread(
-            _inspect_celery_workers,
-            cfg.readiness_celery_timeout_seconds,
-        )
+        payload = await asyncio.to_thread(embedding_service_ready)
     except Exception as exc:
-        return _failed(exc)
-
-    embedder_workers = [
-        worker for worker, queues in worker_queues.items() if EMBEDDER_QUEUE in queues
-    ]
-    if not embedder_workers:
-        return _failed(
-            f"no workers listen to {EMBEDDER_QUEUE}",
-            workers=worker_queues,
-            required_queue=EMBEDDER_QUEUE,
-        )
-    return _ok(workers=embedder_workers)
+        return _failed(exc, service_url=cfg.embedding_service_url)
+    return _ok(service_url=cfg.embedding_service_url, queues=payload.get("queues", {}))
 
 
 def _is_model_loaded(value: Any) -> bool:
     return value is not None and value is not False
 
 
-async def _check_embedding_model() -> CheckResult:
-    model_dir = Path("models/embedder")
-    try:
-        device = resolve_embedding_device()
-    except Exception as exc:
-        return _failed(exc, model_dir=str(model_dir))
-
-    if not model_dir.exists():
-        return _failed(
-            "model directory missing", model_dir=str(model_dir), device=device
-        )
-
-    loaded = {
-        "embedding": _is_model_loaded(getattr(chat_ctx, "_embed_model", None)),
-        "reranker": _is_model_loaded(getattr(chat_ctx, "_rerank_model", None)),
-    }
-    if not all(loaded.values()):
-        return _failed(
-            "models not warmed up",
-            model_dir=str(model_dir),
-            device=device,
-            loaded=loaded,
-        )
-
-    return _ok(model_dir=str(model_dir), device=device, loaded=loaded)
+async def _check_reranker_model() -> CheckResult:
+    loaded = _is_model_loaded(getattr(chat_ctx, "_rerank_model", None))
+    if not loaded:
+        return _failed("reranker model not warmed up")
+    return _ok(loaded=True)
 
 
 async def _check_llm_config() -> CheckResult:
@@ -191,8 +157,8 @@ async def ready(request: web.Request) -> web.Response:
         "redis": await _check_app_redis(request),
         "celery_broker": await _check_celery_broker(),
         "celery_workers": await _check_celery_workers(),
-        "embedder": await _check_embedder_workers(),
-        "embedding_model": await _check_embedding_model(),
+        "embedder": await _check_embedding_service(),
+        "reranker_model": await _check_reranker_model(),
         "llm": await _check_llm_config(),
     }
     ready_status = (

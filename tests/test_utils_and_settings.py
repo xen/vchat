@@ -342,30 +342,17 @@ def test_settings_rejects_invalid_typed_env_override() -> None:
     assert "raw_content_max_bytes" in result.stderr
 
 
-def test_settings_rejects_invalid_embedder_instance_count() -> None:
+def test_settings_rejects_invalid_embedding_service_timeout() -> None:
     result = subprocess.run(
         [sys.executable, "-c", "import vchat.settings"],
-        env={**os.environ, "EMBEDDING_WORKER_INSTANCES": "0"},
+        env={**os.environ, "EMBEDDING_SERVICE_TIMEOUT_SECONDS": "0"},
         capture_output=True,
         text=True,
     )
 
     assert result.returncode != 0
     assert "Config validation failed" in result.stderr
-    assert "embedding_worker_instances" in result.stderr
-
-
-def test_settings_rejects_invalid_embedding_device() -> None:
-    result = subprocess.run(
-        [sys.executable, "-c", "import vchat.settings"],
-        env={**os.environ, "EMBEDDING_DEVICE": "metal"},
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode != 0
-    assert "Config validation failed" in result.stderr
-    assert "embedding_device" in result.stderr
+    assert "embedding_service_timeout_seconds" in result.stderr
 
 
 def test_settings_stage_allows_default_security_keys() -> None:

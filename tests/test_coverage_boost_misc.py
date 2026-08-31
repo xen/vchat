@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from jobs.embedder import model as embeddings
 from vchat.views.chat import ctx as chat_ctx
 from vchat.views.chat import guardrails
 from jobs.documents.types import guess_document_type
@@ -55,71 +54,6 @@ def test_guardrails_reason_detection_branches(monkeypatch: pytest.MonkeyPatch) -
     assert "passport_ru" in reasons
     assert "oms_ru" in reasons
     assert "russian_pii" in reasons
-
-
-def test_embeddings_loader(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(embeddings.cfg, "embedding_device", "cpu")
-    monkeypatch.setattr(embeddings.cfg, "embedding_max_seq_length", 123)
-    calls = {}
-
-    class _FakeST:
-        def __init__(self, model_path, device, tokenizer_kwargs, trust_remote_code):
-            calls["model_path"] = model_path
-            calls["device"] = device
-            calls["tokenizer_kwargs"] = tokenizer_kwargs
-            calls["trust_remote_code"] = trust_remote_code
-
-    monkeypatch.setattr(embeddings, "SentenceTransformer", _FakeST)
-    model = embeddings.load_embedding_model()
-    assert isinstance(model, _FakeST)
-    assert calls["model_path"] == "models/embedder"
-    assert calls["device"] == "cpu"
-    assert calls["tokenizer_kwargs"] == {"truncation": True, "max_length": 123}
-    assert model.max_seq_length == 123
-
-
-def test_resolve_embedding_device_uses_config(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(embeddings.cfg, "embedding_device", "cpu")
-    assert embeddings.resolve_embedding_device() == "cpu"
-
-
-def test_resolve_embedding_device_auto_uses_detector(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(embeddings.cfg, "embedding_device", "auto")
-    monkeypatch.setattr(embeddings, "detect_best_device", lambda: "cpu")
-
-    assert embeddings.resolve_embedding_device() == "cpu"
-
-
-def test_resolve_embedding_device_rejects_unavailable_mps(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(embeddings.cfg, "embedding_device", "mps")
-    monkeypatch.setattr(
-        embeddings.torch,
-        "backends",
-        SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
-    )
-
-    with pytest.raises(RuntimeError, match="mps"):
-        embeddings.resolve_embedding_device()
-
-
-def test_resolve_embedding_device_rejects_unavailable_cuda(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(embeddings.cfg, "embedding_device", "cuda")
-    monkeypatch.setattr(
-        embeddings.torch,
-        "cuda",
-        SimpleNamespace(is_available=lambda: False),
-    )
-
-    with pytest.raises(RuntimeError, match="cuda"):
-        embeddings.resolve_embedding_device()
 
 
 def test_loadrerank_rejects_unavailable_configured_device(

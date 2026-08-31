@@ -104,24 +104,6 @@ services:
         target: /app/local.yaml
     command: ["celery", "-A", "jobs.celery", "beat", "--loglevel=INFO"]
 
-  embedder:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-    environment:
-      OPENAI_API_KEY: ""
-      GIGACHAT_API_KEY: ""
-      EMBEDDER_INSTANCES: ${EMBEDDER_INSTANCES:-1}
-    configs:
-      - source: local_yaml
-        target: /app/local.yaml
-    command: ["python", "-m", "jobs.embedder.launcher"]
-
 configs:
   local_yaml:
     content: |

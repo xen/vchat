@@ -29,11 +29,9 @@ app.conf.broker_transport_options = {
     "visibility_timeout": cfg.celery_visibility_timeout
 }
 
-# The default worker only consumes the `celery` queue.  Do not import
-# `jobs.embedder.tasks` here: importing its ML stack in every default worker
-# needlessly duplicates PyTorch/SentenceTransformers memory.  The dedicated
-# embedder worker includes that module explicitly in its command line.
-app.conf.imports = ("jobs.crawler.tasks", "jobs.triggers.tasks")
+# Embedding jobs make HTTP calls to the machine-local dzen_embedder service,
+# so they are safe to load in the default worker and do not own an ML model.
+app.conf.imports = ("jobs.crawler.tasks", "jobs.embedder.tasks", "jobs.triggers.tasks")
 
 
 app.conf.worker_prefetch_multiplier = 1

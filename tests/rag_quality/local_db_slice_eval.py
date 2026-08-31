@@ -20,6 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from jobs.crawler import tasks as crawler_tasks
 from jobs.embedder.chunking import ChunkData, chunk_document_text
+from jobs.embedder.client import embed_texts as service_embed_texts
 from vchat.settings import cfg
 from vchat.views.chat import ctx as ctx_mod
 
@@ -454,17 +455,8 @@ def _as_float_vector(value: Any) -> list[float]:
     return [float(item) for item in value]
 
 
-def embed_texts(model: Any, texts: list[str]) -> list[list[float]]:
-    if not texts:
-        return []
-    encoded = model.encode(texts, normalize_embeddings=True)
-    return [_as_float_vector(item) for item in encoded]
-
-
-def load_eval_embedding_model() -> Any:
-    from jobs.embedder.model import load_embedding_model
-
-    return load_embedding_model()
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    return service_embed_texts(texts, priority="batch")
 
 
 def embed_and_rank_chunks(
@@ -563,7 +555,6 @@ async def run_eval(args: argparse.Namespace) -> dict[str, Any]:
         limit=args.limit,
     )
     page_results: list[dict[str, Any]] = []
-    embedding_model = load_eval_embedding_model() if args.embed_query else None
     materialized: list[tuple[PageRow, list[ChunkData]]] = []
     for page in pages:
         summary, chunks = summarize_page(page, mode=args.mode)
@@ -580,7 +571,7 @@ async def run_eval(args: argparse.Namespace) -> dict[str, Any]:
             summary["embedding_top_chunks"] = embed_and_rank_chunks(
                 chunks,
                 query=args.embed_query,
-                embedder=lambda texts: embed_texts(embedding_model, texts),
+                embedder=embed_texts,
                 top_k=args.top_k,
             )
         page_results.append(summary)
@@ -607,7 +598,7 @@ async def run_eval(args: argparse.Namespace) -> dict[str, Any]:
         embedding_global_top_chunks = embed_and_rank_page_chunks(
             materialized,
             query=args.embed_query,
-            embedder=lambda texts: embed_texts(embedding_model, texts),
+            embedder=embed_texts,
             top_k=args.top_k,
         )
         expected_hit = expected_uri_hit(

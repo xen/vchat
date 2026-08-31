@@ -3,11 +3,10 @@ set -euo pipefail
 
 readonly DEPLOY_PATH="/var/www/vchat"
 readonly BRANCH="master"
-readonly SERVICES=(vchat-backend.service vchat-celery.service vchat-embedder.service)
+readonly SERVICES=(vchat-backend.service vchat-celery.service)
 readonly SYSTEMD_UNITS=(
   vchat-backend.service
   vchat-celery.service
-  vchat-embedder.service
   vchat-postgres.service
 )
 
@@ -34,6 +33,9 @@ sudo install -m 0644 deploy/nginx/vchat.conf /etc/nginx/sites-available/vchat
 sudo ln -sfn /etc/nginx/sites-available/vchat /etc/nginx/sites-enabled/vchat
 sudo nginx -t
 sudo systemctl daemon-reload
+if systemctl cat vchat-embedder.service >/dev/null 2>&1; then
+  sudo systemctl disable --now vchat-embedder.service
+fi
 sudo systemctl enable "${SERVICES[@]}"
 sudo systemctl restart "${SERVICES[@]}"
 sudo systemctl reload nginx

@@ -327,22 +327,23 @@ def _patch_ready_dependencies(
     worker_queues: dict[str, list[str]] | None = None,
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    model_dir = tmp_path / "models" / "embedder"
-    model_dir.mkdir(parents=True)
     monkeypatch.setattr(health.cfg, "chat_provider", "openai")
     monkeypatch.setattr(health.cfg, "chat_model", "gpt-4o-mini")
     monkeypatch.setattr(health.cfg, "openai_api_key", "test-key")
     monkeypatch.setattr(health.cfg, "celery_redis_uri", "redis://localhost/")
     monkeypatch.setattr(health.cfg, "celery_broker_db", 31)
     monkeypatch.setattr(health, "redis_from_url", lambda *_args, **_kwargs: HealthBrokerRedis())
-    monkeypatch.setattr(health, "resolve_embedding_device", lambda: "cpu")
-    monkeypatch.setattr(health.chat_ctx, "_embed_model", object())
     monkeypatch.setattr(health.chat_ctx, "_rerank_model", object())
+    monkeypatch.setattr(
+        health,
+        "embedding_service_ready",
+        lambda: {"status": "ok", "queues": {"realtime": 0, "batch": 0}},
+    )
     monkeypatch.setattr(
         health,
         "_inspect_celery_workers",
         lambda _timeout: worker_queues
-        or {"worker-default": ["celery"], "worker-embedder": ["embeddings"]},
+        or {"worker-default": ["celery", "embeddings"]},
     )
 
 
@@ -363,7 +364,7 @@ async def test_health_handlers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     assert payload["checks"]["database"]["status"] == "ok"
     assert payload["checks"]["redis"]["status"] == "ok"
     assert payload["checks"]["celery_broker"]["queues"]["embeddings"] == 2
-    assert payload["checks"]["embedder"]["workers"] == ["worker-embedder"]
+    assert payload["checks"]["embedder"]["queues"] == {"realtime": 0, "batch": 0}
     assert payload["checks"]["llm"] == {
         "status": "ok",
         "provider": "openai",
@@ -374,14 +375,15 @@ async def test_health_handlers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_health_ready_returns_503_without_embedder_worker(
+async def test_health_ready_returns_503_without_embedding_service(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _patch_ready_dependencies(
-        monkeypatch,
-        tmp_path,
-        worker_queues={"worker-default": ["celery"]},
+    _patch_ready_dependencies(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        health,
+        "embedding_service_ready",
+        lambda: (_ for _ in ()).throw(RuntimeError("dzen_embedder down")),
     )
 
     response = await health.ready(HealthRequest(HealthRedis(), HealthDB()))  # type: ignore[arg-type]
@@ -390,7 +392,7 @@ async def test_health_ready_returns_503_without_embedder_worker(
     assert response.status == 503
     assert payload["status"] == "degraded"
     assert payload["checks"]["embedder"]["status"] == "failed"
-    assert payload["checks"]["embedder"]["required_queue"] == "embeddings"
+    assert payload["checks"]["embedder"]["service_url"] == health.cfg.embedding_service_url
 
 
 @pytest.mark.asyncio

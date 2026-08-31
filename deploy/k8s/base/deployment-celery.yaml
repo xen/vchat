@@ -29,7 +29,7 @@ spec:
           image: vchat
           imagePullPolicy: IfNotPresent
           command: ["celery"]
-          args: ["-A", "jobs.celery", "worker", "--loglevel=INFO", "-Q", "celery"]
+          args: ["-A", "jobs.celery", "worker", "--loglevel=INFO", "-Q", "celery,embeddings"]
           envFrom:
             - secretRef:
                 name: vchat-secret

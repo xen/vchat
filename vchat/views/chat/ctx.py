@@ -7,7 +7,6 @@ import logging
 import re
 import time
 from collections import namedtuple
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
@@ -19,7 +18,8 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vchat.views.chat.ai import BaseAIProvider, ModelInfo
-from jobs.embedder.model import load_embedding_model, resolve_torch_backend
+from jobs.embedder.client import embed_texts
+from jobs.embedder.model import resolve_torch_backend
 from vchat.models import ChatMsg
 from vchat.settings import cfg
 from vchat.views.metrics import (
@@ -124,9 +124,7 @@ chat_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
 
 lang_models = {"en": "en_core_web_sm", "ru": "ru_core_news_sm"}
 _nlps: dict[str, Any] = {}
-_embed_model: Any | None = None
 _rerank_model: Any | None = None
-_request_embed_executor: ThreadPoolExecutor | None = None
 _request_embed_semaphore: asyncio.Semaphore | None = None
 
 
@@ -365,25 +363,12 @@ def queryprofile(text: str) -> dict[str, Any]:
     }
 
 
-def _get_embed_model():
-    global _embed_model
-    if _embed_model is None:
-        _embed_model = load_embedding_model()
-    return _embed_model
-
-
 def embed_query(text: str) -> list[float]:
-    model = _get_embed_model()
     payload = f"{EMBEDDING_QUERY_PROMPT}{text}"
-    try:
-        emb = model.encode([payload], normalize_embeddings=True, batch_size=1)
-    except TypeError:
-        emb = model.encode([payload], normalize_embeddings=True)
-    return emb[0].tolist()
+    return embed_texts([payload])[0]
 
 
 async def embed_query_async(text: str) -> list[float]:
-    global _request_embed_executor
     global _request_embed_semaphore
 
     if _request_embed_semaphore is not None:
@@ -419,21 +404,7 @@ async def embed_query_async(text: str) -> list[float]:
     request_embedding_started()
     encode_started_at = time.monotonic()
     try:
-        torch.set_num_threads(cfg.request_embedding_torch_threads)
-        if _request_embed_executor is not None:
-            executor = _request_embed_executor
-        else:
-            executor = ThreadPoolExecutor(
-                max_workers=cfg.request_embedding_executor_workers,
-                thread_name_prefix="request-embedding",
-            )
-            _request_embed_executor = executor
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            executor,
-            embed_query,
-            text,
-        )
+        return await asyncio.to_thread(embed_query, text)
     finally:
         encode_seconds = time.monotonic() - encode_started_at
         try:
@@ -470,9 +441,6 @@ def loadrerank():
     global _rerank_model
     if _rerank_model is not None:
         return _rerank_model
-    import torch
-    from sentence_transformers import CrossEncoder  # type: ignore[import]
-
     if cfg.reranker_device != "auto":
         device = resolve_torch_backend(
             cfg.reranker_device,
@@ -485,6 +453,8 @@ def loadrerank():
     else:
         device = "cpu"
 
+    from sentence_transformers import CrossEncoder  # type: ignore[import]
+
     _rerank_model = CrossEncoder(
         "models/reranker",
         device=device,
@@ -496,7 +466,6 @@ def loadrerank():
 
 
 def warmup_models() -> None:
-    _get_embed_model()
     loadrerank()
 
 

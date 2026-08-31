@@ -22,10 +22,10 @@ data:
     celery_backend_db: 32
 
     request_embedding_concurrency: 1
-    request_embedding_executor_workers: 1
     request_embedding_queue_timeout_seconds: 20
     request_embedding_queue_warn_seconds: 1
-    request_embedding_torch_threads: 2
+    embedding_service_url: !env "$EMBEDDING_SERVICE_URL"
+    embedding_service_timeout_seconds: 30
 
     log_format: "json"
     openai_api_key: !env "$OPENAI_API_KEY"

@@ -18,6 +18,7 @@ data:
     celery_broker_db: 31
     celery_backend_db: 32
     celery_worker_concurrency: 1
+    embedding_service_url: !env "$EMBEDDING_SERVICE_URL"
 
     log_format: "json"
     openai_api_key: !env "$OPENAI_API_KEY"

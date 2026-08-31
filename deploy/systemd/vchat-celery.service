@@ -14,7 +14,7 @@ Environment=TOKENIZERS_PARALLELISM=false
 Environment=OMP_NUM_THREADS=1
 Environment=MKL_NUM_THREADS=1
 Environment=HF_HOME=/var/www/vchat/.cache/huggingface
-ExecStart=/var/www/vchat/venv/bin/celery -A jobs.celery worker --beat --loglevel=INFO --concurrency=2 --max-tasks-per-child=100 -Q celery,crawler -n vchat-celery@%H
+ExecStart=/var/www/vchat/venv/bin/celery -A jobs.celery worker --beat --loglevel=INFO --concurrency=2 --max-tasks-per-child=100 -Q celery,crawler,embeddings -n vchat-celery@%H
 Restart=always
 RestartSec=5
 TimeoutStopSec=60

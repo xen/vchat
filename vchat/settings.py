@@ -3,7 +3,7 @@ from pathlib import Path
 import base64
 import io
 import os
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 import yaml
 from aiohttp import web
 from expandvars import expandvars
@@ -107,8 +107,9 @@ class AppConfig(BaseModel):
     openai_guardrails_enabled: bool = True
     guardrails_ru_pii_enabled: bool = True
     embedding_model_id: str = "deepvk/USER-bge-m3"
+    embedding_service_url: str = "http://127.0.0.1:18091"
+    embedding_service_timeout_seconds: float = Field(30.0, gt=0)
     reranker_model_id: str = "BAAI/bge-reranker-v2-m3"
-    embedding_device: DeviceConfig = "auto"
     reranker_device: DeviceConfig = "auto"
     vec_dim: int = Field(1024, ge=1)
     embedding_max_seq_length: int = Field(8192, ge=1)
@@ -127,14 +128,9 @@ class AppConfig(BaseModel):
     embedding_refresh_project_index_ttl_seconds: int = Field(300, ge=60)
     embedding_index_document_schedule_ttl_seconds: int = Field(21_600, ge=300)
     page_shingle_insert_batch_size: int = Field(2000, ge=100)
-    embedding_model_reset_after_documents: int = Field(20, ge=0)
-    embedding_worker_instances: Annotated[int, Field(ge=1)] | Literal["auto"] = 1
-    embedding_worker_cpu_reserve: int = Field(1, ge=0)
     request_embedding_concurrency: int = Field(1, ge=1)
-    request_embedding_executor_workers: int = Field(1, ge=1)
     request_embedding_queue_timeout_seconds: float = Field(20.0, gt=0)
     request_embedding_queue_warn_seconds: float = Field(1.0, gt=0)
-    request_embedding_torch_threads: int = Field(1, ge=1)
     metadata_only_csv_min_chars: int = Field(50_000, ge=1)
     metadata_only_raw_size_min_bytes: int = Field(1_000_000, ge=1)
 
@@ -168,13 +164,6 @@ class AppConfig(BaseModel):
     def _normalize_loglevel(cls, value: Any) -> Any:
         if isinstance(value, str):
             return value.upper()
-        return value
-
-    @field_validator("embedding_worker_instances", mode="before")
-    @classmethod
-    def _normalize_embedding_worker_instances(cls, value: Any) -> Any:
-        if value == "":
-            return "auto"
         return value
 
     @property

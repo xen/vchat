@@ -21,8 +21,6 @@ replicas:
     count: 1
   - name: vchat-celery-beat
     count: 1
-  - name: vchat-embedder
-    count: 1
 
 patches:
   - path: configmap.yaml

@@ -1,9 +1,7 @@
 import logging
 import time
-import gc
-from typing import Any, List
+from typing import Any
 
-import numpy as np
 import redis
 import sqlalchemy as sa
 from sqlalchemy import select
@@ -11,10 +9,7 @@ from sqlalchemy.orm import Session
 
 from jobs.celery import app
 from jobs.db import create_sync_engine
-from jobs.embedder.model import (
-    load_embedding_model,
-    release_torch_cache,
-)
+from jobs.embedder.client import embed_texts
 from jobs.embedder.chunking import EmbedderDocumentError
 from jobs.embedder.queue import (
     pending_chunks_remain,
@@ -29,100 +24,16 @@ from vchat.models import Chunk, Page
 from vchat.views.projects.page_status import PageStatus
 from vchat.settings import cfg
 
-# Lazy, per-process singleton
-_embed_model = None
-_completed_documents_since_reset = 0
-
-
-def get_embed_model() -> Any:
-    global _embed_model
-    if _embed_model is None:
-        _embed_model = load_embedding_model()
-    return _embed_model
-
-
-def reset_embed_model() -> None:
-    global _completed_documents_since_reset, _embed_model
-    model = _embed_model
-    _embed_model = None
-    _completed_documents_since_reset = 0
-    if model is not None:
-        if hasattr(model, "cpu"):
-            model.cpu()
-        del model
-    gc.collect()
-    release_torch_cache()
-
-
-def maybe_reset_embed_model_after_document() -> bool:
-    global _completed_documents_since_reset
-    if cfg.embedding_model_reset_after_documents <= 0:
-        return False
-
-    _completed_documents_since_reset += 1
-    if _completed_documents_since_reset < cfg.embedding_model_reset_after_documents:
-        return False
-
-    logging.info(
-        "Resetting embedding model after %s completed documents",
-        _completed_documents_since_reset,
-    )
-    _completed_documents_since_reset = 0
-    reset_embed_model()
-    return True
-
-
-def embedding_result_to_vectors(embedding_result: Any) -> list[List[float]]:
-    vectors = np.asarray(embedding_result)
-    if np.isnan(vectors).any():
-        raise ValueError("embedding model returned NaN vector")
-    return vectors.tolist()
-
-
-def make_embed_vector(text: str) -> List[float]:
+def make_embed_vector(text: str) -> list[float]:
     if not text:
         return []
-    emb = get_embed_model().encode(
-        [text],
-        normalize_embeddings=True,
-        batch_size=1,
-        show_progress_bar=False,
-    )
-    return embedding_result_to_vectors(emb)[0]
+    return embed_texts([text], priority="batch")[0]
 
 
-def make_embed_vectors(texts: list[str]) -> list[List[float]]:
+def make_embed_vectors(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
-
-    batches: list[list[str]] = []
-    current: list[str] = []
-    current_chars = 0
-    for text in texts:
-        text_len = len(text or "")
-        if current and (
-            len(current) >= cfg.embedding_encode_batch_max_chunks
-            or current_chars + text_len > cfg.embedding_encode_batch_max_chars
-        ):
-            batches.append(current)
-            current = []
-            current_chars = 0
-        current.append(text)
-        current_chars += text_len
-    if current:
-        batches.append(current)
-
-    vectors: list[List[float]] = []
-    model = get_embed_model()
-    for batch in batches:
-        emb = model.encode(
-            batch,
-            normalize_embeddings=True,
-            batch_size=len(batch),
-            show_progress_bar=False,
-        )
-        vectors.extend(embedding_result_to_vectors(emb))
-    return vectors
+    return embed_texts(texts, priority="batch")
 
 
 def normalized_chunk_text_expr(column):
@@ -254,10 +165,6 @@ def process_next_pending_chunk(session: Session) -> bool:
     # Идемпотентность: коммитим каждый чанк сразу
     session.commit()
 
-    # Освобождаем MPS/CUDA кэш после каждого чанка — без этого PyTorch
-    # накапливает Metal-буферы до исчерпания памяти при длинных циклах.
-    release_torch_cache()
-
     completed_page_ids = mark_completed_pages(session, updated_page_ids)
     remaining = session.execute(
         sa.select(sa.func.count(Chunk.id)).where(
@@ -282,9 +189,6 @@ def process_next_pending_chunk(session: Session) -> bool:
         duration,
         remaining,
     )
-
-    for _page_id in completed_page_ids:
-        maybe_reset_embed_model_after_document()
 
     return True
 
@@ -409,15 +313,12 @@ def process_pending_chunk_batch(
             fallback_updates,
         )
     session.commit()
-    release_torch_cache()
 
     completed_page_ids: list[int] = []
     if updated_page_ids or page_ids:
         completed_page_ids = mark_completed_pages(session, updated_page_ids | page_ids)
     if completed_page_ids:
         session.commit()
-        for _page_id in completed_page_ids:
-            maybe_reset_embed_model_after_document()
 
     session.expunge_all()
     duration = time.monotonic() - start_time

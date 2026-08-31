@@ -13,10 +13,6 @@ from vchat.views.chat.ctx import Msg
 
 
 def _reset_request_embedding_runtime() -> None:
-    executor = ctx_mod._request_embed_executor
-    if executor is not None:
-        executor.shutdown(wait=True, cancel_futures=True)
-    ctx_mod._request_embed_executor = None
     ctx_mod._request_embed_semaphore = None
 
 
@@ -181,19 +177,9 @@ async def test_kb_vector_supply_rejects_wrong_vector_dimension(
 
 
 def test_embed_query(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Vec:
-        def __init__(self, values):
-            self._values = values
-
-        def tolist(self):
-            return list(self._values)
-
-    class _Emb:
-        def encode(self, texts, normalize_embeddings=True):
-            _ = texts, normalize_embeddings
-            return [_Vec([0.1, 0.2, 0.3])]
-
-    monkeypatch.setattr(ctx_mod, "_embed_model", _Emb())
+    monkeypatch.setattr(
+        ctx_mod, "embed_texts", lambda texts: [[0.1, 0.2, 0.3] for _ in texts]
+    )
     vec = ctx_mod.embed_query("hello")
     assert vec == [0.1, 0.2, 0.3]
 
@@ -203,20 +189,11 @@ def test_embed_query_prepends_prompt_and_encodes(
 ) -> None:
     seen = {}
 
-    class _Vec:
-        def __init__(self, values):
-            self._values = values
+    def _embed(texts: list[str]) -> list[list[float]]:
+        seen["payload"] = texts[0]
+        return [[0.4, 0.5]]
 
-        def tolist(self):
-            return list(self._values)
-
-    class _Emb:
-        def encode(self, texts, normalize_embeddings=True, batch_size=1):
-            _ = normalize_embeddings, batch_size
-            seen["payload"] = texts[0]
-            return [_Vec([0.4, 0.5])]
-
-    monkeypatch.setattr(ctx_mod, "_embed_model", _Emb())
+    monkeypatch.setattr(ctx_mod, "embed_texts", _embed)
 
     vec = ctx_mod.embed_query("hello world")
 
@@ -231,11 +208,8 @@ async def test_embed_query_async_limits_parallel_encode(
 ) -> None:
     _reset_request_embedding_runtime()
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_concurrency", 1)
-    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_executor_workers", 1)
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_timeout_seconds", 5)
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_warn_seconds", 5)
-    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_torch_threads", 1)
-    monkeypatch.setattr(ctx_mod.torch, "set_num_threads", lambda _threads: None)
 
     active = 0
     max_active = 0
@@ -272,11 +246,8 @@ async def test_embed_query_async_times_out_waiting_for_limiter(
 ) -> None:
     _reset_request_embedding_runtime()
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_concurrency", 1)
-    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_executor_workers", 1)
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_timeout_seconds", 0.01)
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_warn_seconds", 5)
-    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_torch_threads", 1)
-    monkeypatch.setattr(ctx_mod.torch, "set_num_threads", lambda _threads: None)
 
     def _embed(_text: str) -> list[float]:
         time.sleep(0.05)
@@ -300,11 +271,8 @@ async def test_embed_query_async_propagates_encode_error(
 ) -> None:
     _reset_request_embedding_runtime()
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_concurrency", 1)
-    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_executor_workers", 1)
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_timeout_seconds", 5)
     monkeypatch.setattr(ctx_mod.cfg, "request_embedding_queue_warn_seconds", 5)
-    monkeypatch.setattr(ctx_mod.cfg, "request_embedding_torch_threads", 1)
-    monkeypatch.setattr(ctx_mod.torch, "set_num_threads", lambda _threads: None)
 
     def _embed(_text: str) -> list[float]:
         raise RuntimeError("model crashed")
