@@ -35,3 +35,6 @@ watchdog[watchmedo]
 
 # word generation
 pandoc-mermaid-selenium-filter
+
+# Installer includes the corrected CA bundle.
+pip>=26.2.2

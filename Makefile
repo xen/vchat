@@ -87,10 +87,10 @@ frontend: venv/bin/activate ## build frontend
 	cd frontend_chat && make deploy
 
 deploy: venv/bin/activate  ## deploy on server project
-	. venv/bin/activate && uv pip sync requirements/requirements.txt --link-mode=copy
 	@if [ "$$(uname -s)" = "Linux" ]; then \
-	  echo "Installing Linux-specific requirements..."; \
-	  . venv/bin/activate && uv pip install -r requirements/req_linux.txt --link-mode=copy; \
+	  . venv/bin/activate && uv pip sync requirements/linux.txt --link-mode=copy; \
+	else \
+	  . venv/bin/activate && uv pip sync requirements/requirements.txt --link-mode=copy; \
 	fi
 	. venv/bin/activate && python entry.py --model
 	. venv/bin/activate && alembic upgrade head

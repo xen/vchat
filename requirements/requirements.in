@@ -93,3 +93,6 @@ Babel
 
 # metrics
 prometheus_client
+
+# Reject compromised eMudhra certificate chains in HTTP client trust stores.
+certifi>=2026.10.19
