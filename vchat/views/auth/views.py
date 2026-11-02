@@ -61,6 +61,17 @@ async def _finish_login(
     redis: Any,
     failure_key: str,
 ) -> None:
+    # Serialize session creation with permanent blocking, including LDAP logins.
+    user = (
+        await request["db"].execute(
+            sa.select(User)
+            .where(User.id == user.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar()
+    if user is None or not user.is_active or user.blocked_at is not None:
+        raise web.HTTPForbidden(text="User is inactive or permanently blocked")
     session = await new_session(request)
     session["user_id"] = user.id
     session["login_at"] = int(time.time())
@@ -240,6 +251,9 @@ async def login(request):
                 "form": form,
                 "ldap_enabled": cfg.auth_ldap_enabled,
             }
+        if user.blocked_at is not None:
+            form.add_email_error("Пользователь заблокирован навсегда")
+            return {"form": form, "ldap_enabled": cfg.auth_ldap_enabled}
         if user.is_active is False:
             form.add_email_error(
                 "Вы не подтвердили email. Проверьте почту и папку Спам, "
@@ -341,7 +355,7 @@ async def login_ldap(request):
             )
             request["db"].add(user)
             await request["db"].flush()
-        elif user.is_active is False:
+        elif user.blocked_at is not None or user.is_active is False:
             form.add_email_error("Пользователь заблокирован")
             return {"form": form, "basic_enabled": cfg.auth_basic_enabled}
         elif not user.is_ldap:
@@ -480,10 +494,13 @@ async def sessions_action(request):
         if request["user"].is_active is False:
             raise web.HTTPForbidden()
         user = await request["db"].scalar(
-            sa.select(User).where(
+            sa.select(User)
+            .where(
                 User.id == request["user"].id,
                 User.is_active.is_(True),
+                User.blocked_at.is_(None),
             )
+            .with_for_update()
         )
         if user is None:
             auth_session.invalidate()

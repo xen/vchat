@@ -1930,10 +1930,14 @@ async def project_action(request):
     if action == "user_password":
         target_user_id = int(item_id)
         user_obj = await db_session.scalar(
-            sa.select(User).where(User.id == target_user_id)
+            sa.select(User).where(User.id == target_user_id).with_for_update()
         )
         if not user_obj:
             raise web.HTTPNotFound()
+        if user_obj.blocked_at is not None:
+            raise web.HTTPForbidden(
+                text="Нельзя изменить необратимо заблокированного пользователя"
+            )
 
         session = await get_session(request)
         data = await request.post() if request.method == "POST" else None
@@ -1987,42 +1991,60 @@ async def project_action(request):
             event_name="user_sessions_revoke_all",
         )
 
-    if action == "user_delete":
+    if action == "user_block_permanently":
+        if request.method != "POST":
+            raise web.HTTPMethodNotAllowed(request.method, ["POST"])
         target_user_id = int(item_id)
-        is_htmx = request.headers.get("HX-Request", "").lower() == "true"
-
-        if target_user_id == request["user"].id:
-            message = "Нельзя удалить самого себя"
-            if is_htmx:
-                return web.Response(text=message, status=400)
-            await flash(request, message, "error")
-            raise web.HTTPFound(request.app.router["users"].url_for())
-
-        total_users = await db_session.scalar(sa.select(sa.func.count(User.id))) or 0
-        if total_users <= 1:
-            message = "Нельзя удалить последнего пользователя"
-            if is_htmx:
-                return web.Response(text=message, status=400)
-            await flash(request, message, "error")
-            raise web.HTTPFound(request.app.router["users"].url_for())
-
-        user_obj = await db_session.scalar(
-            sa.select(User).where(User.id == target_user_id)
+        # Lock in a stable order: simultaneous administrators cannot remove each
+        # other's access and leave the installation without an active admin.
+        users = (
+            (
+                await db_session.execute(
+                    sa.select(User)
+                    .order_by(User.id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .all()
         )
-        if not user_obj:
+        actor = next((user for user in users if user.id == request["user"].id), None)
+        if actor is None or not actor.is_active or actor.blocked_at is not None:
+            raise web.HTTPForbidden()
+        user_obj = next((user for user in users if user.id == target_user_id), None)
+        if user_obj is None:
             raise web.HTTPNotFound()
+        if user_obj.blocked_at is not None:
+            raise web.HTTPConflict(text="Пользователь уже заблокирован навсегда")
+        if target_user_id == actor.id:
+            raise web.HTTPBadRequest(text="Нельзя заблокировать самого себя")
+        active_users = [
+            user for user in users if user.is_active and user.blocked_at is None
+        ]
+        if user_obj.is_active and len(active_users) <= 1:
+            raise web.HTTPBadRequest(
+                text="Нельзя заблокировать последнего действующего администратора"
+            )
 
-        await db_session.delete(user_obj)
-        await db_session.commit()
-        await admin_event("user_delete", request)
-
-        if is_htmx:
-            response = web.Response(text="ok")
-            response.headers["HX-Refresh"] = "true"
-            return response
-
-        await flash(request, "Пользователь удалён", "success")
-        raise web.HTTPFound(request.app.router["users"].url_for())
+        now = datetime.now(timezone.utc)
+        user_obj.blocked_at = now
+        user_obj.is_active = False
+        user_obj.updated_at = now
+        await db_session.execute(
+            sa.update(UserSession)
+            .where(
+                UserSession.user_id == target_user_id, UserSession.revoked_at.is_(None)
+            )
+            .values(revoked_at=now, revoked_reason="permanent_block", updated_at=now)
+        )
+        # admin_event commits the status, session revocations and audit together.
+        await admin_event(
+            f"user_block_permanently target_user_id={target_user_id}", request
+        )
+        response = web.Response(text="ok")
+        response.headers["HX-Refresh"] = "true"
+        return response
 
     if action == "api_client_create":
         session = await get_session(request)
@@ -2661,7 +2683,7 @@ async def project_action(request):
             {"source": source, "sitemaps": sitemaps},
         )
 
-    raise web.HTTPBadRequest(text="Unknown action")
+    raise web.HTTPNotFound(text="Unknown action")
 
 
 @meta(title="Страницы")

@@ -317,6 +317,7 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
                 email="u@example.com",
                 name="User Seven",
                 is_active=True,
+                blocked_at=None,
                 auth_user_session_id=17,
                 last_seen_at=datetime.now(timezone.utc) - timedelta(minutes=1),
             )
@@ -357,6 +358,7 @@ async def test_auth_middleware_sets_user(monkeypatch: pytest.MonkeyPatch) -> Non
     assert request["auth_user_session_id"] == 17
     compiled = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
     assert "users.is_active IS true" in compiled
+    assert "users.blocked_at IS NULL" in compiled
     assert "user_session.session_id = 'session-7'" in compiled
     assert "user_session.revoked_at IS NULL" in compiled
     touch = str(statements[1].compile(compile_kwargs={"literal_binds": True}))
@@ -379,6 +381,7 @@ async def test_auth_middleware_invalidates_idle_user_session(
                 email="u@example.com",
                 name="User Seven",
                 is_active=True,
+                blocked_at=None,
                 auth_user_session_id=17,
                 last_seen_at=datetime.now(timezone.utc) - timedelta(hours=5),
             )
@@ -537,6 +540,7 @@ async def test_auth_middleware_invalidates_inactive_user_session(
     assert session["invalidated"] is True
     compiled = str(statements[0].compile(compile_kwargs={"literal_binds": True}))
     assert "users.is_active IS true" in compiled
+    assert "users.blocked_at IS NULL" in compiled
     assert "user_session.session_id = 'session-7'" in compiled
 
 
@@ -565,6 +569,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
             return SimpleNamespace(
                 id=5,
                 is_active=True,
+                blocked_at=None,
                 password="hash",
                 email="user@example.com",
                 name="User",
@@ -809,6 +814,7 @@ async def test_login_ldap_rejects_inactive_existing_user(
                 email="ldap@example.com",
                 name="LDAP User",
                 is_active=False,
+                blocked_at=None,
                 is_ldap=True,
             )
 
@@ -896,6 +902,7 @@ async def test_login_ldap_rejects_existing_local_user(
                 email="local@example.com",
                 name="Local User",
                 is_active=True,
+                blocked_at=None,
                 is_ldap=False,
             )
 
@@ -1310,6 +1317,7 @@ async def test_login_wrong_password_adds_delay(monkeypatch: pytest.MonkeyPatch) 
             return SimpleNamespace(
                 id=5,
                 is_active=True,
+                blocked_at=None,
                 password="hash",
                 email="user@example.com",
                 is_ldap=False,
@@ -1403,6 +1411,7 @@ async def test_login_wrong_password_sets_lockout_after_failure_limit(
             return SimpleNamespace(
                 id=5,
                 is_active=True,
+                blocked_at=None,
                 password="hash",
                 email="user@example.com",
                 is_ldap=False,

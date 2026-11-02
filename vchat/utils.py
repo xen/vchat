@@ -10,6 +10,7 @@ from typing import Callable, Optional
 from urllib.parse import urlencode, urlparse
 
 import msgspec
+import sqlalchemy as sa
 from aiohttp import web
 from aiohttp.abc import AbstractView
 from aiohttp_session import get_session
@@ -23,6 +24,7 @@ from multidict import CIMultiDict, CIMultiDictProxy, istr
 from wtforms import validators
 from yarl import URL
 
+from vchat.models import User
 from vchat.settings import REDIS_KEY, SIGNER_KEY, cfg
 
 
@@ -400,6 +402,26 @@ def login_required():
                     url = f"{url}?{urlencode(query_params)}"
                 raise web.HTTPFound(url)
 
+            # Keep the actor active until the operation commits. Permanent
+            # blocking takes exclusive row locks and waits for earlier writes.
+            if (
+                request.method not in {"GET", "HEAD", "OPTIONS"}
+                or request.match_info.get("action") not in {None, "user_password"}
+            ) and request.match_info.get("action") != "user_block_permanently":
+                active_user = await request["db"].scalar(
+                    sa.select(User.id)
+                    .where(
+                        User.id == request["user"].id,
+                        User.is_active.is_(True),
+                        User.blocked_at.is_(None),
+                    )
+                    .with_for_update(read=True)
+                )
+                if active_user is None:
+                    request["auth_session"].invalidate()
+                    raise web.HTTPForbidden(
+                        text="User is inactive or permanently blocked"
+                    )
             return await func(request)
 
         return decorated_view
