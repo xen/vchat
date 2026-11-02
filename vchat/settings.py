@@ -10,6 +10,7 @@ from expandvars import expandvars
 from itsdangerous import URLSafeTimedSerializer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError as PydanticError
 from pydantic import field_validator
+from cryptography.fernet import Fernet
 from redis.asyncio.client import Redis
 
 DeviceConfig = Literal["auto", "cpu", "cuda", "mps"]
@@ -42,6 +43,7 @@ class AppConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     secret_key: str
+    totp_encryption_key: str = ""
     cookie_key: str
     mode: Literal["local", "stage", "production"] = "stage"
     crawler_user_agent: str = "Dzen-AI/1.0"
@@ -285,6 +287,21 @@ def _load_config():
                 "Production config must override security keys: "
                 f"{keys}. Set them in local.yaml or environment variables."
             )
+
+    # Mandatory in every runtime; no generated or shared default key.
+    try:
+        Fernet(validated_config.totp_encryption_key.encode("ascii"))
+    except (ValueError, UnicodeEncodeError) as exc:
+        raise ValidationError(
+            "totp_encryption_key must be an independent Fernet key"
+        ) from exc
+    if validated_config.totp_encryption_key in {
+        validated_config.secret_key,
+        validated_config.cookie_key,
+    }:
+        raise ValidationError(
+            "totp_encryption_key must differ from cookie_key and secret_key"
+        )
 
     return validated_config
 

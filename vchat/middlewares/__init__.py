@@ -277,6 +277,7 @@ async def auth_middleware(
                 User.blocked_at.is_(None),
                 UserSession.session_id == session_id,
                 UserSession.revoked_at.is_(None),
+                sa.or_(User.is_ldap.is_(True), UserSession.totp_verified.is_(True)),
             )
         )
         row = result.first()

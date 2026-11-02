@@ -28,6 +28,7 @@ EXCLUDED_ROUTE_NAMES = {
     "health_ready",
     "login",
     "login_ldap",
+    "totp",
     "logout",
     "metrics",
     "notify_ws",
@@ -107,7 +108,9 @@ class _SmokeFixtures:
     def route_values(self) -> dict[str, str | None]:
         return {
             "source_id": str(self.source_id) if self.source_id is not None else None,
-            "document_id": str(self.document_id) if self.document_id is not None else None,
+            "document_id": str(self.document_id)
+            if self.document_id is not None
+            else None,
             "chat_id": self.chat_id,
             "widget_id": str(self.widget_id) if self.widget_id is not None else None,
             "code": self.code,
@@ -153,10 +156,10 @@ def _create_smoke_auth_session(user_id: int) -> str:
             sa.text(
                 "INSERT INTO user_session "
                 "(user_id, session_id, ip_address, user_agent, last_seen_at, "
-                "revoked_at, revoked_reason, created_at, updated_at) "
+                "revoked_at, revoked_reason, created_at, updated_at, totp_verified) "
                 "VALUES "
                 "(:user_id, :session_id, :ip_address, :user_agent, now(), "
-                "NULL, NULL, now(), now())"
+                "NULL, NULL, now(), now(), true)"
             ),
             {
                 "user_id": user_id,
@@ -242,7 +245,9 @@ def _logged_in_cookie(user_id: int, session_id: str) -> str:
     return response.cookies[cfg.cookie_name].value
 
 
-def _site_page_urls(app: web.Application, fixtures: _SmokeFixtures) -> list[tuple[str, str]]:
+def _site_page_urls(
+    app: web.Application, fixtures: _SmokeFixtures
+) -> list[tuple[str, str]]:
     values = fixtures.route_values()
     urls: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -364,7 +369,9 @@ async def test_logged_in_site_pages_do_not_return_500(
             try:
                 response = await client.get(url)
             except Exception as exc:
-                failures.append(f"{route_name} {url} raised {type(exc).__name__}: {exc}")
+                failures.append(
+                    f"{route_name} {url} raised {type(exc).__name__}: {exc}"
+                )
                 continue
 
             body = ""
@@ -377,7 +384,9 @@ async def test_logged_in_site_pages_do_not_return_500(
                 f"{route_name} {url} -> {response.status} {response.content_type}"
             )
             if response.status >= 500:
-                failures.append(f"{route_name} {url} -> {response.status}\n{body[:1000]}")
+                failures.append(
+                    f"{route_name} {url} -> {response.status}\n{body[:1000]}"
+                )
             elif body and (
                 "Traceback (most recent call last)" in body
                 or "Internal Server Error" in body

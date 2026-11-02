@@ -79,3 +79,25 @@ class PasswordChange(Form):
         "Подтвердите пароль",
         render_kw={"placeholder": "Подтвердите пароль"},
     )
+
+
+class TotpConfirm(Form):
+    class Meta:
+        csrf = True
+        csrf_secret = cfg.csrf_secret
+        csrf_class = SessionCSRF
+        csrf_time_limit = timedelta(minutes=5)
+
+    code = StringField(
+        "Код из приложения",
+        [validators.Regexp(r"^[0-9]{6}$", message="Введите код из 6 цифр")],
+        render_kw={
+            "inputmode": "numeric",
+            "autocomplete": "one-time-code",
+            "maxlength": "6",
+        },
+    )
+
+    def add_code_error(self, message: str) -> None:
+        code_field: Any = self.code
+        code_field.errors = [*self.code.errors, message]

@@ -249,9 +249,7 @@ async def test_finish_login_rechecks_status_after_credentials(database, monkeypa
 
         monkeypatch.setattr(auth, "new_session", new_session)
         with pytest.raises(web.HTTPForbidden):
-            await auth._finish_login(
-                Request(db), user=stale, redis=None, failure_key="unused"
-            )
+            await auth._finish_login(Request(db), user=stale)
 
 
 @pytest.mark.asyncio

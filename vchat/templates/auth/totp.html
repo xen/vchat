@@ -1,0 +1,31 @@
+{% from "auth/_macros.html" import auth_input with context %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Подтверждение входа — VChat</title>
+  <link href="/static/assets/app.css?v={{ static_version }}" rel="stylesheet">
+</head>
+<body>
+<main class="min-h-screen bg-base-200 px-4 py-12">
+  <section class="mx-auto w-full max-w-md rounded-2xl bg-base-100 p-6 shadow-xl">
+    <h1 class="text-2xl font-semibold">{{ 'Подключите приложение-аутентификатор' if enrollment else 'Подтвердите вход' }}</h1>
+    {% if enrollment %}
+    <p class="mt-4">В приложении-аутентификаторе добавьте аккаунт по QR-коду. Затем введите код для VChat из приложения. Доступ откроется после подтверждения.</p>
+    <img src="data:image/png;base64,{{ qr_data }}" alt="QR-код подключения VChat к приложению-аутентификатору" width="300" height="300" class="mx-auto my-6" style="background:white;max-width:100%;height:auto;image-rendering:pixelated">
+    {% else %}
+    <p class="mt-4">Введите текущий шестизначный код для VChat из приложения-аутентификатора.</p>
+    {% endif %}
+    <p class="mt-4 text-sm">Подтвердите код в течение 5 минут после ввода пароля. Если время истекло, войдите заново. Использованный код повторно не принимается.</p>
+    <form action="{{ url('totp') }}" method="POST" class="mt-6">
+      {{ form.csrf_token }}
+      {% for error in form.csrf_token.errors %}<p class="text-error">{{ error }}</p>{% endfor %}
+      {{ auth_input(form.code, 'shield-check', '000000', 'text', 'one-time-code') }}
+      <button type="submit" class="btn btn-primary mt-6 w-full">Подтвердить код</button>
+    </form>
+    <p class="mt-6 text-sm">Сохраните доступ к приложению: резервные коды, отключение второго фактора и восстановление доступа не предусмотрены.</p>
+  </section>
+</main>
+</body>
+</html>

@@ -24,6 +24,7 @@ from vchat.utils import (
     validate_signed_user_csrf,
 )
 from . import forms
+from vchat.totp import start_challenge
 
 __all__ = [
     "login",
@@ -58,8 +59,7 @@ async def _finish_login(
     request: web.Request,
     *,
     user: User,
-    redis: Any,
-    failure_key: str,
+    totp_verified: bool = False,
 ) -> None:
     # Serialize session creation with permanent blocking, including LDAP logins.
     user = (
@@ -72,6 +72,8 @@ async def _finish_login(
     ).scalar()
     if user is None or not user.is_active or user.blocked_at is not None:
         raise web.HTTPForbidden(text="User is inactive or permanently blocked")
+    if not user.is_ldap and not totp_verified:
+        raise web.HTTPForbidden(text="TOTP verification required")
     session = await new_session(request)
     session["user_id"] = user.id
     session["login_at"] = int(time.time())
@@ -81,6 +83,7 @@ async def _finish_login(
     request["db"].add(
         UserSession(
             user_id=user.id,
+            totp_verified=totp_verified,
             session_id=session_id,
             ip_address=get_client_ip(request),
             user_agent=(request.headers.get("User-Agent") or "")[:512] or None,
@@ -97,7 +100,7 @@ async def _finish_login(
         name=user.name,
         is_active=user.is_active,
     )
-    await redis.delete(failure_key)
+    await request.app[REDIS_KEY].delete(f"auth:login_failures:{user.email}")
     await admin_event("user_login", request)
     await request["db"].commit()
 
@@ -283,19 +286,8 @@ async def login(request):
             form.add_email_error("Неверный email или пароль")
             return {"form": form, "ldap_enabled": cfg.auth_ldap_enabled}
 
-        # Warning: always use new_session() instead of get_session() in login views
-        # to guard against Session Fixation attacks!
-        await _finish_login(
-            request,
-            user=user,
-            redis=redis,
-            failure_key=login_failure_key,
-        )
-
-        next_location = (request.rel_url.query.get("next") or "").strip()
-        if next_location.startswith("/") and not next_location.startswith("//"):
-            return web.HTTPFound(location=next_location)
-        return web.HTTPFound(location=request.app.router["index"].url_for())
+        await start_challenge(request, user)
+        return web.HTTPFound(location=request.app.router["totp"].url_for())
 
     return {"form": form, "ldap_enabled": cfg.auth_ldap_enabled}
 
@@ -369,8 +361,6 @@ async def login_ldap(request):
         await _finish_login(
             request,
             user=user,
-            redis=redis,
-            failure_key=login_failure_key,
         )
 
         next_location = (request.rel_url.query.get("next") or "").strip()

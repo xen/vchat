@@ -26,6 +26,7 @@ from vchat.utils import (
     protect_timed,
 )
 from .middlewares import get_middlewares
+from .totp import validate_totp_storage
 
 __all__ = ("create_app",)
 
@@ -85,6 +86,7 @@ async def create_app() -> Application:
 
         async with async_session_factory() as session:
             await session.execute(sa.text("SELECT 1"))
+            await validate_totp_storage(session)
 
     async def warmup_chat_models(_ignore_app):
         from vchat.views.chat.ctx import warmup_models

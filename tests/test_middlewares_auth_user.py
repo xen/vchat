@@ -617,7 +617,11 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
         async def delete(self, _key):
             return 1
 
-    login_router = {"index": _Route("/"), "login": _Route("/login/")}
+    login_router = {
+        "index": _Route("/"),
+        "login": _Route("/login/"),
+        "totp": _Route("/login/totp/"),
+    }
     request = _Request(
         method="POST",
         app=_App({REDIS_KEY: _Redis()}, router=login_router),
@@ -650,15 +654,21 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_views.password_context, "verify", lambda raw, hashed: True)
     monkeypatch.setattr(auth_views, "admin_event", _admin_event)
 
+    async def start_challenge(req, user):
+        assert user.id == 5
+        req["challenge_started"] = True
+
+    monkeypatch.setattr(auth_views, "start_challenge", start_challenge)
+
     # strip decorators (meta + template)
     login_fn = auth_views.login.__wrapped__.__wrapped__
     response = await login_fn(request)
     assert isinstance(response, web.HTTPFound)
-    assert str(response.location) == "/"
-    assert request["user"].id == 5
-    assert created_session["user_id"] == 5
-    assert created_session["session_id"] == db.added[0].session_id
-    assert isinstance(created_session["login_at"], int)
+    assert str(response.location) == "/login/totp/"
+    assert request["challenge_started"]
+    assert request.get("user") is None
+    assert "user_id" not in created_session
+    assert not db.added
 
     created_session.clear()
     request_next = _Request(
@@ -670,7 +680,7 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
     request_next["db"] = db
     response = await login_fn(request_next)
     assert isinstance(response, web.HTTPFound)
-    assert str(response.location) == "/sessions/"
+    assert str(response.location) == "/login/totp/"
 
     class _LogoutSession(dict):
         def invalidate(self):
@@ -681,16 +691,14 @@ async def test_login_and_logout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(auth_views, "get_session", _logout_session)
     logout_fn = auth_views.logout.__wrapped__.__wrapped__
-    request2 = _Request(
-        method="GET", app=_App(router={"login": _Route("/login/")})
-    )
+    request2 = _Request(method="GET", app=_App(router={"login": _Route("/login/")}))
     request2["user"] = SimpleNamespace(id=5)
     request2["db"] = db
     with pytest.raises(web.HTTPFound) as exc:
         await logout_fn(request2)
     assert str(exc.value.location) == "/login/"
     assert exc.value.headers["Clear-Site-Data"] == '"cache", "storage"'
-    assert db.commits == 3
+    assert db.commits == 1
 
 
 @pytest.mark.asyncio
@@ -1131,14 +1139,14 @@ def test_get_middlewares_uses_configured_session_max_age(
     middlewares = mdw.get_middlewares(
         mdw.cfg.model_copy(
             update={
-            "allowed_origins": ["https://local.vchat.com"],
-            "public_url": "https://local.vchat.com",
-            "cookie_key": "cookie-key",
-            "cookie_name": "USER",
-            "cookie_domain": ".vchat.com",
-            "cookie_secure": True,
-            "session_max_age_seconds": 7200,
-            "enable_https_middleware": False,
+                "allowed_origins": ["https://local.vchat.com"],
+                "public_url": "https://local.vchat.com",
+                "cookie_key": "cookie-key",
+                "cookie_name": "USER",
+                "cookie_domain": ".vchat.com",
+                "cookie_secure": True,
+                "session_max_age_seconds": 7200,
+                "enable_https_middleware": False,
             }
         )
     )
@@ -1179,14 +1187,14 @@ def test_get_middlewares_uses_configured_cors_origins(
     mdw.get_middlewares(
         mdw.cfg.model_copy(
             update={
-            "allowed_origins": ["https://local.vchat.com"],
-            "public_url": "https://local.vchat.com",
-            "cookie_key": "cookie-key",
-            "cookie_name": "USER",
-            "cookie_domain": ".vchat.com",
-            "cookie_secure": True,
-            "session_max_age_seconds": 7200,
-            "enable_https_middleware": False,
+                "allowed_origins": ["https://local.vchat.com"],
+                "public_url": "https://local.vchat.com",
+                "cookie_key": "cookie-key",
+                "cookie_name": "USER",
+                "cookie_domain": ".vchat.com",
+                "cookie_secure": True,
+                "session_max_age_seconds": 7200,
+                "enable_https_middleware": False,
             }
         )
     )

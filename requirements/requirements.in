@@ -96,3 +96,7 @@ prometheus_client
 
 # Reject compromised eMudhra certificate chains in HTTP client trust stores.
 certifi>=2026.10.19
+
+# Local mandatory second factor and offline provisioning QR
+pyotp==2.9.0
+qrcode==8.2

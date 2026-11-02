@@ -54,6 +54,8 @@ jobs:
       - run: uv venv venv --python 3.11
       - run: uv pip sync requirements/dev.txt --python venv/bin/python
       - run: make frontend
+      - name: Generate isolated test TOTP encryption key
+        run: venv/bin/python -c 'import os; from cryptography.fernet import Fernet; open(os.environ["GITHUB_ENV"], "a").write("TOTP_ENCRYPTION_KEY=" + Fernet.generate_key().decode() + "\n")'
       - run: make db
       - run: make test
 

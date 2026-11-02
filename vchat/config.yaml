@@ -3,6 +3,8 @@
 # fernet_key = fernet.Fernet.generate_key()
 secret_key: !!binary "68cXXW8soAmL3Uxioe54oHnUHg_UD8w_LpzKOW4Pa-0="
 cookie_key: hAEX-ELluUXIZAwpOfZOvsi6E39qq6RmBP6gyQxkvzM=
+# Required independent Fernet key; configure in local.yaml or environment.
+totp_encryption_key: ""
 mode: stage
 crawler_user_agent: "Dzen-AI/1.0"
 

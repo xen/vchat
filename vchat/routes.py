@@ -9,6 +9,7 @@ from .views import health
 from .views.admin import views as admin
 from .views.api import views as api
 from .views.auth import views as auth
+from .views.auth.totp import totp
 from .views.chat import views as chat
 from .views.projects import chats as project_chats
 from .views.projects import views as projects
@@ -94,6 +95,8 @@ def setup_routes(app: web.Application) -> None:
 
     # auth
     add("*", "/login/", auth.login, name="login")
+    add("GET", "/login/totp/", totp, name="totp")
+    add("POST", "/login/totp/", totp)
     add("*", "/login/ldap/", auth.login_ldap, name="login_ldap")
     add("GET", "/sessions/", auth.sessions, name="sessions")
     add("POST", "/sessions/", auth.sessions_action, name="sessions_action")

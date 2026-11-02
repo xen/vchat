@@ -39,9 +39,30 @@ class UserSession(Base, Created, Updated):
         sa.ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
+    totp_verified: Mapped[bool] = mapped_column(
+        default=False, server_default=sa.false()
+    )
     session_id: Mapped[str] = mapped_column(sa.String(64), nullable=False)
     ip_address: Mapped[str | None] = mapped_column(sa.String(128))
     user_agent: Mapped[str | None] = mapped_column(sa.String(512))
     last_seen_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     revoked_reason: Mapped[str | None] = mapped_column(sa.String(64))
+
+
+class UserTotp(Base):
+    """Encrypted credentials and one short-lived password-verified challenge per user."""
+
+    __tablename__ = "user_totp"
+
+    user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id"), primary_key=True)
+    secret: Mapped[str | None]
+    pending_secret: Mapped[str | None]
+    token_hash: Mapped[str | None] = mapped_column(sa.String(64), unique=True)
+    password_digest: Mapped[str | None]
+    expires_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    failure_window_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True)
+    )
+    failures: Mapped[int] = mapped_column(default=0, server_default="0")
+    last_counter: Mapped[int | None] = mapped_column(sa.BigInteger)

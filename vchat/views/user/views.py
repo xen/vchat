@@ -63,6 +63,9 @@ async def _watch_session(ws: web.WebSocketResponse, request: web.Request) -> Non
                     .where(
                         UserSession.id == request["auth_user_session_id"],
                         UserSession.revoked_at.is_(None),
+                        sa.or_(
+                            User.is_ldap.is_(True), UserSession.totp_verified.is_(True)
+                        ),
                         User.is_active.is_(True),
                         User.blocked_at.is_(None),
                     )
