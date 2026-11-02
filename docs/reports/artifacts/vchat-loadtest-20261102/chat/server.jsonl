@@ -1,0 +1,796 @@
+{"t": 1012855.668605875, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 45.83342879207339, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": -4}
+{"t": 1012856.16982875, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.0027368749724701047, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012856.720902958, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.05109345796518028, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012857.222573291, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.0015287500573322177, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012857.32128775, "event": "request_start", "active": 1, "peak": 1, "chat_id": "loadtest-0000"}
+{"t": 1012857.321966458, "event": "stage", "chat_id": "loadtest-0000", "name": "generation_context", "ms": 0.038}
+{"t": 1012857.329214458, "event": "stage", "chat_id": "loadtest-0000", "name": "input_guardrails", "ms": 7.084}
+{"t": 1012857.33089275, "event": "request_start", "active": 2, "peak": 2, "chat_id": "loadtest-0001"}
+{"t": 1012857.331035708, "event": "stage", "chat_id": "loadtest-0001", "name": "generation_context", "ms": 0.024}
+{"t": 1012857.331289958, "event": "stage", "chat_id": "loadtest-0001", "name": "input_guardrails", "ms": 0.071}
+{"t": 1012857.331525833, "event": "request_start", "active": 3, "peak": 3, "chat_id": "loadtest-0002"}
+{"t": 1012857.331598666, "event": "stage", "chat_id": "loadtest-0002", "name": "generation_context", "ms": 0.008}
+{"t": 1012857.331693791, "event": "stage", "chat_id": "loadtest-0002", "name": "input_guardrails", "ms": 0.045}
+{"t": 1012857.331813, "event": "request_start", "active": 4, "peak": 4, "chat_id": "loadtest-0003"}
+{"t": 1012857.331870333, "event": "stage", "chat_id": "loadtest-0003", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.331948208, "event": "stage", "chat_id": "loadtest-0003", "name": "input_guardrails", "ms": 0.036}
+{"t": 1012857.332044083, "event": "request_start", "active": 5, "peak": 5, "chat_id": "loadtest-0004"}
+{"t": 1012857.332093291, "event": "stage", "chat_id": "loadtest-0004", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.332162833, "event": "stage", "chat_id": "loadtest-0004", "name": "input_guardrails", "ms": 0.029}
+{"t": 1012857.332250083, "event": "request_start", "active": 6, "peak": 6, "chat_id": "loadtest-0005"}
+{"t": 1012857.332297541, "event": "stage", "chat_id": "loadtest-0005", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.332467458, "event": "stage", "chat_id": "loadtest-0005", "name": "input_guardrails", "ms": 0.054}
+{"t": 1012857.3325605, "event": "request_start", "active": 7, "peak": 7, "chat_id": "loadtest-0006"}
+{"t": 1012857.33261675, "event": "stage", "chat_id": "loadtest-0006", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.332735416, "event": "stage", "chat_id": "loadtest-0006", "name": "input_guardrails", "ms": 0.069}
+{"t": 1012857.332887208, "event": "request_start", "active": 8, "peak": 8, "chat_id": "loadtest-0007"}
+{"t": 1012857.333112125, "event": "stage", "chat_id": "loadtest-0007", "name": "generation_context", "ms": 0.008}
+{"t": 1012857.333310875, "event": "stage", "chat_id": "loadtest-0007", "name": "input_guardrails", "ms": 0.105}
+{"t": 1012857.333415625, "event": "request_start", "active": 9, "peak": 9, "chat_id": "loadtest-0008"}
+{"t": 1012857.333543041, "event": "stage", "chat_id": "loadtest-0008", "name": "generation_context", "ms": 0.009}
+{"t": 1012857.333820958, "event": "stage", "chat_id": "loadtest-0008", "name": "input_guardrails", "ms": 0.136}
+{"t": 1012857.33424375, "event": "request_start", "active": 10, "peak": 10, "chat_id": "loadtest-0009"}
+{"t": 1012857.334322833, "event": "stage", "chat_id": "loadtest-0009", "name": "generation_context", "ms": 0.009}
+{"t": 1012857.334574125, "event": "stage", "chat_id": "loadtest-0009", "name": "input_guardrails", "ms": 0.069}
+{"t": 1012857.334761541, "event": "request_start", "active": 11, "peak": 11, "chat_id": "loadtest-0010"}
+{"t": 1012857.334830708, "event": "stage", "chat_id": "loadtest-0010", "name": "generation_context", "ms": 0.007}
+{"t": 1012857.335112458, "event": "stage", "chat_id": "loadtest-0010", "name": "input_guardrails", "ms": 0.117}
+{"t": 1012857.33555975, "event": "request_start", "active": 12, "peak": 12, "chat_id": "loadtest-0011"}
+{"t": 1012857.335946666, "event": "stage", "chat_id": "loadtest-0011", "name": "generation_context", "ms": 0.033}
+{"t": 1012857.3371705, "event": "stage", "chat_id": "loadtest-0011", "name": "input_guardrails", "ms": 0.069}
+{"t": 1012857.337267708, "event": "request_start", "active": 13, "peak": 13, "chat_id": "loadtest-0012"}
+{"t": 1012857.337939583, "event": "stage", "chat_id": "loadtest-0012", "name": "generation_context", "ms": 0.265}
+{"t": 1012857.338386458, "event": "stage", "chat_id": "loadtest-0012", "name": "input_guardrails", "ms": 0.161}
+{"t": 1012857.3386555, "event": "request_start", "active": 14, "peak": 14, "chat_id": "loadtest-0013"}
+{"t": 1012857.338859125, "event": "stage", "chat_id": "loadtest-0013", "name": "generation_context", "ms": 0.024}
+{"t": 1012857.339078083, "event": "stage", "chat_id": "loadtest-0013", "name": "input_guardrails", "ms": 0.1}
+{"t": 1012857.339339166, "event": "request_start", "active": 15, "peak": 15, "chat_id": "loadtest-0014"}
+{"t": 1012857.339461458, "event": "stage", "chat_id": "loadtest-0014", "name": "generation_context", "ms": 0.014}
+{"t": 1012857.33964, "event": "stage", "chat_id": "loadtest-0014", "name": "input_guardrails", "ms": 0.05}
+{"t": 1012857.339724958, "event": "request_start", "active": 16, "peak": 16, "chat_id": "loadtest-0015"}
+{"t": 1012857.339799333, "event": "stage", "chat_id": "loadtest-0015", "name": "generation_context", "ms": 0.015}
+{"t": 1012857.339879041, "event": "stage", "chat_id": "loadtest-0015", "name": "input_guardrails", "ms": 0.031}
+{"t": 1012857.33994, "event": "request_start", "active": 17, "peak": 17, "chat_id": "loadtest-0016"}
+{"t": 1012857.339997833, "event": "stage", "chat_id": "loadtest-0016", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.340068458, "event": "stage", "chat_id": "loadtest-0016", "name": "input_guardrails", "ms": 0.027}
+{"t": 1012857.340123458, "event": "request_start", "active": 18, "peak": 18, "chat_id": "loadtest-0017"}
+{"t": 1012857.340174458, "event": "stage", "chat_id": "loadtest-0017", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.340241333, "event": "stage", "chat_id": "loadtest-0017", "name": "input_guardrails", "ms": 0.026}
+{"t": 1012857.340300125, "event": "request_start", "active": 19, "peak": 19, "chat_id": "loadtest-0018"}
+{"t": 1012857.340351083, "event": "stage", "chat_id": "loadtest-0018", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.34042225, "event": "stage", "chat_id": "loadtest-0018", "name": "input_guardrails", "ms": 0.029}
+{"t": 1012857.340476666, "event": "request_start", "active": 20, "peak": 20, "chat_id": "loadtest-0019"}
+{"t": 1012857.340528, "event": "stage", "chat_id": "loadtest-0019", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.3405955, "event": "stage", "chat_id": "loadtest-0019", "name": "input_guardrails", "ms": 0.026}
+{"t": 1012857.340647333, "event": "request_start", "active": 21, "peak": 21, "chat_id": "loadtest-0020"}
+{"t": 1012857.340694166, "event": "stage", "chat_id": "loadtest-0020", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.340759375, "event": "stage", "chat_id": "loadtest-0020", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.340810875, "event": "request_start", "active": 22, "peak": 22, "chat_id": "loadtest-0021"}
+{"t": 1012857.340859583, "event": "stage", "chat_id": "loadtest-0021", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.340935083, "event": "stage", "chat_id": "loadtest-0021", "name": "input_guardrails", "ms": 0.026}
+{"t": 1012857.340993916, "event": "request_start", "active": 23, "peak": 23, "chat_id": "loadtest-0022"}
+{"t": 1012857.3410475, "event": "stage", "chat_id": "loadtest-0022", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.3411115, "event": "stage", "chat_id": "loadtest-0022", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.341200083, "event": "request_start", "active": 24, "peak": 24, "chat_id": "loadtest-0023"}
+{"t": 1012857.341255916, "event": "stage", "chat_id": "loadtest-0023", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.341325166, "event": "stage", "chat_id": "loadtest-0023", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.341380125, "event": "request_start", "active": 25, "peak": 25, "chat_id": "loadtest-0024"}
+{"t": 1012857.341435541, "event": "stage", "chat_id": "loadtest-0024", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.341509041, "event": "stage", "chat_id": "loadtest-0024", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.341562791, "event": "request_start", "active": 26, "peak": 26, "chat_id": "loadtest-0025"}
+{"t": 1012857.341612625, "event": "stage", "chat_id": "loadtest-0025", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.341691416, "event": "stage", "chat_id": "loadtest-0025", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.341887458, "event": "request_start", "active": 27, "peak": 27, "chat_id": "loadtest-0026"}
+{"t": 1012857.342064, "event": "stage", "chat_id": "loadtest-0026", "name": "generation_context", "ms": 0.025}
+{"t": 1012857.342169875, "event": "stage", "chat_id": "loadtest-0026", "name": "input_guardrails", "ms": 0.037}
+{"t": 1012857.3422435, "event": "request_start", "active": 28, "peak": 28, "chat_id": "loadtest-0027"}
+{"t": 1012857.34233125, "event": "stage", "chat_id": "loadtest-0027", "name": "generation_context", "ms": 0.009}
+{"t": 1012857.342422875, "event": "stage", "chat_id": "loadtest-0027", "name": "input_guardrails", "ms": 0.038}
+{"t": 1012857.342490083, "event": "request_start", "active": 29, "peak": 29, "chat_id": "loadtest-0028"}
+{"t": 1012857.342552666, "event": "stage", "chat_id": "loadtest-0028", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.342629541, "event": "stage", "chat_id": "loadtest-0028", "name": "input_guardrails", "ms": 0.029}
+{"t": 1012857.342690833, "event": "request_start", "active": 30, "peak": 30, "chat_id": "loadtest-0029"}
+{"t": 1012857.343009625, "event": "stage", "chat_id": "loadtest-0029", "name": "generation_context", "ms": 0.017}
+{"t": 1012857.343627958, "event": "stage", "chat_id": "loadtest-0029", "name": "input_guardrails", "ms": 0.136}
+{"t": 1012857.34395675, "event": "request_start", "active": 31, "peak": 31, "chat_id": "loadtest-0030"}
+{"t": 1012857.344055333, "event": "stage", "chat_id": "loadtest-0030", "name": "generation_context", "ms": 0.012}
+{"t": 1012857.34414675, "event": "stage", "chat_id": "loadtest-0030", "name": "input_guardrails", "ms": 0.04}
+{"t": 1012857.344222291, "event": "request_start", "active": 32, "peak": 32, "chat_id": "loadtest-0031"}
+{"t": 1012857.344282416, "event": "stage", "chat_id": "loadtest-0031", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.344360416, "event": "stage", "chat_id": "loadtest-0031", "name": "input_guardrails", "ms": 0.027}
+{"t": 1012857.344429541, "event": "request_start", "active": 33, "peak": 33, "chat_id": "loadtest-0032"}
+{"t": 1012857.344545041, "event": "stage", "chat_id": "loadtest-0032", "name": "generation_context", "ms": 0.009}
+{"t": 1012857.344660375, "event": "stage", "chat_id": "loadtest-0032", "name": "input_guardrails", "ms": 0.042}
+{"t": 1012857.345121208, "event": "request_start", "active": 34, "peak": 34, "chat_id": "loadtest-0033"}
+{"t": 1012857.34518875, "event": "stage", "chat_id": "loadtest-0033", "name": "generation_context", "ms": 0.008}
+{"t": 1012857.345705125, "event": "stage", "chat_id": "loadtest-0033", "name": "input_guardrails", "ms": 0.181}
+{"t": 1012857.345808708, "event": "request_start", "active": 35, "peak": 35, "chat_id": "loadtest-0034"}
+{"t": 1012857.345869916, "event": "stage", "chat_id": "loadtest-0034", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.345961375, "event": "stage", "chat_id": "loadtest-0034", "name": "input_guardrails", "ms": 0.044}
+{"t": 1012857.346020791, "event": "request_start", "active": 36, "peak": 36, "chat_id": "loadtest-0035"}
+{"t": 1012857.346115875, "event": "stage", "chat_id": "loadtest-0035", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.346346208, "event": "stage", "chat_id": "loadtest-0035", "name": "input_guardrails", "ms": 0.165}
+{"t": 1012857.346448375, "event": "request_start", "active": 37, "peak": 37, "chat_id": "loadtest-0036"}
+{"t": 1012857.346783791, "event": "stage", "chat_id": "loadtest-0036", "name": "generation_context", "ms": 0.187}
+{"t": 1012857.346882416, "event": "stage", "chat_id": "loadtest-0036", "name": "input_guardrails", "ms": 0.036}
+{"t": 1012857.346957833, "event": "request_start", "active": 38, "peak": 38, "chat_id": "loadtest-0037"}
+{"t": 1012857.347022708, "event": "stage", "chat_id": "loadtest-0037", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.347103333, "event": "stage", "chat_id": "loadtest-0037", "name": "input_guardrails", "ms": 0.029}
+{"t": 1012857.347167166, "event": "request_start", "active": 39, "peak": 39, "chat_id": "loadtest-0038"}
+{"t": 1012857.34722475, "event": "stage", "chat_id": "loadtest-0038", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.347298416, "event": "stage", "chat_id": "loadtest-0038", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.347359083, "event": "request_start", "active": 40, "peak": 40, "chat_id": "loadtest-0039"}
+{"t": 1012857.347415583, "event": "stage", "chat_id": "loadtest-0039", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.347488291, "event": "stage", "chat_id": "loadtest-0039", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.347545916, "event": "request_start", "active": 41, "peak": 41, "chat_id": "loadtest-0040"}
+{"t": 1012857.347605208, "event": "stage", "chat_id": "loadtest-0040", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.347677708, "event": "stage", "chat_id": "loadtest-0040", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.347737208, "event": "request_start", "active": 42, "peak": 42, "chat_id": "loadtest-0041"}
+{"t": 1012857.347866291, "event": "stage", "chat_id": "loadtest-0041", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.348399583, "event": "stage", "chat_id": "loadtest-0041", "name": "input_guardrails", "ms": 0.13}
+{"t": 1012857.348814708, "event": "request_start", "active": 43, "peak": 43, "chat_id": "loadtest-0042"}
+{"t": 1012857.349091833, "event": "stage", "chat_id": "loadtest-0042", "name": "generation_context", "ms": 0.033}
+{"t": 1012857.349317458, "event": "stage", "chat_id": "loadtest-0042", "name": "input_guardrails", "ms": 0.052}
+{"t": 1012857.349411166, "event": "request_start", "active": 44, "peak": 44, "chat_id": "loadtest-0043"}
+{"t": 1012857.349483333, "event": "stage", "chat_id": "loadtest-0043", "name": "generation_context", "ms": 0.011}
+{"t": 1012857.349565375, "event": "stage", "chat_id": "loadtest-0043", "name": "input_guardrails", "ms": 0.031}
+{"t": 1012857.349631, "event": "request_start", "active": 45, "peak": 45, "chat_id": "loadtest-0044"}
+{"t": 1012857.349693833, "event": "stage", "chat_id": "loadtest-0044", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.349771791, "event": "stage", "chat_id": "loadtest-0044", "name": "input_guardrails", "ms": 0.026}
+{"t": 1012857.349833875, "event": "request_start", "active": 46, "peak": 46, "chat_id": "loadtest-0045"}
+{"t": 1012857.349894166, "event": "stage", "chat_id": "loadtest-0045", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.349968541, "event": "stage", "chat_id": "loadtest-0045", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.350023708, "event": "request_start", "active": 47, "peak": 47, "chat_id": "loadtest-0046"}
+{"t": 1012857.35008075, "event": "stage", "chat_id": "loadtest-0046", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.350152916, "event": "stage", "chat_id": "loadtest-0046", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.350213125, "event": "request_start", "active": 48, "peak": 48, "chat_id": "loadtest-0047"}
+{"t": 1012857.35026775, "event": "stage", "chat_id": "loadtest-0047", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.350339625, "event": "stage", "chat_id": "loadtest-0047", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.350418916, "event": "request_start", "active": 49, "peak": 49, "chat_id": "loadtest-0048"}
+{"t": 1012857.350463333, "event": "stage", "chat_id": "loadtest-0048", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.350524833, "event": "stage", "chat_id": "loadtest-0048", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.3505755, "event": "request_start", "active": 50, "peak": 50, "chat_id": "loadtest-0049"}
+{"t": 1012857.350617791, "event": "stage", "chat_id": "loadtest-0049", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.350678375, "event": "stage", "chat_id": "loadtest-0049", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.350728541, "event": "request_start", "active": 51, "peak": 51, "chat_id": "loadtest-0050"}
+{"t": 1012857.350771333, "event": "stage", "chat_id": "loadtest-0050", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.350833, "event": "stage", "chat_id": "loadtest-0050", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.35088125, "event": "request_start", "active": 52, "peak": 52, "chat_id": "loadtest-0051"}
+{"t": 1012857.350924125, "event": "stage", "chat_id": "loadtest-0051", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.350983625, "event": "stage", "chat_id": "loadtest-0051", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.351031916, "event": "request_start", "active": 53, "peak": 53, "chat_id": "loadtest-0052"}
+{"t": 1012857.351074875, "event": "stage", "chat_id": "loadtest-0052", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.351135166, "event": "stage", "chat_id": "loadtest-0052", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.35159375, "event": "request_start", "active": 54, "peak": 54, "chat_id": "loadtest-0053"}
+{"t": 1012857.351659541, "event": "stage", "chat_id": "loadtest-0053", "name": "generation_context", "ms": 0.007}
+{"t": 1012857.351765625, "event": "stage", "chat_id": "loadtest-0053", "name": "input_guardrails", "ms": 0.034}
+{"t": 1012857.351879125, "event": "request_start", "active": 55, "peak": 55, "chat_id": "loadtest-0054"}
+{"t": 1012857.351938, "event": "stage", "chat_id": "loadtest-0054", "name": "generation_context", "ms": 0.007}
+{"t": 1012857.352014333, "event": "stage", "chat_id": "loadtest-0054", "name": "input_guardrails", "ms": 0.034}
+{"t": 1012857.352138333, "event": "request_start", "active": 56, "peak": 56, "chat_id": "loadtest-0055"}
+{"t": 1012857.352190083, "event": "stage", "chat_id": "loadtest-0055", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.35225925, "event": "stage", "chat_id": "loadtest-0055", "name": "input_guardrails", "ms": 0.028}
+{"t": 1012857.352314166, "event": "request_start", "active": 57, "peak": 57, "chat_id": "loadtest-0056"}
+{"t": 1012857.352358541, "event": "stage", "chat_id": "loadtest-0056", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.352423375, "event": "stage", "chat_id": "loadtest-0056", "name": "input_guardrails", "ms": 0.027}
+{"t": 1012857.352472458, "event": "request_start", "active": 58, "peak": 58, "chat_id": "loadtest-0057"}
+{"t": 1012857.352516125, "event": "stage", "chat_id": "loadtest-0057", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.352577666, "event": "stage", "chat_id": "loadtest-0057", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.352627125, "event": "request_start", "active": 59, "peak": 59, "chat_id": "loadtest-0058"}
+{"t": 1012857.352754916, "event": "stage", "chat_id": "loadtest-0058", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.352822458, "event": "stage", "chat_id": "loadtest-0058", "name": "input_guardrails", "ms": 0.028}
+{"t": 1012857.3528715, "event": "request_start", "active": 60, "peak": 60, "chat_id": "loadtest-0059"}
+{"t": 1012857.35291525, "event": "stage", "chat_id": "loadtest-0059", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.352976666, "event": "stage", "chat_id": "loadtest-0059", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.353025416, "event": "request_start", "active": 61, "peak": 61, "chat_id": "loadtest-0060"}
+{"t": 1012857.353101083, "event": "stage", "chat_id": "loadtest-0060", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.353162166, "event": "stage", "chat_id": "loadtest-0060", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.35321025, "event": "request_start", "active": 62, "peak": 62, "chat_id": "loadtest-0061"}
+{"t": 1012857.353273083, "event": "stage", "chat_id": "loadtest-0061", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.353492541, "event": "stage", "chat_id": "loadtest-0061", "name": "input_guardrails", "ms": 0.105}
+{"t": 1012857.353559625, "event": "request_start", "active": 63, "peak": 63, "chat_id": "loadtest-0062"}
+{"t": 1012857.353613375, "event": "stage", "chat_id": "loadtest-0062", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.35391725, "event": "stage", "chat_id": "loadtest-0062", "name": "input_guardrails", "ms": 0.04}
+{"t": 1012857.353978291, "event": "request_start", "active": 64, "peak": 64, "chat_id": "loadtest-0063"}
+{"t": 1012857.354027041, "event": "stage", "chat_id": "loadtest-0063", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.354091541, "event": "stage", "chat_id": "loadtest-0063", "name": "input_guardrails", "ms": 0.027}
+{"t": 1012857.354141375, "event": "request_start", "active": 65, "peak": 65, "chat_id": "loadtest-0064"}
+{"t": 1012857.354185208, "event": "stage", "chat_id": "loadtest-0064", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.354248625, "event": "stage", "chat_id": "loadtest-0064", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.354297333, "event": "request_start", "active": 66, "peak": 66, "chat_id": "loadtest-0065"}
+{"t": 1012857.3543775, "event": "stage", "chat_id": "loadtest-0065", "name": "generation_context", "ms": 0.008}
+{"t": 1012857.354457666, "event": "stage", "chat_id": "loadtest-0065", "name": "input_guardrails", "ms": 0.03}
+{"t": 1012857.354520291, "event": "request_start", "active": 67, "peak": 67, "chat_id": "loadtest-0066"}
+{"t": 1012857.35457225, "event": "stage", "chat_id": "loadtest-0066", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.354640375, "event": "stage", "chat_id": "loadtest-0066", "name": "input_guardrails", "ms": 0.028}
+{"t": 1012857.354797375, "event": "request_start", "active": 68, "peak": 68, "chat_id": "loadtest-0067"}
+{"t": 1012857.354850083, "event": "stage", "chat_id": "loadtest-0067", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.35491675, "event": "stage", "chat_id": "loadtest-0067", "name": "input_guardrails", "ms": 0.027}
+{"t": 1012857.354968625, "event": "request_start", "active": 69, "peak": 69, "chat_id": "loadtest-0068"}
+{"t": 1012857.355015041, "event": "stage", "chat_id": "loadtest-0068", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.355078916, "event": "stage", "chat_id": "loadtest-0068", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.355182541, "event": "request_start", "active": 70, "peak": 70, "chat_id": "loadtest-0069"}
+{"t": 1012857.355232666, "event": "stage", "chat_id": "loadtest-0069", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.355299541, "event": "stage", "chat_id": "loadtest-0069", "name": "input_guardrails", "ms": 0.028}
+{"t": 1012857.355351125, "event": "request_start", "active": 71, "peak": 71, "chat_id": "loadtest-0070"}
+{"t": 1012857.355439791, "event": "stage", "chat_id": "loadtest-0070", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.355509291, "event": "stage", "chat_id": "loadtest-0070", "name": "input_guardrails", "ms": 0.026}
+{"t": 1012857.355563375, "event": "request_start", "active": 72, "peak": 72, "chat_id": "loadtest-0071"}
+{"t": 1012857.355612333, "event": "stage", "chat_id": "loadtest-0071", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.355675333, "event": "stage", "chat_id": "loadtest-0071", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.355726458, "event": "request_start", "active": 73, "peak": 73, "chat_id": "loadtest-0072"}
+{"t": 1012857.355772375, "event": "stage", "chat_id": "loadtest-0072", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.355866875, "event": "stage", "chat_id": "loadtest-0072", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.355917166, "event": "request_start", "active": 74, "peak": 74, "chat_id": "loadtest-0073"}
+{"t": 1012857.355961583, "event": "stage", "chat_id": "loadtest-0073", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.356024166, "event": "stage", "chat_id": "loadtest-0073", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.356073416, "event": "request_start", "active": 75, "peak": 75, "chat_id": "loadtest-0074"}
+{"t": 1012857.356116958, "event": "stage", "chat_id": "loadtest-0074", "name": "generation_context", "ms": 0.003}
+{"t": 1012857.356298458, "event": "stage", "chat_id": "loadtest-0074", "name": "input_guardrails", "ms": 0.028}
+{"t": 1012857.356370958, "event": "request_start", "active": 76, "peak": 76, "chat_id": "loadtest-0075"}
+{"t": 1012857.356423916, "event": "stage", "chat_id": "loadtest-0075", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.356610166, "event": "stage", "chat_id": "loadtest-0075", "name": "input_guardrails", "ms": 0.07}
+{"t": 1012857.356699916, "event": "request_start", "active": 77, "peak": 77, "chat_id": "loadtest-0076"}
+{"t": 1012857.356751875, "event": "stage", "chat_id": "loadtest-0076", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.356844291, "event": "stage", "chat_id": "loadtest-0076", "name": "input_guardrails", "ms": 0.046}
+{"t": 1012857.357216833, "event": "request_start", "active": 78, "peak": 78, "chat_id": "loadtest-0077"}
+{"t": 1012857.35761425, "event": "stage", "chat_id": "loadtest-0077", "name": "generation_context", "ms": 0.044}
+{"t": 1012857.357739291, "event": "stage", "chat_id": "loadtest-0077", "name": "input_guardrails", "ms": 0.03}
+{"t": 1012857.35780475, "event": "request_start", "active": 79, "peak": 79, "chat_id": "loadtest-0078"}
+{"t": 1012857.357860666, "event": "stage", "chat_id": "loadtest-0078", "name": "generation_context", "ms": 0.009}
+{"t": 1012857.357924791, "event": "stage", "chat_id": "loadtest-0078", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.35797675, "event": "request_start", "active": 80, "peak": 80, "chat_id": "loadtest-0079"}
+{"t": 1012857.358024083, "event": "stage", "chat_id": "loadtest-0079", "name": "generation_context", "ms": 0.005}
+{"t": 1012857.358087125, "event": "stage", "chat_id": "loadtest-0079", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.358138, "event": "request_start", "active": 81, "peak": 81, "chat_id": "loadtest-0080"}
+{"t": 1012857.358181916, "event": "stage", "chat_id": "loadtest-0080", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.358244125, "event": "stage", "chat_id": "loadtest-0080", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.358294, "event": "request_start", "active": 82, "peak": 82, "chat_id": "loadtest-0081"}
+{"t": 1012857.358337958, "event": "stage", "chat_id": "loadtest-0081", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.358399041, "event": "stage", "chat_id": "loadtest-0081", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.35844575, "event": "request_start", "active": 83, "peak": 83, "chat_id": "loadtest-0082"}
+{"t": 1012857.358489041, "event": "stage", "chat_id": "loadtest-0082", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.358800458, "event": "stage", "chat_id": "loadtest-0082", "name": "input_guardrails", "ms": 0.259}
+{"t": 1012857.358873791, "event": "request_start", "active": 84, "peak": 84, "chat_id": "loadtest-0083"}
+{"t": 1012857.359005791, "event": "stage", "chat_id": "loadtest-0083", "name": "generation_context", "ms": 0.008}
+{"t": 1012857.359089791, "event": "stage", "chat_id": "loadtest-0083", "name": "input_guardrails", "ms": 0.034}
+{"t": 1012857.35939125, "event": "request_start", "active": 85, "peak": 85, "chat_id": "loadtest-0084"}
+{"t": 1012857.359689208, "event": "stage", "chat_id": "loadtest-0084", "name": "generation_context", "ms": 0.03}
+{"t": 1012857.36016075, "event": "stage", "chat_id": "loadtest-0084", "name": "input_guardrails", "ms": 0.102}
+{"t": 1012857.360376708, "event": "request_start", "active": 86, "peak": 86, "chat_id": "loadtest-0085"}
+{"t": 1012857.360454333, "event": "stage", "chat_id": "loadtest-0085", "name": "generation_context", "ms": 0.011}
+{"t": 1012857.360781583, "event": "stage", "chat_id": "loadtest-0085", "name": "input_guardrails", "ms": 0.146}
+{"t": 1012857.361079333, "event": "request_start", "active": 87, "peak": 87, "chat_id": "loadtest-0086"}
+{"t": 1012857.36161125, "event": "stage", "chat_id": "loadtest-0086", "name": "generation_context", "ms": 0.207}
+{"t": 1012857.362081208, "event": "stage", "chat_id": "loadtest-0086", "name": "input_guardrails", "ms": 0.258}
+{"t": 1012857.362361291, "event": "request_start", "active": 88, "peak": 88, "chat_id": "loadtest-0087"}
+{"t": 1012857.362448125, "event": "stage", "chat_id": "loadtest-0087", "name": "generation_context", "ms": 0.012}
+{"t": 1012857.3626465, "event": "stage", "chat_id": "loadtest-0087", "name": "input_guardrails", "ms": 0.148}
+{"t": 1012857.362707625, "event": "request_start", "active": 89, "peak": 89, "chat_id": "loadtest-0088"}
+{"t": 1012857.36276725, "event": "stage", "chat_id": "loadtest-0088", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.362835583, "event": "stage", "chat_id": "loadtest-0088", "name": "input_guardrails", "ms": 0.028}
+{"t": 1012857.362887416, "event": "request_start", "active": 90, "peak": 90, "chat_id": "loadtest-0089"}
+{"t": 1012857.362933958, "event": "stage", "chat_id": "loadtest-0089", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.363001416, "event": "stage", "chat_id": "loadtest-0089", "name": "input_guardrails", "ms": 0.026}
+{"t": 1012857.363088833, "event": "request_start", "active": 91, "peak": 91, "chat_id": "loadtest-0090"}
+{"t": 1012857.363225208, "event": "stage", "chat_id": "loadtest-0090", "name": "generation_context", "ms": 0.016}
+{"t": 1012857.363387416, "event": "stage", "chat_id": "loadtest-0090", "name": "input_guardrails", "ms": 0.081}
+{"t": 1012857.363464583, "event": "request_start", "active": 92, "peak": 92, "chat_id": "loadtest-0091"}
+{"t": 1012857.3635325, "event": "stage", "chat_id": "loadtest-0091", "name": "generation_context", "ms": 0.01}
+{"t": 1012857.363615375, "event": "stage", "chat_id": "loadtest-0091", "name": "input_guardrails", "ms": 0.029}
+{"t": 1012857.363676125, "event": "request_start", "active": 93, "peak": 93, "chat_id": "loadtest-0092"}
+{"t": 1012857.363731208, "event": "stage", "chat_id": "loadtest-0092", "name": "generation_context", "ms": 0.006}
+{"t": 1012857.363798166, "event": "stage", "chat_id": "loadtest-0092", "name": "input_guardrails", "ms": 0.026}
+{"t": 1012857.363848458, "event": "request_start", "active": 94, "peak": 94, "chat_id": "loadtest-0093"}
+{"t": 1012857.363893583, "event": "stage", "chat_id": "loadtest-0093", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.363954833, "event": "stage", "chat_id": "loadtest-0093", "name": "input_guardrails", "ms": 0.024}
+{"t": 1012857.364002541, "event": "request_start", "active": 95, "peak": 95, "chat_id": "loadtest-0094"}
+{"t": 1012857.364046375, "event": "stage", "chat_id": "loadtest-0094", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.364107416, "event": "stage", "chat_id": "loadtest-0094", "name": "input_guardrails", "ms": 0.025}
+{"t": 1012857.364153416, "event": "request_start", "active": 96, "peak": 96, "chat_id": "loadtest-0095"}
+{"t": 1012857.364197375, "event": "stage", "chat_id": "loadtest-0095", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.364258041, "event": "stage", "chat_id": "loadtest-0095", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.364305708, "event": "request_start", "active": 97, "peak": 97, "chat_id": "loadtest-0096"}
+{"t": 1012857.364349625, "event": "stage", "chat_id": "loadtest-0096", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.364409333, "event": "stage", "chat_id": "loadtest-0096", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.364455916, "event": "request_start", "active": 98, "peak": 98, "chat_id": "loadtest-0097"}
+{"t": 1012857.364539041, "event": "stage", "chat_id": "loadtest-0097", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.364599208, "event": "stage", "chat_id": "loadtest-0097", "name": "input_guardrails", "ms": 0.023}
+{"t": 1012857.364648666, "event": "request_start", "active": 99, "peak": 99, "chat_id": "loadtest-0098"}
+{"t": 1012857.364690625, "event": "stage", "chat_id": "loadtest-0098", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.364748166, "event": "stage", "chat_id": "loadtest-0098", "name": "input_guardrails", "ms": 0.022}
+{"t": 1012857.364793875, "event": "request_start", "active": 100, "peak": 100, "chat_id": "loadtest-0099"}
+{"t": 1012857.364835875, "event": "stage", "chat_id": "loadtest-0099", "name": "generation_context", "ms": 0.004}
+{"t": 1012857.364897291, "event": "stage", "chat_id": "loadtest-0099", "name": "input_guardrails", "ms": 0.022}
+{"t": 1012857.365044833, "event": "stage", "chat_id": "loadtest-0000", "name": "redis_publish_user", "ms": 35.698}
+{"t": 1012865.302547375, "event": "stage", "chat_id": "loadtest-0001", "name": "redis_publish_user", "ms": 7971.137}
+{"t": 1012865.311251083, "event": "stage", "chat_id": "loadtest-0002", "name": "redis_publish_user", "ms": 7979.477}
+{"t": 1012865.320853708, "event": "stage", "chat_id": "loadtest-0003", "name": "redis_publish_user", "ms": 7988.83}
+{"t": 1012865.328451958, "event": "stage", "chat_id": "loadtest-0004", "name": "redis_publish_user", "ms": 7996.21}
+{"t": 1012865.57123025, "event": "stage", "chat_id": "loadtest-0005", "name": "redis_publish_user", "ms": 8238.671}
+{"t": 1012865.653082125, "event": "stage", "chat_id": "loadtest-0006", "name": "redis_publish_user", "ms": 8320.233}
+{"t": 1012865.830103958, "event": "stage", "chat_id": "loadtest-0007", "name": "redis_publish_user", "ms": 8496.7}
+{"t": 1012865.8957725, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 8.173287541954778, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012865.899151375, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0000", "seconds": 0.5967732910066843}
+{"t": 1012865.907602833, "event": "stage", "chat_id": "loadtest-0008", "name": "redis_publish_user", "ms": 8573.676}
+{"t": 1012865.989566416, "event": "stage", "chat_id": "loadtest-0009", "name": "redis_publish_user", "ms": 8654.563}
+{"t": 1012866.004501625, "event": "stage", "chat_id": "loadtest-0010", "name": "redis_publish_user", "ms": 8669.269}
+{"t": 1012866.289159541, "event": "stage", "chat_id": "loadtest-0011", "name": "redis_publish_user", "ms": 8951.882}
+{"t": 1012866.298573041, "event": "stage", "chat_id": "loadtest-0012", "name": "redis_publish_user", "ms": 8959.874}
+{"t": 1012866.350753041, "event": "stage", "chat_id": "loadtest-0013", "name": "redis_publish_user", "ms": 9011.211}
+{"t": 1012866.521467, "event": "stage", "chat_id": "loadtest-0014", "name": "redis_publish_user", "ms": 9181.59}
+{"t": 1012866.553965166, "event": "stage", "chat_id": "loadtest-0015", "name": "redis_publish_user", "ms": 9213.96}
+{"t": 1012866.560728, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.16501383297145367, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012866.56120575, "event": "stage", "chat_id": "loadtest-0016", "name": "redis_publish_user", "ms": 9221.057}
+{"t": 1012866.568418041, "event": "stage", "chat_id": "loadtest-0017", "name": "redis_publish_user", "ms": 9228.093}
+{"t": 1012866.575340875, "event": "stage", "chat_id": "loadtest-0019", "name": "redis_publish_user", "ms": 9234.667}
+{"t": 1012866.58370075, "event": "stage", "chat_id": "loadtest-0018", "name": "redis_publish_user", "ms": 9243.104}
+{"t": 1012866.817018666, "event": "stage", "chat_id": "loadtest-0020", "name": "redis_publish_user", "ms": 9476.173}
+{"t": 1012866.838764083, "event": "stage", "chat_id": "loadtest-0021", "name": "redis_publish_user", "ms": 9497.737}
+{"t": 1012867.04152275, "event": "stage", "chat_id": "loadtest-0022", "name": "redis_publish_user", "ms": 9700.291}
+{"t": 1012867.050578666, "event": "stage", "chat_id": "loadtest-0023", "name": "redis_publish_user", "ms": 9709.172}
+{"t": 1012867.059802125, "event": "stage", "chat_id": "loadtest-0024", "name": "redis_publish_user", "ms": 9718.216}
+{"t": 1012867.066664583, "event": "stage", "chat_id": "loadtest-0025", "name": "redis_publish_user", "ms": 9724.643}
+{"t": 1012867.077983333, "event": "stage", "chat_id": "loadtest-0026", "name": "redis_publish_user", "ms": 9735.464}
+{"t": 1012867.085944791, "event": "stage", "chat_id": "loadtest-0027", "name": "redis_publish_user", "ms": 9743.435}
+{"t": 1012867.098130291, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.037403375026769936, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012867.09837475, "event": "stage", "chat_id": "loadtest-0028", "name": "redis_publish_user", "ms": 9755.689}
+{"t": 1012867.554694708, "event": "stage", "chat_id": "loadtest-0029", "name": "redis_publish_user", "ms": 10210.785}
+{"t": 1012867.574547541, "event": "stage", "chat_id": "loadtest-0030", "name": "redis_publish_user", "ms": 10230.311}
+{"t": 1012867.58424525, "event": "stage", "chat_id": "loadtest-0031", "name": "redis_publish_user", "ms": 10239.679}
+{"t": 1012867.7049275, "event": "stage", "chat_id": "loadtest-0032", "name": "redis_publish_user", "ms": 10360.139}
+{"t": 1012867.803896291, "event": "stage", "chat_id": "loadtest-0033", "name": "redis_publish_user", "ms": 10455.04}
+{"t": 1012867.827535666, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.22937216702848673, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012867.8304695, "event": "stage", "chat_id": "loadtest-0034", "name": "redis_publish_user", "ms": 10484.312}
+{"t": 1012867.860562916, "event": "stage", "chat_id": "loadtest-0035", "name": "redis_publish_user", "ms": 10514.089}
+{"t": 1012867.879026208, "event": "stage", "chat_id": "loadtest-0036", "name": "redis_publish_user", "ms": 10532.03}
+{"t": 1012867.897856958, "event": "stage", "chat_id": "loadtest-0037", "name": "redis_publish_user", "ms": 10550.643}
+{"t": 1012867.906773, "event": "stage", "chat_id": "loadtest-0038", "name": "redis_publish_user", "ms": 10559.38}
+{"t": 1012868.176555958, "event": "stage", "chat_id": "loadtest-0039", "name": "redis_publish_user", "ms": 10828.975}
+{"t": 1012868.183602875, "event": "record_request_embedding_encode", "chat_id": "loadtest-0000", "seconds": 2.284142416086979}
+{"t": 1012868.1874915, "event": "stage", "chat_id": "loadtest-0040", "name": "redis_publish_user", "ms": 10839.741}
+{"t": 1012868.27167425, "event": "stage", "chat_id": "loadtest-0041", "name": "redis_publish_user", "ms": 10923.079}
+{"t": 1012868.279058875, "event": "stage", "chat_id": "loadtest-0042", "name": "redis_publish_user", "ms": 10929.644}
+{"t": 1012868.308578375, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0001", "seconds": 2.9973798329010606}
+{"t": 1012868.310374791, "event": "stage", "chat_id": "loadtest-0043", "name": "redis_publish_user", "ms": 10960.732}
+{"t": 1012868.317560208, "event": "stage", "chat_id": "loadtest-0044", "name": "redis_publish_user", "ms": 10967.706}
+{"t": 1012868.323011708, "event": "stage", "chat_id": "loadtest-0045", "name": "redis_publish_user", "ms": 10972.971}
+{"t": 1012868.59555975, "event": "stage", "chat_id": "loadtest-0046", "name": "redis_publish_user", "ms": 11245.316}
+{"t": 1012868.600539125, "event": "record_request_embedding_encode", "chat_id": "loadtest-0001", "seconds": 0.29055004206020385}
+{"t": 1012868.601454958, "event": "stage", "chat_id": "loadtest-0047", "name": "redis_publish_user", "ms": 11251.03}
+{"t": 1012868.608551291, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.28105170803610235, "db_checkedout": 2, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012868.608814708, "event": "stage", "chat_id": "loadtest-0048", "name": "redis_publish_user", "ms": 11258.236}
+{"t": 1012868.617837958, "event": "stage", "chat_id": "loadtest-0049", "name": "redis_publish_user", "ms": 11267.076}
+{"t": 1012868.7693575, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0002", "seconds": 3.447296749916859}
+{"t": 1012868.770058125, "event": "stage", "chat_id": "loadtest-0050", "name": "redis_publish_user", "ms": 11419.146}
+{"t": 1012868.781058041, "event": "stage", "chat_id": "loadtest-0051", "name": "redis_publish_user", "ms": 11429.853}
+{"t": 1012868.788154208, "event": "stage", "chat_id": "loadtest-0052", "name": "redis_publish_user", "ms": 11436.936}
+{"t": 1012868.792763541, "event": "stage", "chat_id": "loadtest-0053", "name": "redis_publish_user", "ms": 11440.89}
+{"t": 1012868.958150458, "event": "stage", "chat_id": "loadtest-0054", "name": "redis_publish_user", "ms": 11606.045}
+{"t": 1012869.074723041, "event": "record_request_embedding_encode", "chat_id": "loadtest-0002", "seconds": 0.30474412499461323}
+{"t": 1012869.075288208, "event": "stage", "chat_id": "loadtest-0055", "name": "redis_publish_user", "ms": 11722.973}
+{"t": 1012869.10888375, "event": "stage", "chat_id": "loadtest-0056", "name": "redis_publish_user", "ms": 11756.357}
+{"t": 1012869.137313375, "event": "stage", "chat_id": "loadtest-0057", "name": "redis_publish_user", "ms": 11784.656}
+{"t": 1012869.161364875, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.0528022499056533, "db_checkedout": 3, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012869.167389375, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0003", "seconds": 3.8390125000150874}
+{"t": 1012869.167630916, "event": "stage", "chat_id": "loadtest-0058", "name": "redis_publish_user", "ms": 11814.752}
+{"t": 1012869.270343333, "event": "stage", "chat_id": "loadtest-0060", "name": "redis_publish_user", "ms": 11917.094}
+{"t": 1012869.276441541, "event": "stage", "chat_id": "loadtest-0059", "name": "redis_publish_user", "ms": 11923.372}
+{"t": 1012869.313927708, "event": "stage", "chat_id": "loadtest-0062", "name": "redis_publish_user", "ms": 11955.101}
+{"t": 1012869.356099375, "event": "stage", "chat_id": "loadtest-0061", "name": "redis_publish_user", "ms": 12002.514}
+{"t": 1012869.390234, "event": "stage", "chat_id": "loadtest-0063", "name": "redis_publish_user", "ms": 12036.059}
+{"t": 1012869.422903916, "event": "record_request_embedding_encode", "chat_id": "loadtest-0003", "seconds": 0.25531583302654326}
+{"t": 1012869.423427291, "event": "stage", "chat_id": "loadtest-0064", "name": "redis_publish_user", "ms": 12069.123}
+{"t": 1012869.61987, "event": "stage", "chat_id": "loadtest-0065", "name": "redis_publish_user", "ms": 12265.319}
+{"t": 1012869.6604705, "event": "stage", "chat_id": "loadtest-0066", "name": "redis_publish_user", "ms": 12305.651}
+{"t": 1012869.855129083, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0004", "seconds": 4.282444666954689}
+{"t": 1012869.859776458, "event": "stage", "chat_id": "loadtest-0067", "name": "redis_publish_user", "ms": 12504.783}
+{"t": 1012869.919331333, "event": "stage", "chat_id": "loadtest-0068", "name": "redis_publish_user", "ms": 12563.893}
+{"t": 1012869.934268666, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.2728972500190139, "db_checkedout": 4, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012870.038820666, "event": "stage", "chat_id": "loadtest-0069", "name": "redis_publish_user", "ms": 12683.435}
+{"t": 1012870.174117041, "event": "stage", "chat_id": "loadtest-0070", "name": "redis_publish_user", "ms": 12817.475}
+{"t": 1012870.267784208, "event": "record_request_embedding_encode", "chat_id": "loadtest-0004", "seconds": 0.40806741698179394}
+{"t": 1012870.268376833, "event": "stage", "chat_id": "loadtest-0071", "name": "redis_publish_user", "ms": 12912.645}
+{"t": 1012870.275568333, "event": "stage", "chat_id": "loadtest-0072", "name": "redis_publish_user", "ms": 12919.622}
+{"t": 1012870.436239166, "event": "stage", "chat_id": "loadtest-0073", "name": "redis_publish_user", "ms": 13053.999}
+{"t": 1012870.500522625, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0005", "seconds": 4.847499374998733}
+{"t": 1012870.503323291, "event": "stage", "chat_id": "loadtest-0074", "name": "redis_publish_user", "ms": 13146.949}
+{"t": 1012870.510362208, "event": "stage", "chat_id": "loadtest-0075", "name": "redis_publish_user", "ms": 13153.639}
+{"t": 1012870.515680166, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.0814397920621559, "db_checkedout": 5, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012870.558359666, "event": "stage", "chat_id": "loadtest-0076", "name": "redis_publish_user", "ms": 13201.349}
+{"t": 1012870.597090458, "event": "stage", "chat_id": "loadtest-0077", "name": "redis_publish_user", "ms": 13239.262}
+{"t": 1012870.62592375, "event": "stage", "chat_id": "loadtest-0078", "name": "redis_publish_user", "ms": 13267.922}
+{"t": 1012870.636559666, "event": "stage", "chat_id": "loadtest-0079", "name": "redis_publish_user", "ms": 13278.395}
+{"t": 1012870.688352333, "event": "stage", "chat_id": "loadtest-0080", "name": "redis_publish_user", "ms": 13325.599}
+{"t": 1012870.714646, "event": "record_request_embedding_encode", "chat_id": "loadtest-0005", "seconds": 0.21153125003911555}
+{"t": 1012870.718436125, "event": "stage", "chat_id": "loadtest-0081", "name": "redis_publish_user", "ms": 13359.955}
+{"t": 1012870.729876708, "event": "stage", "chat_id": "loadtest-0082", "name": "redis_publish_user", "ms": 13370.982}
+{"t": 1012870.7348815, "event": "stage", "chat_id": "loadtest-0083", "name": "redis_publish_user", "ms": 13375.721}
+{"t": 1012871.04791025, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0006", "seconds": 5.228792874957435}
+{"t": 1012871.059105166, "event": "stage", "chat_id": "loadtest-0084", "name": "redis_publish_user", "ms": 13693.678}
+{"t": 1012871.082203083, "event": "stage", "chat_id": "loadtest-0085", "name": "redis_publish_user", "ms": 13721.158}
+{"t": 1012871.122825166, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.10712537495419383, "db_checkedout": 6, "db_pool_size": 5, "db_overflow": 1}
+{"t": 1012871.130054208, "event": "stage", "chat_id": "loadtest-0086", "name": "redis_publish_user", "ms": 13767.709}
+{"t": 1012871.142001458, "event": "stage", "chat_id": "loadtest-0087", "name": "redis_publish_user", "ms": 13779.271}
+{"t": 1012871.15231825, "event": "stage", "chat_id": "loadtest-0088", "name": "redis_publish_user", "ms": 13789.411}
+{"t": 1012871.319941958, "event": "stage", "chat_id": "loadtest-0089", "name": "redis_publish_user", "ms": 13955.125}
+{"t": 1012871.328244208, "event": "record_request_embedding_encode", "chat_id": "loadtest-0006", "seconds": 0.27684012497775257}
+{"t": 1012871.329362458, "event": "stage", "chat_id": "loadtest-0090", "name": "redis_publish_user", "ms": 13965.89}
+{"t": 1012871.540701125, "event": "stage", "chat_id": "loadtest-0091", "name": "redis_publish_user", "ms": 14177.001}
+{"t": 1012871.547331291, "event": "stage", "chat_id": "loadtest-0092", "name": "redis_publish_user", "ms": 14183.458}
+{"t": 1012871.624561541, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0007", "seconds": 5.74958829197567}
+{"t": 1012871.673750041, "event": "stage", "chat_id": "loadtest-0093", "name": "redis_publish_user", "ms": 14260.818}
+{"t": 1012871.722515041, "event": "stage", "chat_id": "loadtest-0094", "name": "redis_publish_user", "ms": 14358.302}
+{"t": 1012871.820340291, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.19749220798257738, "db_checkedout": 7, "db_pool_size": 5, "db_overflow": 2}
+{"t": 1012871.820755708, "event": "stage", "chat_id": "loadtest-0095", "name": "redis_publish_user", "ms": 14456.434}
+{"t": 1012871.831824291, "event": "record_request_embedding_encode", "chat_id": "loadtest-0007", "seconds": 0.20704591693356633}
+{"t": 1012871.888145416, "event": "stage", "chat_id": "loadtest-0096", "name": "redis_publish_user", "ms": 14523.657}
+{"t": 1012872.046237541, "event": "stage", "chat_id": "loadtest-0098", "name": "redis_publish_user", "ms": 14681.402}
+{"t": 1012872.066803458, "event": "stage", "chat_id": "loadtest-0097", "name": "redis_publish_user", "ms": 14702.122}
+{"t": 1012872.086744, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0008", "seconds": 6.103506249957718}
+{"t": 1012875.856511541, "event": "rerank", "chat_id": "loadtest-0000", "candidates": 24, "ms": 3766.488916007802}
+{"t": 1012876.665264291, "event": "stage", "chat_id": "loadtest-0099", "name": "redis_publish_user", "ms": 19300.256}
+{"t": 1012876.687228333, "event": "record_request_embedding_encode", "chat_id": "loadtest-0008", "seconds": 4.59970695793163}
+{"t": 1012876.693756666, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 4.37316495901905, "db_checkedout": 9, "db_pool_size": 5, "db_overflow": 4}
+{"t": 1012877.731445875, "event": "rerank", "chat_id": "loadtest-0001", "candidates": 24, "ms": 1037.184749962762}
+{"t": 1012877.746116916, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0009", "seconds": 11.74152020807378}
+{"t": 1012877.750079333, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.556427999981679, "db_checkedout": 8, "db_pool_size": 5, "db_overflow": 4}
+{"t": 1012877.750910875, "event": "stage", "chat_id": "loadtest-0000", "name": "context_retrieval", "ms": 20385.789}
+{"t": 1012877.911874125, "event": "stage", "chat_id": "loadtest-0001", "name": "context_retrieval", "ms": 12609.152}
+{"t": 1012884.64432375, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 6.393820374971256, "db_checkedout": 8, "db_pool_size": 5, "db_overflow": 4}
+{"t": 1012884.644561291, "event": "record_request_embedding_encode", "chat_id": "loadtest-0009", "seconds": 6.89790525007993}
+{"t": 1012887.241090458, "event": "rerank", "chat_id": "loadtest-0002", "candidates": 24, "ms": 2590.542000019923}
+{"t": 1012887.257809916, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0010", "seconds": 20.968693166039884}
+{"t": 1012887.461310416, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 2.317436958081089, "db_checkedout": 9, "db_pool_size": 5, "db_overflow": 4}
+{"t": 1012887.562797958, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0011", "seconds": 21.265518250060268}
+{"t": 1012887.563313833, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0012", "seconds": 21.212993249995634}
+{"t": 1012887.56358475, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0013", "seconds": 21.04295075009577}
+{"t": 1012887.563822583, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0014", "seconds": 21.00993987498805}
+{"t": 1012887.564027625, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0015", "seconds": 21.003331375075504}
+{"t": 1012887.565198958, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0016", "seconds": 20.996778042055666}
+{"t": 1012887.56551225, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0017", "seconds": 20.990694832988083}
+{"t": 1012887.565809208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0019", "seconds": 20.982375708059408}
+{"t": 1012887.566075416, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0018", "seconds": 20.750096417032182}
+{"t": 1012887.566742541, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0020", "seconds": 20.728017499903217}
+{"t": 1012887.566875166, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0021", "seconds": 20.5264390000375}
+{"t": 1012887.566976708, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0022", "seconds": 20.516486249980517}
+{"t": 1012887.567061, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0023", "seconds": 20.50789975002408}
+{"t": 1012887.567219708, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0024", "seconds": 20.500783041934483}
+{"t": 1012887.567309458, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0025", "seconds": 20.48991733393632}
+{"t": 1012887.567378541, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0026", "seconds": 20.481628499925137}
+{"t": 1012887.567446041, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0027", "seconds": 20.469392957980745}
+{"t": 1012887.568090208, "event": "stage", "chat_id": "loadtest-0002", "name": "context_retrieval", "ms": 22256.724}
+{"t": 1012887.635393541, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0028", "seconds": 20.084223125013523}
+{"t": 1012887.653322791, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0029", "seconds": 20.07891324989032}
+{"t": 1012887.653753, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0030", "seconds": 20.07006745808758}
+{"t": 1012888.859460625, "event": "rerank", "chat_id": "loadtest-0003", "candidates": 24, "ms": 1201.3136249734089}
+{"t": 1012889.240932, "event": "rerank", "chat_id": "loadtest-0004", "candidates": 24, "ms": 373.51520790252835}
+{"t": 1012889.259912458, "event": "record_request_embedding_encode", "chat_id": "loadtest-0010", "seconds": 2.0015823339344934}
+{"t": 1012889.261840458, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 1.3006756670074537, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012889.753417875, "event": "rerank", "chat_id": "loadtest-0009", "candidates": 24, "ms": 480.90012499596924}
+{"t": 1012889.765757958, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0031", "seconds": 22.06100183306262}
+{"t": 1012889.766266, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0032", "seconds": 21.96573083405383}
+{"t": 1012889.766388166, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0033", "seconds": 21.939009999972768}
+{"t": 1012889.766481166, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0034", "seconds": 21.90662333299406}
+{"t": 1012889.766564291, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0035", "seconds": 21.887925292016007}
+{"t": 1012889.766642625, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0036", "seconds": 21.869560667080805}
+{"t": 1012889.766719208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0037", "seconds": 21.86013837507926}
+{"t": 1012889.766789916, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0038", "seconds": 21.5907674159389}
+{"t": 1012889.766855416, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0039", "seconds": 21.583597959019244}
+{"t": 1012889.766919041, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0040", "seconds": 21.495469207991846}
+{"t": 1012889.766979791, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0041", "seconds": 21.48818162502721}
+{"t": 1012889.767054916, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0042", "seconds": 21.458938875002787}
+{"t": 1012889.767123083, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0043", "seconds": 21.449724040925503}
+{"t": 1012889.767188375, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0044", "seconds": 21.44435154204257}
+{"t": 1012889.767248041, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0045", "seconds": 21.172036916948855}
+{"t": 1012889.767311458, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0046", "seconds": 21.166957500041462}
+{"t": 1012889.767380791, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0047", "seconds": 21.158900666981936}
+{"t": 1012889.769021166, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0048", "seconds": 21.151328666950576}
+{"t": 1012889.769395083, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0049", "seconds": 21.009739291039295}
+{"t": 1012889.769645208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0050", "seconds": 20.989351750002243}
+{"t": 1012889.769847875, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0051", "seconds": 20.9819744580891}
+{"t": 1012889.770091208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0052", "seconds": 20.977446582983248}
+{"t": 1012889.770424333, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0053", "seconds": 20.8124274170259}
+{"t": 1012889.770622291, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0054", "seconds": 20.69610612501856}
+{"t": 1012889.770712833, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0055", "seconds": 20.66420229198411}
+{"t": 1012889.770791333, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0056", "seconds": 20.633705458021723}
+{"t": 1012889.770863791, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0057", "seconds": 20.60967145790346}
+{"t": 1012889.771589833, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0058", "seconds": 20.50389220798388}
+{"t": 1012889.777450666, "event": "runtime_sample", "active": 100, "eventloop_lag_seconds": 0.015516291023232043, "db_checkedout": 14, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012889.781902625, "event": "stage", "chat_id": "loadtest-0004", "name": "context_retrieval", "ms": 24453.309}
+{"t": 1012889.92113325, "event": "stage", "chat_id": "loadtest-0003", "name": "context_retrieval", "ms": 24600.064}
+{"t": 1012889.924204416, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0060", "seconds": 20.64777825004421}
+{"t": 1012889.924498625, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0059", "seconds": 20.643536416930147}
+{"t": 1012889.924827083, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0062", "seconds": 20.568698624963872}
+{"t": 1012889.925307666, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0061", "seconds": 20.53524058300536}
+{"t": 1012889.925602583, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0063", "seconds": 20.502990208915435}
+{"t": 1012889.925828958, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0064", "seconds": 20.306183292064816}
+{"t": 1012889.926039333, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0065", "seconds": 20.26716650009621}
+{"t": 1012889.92654725, "event": "stage", "chat_id": "loadtest-0009", "name": "context_retrieval", "ms": 23936.746}
+{"t": 1012889.939691625, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0066", "seconds": 20.086394708021544}
+{"t": 1012889.939830208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0067", "seconds": 20.021026791073382}
+{"t": 1012889.940450833, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0068", "seconds": 20.00666120799724}
+{"t": 1012889.977134375, "event": "request_end", "active": 99, "chat_id": "loadtest-0011"}
+{"t": 1012890.182125833, "event": "record_request_embedding_encode", "chat_id": "loadtest-0058", "seconds": 0.4101467919535935}
+{"t": 1012890.245881208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0069", "seconds": 20.073963291943073}
+{"t": 1012890.246598208, "event": "request_end", "active": 98, "chat_id": "loadtest-0068"}
+{"t": 1012890.246825, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0070", "seconds": 19.979294792050496}
+{"t": 1012890.285745791, "event": "runtime_sample", "active": 98, "eventloop_lag_seconds": 0.008288291981443763, "db_checkedout": 14, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012890.286202458, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0071", "seconds": 20.010911999968812}
+{"t": 1012890.4161595, "event": "request_end", "active": 97, "chat_id": "loadtest-0018"}
+{"t": 1012890.420945833, "event": "record_request_embedding_encode", "chat_id": "loadtest-0070", "seconds": 0.17399516596924514}
+{"t": 1012890.456368041, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0072", "seconds": 20.046627458068542}
+{"t": 1012890.457283583, "event": "request_end", "active": 96, "chat_id": "loadtest-0021"}
+{"t": 1012890.457838208, "event": "request_end", "active": 95, "chat_id": "loadtest-0019"}
+{"t": 1012890.458233833, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0073", "seconds": 19.95788895804435}
+{"t": 1012890.471842916, "event": "request_end", "active": 94, "chat_id": "loadtest-0017"}
+{"t": 1012890.667148833, "event": "request_end", "active": 93, "chat_id": "loadtest-0028"}
+{"t": 1012890.673869708, "event": "record_request_embedding_encode", "chat_id": "loadtest-0073", "seconds": 0.21518041705712676}
+{"t": 1012890.683268208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0074", "seconds": 20.17308454203885}
+{"t": 1012890.683620041, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0075", "seconds": 20.168260875041597}
+{"t": 1012890.683747166, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0076", "seconds": 20.086857457994483}
+{"t": 1012890.6838445, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0077", "seconds": 20.05817025003489}
+{"t": 1012890.683938708, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0078", "seconds": 20.04779750003945}
+{"t": 1012890.692152458, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0079", "seconds": 20.014861749950796}
+{"t": 1012890.795551291, "event": "runtime_sample", "active": 93, "eventloop_lag_seconds": 0.009915250004269183, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012890.8072475, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0080", "seconds": 20.092643958050758}
+{"t": 1012890.807753041, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0081", "seconds": 20.07801749999635}
+{"t": 1012890.808193291, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0082", "seconds": 20.07361087494064}
+{"t": 1012890.809441416, "event": "request_end", "active": 92, "chat_id": "loadtest-0015"}
+{"t": 1012890.868413625, "event": "record_request_embedding_encode", "chat_id": "loadtest-0079", "seconds": 0.1758251249557361}
+{"t": 1012890.871904666, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0083", "seconds": 19.82871958403848}
+{"t": 1012890.87639425, "event": "request_end", "active": 91, "chat_id": "loadtest-0030"}
+{"t": 1012891.022332166, "event": "record_request_embedding_encode", "chat_id": "loadtest-0083", "seconds": 0.15002712502609938}
+{"t": 1012891.672320458, "event": "rerank", "chat_id": "loadtest-0008", "candidates": 24, "ms": 641.62716595456}
+{"t": 1012891.679544208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0084", "seconds": 20.597629291005433}
+{"t": 1012891.680624458, "event": "request_end", "active": 90, "chat_id": "loadtest-0029"}
+{"t": 1012891.684460708, "event": "runtime_sample", "active": 90, "eventloop_lag_seconds": 0.3889021669747308, "db_checkedout": 13, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012892.452868208, "event": "rerank", "chat_id": "loadtest-0007", "candidates": 24, "ms": 763.3968329755589}
+{"t": 1012893.0913155, "event": "rerank", "chat_id": "loadtest-0005", "candidates": 24, "ms": 619.3624170264229}
+{"t": 1012893.513770125, "event": "rerank", "chat_id": "loadtest-0006", "candidates": 24, "ms": 406.05837490875274}
+{"t": 1012893.992842, "event": "rerank", "chat_id": "loadtest-0058", "candidates": 24, "ms": 451.5274999430403}
+{"t": 1012894.022120583, "event": "request_end", "active": 89, "chat_id": "loadtest-0071"}
+{"t": 1012894.023898666, "event": "request_end", "active": 88, "chat_id": "loadtest-0024"}
+{"t": 1012894.024243666, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0085", "seconds": 22.902203750098124}
+{"t": 1012894.02476625, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0086", "seconds": 22.882903291960247}
+{"t": 1012894.025032416, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0087", "seconds": 22.873023624997586}
+{"t": 1012894.025239833, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0088", "seconds": 22.709879958070815}
+{"t": 1012894.025392541, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0089", "seconds": 22.698398458072916}
+{"t": 1012894.026506041, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0090", "seconds": 22.486375291948207}
+{"t": 1012894.027188291, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0091", "seconds": 22.47997366695199}
+{"t": 1012894.02748175, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0092", "seconds": 22.403308333014138}
+{"t": 1012894.03465875, "event": "record_request_embedding_encode", "chat_id": "loadtest-0084", "seconds": 2.3548358749831095}
+{"t": 1012894.036609666, "event": "stage", "chat_id": "loadtest-0008", "name": "context_retrieval", "ms": 28128.759}
+{"t": 1012894.039038041, "event": "runtime_sample", "active": 88, "eventloop_lag_seconds": 1.8545535409357399, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012894.123959291, "event": "request_end", "active": 87, "chat_id": "loadtest-0013"}
+{"t": 1012894.681075333, "event": "rerank", "chat_id": "loadtest-0070", "candidates": 24, "ms": 556.6732080187649}
+{"t": 1012894.747097375, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0093", "seconds": 23.024994458071887}
+{"t": 1012894.747919208, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0094", "seconds": 22.932851666002534}
+{"t": 1012894.748111625, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0095", "seconds": 22.918223333079368}
+{"t": 1012894.748247541, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0096", "seconds": 22.72276904201135}
+{"t": 1012894.748360375, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0098", "seconds": 22.681641625007614}
+{"t": 1012894.74846675, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0097", "seconds": 22.661831374978647}
+{"t": 1012894.7485885, "event": "stage", "chat_id": "loadtest-0005", "name": "context_retrieval", "ms": 29177.249}
+{"t": 1012894.749005833, "event": "stage", "chat_id": "loadtest-0007", "name": "context_retrieval", "ms": 28918.782}
+{"t": 1012894.751962833, "event": "record_request_embedding_queue_wait", "chat_id": "loadtest-0099", "seconds": 18.076678707962856}
+{"t": 1012894.756503875, "event": "stage", "chat_id": "loadtest-0006", "name": "context_retrieval", "ms": 29103.252}
+{"t": 1012894.758384833, "event": "stage", "chat_id": "loadtest-0058", "name": "context_retrieval", "ms": 25590.66}
+{"t": 1012894.83239, "event": "runtime_sample", "active": 87, "eventloop_lag_seconds": 0.29336150002200156, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012894.854010583, "event": "request_end", "active": 86, "chat_id": "loadtest-0025"}
+{"t": 1012894.854255291, "event": "request_end", "active": 85, "chat_id": "loadtest-0012"}
+{"t": 1012894.858778125, "event": "stage", "chat_id": "loadtest-0070", "name": "context_retrieval", "ms": 24684.241}
+{"t": 1012894.866242083, "event": "request_end", "active": 84, "chat_id": "loadtest-0016"}
+{"t": 1012894.866648291, "event": "request_end", "active": 83, "chat_id": "loadtest-0014"}
+{"t": 1012894.894210625, "event": "request_end", "active": 82, "chat_id": "loadtest-0032"}
+{"t": 1012895.055294333, "event": "request_end", "active": 81, "chat_id": "loadtest-0031"}
+{"t": 1012895.152671291, "event": "request_end", "active": 80, "chat_id": "loadtest-0034"}
+{"t": 1012895.157121166, "event": "request_end", "active": 79, "chat_id": "loadtest-0086"}
+{"t": 1012895.16159475, "event": "request_end", "active": 78, "chat_id": "loadtest-0033"}
+{"t": 1012895.345255708, "event": "request_end", "active": 77, "chat_id": "loadtest-0042"}
+{"t": 1012895.347105791, "event": "request_end", "active": 76, "chat_id": "loadtest-0041"}
+{"t": 1012895.3491885, "event": "request_end", "active": 75, "chat_id": "loadtest-0036"}
+{"t": 1012895.356032375, "event": "request_end", "active": 74, "chat_id": "loadtest-0043"}
+{"t": 1012895.357807458, "event": "request_end", "active": 73, "chat_id": "loadtest-0035"}
+{"t": 1012895.360802791, "event": "runtime_sample", "active": 73, "eventloop_lag_seconds": 0.02827579202130437, "db_checkedout": 13, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012895.361970666, "event": "request_end", "active": 72, "chat_id": "loadtest-0044"}
+{"t": 1012895.366871125, "event": "request_end", "active": 71, "chat_id": "loadtest-0045"}
+{"t": 1012895.368808, "event": "request_end", "active": 70, "chat_id": "loadtest-0085"}
+{"t": 1012895.408223125, "event": "request_end", "active": 69, "chat_id": "loadtest-0047"}
+{"t": 1012895.631787916, "event": "record_request_embedding_encode", "chat_id": "loadtest-0099", "seconds": 0.8791190419578925}
+{"t": 1012895.6509565, "event": "request_end", "active": 68, "chat_id": "loadtest-0046"}
+{"t": 1012895.657345541, "event": "request_end", "active": 67, "chat_id": "loadtest-0050"}
+{"t": 1012895.6584615, "event": "request_end", "active": 66, "chat_id": "loadtest-0051"}
+{"t": 1012895.658827416, "event": "request_end", "active": 65, "chat_id": "loadtest-0049"}
+{"t": 1012895.659417541, "event": "request_end", "active": 64, "chat_id": "loadtest-0053"}
+{"t": 1012895.788428375, "event": "request_end", "active": 63, "chat_id": "loadtest-0048"}
+{"t": 1012895.790545291, "event": "request_end", "active": 62, "chat_id": "loadtest-0054"}
+{"t": 1012895.79459925, "event": "request_end", "active": 61, "chat_id": "loadtest-0055"}
+{"t": 1012895.825493625, "event": "request_end", "active": 60, "chat_id": "loadtest-0052"}
+{"t": 1012895.828801291, "event": "request_end", "active": 59, "chat_id": "loadtest-0056"}
+{"t": 1012895.829832791, "event": "request_end", "active": 58, "chat_id": "loadtest-0057"}
+{"t": 1012895.878906333, "event": "runtime_sample", "active": 58, "eventloop_lag_seconds": 0.018198083038441837, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012896.041314541, "event": "request_end", "active": 57, "chat_id": "loadtest-0062"}
+{"t": 1012896.041723416, "event": "request_end", "active": 56, "chat_id": "loadtest-0060"}
+{"t": 1012896.051207875, "event": "request_end", "active": 55, "chat_id": "loadtest-0059"}
+{"t": 1012896.052948583, "event": "request_end", "active": 54, "chat_id": "loadtest-0065"}
+{"t": 1012896.053434166, "event": "request_end", "active": 53, "chat_id": "loadtest-0066"}
+{"t": 1012896.053782375, "event": "request_end", "active": 52, "chat_id": "loadtest-0063"}
+{"t": 1012896.054092625, "event": "request_end", "active": 51, "chat_id": "loadtest-0022"}
+{"t": 1012896.054389166, "event": "request_end", "active": 50, "chat_id": "loadtest-0067"}
+{"t": 1012896.055443791, "event": "request_end", "active": 49, "chat_id": "loadtest-0023"}
+{"t": 1012896.056043833, "event": "request_end", "active": 48, "chat_id": "loadtest-0064"}
+{"t": 1012896.072649333, "event": "request_end", "active": 47, "chat_id": "loadtest-0080"}
+{"t": 1012896.161069875, "event": "request_end", "active": 46, "chat_id": "loadtest-0081"}
+{"t": 1012896.162641208, "event": "request_end", "active": 45, "chat_id": "loadtest-0074"}
+{"t": 1012896.163979708, "event": "request_end", "active": 44, "chat_id": "loadtest-0075"}
+{"t": 1012896.211810333, "event": "request_end", "active": 43, "chat_id": "loadtest-0077"}
+{"t": 1012896.235670083, "event": "request_end", "active": 42, "chat_id": "loadtest-0082"}
+{"t": 1012896.251504458, "event": "request_end", "active": 41, "chat_id": "loadtest-0027"}
+{"t": 1012896.445246875, "event": "runtime_sample", "active": 41, "eventloop_lag_seconds": 0.06638141698203981, "db_checkedout": 13, "db_pool_size": 5, "db_overflow": 8}
+{"t": 1012896.445921708, "event": "request_end", "active": 40, "chat_id": "loadtest-0072"}
+{"t": 1012897.353832708, "event": "rerank", "chat_id": "loadtest-0083", "candidates": 24, "ms": 907.4489580234513}
+{"t": 1012897.887429291, "event": "rerank", "chat_id": "loadtest-0010", "candidates": 24, "ms": 503.78762499894947}
+{"t": 1012897.906319083, "event": "request_end", "active": 39, "chat_id": "loadtest-0076"}
+{"t": 1012897.925063458, "event": "runtime_sample", "active": 39, "eventloop_lag_seconds": 0.9798294579377398, "db_checkedout": 10, "db_pool_size": 5, "db_overflow": 5}
+{"t": 1012897.933155083, "event": "request_end", "active": 38, "chat_id": "loadtest-0069"}
+{"t": 1012897.933973208, "event": "request_end", "active": 37, "chat_id": "loadtest-0026"}
+{"t": 1012897.934309291, "event": "request_end", "active": 36, "chat_id": "loadtest-0078"}
+{"t": 1012897.937770791, "event": "request_end", "active": 35, "chat_id": "loadtest-0087"}
+{"t": 1012897.938182125, "event": "request_end", "active": 34, "chat_id": "loadtest-0020"}
+{"t": 1012897.939779875, "event": "stage", "chat_id": "loadtest-0083", "name": "context_retrieval", "ms": 27204.774}
+{"t": 1012898.60149525, "event": "rerank", "chat_id": "loadtest-0084", "candidates": 24, "ms": 660.7898330548778}
+{"t": 1012899.033119083, "event": "rerank", "chat_id": "loadtest-0073", "candidates": 24, "ms": 414.59283395670354}
+{"t": 1012899.575026833, "event": "rerank", "chat_id": "loadtest-0079", "candidates": 24, "ms": 516.2593750283122}
+{"t": 1012899.600000791, "event": "stage", "chat_id": "loadtest-0010", "name": "context_retrieval", "ms": 33595.232}
+{"t": 1012899.610848916, "event": "request_end", "active": 33, "chat_id": "loadtest-0088"}
+{"t": 1012899.614099416, "event": "runtime_sample", "active": 33, "eventloop_lag_seconds": 1.1889499170938507, "db_checkedout": 11, "db_pool_size": 5, "db_overflow": 6}
+{"t": 1012900.193831166, "event": "rerank", "chat_id": "loadtest-0099", "candidates": 24, "ms": 573.4908750746399}
+{"t": 1012900.295925, "event": "stage", "chat_id": "loadtest-0084", "name": "context_retrieval", "ms": 29236.558}
+{"t": 1012900.297221666, "event": "stage", "chat_id": "loadtest-0079", "name": "context_retrieval", "ms": 29660.515}
+{"t": 1012900.298311, "event": "stage", "chat_id": "loadtest-0073", "name": "context_retrieval", "ms": 29861.674}
+{"t": 1012900.304751375, "event": "runtime_sample", "active": 33, "eventloop_lag_seconds": 0.19073399994522333, "db_checkedout": 14, "db_pool_size": 5, "db_overflow": 9}
+{"t": 1012900.317643625, "event": "stage", "chat_id": "loadtest-0099", "name": "context_retrieval", "ms": 23652.194}
+{"t": 1012900.589253833, "event": "request_end", "active": 32, "chat_id": "loadtest-0090"}
+{"t": 1012900.589744708, "event": "request_end", "active": 31, "chat_id": "loadtest-0089"}
+{"t": 1012900.603037458, "event": "request_end", "active": 30, "chat_id": "loadtest-0091"}
+{"t": 1012900.6076455, "event": "request_end", "active": 29, "chat_id": "loadtest-0092"}
+{"t": 1012900.620359375, "event": "request_end", "active": 28, "chat_id": "loadtest-0040"}
+{"t": 1012900.621613166, "event": "request_end", "active": 27, "chat_id": "loadtest-0038"}
+{"t": 1012900.834134291, "event": "request_end", "active": 26, "chat_id": "loadtest-0039"}
+{"t": 1012900.847206875, "event": "runtime_sample", "active": 26, "eventloop_lag_seconds": 0.042461875011213124, "db_checkedout": 15, "db_pool_size": 5, "db_overflow": 10}
+{"t": 1012900.87663, "event": "request_end", "active": 25, "chat_id": "loadtest-0093"}
+{"t": 1012901.029303166, "event": "request_end", "active": 24, "chat_id": "loadtest-0095"}
+{"t": 1012901.149243375, "event": "request_end", "active": 23, "chat_id": "loadtest-0094"}
+{"t": 1012901.159006166, "event": "request_end", "active": 22, "chat_id": "loadtest-0096"}
+{"t": 1012901.300934333, "event": "request_end", "active": 21, "chat_id": "loadtest-0098"}
+{"t": 1012901.301645416, "event": "request_end", "active": 20, "chat_id": "loadtest-0061"}
+{"t": 1012901.333138791, "event": "request_end", "active": 19, "chat_id": "loadtest-0097"}
+{"t": 1012901.342184583, "event": "request_end", "active": 18, "chat_id": "loadtest-0037"}
+{"t": 1012901.354930416, "event": "runtime_sample", "active": 18, "eventloop_lag_seconds": 0.007657457957975566, "db_checkedout": 3, "db_pool_size": 5, "db_overflow": 3}
+{"t": 1012901.857668583, "event": "runtime_sample", "active": 18, "eventloop_lag_seconds": 0.002803292009048164, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012902.360226166, "event": "runtime_sample", "active": 18, "eventloop_lag_seconds": 0.002393583068624139, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012902.983322958, "event": "runtime_sample", "active": 18, "eventloop_lag_seconds": 0.12323387491051108, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012903.232087416, "event": "stage", "chat_id": "loadtest-0001", "name": "ai_stream", "ms": 15627.829}
+{"t": 1012903.23251375, "event": "stage", "chat_id": "loadtest-0001", "name": "output_guardrails", "ms": 0.3}
+{"t": 1012903.286221666, "event": "stage", "chat_id": "loadtest-0001", "name": "persist_messages", "ms": 53.605}
+{"t": 1012903.286558666, "event": "stage", "chat_id": "loadtest-0001", "name": "send_final_response", "ms": 0.245}
+{"t": 1012903.290071416, "event": "stage", "chat_id": "loadtest-0001", "name": "schedule_suggestions", "ms": 3.414}
+{"t": 1012903.32005625, "event": "stage", "chat_id": "loadtest-0004", "name": "ai_stream", "ms": 12903.583}
+{"t": 1012903.320695291, "event": "stage", "chat_id": "loadtest-0004", "name": "output_guardrails", "ms": 0.402}
+{"t": 1012903.344560041, "event": "stage", "chat_id": "loadtest-0002", "name": "ai_stream", "ms": 13402.407}
+{"t": 1012903.344897833, "event": "stage", "chat_id": "loadtest-0002", "name": "output_guardrails", "ms": 0.215}
+{"t": 1012903.360684625, "event": "stage", "chat_id": "loadtest-0004", "name": "persist_messages", "ms": 39.859}
+{"t": 1012903.360896791, "event": "stage", "chat_id": "loadtest-0004", "name": "send_final_response", "ms": 0.106}
+{"t": 1012903.364503333, "event": "stage", "chat_id": "loadtest-0004", "name": "schedule_suggestions", "ms": 3.443}
+{"t": 1012903.373203916, "event": "stage", "chat_id": "loadtest-0002", "name": "persist_messages", "ms": 28.206}
+{"t": 1012903.375852208, "event": "stage", "chat_id": "loadtest-0002", "name": "send_final_response", "ms": 0.521}
+{"t": 1012903.376787916, "event": "stage", "chat_id": "loadtest-0002", "name": "schedule_suggestions", "ms": 0.821}
+{"t": 1012903.386808291, "event": "stage", "chat_id": "loadtest-0000", "name": "ai_stream", "ms": 25447.408}
+{"t": 1012903.387147333, "event": "stage", "chat_id": "loadtest-0000", "name": "output_guardrails", "ms": 0.215}
+{"t": 1012903.697626875, "event": "runtime_sample", "active": 18, "eventloop_lag_seconds": 0.21431950002443045, "db_checkedout": 6, "db_pool_size": 5, "db_overflow": 1}
+{"t": 1012903.70902025, "event": "stage", "chat_id": "loadtest-0000", "name": "persist_messages", "ms": 321.767}
+{"t": 1012903.721340583, "event": "stage", "chat_id": "loadtest-0000", "name": "send_final_response", "ms": 0.431}
+{"t": 1012903.733704708, "event": "request_end", "active": 17, "chat_id": "loadtest-0004"}
+{"t": 1012903.746691291, "event": "request_end", "active": 16, "chat_id": "loadtest-0001"}
+{"t": 1012903.747578, "event": "request_end", "active": 15, "chat_id": "loadtest-0002"}
+{"t": 1012903.767101208, "event": "stage", "chat_id": "loadtest-0000", "name": "schedule_suggestions", "ms": 34.536}
+{"t": 1012903.991019041, "event": "request_end", "active": 14, "chat_id": "loadtest-0000"}
+{"t": 1012904.251182583, "event": "runtime_sample", "active": 14, "eventloop_lag_seconds": 0.05357300001196563, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012904.744248208, "event": "stage", "chat_id": "loadtest-0007", "name": "ai_stream", "ms": 8946.581}
+{"t": 1012904.744987041, "event": "stage", "chat_id": "loadtest-0007", "name": "output_guardrails", "ms": 0.232}
+{"t": 1012904.773778166, "event": "runtime_sample", "active": 14, "eventloop_lag_seconds": 0.022498624981381, "db_checkedout": 1, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012904.977714541, "event": "stage", "chat_id": "loadtest-0007", "name": "persist_messages", "ms": 232.563}
+{"t": 1012904.979127375, "event": "stage", "chat_id": "loadtest-0007", "name": "send_final_response", "ms": 1.277}
+{"t": 1012904.984545583, "event": "stage", "chat_id": "loadtest-0007", "name": "schedule_suggestions", "ms": 5.108}
+{"t": 1012905.010807875, "event": "request_end", "active": 13, "chat_id": "loadtest-0007"}
+{"t": 1012905.274900125, "event": "runtime_sample", "active": 13, "eventloop_lag_seconds": 0.001095958985388279, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012905.55674475, "event": "stage", "chat_id": "loadtest-0005", "name": "ai_stream", "ms": 10187.362}
+{"t": 1012905.557125291, "event": "stage", "chat_id": "loadtest-0005", "name": "output_guardrails", "ms": 0.224}
+{"t": 1012905.5941225, "event": "stage", "chat_id": "loadtest-0005", "name": "persist_messages", "ms": 36.86}
+{"t": 1012905.594397875, "event": "stage", "chat_id": "loadtest-0005", "name": "send_final_response", "ms": 0.148}
+{"t": 1012905.619274375, "event": "stage", "chat_id": "loadtest-0005", "name": "schedule_suggestions", "ms": 24.765}
+{"t": 1012905.869567125, "event": "runtime_sample", "active": 13, "eventloop_lag_seconds": 0.09477708302438259, "db_checkedout": 1, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012905.981965875, "event": "request_end", "active": 12, "chat_id": "loadtest-0005"}
+{"t": 1012905.985635291, "event": "stage", "chat_id": "loadtest-0003", "name": "ai_stream", "ms": 10106.244}
+{"t": 1012905.985973916, "event": "stage", "chat_id": "loadtest-0003", "name": "output_guardrails", "ms": 0.223}
+{"t": 1012906.007138583, "event": "stage", "chat_id": "loadtest-0003", "name": "persist_messages", "ms": 21.043}
+{"t": 1012906.007366375, "event": "stage", "chat_id": "loadtest-0003", "name": "send_final_response", "ms": 0.106}
+{"t": 1012906.008607166, "event": "stage", "chat_id": "loadtest-0003", "name": "schedule_suggestions", "ms": 1.144}
+{"t": 1012906.085641916, "event": "request_end", "active": 11, "chat_id": "loadtest-0003"}
+{"t": 1012906.225042083, "event": "stage", "chat_id": "loadtest-0009", "name": "ai_stream", "ms": 10110.536}
+{"t": 1012906.225516791, "event": "stage", "chat_id": "loadtest-0009", "name": "output_guardrails", "ms": 0.324}
+{"t": 1012906.422621666, "event": "runtime_sample", "active": 11, "eventloop_lag_seconds": 0.0530481250025332, "db_checkedout": 1, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012906.447727458, "event": "stage", "chat_id": "loadtest-0009", "name": "persist_messages", "ms": 221.922}
+{"t": 1012906.450206208, "event": "stage", "chat_id": "loadtest-0009", "name": "send_final_response", "ms": 1.794}
+{"t": 1012906.452198833, "event": "stage", "chat_id": "loadtest-0009", "name": "schedule_suggestions", "ms": 1.528}
+{"t": 1012906.464854416, "event": "request_end", "active": 10, "chat_id": "loadtest-0009"}
+{"t": 1012906.80510225, "event": "stage", "chat_id": "loadtest-0008", "name": "ai_stream", "ms": 6509.958}
+{"t": 1012906.8137775, "event": "stage", "chat_id": "loadtest-0008", "name": "output_guardrails", "ms": 0.503}
+{"t": 1012906.825989625, "event": "stage", "chat_id": "loadtest-0058", "name": "ai_stream", "ms": 5946.1}
+{"t": 1012906.82635025, "event": "stage", "chat_id": "loadtest-0058", "name": "output_guardrails", "ms": 0.22}
+{"t": 1012906.829525875, "event": "stage", "chat_id": "loadtest-0008", "name": "persist_messages", "ms": 12.305}
+{"t": 1012906.830092875, "event": "stage", "chat_id": "loadtest-0008", "name": "send_final_response", "ms": 0.313}
+{"t": 1012906.831742208, "event": "stage", "chat_id": "loadtest-0008", "name": "schedule_suggestions", "ms": 1.375}
+{"t": 1012906.849829583, "event": "stage", "chat_id": "loadtest-0084", "name": "ai_stream", "ms": 5542.084}
+{"t": 1012906.850657416, "event": "stage", "chat_id": "loadtest-0084", "name": "output_guardrails", "ms": 0.605}
+{"t": 1012906.853050125, "event": "stage", "chat_id": "loadtest-0058", "name": "persist_messages", "ms": 26.458}
+{"t": 1012906.8532415, "event": "stage", "chat_id": "loadtest-0058", "name": "send_final_response", "ms": 0.094}
+{"t": 1012906.853416666, "event": "request_end", "active": 9, "chat_id": "loadtest-0008"}
+{"t": 1012906.855536708, "event": "stage", "chat_id": "loadtest-0058", "name": "schedule_suggestions", "ms": 2.219}
+{"t": 1012906.876442208, "event": "request_end", "active": 8, "chat_id": "loadtest-0058"}
+{"t": 1012906.87762525, "event": "stage", "chat_id": "loadtest-0084", "name": "persist_messages", "ms": 26.716}
+{"t": 1012906.878198625, "event": "stage", "chat_id": "loadtest-0084", "name": "send_final_response", "ms": 0.27}
+{"t": 1012906.879352916, "event": "stage", "chat_id": "loadtest-0084", "name": "schedule_suggestions", "ms": 1.049}
+{"t": 1012906.885655666, "event": "request_end", "active": 7, "chat_id": "loadtest-0084"}
+{"t": 1012906.909848125, "event": "stage", "chat_id": "loadtest-0083", "name": "ai_stream", "ms": 6293.522}
+{"t": 1012906.910834916, "event": "stage", "chat_id": "loadtest-0083", "name": "output_guardrails", "ms": 0.533}
+{"t": 1012907.04047975, "event": "runtime_sample", "active": 7, "eventloop_lag_seconds": 0.1178521669935435, "db_checkedout": 1, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012907.109748791, "event": "stage", "chat_id": "loadtest-0083", "name": "persist_messages", "ms": 198.765}
+{"t": 1012907.110868125, "event": "stage", "chat_id": "loadtest-0083", "name": "send_final_response", "ms": 1.019}
+{"t": 1012907.136435791, "event": "stage", "chat_id": "loadtest-0083", "name": "schedule_suggestions", "ms": 25.447}
+{"t": 1012907.142704333, "event": "stage", "chat_id": "loadtest-0006", "name": "ai_stream", "ms": 6265.886}
+{"t": 1012907.143401583, "event": "stage", "chat_id": "loadtest-0006", "name": "output_guardrails", "ms": 0.239}
+{"t": 1012907.148528416, "event": "stage", "chat_id": "loadtest-0070", "name": "ai_stream", "ms": 5808.536}
+{"t": 1012907.150298416, "event": "stage", "chat_id": "loadtest-0070", "name": "output_guardrails", "ms": 1.503}
+{"t": 1012907.155245041, "event": "request_end", "active": 6, "chat_id": "loadtest-0083"}
+{"t": 1012907.166277, "event": "stage", "chat_id": "loadtest-0006", "name": "persist_messages", "ms": 22.609}
+{"t": 1012907.16678375, "event": "stage", "chat_id": "loadtest-0006", "name": "send_final_response", "ms": 0.222}
+{"t": 1012907.168921875, "event": "stage", "chat_id": "loadtest-0006", "name": "schedule_suggestions", "ms": 1.537}
+{"t": 1012907.170132791, "event": "stage", "chat_id": "loadtest-0070", "name": "persist_messages", "ms": 19.726}
+{"t": 1012907.170286208, "event": "stage", "chat_id": "loadtest-0070", "name": "send_final_response", "ms": 0.075}
+{"t": 1012907.170898833, "event": "stage", "chat_id": "loadtest-0070", "name": "schedule_suggestions", "ms": 0.547}
+{"t": 1012907.174979875, "event": "stage", "chat_id": "loadtest-0099", "name": "ai_stream", "ms": 5824.647}
+{"t": 1012907.175958958, "event": "stage", "chat_id": "loadtest-0099", "name": "output_guardrails", "ms": 0.296}
+{"t": 1012907.239857416, "event": "request_end", "active": 5, "chat_id": "loadtest-0006"}
+{"t": 1012907.240097583, "event": "request_end", "active": 4, "chat_id": "loadtest-0070"}
+{"t": 1012907.249838625, "event": "stage", "chat_id": "loadtest-0010", "name": "ai_stream", "ms": 5628.684}
+{"t": 1012907.250168541, "event": "stage", "chat_id": "loadtest-0010", "name": "output_guardrails", "ms": 0.221}
+{"t": 1012907.255302125, "event": "stage", "chat_id": "loadtest-0099", "name": "persist_messages", "ms": 79.165}
+{"t": 1012907.256430166, "event": "stage", "chat_id": "loadtest-0099", "name": "send_final_response", "ms": 0.394}
+{"t": 1012907.258284958, "event": "stage", "chat_id": "loadtest-0099", "name": "schedule_suggestions", "ms": 1.424}
+{"t": 1012907.266222916, "event": "request_end", "active": 3, "chat_id": "loadtest-0099"}
+{"t": 1012907.273087708, "event": "stage", "chat_id": "loadtest-0010", "name": "persist_messages", "ms": 22.719}
+{"t": 1012907.274057458, "event": "stage", "chat_id": "loadtest-0010", "name": "send_final_response", "ms": 0.393}
+{"t": 1012907.276588916, "event": "stage", "chat_id": "loadtest-0010", "name": "schedule_suggestions", "ms": 2.344}
+{"t": 1012907.523954, "event": "request_end", "active": 2, "chat_id": "loadtest-0010"}
+{"t": 1012907.529460666, "event": "stage", "chat_id": "loadtest-0079", "name": "ai_stream", "ms": 5928.859}
+{"t": 1012907.530682416, "event": "stage", "chat_id": "loadtest-0079", "name": "output_guardrails", "ms": 0.443}
+{"t": 1012907.550746791, "event": "runtime_sample", "active": 2, "eventloop_lag_seconds": 0.0025306660681962967, "db_checkedout": 1, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012907.555559375, "event": "stage", "chat_id": "loadtest-0079", "name": "persist_messages", "ms": 22.355}
+{"t": 1012907.555917833, "event": "stage", "chat_id": "loadtest-0079", "name": "send_final_response", "ms": 0.137}
+{"t": 1012907.55765425, "event": "stage", "chat_id": "loadtest-0079", "name": "schedule_suggestions", "ms": 1.528}
+{"t": 1012907.566018458, "event": "request_end", "active": 1, "chat_id": "loadtest-0079"}
+{"t": 1012907.611813708, "event": "stage", "chat_id": "loadtest-0073", "name": "ai_stream", "ms": 5952.81}
+{"t": 1012907.612254458, "event": "stage", "chat_id": "loadtest-0073", "name": "output_guardrails", "ms": 0.225}
+{"t": 1012907.623253833, "event": "stage", "chat_id": "loadtest-0073", "name": "persist_messages", "ms": 10.751}
+{"t": 1012907.623969916, "event": "stage", "chat_id": "loadtest-0073", "name": "send_final_response", "ms": 0.354}
+{"t": 1012907.625923375, "event": "stage", "chat_id": "loadtest-0073", "name": "schedule_suggestions", "ms": 1.738}
+{"t": 1012907.632141625, "event": "request_end", "active": 0, "chat_id": "loadtest-0073"}
+{"t": 1012908.052580125, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.009485499933362007, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012908.553244666, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.0006914590485394001, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012909.055234458, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.0020019999938085675, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012909.556532, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.001261875033378601, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012910.059351791, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.00250991596840322, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012910.560770541, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.0017992089269682765, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012911.061433, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.0005409580189734697, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}
+{"t": 1012911.562267708, "event": "runtime_sample", "active": 0, "eventloop_lag_seconds": 0.000798208056949079, "db_checkedout": 0, "db_pool_size": 5, "db_overflow": 0}

@@ -1,0 +1,53 @@
+{
+  "scenario": "chat",
+  "code": "3ad23ddb5bc909078bf842012f39f7c45c0b70cf",
+  "dirty": "?? docs/reports/artifacts/\n",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "cpu_count": 12,
+  "ram_bytes": 34359738368,
+  "python": "3.11.11 (main, Mar 17 2025, 21:33:08) [Clang 20.1.0 ]",
+  "duration_seconds": 92.36837087501772,
+  "connected": 100,
+  "connection_errors": [],
+  "retained": 100,
+  "retention_errors": [],
+  "hold_seconds": 45.826500250026584,
+  "requests": 100,
+  "success": 0,
+  "errors": 100,
+  "timeouts": 0,
+  "first_content_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "full_success_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "all_terminal_seconds": {
+    "p50": 34.33328799996525,
+    "p90": 35.92330337502062,
+    "p95": 42.18414683395531
+  },
+  "server_before": {
+    "active": 0,
+    "peak": 0
+  },
+  "server_after": {
+    "active": 0,
+    "peak": 100
+  },
+  "db_before": [],
+  "db_after": [
+    [
+      "user",
+      100
+    ],
+    [
+      "assistant",
+      100
+    ]
+  ]
+}

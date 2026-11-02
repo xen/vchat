@@ -308,20 +308,22 @@ async def run(args):
         )
     finally:
         stop_sampling.set()
-        await sampler
-        # Current production websocket loop does not break on CLOSED frames.
-        # Terminate our isolated processes before closing clients to avoid spinning
-        # in that existing runtime loop. No application code is altered here.
-        for process in reversed(children):
-            process.terminate()
-        await asyncio.sleep(1)
-        for process in reversed(children):
-            if process.poll() is None:
-                process.kill()
-            process.wait(timeout=10)
-        await client.close()
-        for log in logs:
-            log.close()
+        try:
+            await sampler
+        finally:
+            # Current production websocket loop does not break on CLOSED frames.
+            # Terminate our isolated processes before closing clients to avoid spinning
+            # in that existing runtime loop. No application code is altered here.
+            for process in reversed(children):
+                process.terminate()
+            await asyncio.sleep(1)
+            for process in reversed(children):
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=10)
+            await client.close()
+            for log in logs:
+                log.close()
 
 
 if __name__ == "__main__":

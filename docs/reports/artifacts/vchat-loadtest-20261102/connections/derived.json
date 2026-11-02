@@ -1,0 +1,61 @@
+{
+  "server_requests_started": 0,
+  "server_requests_ended": 0,
+  "server_peak_active": null,
+  "all_100_overlap_seconds": null,
+  "peak_provider_streams": 0,
+  "errors": {},
+  "unsupported_provider_protocols": {},
+  "stream_completed": 0,
+  "transport_completed": 0,
+  "full_protected_cycle_validated": false,
+  "completed_with_1984_chars": 0,
+  "source_counts": {},
+  "eventloop_lag_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "eventloop_lag_max_seconds": null,
+  "db_peak_checkedout": null,
+  "stages_ms": {},
+  "embedding_queue_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "embedding_encode_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "rerank_ms": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "resources": {
+    "client": {
+      "pid": 58217,
+      "peak_rss_bytes": 86704128,
+      "peak_cpu_percent": 26.7
+    },
+    "vchat": {
+      "pid": 58480,
+      "peak_rss_bytes": 746536960,
+      "peak_cpu_percent": 83.5
+    },
+    "emulator": {
+      "pid": 58479,
+      "peak_rss_bytes": 43286528,
+      "peak_cpu_percent": 31.1
+    },
+    "embedder": {
+      "pid": 40252,
+      "peak_rss_bytes": 125779968,
+      "peak_cpu_percent": 0.3
+    }
+  },
+  "system_loadavg_max_1m": 41.50244140625,
+  "system_available_ram_min_bytes": 5178884096
+}

@@ -1,0 +1,451 @@
+{"t": 1012877.961148166, "event": "oauth"}
+{"t": 1012887.64764125, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012889.790733083, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012889.928656875, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012889.976535416, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012890.457445333, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012890.461196333, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012890.465349541, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012890.842190333, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012891.033162875, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012894.031488166, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012894.125907708, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012894.841850875, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012894.875751875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012894.879639791, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012894.8931295, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012894.893546333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012894.900284041, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012895.054531833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.054642, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.15227075, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012895.152978208, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.153066416, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.156786375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.157207208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.158661958, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012895.16341675, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.163523166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.1636905, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012895.164882833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.164945875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.328859416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.329303916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.413577458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.413785083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.631930875, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012895.765433333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.765710583, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.805628791, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.805898916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.836449833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.836646958, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.848548916, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012895.857680583, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.857781833, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.864818125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.865038041, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012895.87984125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012895.880043083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012896.049064958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012896.049365541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012896.055218083, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012896.149179583, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012896.261564916, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012896.434016583, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012897.009541583, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012897.256227666, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012897.256824416, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012897.257176375, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012899.597589458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012899.597728666, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012899.617041666, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012900.295565833, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012900.316647875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.3168135, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.321063041, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.321230541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.324715208, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.325116291, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.332517375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.332741458, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.345007583, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.345114916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.548882458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.548998041, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.577504541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.578218708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.59980775, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012900.612496666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.613160166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012900.616025, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012900.616996875, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012900.621705208, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012900.848794916, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012900.855055, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012900.85536325, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.033185708, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.033457666, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.269029541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.269155791, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.283999958, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012901.292888125, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.300507291, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.328091083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.328211125, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.334603, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.334686458, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.336469708, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.339783875, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.341362958, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.355566916, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.581172916, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.591874208, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.595473833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.595569333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.59866875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.598757166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.600859916, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012901.830141541, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.830667791, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.838563375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.838846041, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.842473833, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.843267666, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.843627958, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.847, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.847255208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.850090708, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012901.873221375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.873315125, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.877198083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.877387625, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.878936375, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012901.879791291, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.880168, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.882703916, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.882871875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.891602875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.891700583, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012901.892223166, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012901.892311375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.1084065, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.125462708, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.136797041, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.136939958, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.138453791, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.142671208, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.155315125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.155442375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.156096875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.156189375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.156784958, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012902.347206666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.347312875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.349059708, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.358216416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.358616125, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.361978875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.362241708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.363158833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.363490791, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.364046791, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.364141666, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.364741166, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.369975958, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.373833416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.373953166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.375340458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.375436208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.383284083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.383670416, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.384877666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.384988958, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.531349708, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.615978375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.616093375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.629640375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.629744583, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.631654958, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.639033791, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012902.639891375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.640145, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.640593458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.640761875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.704433791, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.704538916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.705128041, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.7052075, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.705597, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.705653166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.706129041, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012902.707161, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.707323208, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012902.742048791, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.742146, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.742320875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.742366208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.7441615, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012902.755439083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.755567541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.988010458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.988269416, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012902.98942625, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012902.991526791, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012902.991617833, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.008272125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.008496916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.009158833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.009323333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.010161541, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012903.180239375, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012903.186046333, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012903.191161375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.191477875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.198219458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.198660166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.198867333, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012903.201743416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.201840666, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.2205065, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.220802875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.222822833, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012903.235579458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.235684083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.239076875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.239308166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.24172325, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012903.250386958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.250670291, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.252765416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.25287575, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.255810916, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012903.264048166, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.264183833, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.275992375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.276131875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.279794, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012903.281618125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.281721416, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.285209583, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.2853055, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.286437958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.286657916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.312158416, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012903.314921416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.315018, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.317401333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.317679875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.318866791, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.319075083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.326154625, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.326970583, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.328987958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.3290845, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.330565625, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.330660208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.335731916, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.335835875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.3366245, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.336876416, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.343832208, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.343956416, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.372534958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.372872625, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.373437708, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.373795083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.374271958, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012903.390307083, "event": "unsupported", "path": "/api/v1/moderations", "method": "POST"}
+{"t": 1012903.3912345, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.391332041, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.400402291, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.40053175, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.414543375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.414658708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.687743291, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012903.7029795, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.70327175, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.704316875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.70443275, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.707884541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.721174708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.7642605, "event": "completion_start", "stream": true, "model": "GigaChat-2-Pro"}
+{"t": 1012903.772594, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.772823916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.783266375, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.783567208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.785436458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.785550166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.791733583, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.791975958, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.873045083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.873225541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.888367416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.891026625, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.893030291, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.893148666, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.895475708, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.895783083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.902824166, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.902948083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.912415333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.912811333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012903.918123666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012903.918223458, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.003386625, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012904.004536041, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.004889041, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.19278025, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.192948208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.204799666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.204905583, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.259498125, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012904.279192125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.279302125, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.398096416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.398233875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.405672958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.405992041, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.411060041, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.411192875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.420737666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.42083875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.475458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.47624175, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.620216208, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.620341291, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.67427675, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.674410333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.747792666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.748070541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.763000583, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.763110375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.783197041, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012904.787525541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.787607625, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.787772458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.787832, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.837230666, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012904.872130666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.872961166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.875668916, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.875738375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.8898835, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012904.968413958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.968730166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.982965666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.98312875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.991748458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.99210325, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.996904125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.997014, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012904.998226833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012904.99850025, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.003063333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.003167708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.007246, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.00769175, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.035953416, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.036183916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.149079166, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012905.354779791, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012905.373319541, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012905.393371916, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.393485375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.399737291, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012905.406123125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.406219625, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.407585541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.407903041, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.413581333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.413694708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.428653583, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012905.55164, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.551747458, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.573447166, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.573552833, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.584321333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.585226916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.5904185, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.590548708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.849388791, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.849683375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.869002291, "event": "completion_end", "chars": 1984, "bytes": 3712}
+{"t": 1012905.881998083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.882485541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.893719958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.8947545, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.906690166, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.907148, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.959319041, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.959426333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.96109325, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.96346425, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.979658458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.979786083, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.987855291, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.988267333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.991076458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.991445291, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012905.996643958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012905.997034166, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.012869958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.012976208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.015131541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.015251416, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.095795166, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.096083333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.220496083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.220747958, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.234327666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.234624541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.253005875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.253162208, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.426037875, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.426140708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.4303735, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.430481666, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.455639541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.455740916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.6844605, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.684562791, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.784947125, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.785322916, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.819647458, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.820958125, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.845992958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.846393833, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.847759583, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.847965333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.862972291, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.863388333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.881529083, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.881858541, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012906.906685666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012906.90684325, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.108625541, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.1087675, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.140407625, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.140574583, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.149486708, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.149616458, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.165261833, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.165435125, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.178838333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.178966583, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.179339666, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.179481875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.239944333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.240078458, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.264072583, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.264323708, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.28034225, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.280464875, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.523872958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.524203375, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.561647333, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.561922958, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.607842958, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.607985833, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}
+{"t": 1012907.62866, "event": "completion_start", "stream": null, "model": "GigaChat-2"}
+{"t": 1012907.628774333, "event": "unsupported", "path": "/api/v1/chat/completions", "protocol": "non-stream completion"}

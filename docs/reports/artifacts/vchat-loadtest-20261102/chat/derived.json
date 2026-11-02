@@ -1,0 +1,118 @@
+{
+  "server_requests_started": 100,
+  "server_requests_ended": 100,
+  "server_peak_active": 100,
+  "all_100_overlap_seconds": 32.61234049999621,
+  "peak_provider_streams": 12,
+  "errors": {
+    "request_embedding_timeout": 82
+  },
+  "unsupported_provider_protocols": {
+    "/api/v1/moderations": 54,
+    "/api/v1/chat/completions": 180
+  },
+  "stream_completed": 18,
+  "transport_completed": 18,
+  "full_protected_cycle_validated": false,
+  "completed_with_1984_chars": 18,
+  "source_counts": {
+    "6": 2,
+    "4": 1,
+    "3": 1,
+    "2": 5,
+    "1": 9
+  },
+  "eventloop_lag_seconds": {
+    "p50": 0.10712537495419383,
+    "p90": 1.8545535409357399,
+    "p95": 4.37316495901905
+  },
+  "eventloop_lag_max_seconds": 8.173287541954778,
+  "db_peak_checkedout": 15,
+  "stages_ms": {
+    "ai_stream": {
+      "p50": 6293.522,
+      "p90": 15627.829,
+      "p95": 25447.408
+    },
+    "context_retrieval": {
+      "p50": 25590.66,
+      "p90": 29861.674,
+      "p95": 33595.232
+    },
+    "generation_context": {
+      "p50": 0.005,
+      "p90": 0.024,
+      "p95": 0.033
+    },
+    "input_guardrails": {
+      "p50": 0.028,
+      "p90": 0.13,
+      "p95": 0.161
+    },
+    "output_guardrails": {
+      "p50": 0.239,
+      "p90": 0.605,
+      "p95": 1.503
+    },
+    "persist_messages": {
+      "p50": 26.716,
+      "p90": 232.563,
+      "p95": 321.767
+    },
+    "redis_publish_user": {
+      "p50": 11267.076,
+      "p90": 13955.125,
+      "p95": 14358.302
+    },
+    "schedule_suggestions": {
+      "p50": 1.537,
+      "p90": 25.447,
+      "p95": 34.536
+    },
+    "send_final_response": {
+      "p50": 0.27,
+      "p90": 1.277,
+      "p95": 1.794
+    }
+  },
+  "embedding_queue_seconds": {
+    "p50": 20.64777825004421,
+    "p90": 22.661831374978647,
+    "p95": 22.873023624997586
+  },
+  "embedding_encode_seconds": {
+    "p50": 0.29055004206020385,
+    "p90": 4.59970695793163,
+    "p95": 6.89790525007993
+  },
+  "rerank_ms": {
+    "p50": 573.4908750746399,
+    "p90": 2590.542000019923,
+    "p95": 3766.488916007802
+  },
+  "resources": {
+    "client": {
+      "pid": 80136,
+      "peak_rss_bytes": 80838656,
+      "peak_cpu_percent": 6.1
+    },
+    "vchat": {
+      "pid": 80307,
+      "peak_rss_bytes": 572473344,
+      "peak_cpu_percent": 98.4
+    },
+    "emulator": {
+      "pid": 80306,
+      "peak_rss_bytes": 43286528,
+      "peak_cpu_percent": 28.1
+    },
+    "embedder": {
+      "pid": 40252,
+      "peak_rss_bytes": 66076672,
+      "peak_cpu_percent": 82.2
+    }
+  },
+  "system_loadavg_max_1m": 50.96923828125,
+  "system_available_ram_min_bytes": 5174804480
+}

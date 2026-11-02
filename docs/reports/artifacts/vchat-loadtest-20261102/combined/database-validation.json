@@ -1,0 +1,23 @@
+{
+  "message_rows": [
+    [
+      "assistant",
+      100,
+      0,
+      100
+    ],
+    [
+      "user",
+      100,
+      27,
+      0
+    ]
+  ],
+  "assistant_text_exact_emulator_matches": 27,
+  "corpus_counts_source_page_chunk_chat": [
+    1,
+    24,
+    24,
+    1000
+  ]
+}

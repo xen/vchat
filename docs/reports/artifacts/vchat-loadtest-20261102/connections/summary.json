@@ -1,0 +1,44 @@
+{
+  "scenario": "connections",
+  "code": "f83dff8591cb333e8f999c517b6d4908db469de4",
+  "dirty": "?? docs/reports/artifacts/\n",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "cpu_count": 12,
+  "ram_bytes": 34359738368,
+  "python": "3.11.11 (main, Mar 17 2025, 21:33:08) [Clang 20.1.0 ]",
+  "duration_seconds": 57.74254991603084,
+  "connected": 1000,
+  "connection_errors": [],
+  "retained": 1000,
+  "retention_errors": [],
+  "hold_seconds": 31.06043266702909,
+  "requests": 0,
+  "success": 0,
+  "errors": 0,
+  "timeouts": 0,
+  "first_content_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "full_success_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "all_terminal_seconds": {
+    "p50": null,
+    "p90": null,
+    "p95": null
+  },
+  "server_before": {
+    "active": 0,
+    "peak": 0
+  },
+  "server_after": {
+    "active": 0,
+    "peak": 0
+  },
+  "db_before": [],
+  "db_after": []
+}
