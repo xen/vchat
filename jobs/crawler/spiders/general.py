@@ -37,6 +37,9 @@ DOWNLOADABLE_DOCUMENT_EXTENSIONS = {
     "docx",
     "pdf",
     "pptx",
+    "xls",
+    "xlsx",
+    "xlsm",
 }
 DOWNLOAD_TOO_LARGE_PATTERN = re.compile(
     r"Expected to receive (?P<size>\d+) bytes which is larger than "

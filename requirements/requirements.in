@@ -48,6 +48,7 @@ annoy==1.17.3; sys_platform == "linux"
 pypdf>=6.5.0
 python-docx
 python-pptx
+openpyxl==3.1.5
 
 # text processing
 mmh3

@@ -5,6 +5,7 @@ import logging
 import re
 import zipfile
 from io import BytesIO
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
@@ -12,12 +13,15 @@ from urllib.parse import parse_qs, unquote, urlparse
 from bs4 import BeautifulSoup
 from docx import Document as load_docx_document
 from docx.document import Document as DocxDocument
+from openpyxl import load_workbook
+from openpyxl.worksheet.formula import ArrayFormula, DataTableFormula
 from pptx import Presentation as load_pptx_presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.presentation import Presentation as PptxPresentation
 from pypdf import PdfReader
 
 from jobs.documents.types import guess_document_type
+from vchat.settings import cfg
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +84,11 @@ PPTX_DOCUMENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 LEGACY_PPT_DOCUMENT_TYPES = {"application/vnd.ms-powerpoint"}
+EXCEL_DOCUMENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroenabled.12",
+    "application/vnd.ms-excel",
+}
 BROAD_BINARY_DOCUMENT_TYPES = {
     "",
     "application/octet-stream",
@@ -591,6 +600,112 @@ def _extract_pptx_text(presentation: PptxPresentation) -> tuple[str, dict[str, A
     }
 
 
+def _excel_cell_text(cell: Any) -> str:
+    value = cell.value
+    if isinstance(value, DataTableFormula):
+        raise ValueError(
+            "Excel data-table formulas are not supported for text extraction"
+        )
+    if isinstance(value, ArrayFormula):
+        text = value.text
+    elif isinstance(value, (datetime, date, time)):
+        text = value.isoformat()
+    else:
+        text = str(value)
+    if cell.data_type == "f":
+        text = f"Formula (not evaluated): {text}"
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _extract_excel_text(raw_body: bytes) -> tuple[str, dict[str, Any], str | None]:
+    if raw_body.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        raise ValueError("Legacy XLS and encrypted Excel workbooks are not supported")
+    workbook = load_workbook(
+        BytesIO(raw_body),
+        read_only=True,
+        data_only=False,
+        keep_links=False,
+    )
+    try:
+        sections: list[str] = []
+        sheets: list[dict[str, Any]] = []
+        total_cells = 0
+        formula_count = 0
+        extracted_chars = 0
+        for sheet in workbook.worksheets:
+            # Some producers omit dimensions; others store stale dimensions.
+            sheet.reset_dimensions()
+            heading = re.sub(r"\s+", " ", sheet.title).strip()
+            labels: dict[int, str] | None = None
+            rows: list[str] = []
+            cell_count = 0
+            for row in sheet.iter_rows():
+                populated = [cell for cell in row if cell.value is not None]
+                if not populated:
+                    continue
+                entries: list[str] = []
+                for cell in populated:
+                    text = _excel_cell_text(cell)
+                    if not text:
+                        continue
+                    label = labels.get(cell.column) if labels is not None else None
+                    entry = f"{cell.coordinate}"
+                    if label:
+                        entry += f" [{label}]"
+                    entries.append(f"{entry}: {text}")
+                    cell_count += 1
+                    formula_count += int(cell.data_type == "f")
+                if entries:
+                    rows.append(
+                        f"Sheet {heading}; row {populated[0].row}: "
+                        + " | ".join(entries)
+                    )
+                    extracted_chars += len(rows[-1]) + 2
+                    if extracted_chars > cfg.embedding_document_max_chars:
+                        raise ValueError(
+                            "Excel extracted text exceeds embedding_document_max_chars "
+                            f"({cfg.embedding_document_max_chars})"
+                        )
+                if labels is None and entries:
+                    labels = {
+                        cell.column: _excel_cell_text(cell)
+                        for cell in populated
+                        if cell.data_type != "f"
+                    }
+            sheets.append(
+                {
+                    "name": sheet.title,
+                    "state": sheet.sheet_state,
+                    "nonempty_rows": len(rows),
+                    "nonempty_cells": cell_count,
+                }
+            )
+            total_cells += cell_count
+            if rows:
+                sections.append(
+                    f"## Sheet: {heading} ({sheet.sheet_state})\n\n" + "\n\n".join(rows)
+                )
+        if not total_cells:
+            raise ValueError("Excel workbook contains no extractable cell text")
+        return (
+            "\n\n".join(sections),
+            {
+                "format": "excel",
+                "sheet_count": len(sheets),
+                "sheets": sheets,
+                "nonempty_cells": total_cells,
+                "formula_count": formula_count,
+                "formula_policy": "expressions_not_evaluated",
+                "header_policy": "first_nonempty_row_labels",
+                "hidden_policy": "included",
+                "merged_policy": "anchor_cell_only",
+            },
+            normalize_title_candidate(workbook.properties.title),
+        )
+    finally:
+        workbook.close()
+
+
 def _normalized_content_type(content_type: str | None) -> str:
     return (content_type or "").split(";", 1)[0].strip().lower()
 
@@ -603,6 +718,8 @@ def _sniff_binary_document_kind(raw_body: bytes) -> str | None:
     if zipfile.is_zipfile(BytesIO(raw_body)):
         with zipfile.ZipFile(BytesIO(raw_body)) as archive:
             names = set(archive.namelist())
+        if "[Content_Types].xml" in names and "xl/workbook.xml" in names:
+            return "excel"
         if "[Content_Types].xml" in names and "word/document.xml" in names:
             return "docx"
         if "[Content_Types].xml" in names and "ppt/presentation.xml" in names:
@@ -613,8 +730,11 @@ def _sniff_binary_document_kind(raw_body: bytes) -> str | None:
 def detect_binary_document_kind(
     raw_body: bytes,
     content_type: str | None,
+    source_url: str = "",
 ) -> str | None:
     normalized_content_type = _normalized_content_type(content_type)
+    if normalized_content_type in EXCEL_DOCUMENT_TYPES:
+        return "excel"
     if normalized_content_type in PDF_DOCUMENT_TYPES:
         return "pdf"
     if normalized_content_type in DOCX_DOCUMENT_TYPES:
@@ -626,6 +746,12 @@ def detect_binary_document_kind(
     if normalized_content_type in LEGACY_PPT_DOCUMENT_TYPES:
         sniffed_kind = _sniff_binary_document_kind(raw_body)
         return "pptx" if sniffed_kind == "pptx" else "legacy_ppt"
+    if Path(unquote(urlparse(source_url).path)).suffix.lower() in {
+        ".xlsx",
+        ".xlsm",
+        ".xls",
+    }:
+        return "excel"
     if normalized_content_type in BROAD_BINARY_DOCUMENT_TYPES:
         return _sniff_binary_document_kind(raw_body)
     return None
@@ -636,7 +762,7 @@ def extract_binary_url_document(
     raw_body: bytes,
     content_type: str | None = None,
 ) -> tuple[str, str | None, dict[str, Any]]:
-    document_kind = detect_binary_document_kind(raw_body, content_type)
+    document_kind = detect_binary_document_kind(raw_body, content_type, source_url)
     doc_type = "office" if document_kind else guess_document_type(None, content_type)
     title = _title_from_url(source_url)
 
@@ -657,6 +783,11 @@ def extract_binary_url_document(
         title = _extract_pptx_metadata_title(presentation) or title
         content, file_meta = _extract_pptx_text(presentation)
         extractor = "python-pptx"
+        fallback_used = False
+    elif document_kind == "excel":
+        content, file_meta, workbook_title = _extract_excel_text(raw_body)
+        title = workbook_title or title
+        extractor = "openpyxl"
         fallback_used = False
     elif document_kind == "legacy_doc":
         raise ValueError("Legacy .doc files are not supported by the current extractor")

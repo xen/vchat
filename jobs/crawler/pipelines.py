@@ -17,6 +17,7 @@ from jobs.crawler.document_pipeline import (
 )
 from jobs.indexing.documents import (
     document_content_effectively_unchanged,
+    document_content_unchanged,
     raw_content_payload,
     sync_document_has_chunks,
 )
@@ -206,6 +207,8 @@ def sync_page_links(
 
 
 def is_low_content_page(content: str, extracted_meta: dict[str, object]) -> bool:
+    if extracted_meta.get("file", {}).get("format") == "excel":
+        return False
     stripped = (content or "").strip()
     if not stripped:
         return False
@@ -476,6 +479,7 @@ class DatabasePipeline:
                 binary_document_kind = detect_binary_document_kind(
                     raw_content or b"",
                     content_type,
+                    url,
                 )
                 if binary_document_kind is not None:
                     markdown_content, normalized_title, extracted_meta = (
@@ -564,9 +568,14 @@ class DatabasePipeline:
                     return item
 
                 force_reprocess = bool((page.meta or {}).get("force_reprocess_once"))
-                effectively_unchanged = document_content_effectively_unchanged(
-                    page, markdown_content
-                )
+                if extracted_meta.get("file", {}).get("format") == "excel":
+                    effectively_unchanged = document_content_unchanged(
+                        page, markdown_content
+                    )
+                else:
+                    effectively_unchanged = document_content_effectively_unchanged(
+                        page, markdown_content
+                    )
                 has_chunks = (
                     sync_document_has_chunks(session, page.id)
                     if (

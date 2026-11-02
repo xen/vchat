@@ -100,6 +100,7 @@ DOWNLOADABLE_DOCUMENT_EXTENSIONS = (
     ".pptx",
     ".xls",
     ".xlsx",
+    ".xlsm",
 )
 DOWNLOADABLE_DOCUMENT_CONTENT_TYPE_TERMS = (
     "pdf",
@@ -176,6 +177,8 @@ class PageChunkContext:
 
 def _metadata_only_index_reason(doc: Page | PageChunkContext) -> str | None:
     meta = dict(getattr(doc, "meta", None) or {})
+    if meta.get("file", {}).get("format") == "excel":
+        return None
     uri = str(getattr(doc, "uri", "") or "")
     path = urlparse(uri).path.lower()
     doc_type = str(meta.get("doc_type") or "").lower()
