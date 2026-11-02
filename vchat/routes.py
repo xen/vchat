@@ -169,7 +169,7 @@ def setup_routes(app: web.Application) -> None:
 
     add(
         "*",
-        "/actions/{action}/{item_id}",
+        r"/actions/{action:user_(?:create|password|revoke_sessions|revoke_all_sessions|block_permanently)|(?!user_)[^/]+}/{item_id}",
         projects.project_action,
         name="actions",
     )

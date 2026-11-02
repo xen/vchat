@@ -399,7 +399,7 @@ async def test_project_action_unknown_action() -> None:
     req["db"] = _DB()
     req["user"] = SimpleNamespace(id=1)
 
-    with pytest.raises(web.HTTPBadRequest):
+    with pytest.raises(web.HTTPNotFound):
         await _raw_project_action()(req)
 
 
