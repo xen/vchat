@@ -50,7 +50,10 @@ async def seed():
         db.add(source)
         db.add(
             WidgetIntegration(
-                name="Load test", code="loadtest", suggestions_enabled=True
+                name="Load test",
+                code="loadtest",
+                suggestions_enabled=True,
+                welcome_messages=["Как устроена учебная программа?"],
             )
         )
         await db.flush()

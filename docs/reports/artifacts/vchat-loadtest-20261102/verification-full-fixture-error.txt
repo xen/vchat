@@ -1,0 +1,1152 @@
+venv/bin/pytest -v --tb=short --disable-warnings \
+		--cov=vchat \
+		--cov=jobs \
+		--cov-report=term-missing:skip-covered \
+		--cov-report=xml:coverage.xml \
+		--cov-report=html:htmlcov
+============================= test session starts ==============================
+platform darwin -- Python 3.11.11, pytest-9.0.2, pluggy-1.6.0 -- /Users/xen/Dev/sber/vchat/venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/xen/Dev/sber/vchat-loadtest
+configfile: pyproject.toml
+plugins: anyio-4.12.0, Faker-38.2.0, asyncio-1.3.0, env-1.2.0, aiohttp-1.1.0, cov-7.0.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 810 items
+
+tests/chat/test_chat_views_stream.py::test_make_websocket_response_sets_request_id_header_with_real_aiohttp PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_websocket_origin_policy_uses_configured_origins PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_is_trivial_query_variants PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_load_signed_trigger_page_id_validates_signature PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_load_signed_trigger_page_id_rejects_bad_signature PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_stream_cached_response_text_drips_chunks PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_validate_trigger_cache_request_requires_current_page_trigger PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_validate_trigger_cache_request_accepts_current_page_trigger PASSED [  0%]
+tests/chat/test_chat_views_stream.py::test_extract_total_tokens_variants PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_build_generation_context_appends_answer_format_policy_to_custom_prompt PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_build_generation_context_uses_separate_aux_model PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_build_generation_context_requires_aux_settings PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_build_chat_completion_messages_normalizes_developer_role PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_suggested_actions_schema_is_strict PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_suggested_actions_parser_requires_three_unique_actions PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_generate_suggestions_returns_invalid_response_error PASSED [  1%]
+tests/chat/test_chat_views_stream.py::test_parse_incoming_chat_message_tracks_selected_suggestion PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_save_chat_message_suggestions_error_updates_context PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_mark_selected_suggested_action_updates_source_context PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_suggestions_prompt_appends_structured_context_block PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_gigachat_suggestions_instruction_requires_ascii_json_quotes PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_cache_candidate_payload_marks_strict_rag_answer_candidate PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_user_message_count_ignores_context_messages PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_retrieve_chat_context_does_not_empty_scope_widget_rag PASSED [  2%]
+tests/chat/test_chat_views_stream.py::test_cache_candidate_payload_rejects_risky_answers[used_chunks0-1-ok] PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_cache_candidate_payload_rejects_risky_answers[used_chunks1-2-ok] PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_cache_candidate_payload_rejects_risky_answers[used_chunks2-1-no_context] PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_ai_chat_stream_guardrails_client_mode PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_ai_chat_stream_uses_provider_compatible_guardrails_client PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_ai_chat_stream_raw_mode_and_error_branch PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_ai_chat_stream_passes_gigachat_ssl_setting PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_chat_action_session_requires_matching_signed_chat_csrf PASSED [  3%]
+tests/chat/test_chat_views_stream.py::test_chat_action_vote_requires_matching_signed_chat_csrf PASSED [  4%]
+tests/chat/test_chat_views_stream.py::test_chat_action_rejects_bad_signed_chat_csrf PASSED [  4%]
+tests/chat/test_chat_views_stream.py::test_websocket_invalid_signature_closes_1008 PASSED [  4%]
+tests/chat/test_chat_views_stream.py::test_websocket_sends_internal_error_json PASSED [  4%]
+tests/chat/test_chat_views_stream.py::test_websocket_sends_neutral_provider_response_error PASSED [  4%]
+tests/chat/test_chat_views_stream.py::test_websocket_rejects_overlong_user_message PASSED [  4%]
+tests/chat/test_ctx_module.py::test_detect_lang PASSED                   [  4%]
+tests/chat/test_ctx_module.py::test_token_count_and_trim_messages PASSED [  4%]
+tests/chat/test_ctx_module.py::test_context_supplies_apply_allowed_source_scope PASSED [  5%]
+tests/chat/test_ctx_module.py::test_kb_vector_supply_zero_top_k_skips_db PASSED [  5%]
+tests/chat/test_ctx_module.py::test_kb_vector_supply_uses_knn_candidates PASSED [  5%]
+tests/chat/test_ctx_module.py::test_kb_vector_supply_rejects_wrong_vector_dimension PASSED [  5%]
+tests/chat/test_ctx_module.py::test_embed_query PASSED                   [  5%]
+tests/chat/test_ctx_module.py::test_embed_query_prepends_prompt_and_encodes PASSED [  5%]
+tests/chat/test_ctx_module.py::test_embed_query_async_limits_parallel_encode PASSED [  5%]
+tests/chat/test_ctx_module.py::test_embed_query_async_times_out_waiting_for_limiter PASSED [  5%]
+tests/chat/test_ctx_module.py::test_embed_query_async_propagates_encode_error PASSED [  6%]
+tests/chat/test_ctx_module.py::test_sanitize_helper PASSED               [  6%]
+tests/chat/test_ctx_module.py::test_dedup_by_text PASSED                 [  6%]
+tests/chat/test_ctx_module.py::test_file_summary_counts_as_quote_ready_source PASSED [  6%]
+tests/chat/test_ctx_module.py::test_source_payload_includes_friendly_source_context PASSED [  6%]
+tests/chat/test_ctx_module.py::test_build_context_from_snippets_includes_citation_ids PASSED [  6%]
+tests/chat/test_ctx_module.py::test_get_context_sources_match_visible_context_snippets PASSED [  6%]
+tests/chat/test_ctx_module.py::test_get_context_pipeline PASSED          [  6%]
+tests/chat/test_guardrails_websocket.py::test_websocket_blocks_input_by_guardrail PASSED [  7%]
+tests/chat/test_guardrails_websocket.py::test_websocket_blocks_output_by_guardrail PASSED [  7%]
+tests/chat/test_guardrails_websocket.py::test_websocket_no_guardrail_for_regular_message PASSED [  7%]
+tests/chat/test_guardrails_websocket.py::test_websocket_returns_document_recommendations_and_sources PASSED [  7%]
+tests/chat/test_guardrails_websocket.py::test_websocket_deduplicates_source_links_for_same_document PASSED [  7%]
+tests/chat/test_live_llm_scenarios.py::test_live_recommendations_are_relevant_to_document_context SKIPPED [  7%]
+tests/chat/test_live_llm_scenarios.py::test_live_websocket_user_mentions_document_gets_recommendations_and_source_link SKIPPED [  7%]
+tests/chat/test_system_prompt_policy.py::test_system_prompt_requires_negative_grounded_answer_policy PASSED [  7%]
+tests/chat/test_system_prompt_policy.py::test_system_prompt_requires_context_citation_ids PASSED [  8%]
+tests/chat/test_system_prompt_policy.py::test_system_prompt_prefers_compact_source_forward_answers PASSED [  8%]
+tests/chat/test_system_prompt_policy.py::test_system_prompt_forbids_prompt_leakage PASSED [  8%]
+tests/chat/test_system_prompt_policy.py::test_chat_completion_messages_do_not_echo_system_prompt_to_visible_roles PASSED [  8%]
+tests/load/test_contract.py::test_emulator_oauth_sse_and_unsupported PASSED [  8%]
+tests/load/test_contract.py::test_empty_percentiles_remain_missing PASSED [  8%]
+tests/load/test_contract.py::test_network_guard_rejects_external_before_connect PASSED [  8%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval_fixture_covers_required_case_types PASSED [  8%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[exact_fact_lookup_course_start] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[faq_help_answer_password_reset] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[procedural_instruction_answer_export_csv] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[table_numeric_lookup_price] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[quote_source_request_policy_sentence] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[broad_page_summary_release_notes] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[multi_section_enumeration_requirements] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[negative_absent_answer_no_ios_app] PASSED [  9%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[noisy_context_uses_relevant_source_only] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[downloadable_document_metadata_only] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[empty_visible_html_metadata_only] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[large_pdf_metadata_only] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_eval[metadata_only_absent_body_fact] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[exact_fact_lookup_course_start] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[faq_help_answer_password_reset] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[procedural_instruction_answer_export_csv] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[table_numeric_lookup_price] PASSED [ 10%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[quote_source_request_policy_sentence] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[broad_page_summary_release_notes] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[multi_section_enumeration_requirements] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[negative_absent_answer_no_ios_app] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[noisy_context_uses_relevant_source_only] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[downloadable_document_metadata_only] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[empty_visible_html_metadata_only] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[large_pdf_metadata_only] PASSED [ 11%]
+tests/rag_quality/test_answer_grounding_eval.py::test_answer_grounding_context_pipeline_eval[metadata_only_absent_body_fact] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[exact_fact_lookup_course_start] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[faq_help_answer_password_reset] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[procedural_instruction_answer_export_csv] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[table_numeric_lookup_price] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[quote_source_request_policy_sentence] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[broad_page_summary_release_notes] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[multi_section_enumeration_requirements] PASSED [ 12%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[negative_absent_answer_no_ios_app] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[noisy_context_uses_relevant_source_only] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[downloadable_document_metadata_only] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[empty_visible_html_metadata_only] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[large_pdf_metadata_only] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_captured_answer_generation_envelope_eval[metadata_only_absent_body_fact] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[exact_fact_lookup_course_start] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[faq_help_answer_password_reset] PASSED [ 13%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[procedural_instruction_answer_export_csv] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[table_numeric_lookup_price] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[quote_source_request_policy_sentence] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[broad_page_summary_release_notes] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[multi_section_enumeration_requirements] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[negative_absent_answer_no_ios_app] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[noisy_context_uses_relevant_source_only] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[downloadable_document_metadata_only] PASSED [ 14%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[empty_visible_html_metadata_only] PASSED [ 15%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[large_pdf_metadata_only] PASSED [ 15%]
+tests/rag_quality/test_answer_grounding_eval.py::test_fake_streamed_answer_eval[metadata_only_absent_body_fact] PASSED [ 15%]
+tests/rag_quality/test_chunking_policy_eval.py::test_chunking_policy_eval[normal_markdown_text_stays_full_text] PASSED [ 15%]
+tests/rag_quality/test_chunking_policy_eval.py::test_chunking_policy_eval[full_html_document_indexes_visible_text_only] PASSED [ 15%]
+tests/rag_quality/test_chunking_policy_eval.py::test_chunking_policy_eval[vendor_changelog_is_metadata_only] PASSED [ 15%]
+tests/rag_quality/test_chunking_policy_eval.py::test_chunking_policy_eval[giant_csv_is_metadata_only] PASSED [ 15%]
+tests/rag_quality/test_chunking_policy_eval.py::test_chunking_policy_eval[statistical_dump_without_csv_hint_is_metadata_only] PASSED [ 15%]
+tests/rag_quality/test_chunking_policy_eval.py::test_chunking_policy_eval[large_downloadable_document_is_metadata_only] PASSED [ 16%]
+tests/rag_quality/test_live_answer_eval.py::test_select_cases_defaults_to_limit PASSED [ 16%]
+tests/rag_quality/test_live_answer_eval.py::test_select_cases_filters_by_name_and_case_type PASSED [ 16%]
+tests/rag_quality/test_live_answer_eval.py::test_select_cases_rejects_unknown_case PASSED [ 16%]
+tests/rag_quality/test_local_db_slice_eval.py::test_build_query_filters_by_ids_and_uri_like PASSED [ 16%]
+tests/rag_quality/test_local_db_slice_eval.py::test_summarize_page_counts_chunks_by_kind PASSED [ 16%]
+tests/rag_quality/test_local_db_slice_eval.py::test_chunk_noise_stats_counts_machine_artifact_prefixes PASSED [ 16%]
+tests/rag_quality/test_local_db_slice_eval.py::test_aggregate_noise_stats_counts_across_pages PASSED [ 16%]
+tests/rag_quality/test_local_db_slice_eval.py::test_page_quality_flags_detect_auth_like_and_zero_chunk_pages PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_aggregate_quality_stats_counts_page_flags PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_summarize_page_materialize_mode_applies_metadata_policy PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_summarize_page_materialize_mode_handles_oversize_page PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_rank_page_chunks_returns_source_payload_shape PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_rank_global_chunks_ranks_across_pages PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_context_summary_from_snippets_reports_citations PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_embed_and_rank_chunks_uses_cosine_similarity PASSED [ 17%]
+tests/rag_quality/test_local_db_slice_eval.py::test_embed_and_rank_page_chunks_ranks_across_pages PASSED [ 18%]
+tests/rag_quality/test_local_db_slice_eval.py::test_cosine_similarity_rejects_mismatched_dimensions PASSED [ 18%]
+tests/rag_quality/test_local_db_slice_eval.py::test_parser_defaults_to_project_database_uri PASSED [ 18%]
+tests/rag_quality/test_local_db_slice_eval.py::test_normalize_asyncpg_dsn_accepts_sqlalchemy_async_scheme PASSED [ 18%]
+tests/rag_quality/test_local_db_slice_eval.py::test_normalize_meta_accepts_json_string PASSED [ 18%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[exact_fact_lookup_course_start] PASSED [ 18%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[faq_help_answer_password_reset] PASSED [ 18%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[procedural_instruction_answer_export_csv] PASSED [ 18%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[table_numeric_lookup_price] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[quote_source_request_policy_sentence] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[broad_page_summary_release_notes] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[multi_section_enumeration_requirements] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[negative_absent_answer_no_ios_app] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[noisy_context_uses_relevant_source_only] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[downloadable_document_metadata_only] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[empty_visible_html_metadata_only] PASSED [ 19%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[large_pdf_metadata_only] PASSED [ 20%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_source_precision[metadata_only_absent_body_fact] PASSED [ 20%]
+tests/rag_quality/test_retrieval_fixture_eval.py::test_fixture_retrieval_noisy_case_keeps_noise_below_relevant PASSED [ 20%]
+tests/test_api_views.py::test_build_update_signature_payload_uses_sorted_key_value_lines PASSED [ 20%]
+tests/test_api_views.py::test_update_payload_contract_normalizes_and_validates_fields PASSED [ 20%]
+tests/test_api_views.py::test_host_helpers PASSED                        [ 20%]
+tests/test_api_views.py::test_authenticate_update_request_accepts_valid_signature PASSED [ 20%]
+tests/test_api_views.py::test_authenticate_update_request_rejects_stale_timestamp PASSED [ 20%]
+tests/test_api_views.py::test_authenticate_update_request_returns_validation_details PASSED [ 20%]
+tests/test_api_views.py::test_authenticate_update_request_rejects_reused_nonce PASSED [ 21%]
+tests/test_api_views.py::test_authenticate_update_request_rejects_rate_limit PASSED [ 21%]
+tests/test_api_views.py::test_read_update_payload_rejects_json_content_type PASSED [ 21%]
+tests/test_api_views.py::test_get_source_hosts_filters_invalid_urls PASSED [ 21%]
+tests/test_api_views.py::test_get_source_hosts_uses_client_sources_only PASSED [ 21%]
+tests/test_api_views.py::test_update_document_missing_or_invalid_url PASSED [ 21%]
+tests/test_api_views.py::test_update_document_creates_page_and_queues_crawl PASSED [ 21%]
+tests/test_api_views.py::test_update_document_requeues_existing_page_for_crawl PASSED [ 21%]
+tests/test_api_views.py::test_update_document_rejects_forbidden_domain PASSED [ 22%]
+tests/test_app_and_middlewares_extra.py::test_cors_match_helpers PASSED  [ 22%]
+tests/test_app_and_middlewares_extra.py::test_cors_middleware_branches PASSED [ 22%]
+tests/test_app_and_middlewares_extra.py::test_https_middleware PASSED    [ 22%]
+tests/test_app_and_middlewares_extra.py::test_shield_match_and_validation_errors PASSED [ 22%]
+tests/test_app_and_middlewares_extra.py::test_shield_middleware_branches PASSED [ 22%]
+tests/test_app_and_middlewares_extra.py::test_init_jinja_and_create_app PASSED [ 22%]
+tests/test_asvs_docs.py::test_asvs_checklist_final_report_and_external_package_are_synchronized PASSED [ 22%]
+tests/test_asvs_docs.py::test_asvs_strict_external_evidence_mode_passes_when_no_external_rows_remain PASSED [ 23%]
+tests/test_asvs_docs.py::test_asvs_external_status_report_can_be_generated PASSED [ 23%]
+tests/test_asvs_docs.py::test_asvs_external_evidence_templates_exist_and_are_linked PASSED [ 23%]
+tests/test_celery_task_registration.py::test_boilerplate_rebuild_task_is_registered_for_crawler_queue PASSED [ 23%]
+tests/test_celery_task_registration.py::test_default_worker_imports_embedder_http_tasks PASSED [ 23%]
+tests/test_celery_task_registration.py::test_celery_request_id_binding_uses_signal_task_id PASSED [ 23%]
+tests/test_chat_retrieval_ctx.py::TestRetrievalConfig::test_field_weights_all_positive PASSED [ 23%]
+tests/test_chat_retrieval_ctx.py::TestRetrievalConfig::test_field_weights_reasonable_order PASSED [ 23%]
+tests/test_chat_retrieval_ctx.py::TestRetrievalConfig::test_overlap_weight_positive PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestRetrievalConfig::test_kind_bonus_text_positive PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestRetrievalConfig::test_kind_bonus_summary_positive PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestRetrievalConfig::test_table_mode_bonus_positive PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestRetrievalConfig::test_zero_overlap_penalty_positive PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestSystemConstants::test_vector_max_dist_is_068 PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestSystemConstants::test_rerank_limit_doubled_from_24_to_48 PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestSystemConstants::test_rrf_k_denominator_constant PASSED [ 24%]
+tests/test_chat_retrieval_ctx.py::TestReciprocalRankFusion::test_single_ranking_computes_score_correctly PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestReciprocalRankFusion::test_two_rankings_fuse_and_deduplicate PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestReciprocalRankFusion::test_retrieval_origins_tracked_from_src PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestReciprocalRankFusion::test_retrieval_origins_no_duplicates PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestReciprocalRankFusion::test_empty_text_snippets_skipped PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestCrossrankLogic::test_fallback_without_model PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestCrossrankLogic::test_zero_overlap_penalty_for_summary PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestCrossrankLogic::test_overlap_bonus_scales_with_count PASSED [ 25%]
+tests/test_chat_retrieval_ctx.py::TestCrossrankLogic::test_text_kind_bonus PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestCrossrankLogic::test_table_mode_bonus_applied PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestCrossrankLogic::test_content_level_dedup_same_section PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestCrossrankLogic::test_per_source_cap_still_applies PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestRankingQuality::test_scenario_jinja_templates_ranks_relevant_higher PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestRankingQuality::test_scenario_python_type_hints_zero_overlap_penalty PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestRankingQuality::test_scenario_multi_term_advantage PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestQualityBenchmark::test_benchmark_quality_scenarios[jinja_templates-jinja \u0448\u0430\u0431\u043b\u043e\u043d\u044b-snippets0-relevance0] PASSED [ 26%]
+tests/test_chat_retrieval_ctx.py::TestQualityBenchmark::test_benchmark_quality_scenarios[python_types-python type hints-snippets1-relevance1] PASSED [ 27%]
+tests/test_coverage_boost_misc.py::test_models_base_datetime_type_and_uuid PASSED [ 27%]
+tests/test_coverage_boost_misc.py::test_page_patch_meta_reassigns_copy PASSED [ 27%]
+tests/test_coverage_boost_misc.py::test_guardrails_reason_detection_branches PASSED [ 27%]
+tests/test_coverage_boost_misc.py::test_loadrerank_rejects_unavailable_configured_device PASSED [ 27%]
+tests/test_coverage_boost_misc.py::test_openai_guardrails_cache_and_extract PASSED [ 27%]
+tests/test_coverage_boost_misc.py::test_document_type_branches PASSED    [ 27%]
+tests/test_coverage_boost_misc.py::test_user_forward_notifications_covers_message_paths PASSED [ 27%]
+tests/test_coverage_boost_misc.py::test_user_forward_notifications_handles_redis_disconnect PASSED [ 28%]
+tests/test_crawler_logging.py::test_crawler_request_log_extension_logs_response PASSED [ 28%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_same_url_not_redirect PASSED [ 28%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_login_path_is_auth PASSED [ 28%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_auth_path_is_auth PASSED [ 28%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_signin_path_is_auth PASSED [ 28%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_next_query_param_is_auth PASSED [ 28%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_redirect_query_param_is_auth PASSED [ 28%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_cross_domain_redirect_is_auth PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_normal_redirect_not_auth PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestIsAuthRedirect::test_empty_final_url_treated_as_no_redirect PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestCrawlerPipelineIndexPolicyMeta::test_clear_auto_index_policy_meta_removes_generated_policy_only PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestCountInternalLinks::test_counts_domain_links PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestCountInternalLinks::test_counts_relative_links PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestCountInternalLinks::test_ignores_external_links PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestCountInternalLinks::test_mixed_links PASSED [ 29%]
+tests/test_crawler_overhaul.py::TestCountInternalLinks::test_empty_content PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestCountInternalLinks::test_no_markdown_links PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestComputeAdaptiveInterval::test_content_changed_halves_interval PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestComputeAdaptiveInterval::test_content_unchanged_increases_interval PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestComputeAdaptiveInterval::test_minimum_interval_is_1 PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestComputeAdaptiveInterval::test_maximum_interval_is_90 PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestComputeAdaptiveInterval::test_none_interval_defaults_to_7 PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestLowContentDetection::test_low_content_page_detected_for_short_page PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestLowContentDetection::test_normal_page_not_marked_low_content PASSED [ 30%]
+tests/test_crawler_overhaul.py::TestHubPageDetection::test_hub_page_threshold_is_40 PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestHubPageDetection::test_page_with_40_internal_links_is_hub PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestHubPageDetection::test_page_with_few_links_is_not_hub PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_process_links_keeps_links_to_other_tracked_sources PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_parse_item_uses_tracked_source_for_cross_host_response PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_parse_item_skips_link_extraction_for_non_html_response PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_download_too_large_meta_parses_scrapy_cancelled_download PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_download_too_large_errback_marks_page_too_big PASSED [ 31%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_parse_item_extracts_links_from_html_404_response PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_discovery_filter_skips_known_not_due_pages PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestGeneralSpiderTrackedSources::test_discovery_filter_keeps_due_or_retry_pages PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestPriorityQueue::test_budget_respected PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestPriorityQueue::test_without_budget_returns_all_candidates PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestPriorityQueue::test_excludes_specified_urls PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestPriorityQueue::test_none_source_id_yields_nothing PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestPriorityQueue::test_deduplicates_results PASSED [ 32%]
+tests/test_crawler_overhaul.py::TestPriorityQueue::test_uses_status_error_filters_for_recrawl_and_retry PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestPriorityQueue::test_crawler_status_pages_are_seeded_even_when_not_due_for_recrawl PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestUrlNormalization::test_normalize_url_for_queue_removes_fragment_and_ignored_params PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestUrlNormalization::test_normalize_url_for_queue_forces_https PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestUrlNormalization::test_url_allowed_by_rules_uses_regex_filters PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestUrlNormalization::test_url_allowed_by_rules_rejects_expensive_regex_filters PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestCrawlRunCreation::test_pipeline_creates_crawl_run_on_open PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestCrawlRunCreation::test_pipeline_closes_crawl_run_on_close PASSED [ 33%]
+tests/test_crawler_overhaul.py::TestCrawlRunCreation::test_pipeline_force_reprocess_requeues_unchanged_page PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestCrawlRunCreation::test_pipeline_routes_broad_binary_mime_docx_to_binary_extractor PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestCrawlRunCreation::test_pipeline_marks_raw_oversize_file_too_big_before_extraction PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestCrawlRunCreation::test_pipeline_does_not_soft_extract_oversize_4xx_body PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestPageLinkSync::test_sync_page_links_creates_placeholders_and_links PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestPageLinkSync::test_sync_page_links_attaches_cross_source_targets_to_tracked_source PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestPageLinkSync::test_sync_page_links_keeps_untracked_links_without_creating_pages PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestSitemapDiscovery::test_parse_robots_extracts_sitemaps_and_delay PASSED [ 34%]
+tests/test_crawler_overhaul.py::TestSitemapDiscovery::test_parse_sitemap_document_detects_sitemap_index PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestSitemapDiscovery::test_sync_sitemaps_skips_fetch_within_24_hours PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestSitemapDiscovery::test_sync_sitemaps_rehydrates_pages_when_source_has_no_pages PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestSitemapDiscovery::test_sync_sitemaps_fetches_again_after_24_hours PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestPageStatusOnErrors::test_4xx_sets_error_4xx_status PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestPageStatusOnErrors::test_repeated_4xx_increases_check_interval PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestPageStatusOnErrors::test_5xx_sets_error_5xx_status PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestPageStatusOnErrors::test_save_page_status_stores_reason_details PASSED [ 35%]
+tests/test_crawler_overhaul.py::TestPageStatusOnErrors::test_save_page_status_clears_stale_reason_details PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestPageStatusModel::test_page_model_has_status_error PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestPageStatusModel::test_page_model_no_index_status PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestPageStatusModel::test_page_model_no_is_ignored PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestPageStatusModel::test_pipeline_sets_parsing_on_new_content PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestPageStatusModel::test_hub_page_gets_low_content_value PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestPageStatusModel::test_page_status_column_default_is_crawler PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestEmbedderSkipsErrorPages::test_fetch_page_context_skips_pages_with_status_error PASSED [ 36%]
+tests/test_crawler_overhaul.py::TestDuplicateContentSelection::test_find_duplicate_content_page_uses_shorter_existing_url_as_primary PASSED [ 37%]
+tests/test_crawler_overhaul.py::TestDuplicateContentSelection::test_find_duplicate_content_page_keeps_shorter_current_url_as_primary PASSED [ 37%]
+tests/test_crawler_overhaul.py::TestChunkTextDeduplication::test_chunk_text_hash_ignores_edge_spaces_and_invisible_chars PASSED [ 37%]
+tests/test_crawler_overhaul.py::TestChunkTextDeduplication::test_mark_duplicate_page_chunks_selects_canonical_within_same_page PASSED [ 37%]
+tests/test_crawler_overhaul.py::TestChunkTextDeduplication::test_reuse_existing_chunk_embeddings_copies_ready_vector PASSED [ 37%]
+tests/test_crawler_overhaul.py::TestSoft404Pages::test_pipeline_marks_oversize_content_too_big_without_scheduling PASSED [ 37%]
+tests/test_crawler_overhaul.py::TestSoft404Pages::test_pipeline_excludes_full_duplicate_content_without_scheduling PASSED [ 37%]
+tests/test_crawler_overhaul.py::TestSoft404Pages::test_pipeline_treats_extractable_404_as_content_page PASSED [ 37%]
+tests/test_crawler_schedule_cron.py::test_cron_matches_now[* * * * *-True] PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_cron_matches_now[0 0 1 1 *-False] PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_cron_matches_now[invalid-False] PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_manual_reindex_mode_helpers PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_sitemap_sync_schedule_is_daily PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_reindex_schedule_is_hourly PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_source_is_due_for_reindex_uses_last_reindexed_at PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_source_is_not_due_if_already_reindexed_after_latest_slot PASSED [ 38%]
+tests/test_crawler_schedule_cron.py::test_schedule_reindex_sources_task_skips_active_and_non_matching PASSED [ 39%]
+tests/test_crawler_tasks.py::TestSourceAttributes::test_source_has_sitemap_model PASSED [ 39%]
+tests/test_crawler_tasks.py::TestSourceAttributes::test_source_has_config_property PASSED [ 39%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskPayload::test_cmd_contains_url_and_source_id PASSED [ 39%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskPayload::test_cmd_has_no_page_limit_arg PASSED [ 39%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskPayload::test_config_json_contains_crawler_settings PASSED [ 39%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskPayload::test_config_json_contains_rules PASSED [ 39%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskPayload::test_config_json_contains_tracked_sources PASSED [ 39%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskPayload::test_crawler_runner_sets_scrapy_download_maxsize PASSED [ 40%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskPayload::test_commits_discovery_updates_before_run_finishes PASSED [ 40%]
+tests/test_crawler_tasks.py::TestCrawlPageTaskPayload::test_page_task_uses_single_page_mode PASSED [ 40%]
+tests/test_crawler_tasks.py::TestCrawlPageTaskPayload::test_page_task_skips_index_refresh_for_excluded_page_after_crawl PASSED [ 40%]
+tests/test_crawler_tasks.py::TestCrawlPageTaskPayload::test_page_task_rejects_page_with_unavailable_source PASSED [ 40%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskFiltering::test_skips_non_crawlable_source_before_reserve_or_crawl PASSED [ 40%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskFiltering::test_already_blocked_source_marks_clean_crawler_pages_ready PASSED [ 40%]
+tests/test_crawler_tasks.py::TestCrawlSourceTaskFiltering::test_blocked_source_marks_clean_crawler_pages_ready PASSED [ 40%]
+tests/test_crawler_tasks.py::TestRefreshSourceBlockingState::test_marks_clean_crawler_pages_for_any_block_reason PASSED [ 40%]
+tests/test_crawler_tasks.py::TestRefreshSourceDiscovery::test_marks_path_level_robots_blocked_pages_ready PASSED [ 41%]
+tests/test_crawler_tasks.py::TestSitemapLimits::test_sitemap_standard_entry_limit_is_50000 PASSED [ 41%]
+tests/test_crawler_tasks.py::TestSitemapLimits::test_fetch_sitemap_rejects_oversized_content_length PASSED [ 41%]
+tests/test_crawler_tasks.py::TestSitemapLimits::test_fetch_sitemap_rejects_chunked_body_over_limit PASSED [ 41%]
+tests/test_crawler_tasks.py::TestSitemapLimits::test_discover_sitemaps_from_robots_does_not_follow_redirects PASSED [ 41%]
+tests/test_crawler_tasks.py::TestSitemapLimits::test_probe_common_sitemaps_does_not_follow_redirects PASSED [ 41%]
+tests/test_crawler_tasks.py::TestSitemapLimits::test_parse_sitemap_rejects_more_than_max_entries PASSED [ 41%]
+tests/test_crawler_tasks.py::TestSitemapLimits::test_parse_sitemap_accepts_max_entries PASSED [ 41%]
+tests/test_crawler_tasks.py::TestReapplySourceRulesTask::test_marks_pages_with_newly_ignored_params_as_excluded PASSED [ 42%]
+tests/test_crawler_tasks.py::TestReapplySourceRulesTask::test_restores_pages_when_rule_is_removed PASSED [ 42%]
+tests/test_crawler_tasks.py::TestReapplySourceRulesTask::test_does_not_touch_manually_ignored_pages PASSED [ 42%]
+tests/test_crawler_tasks.py::TestRefreshProjectIndex::test_finds_pages_without_chunks_with_not_exists_query PASSED [ 42%]
+tests/test_crawler_tasks.py::TestRefreshSourceIndex::test_finds_source_pages_without_chunks_with_not_exists_query PASSED [ 42%]
+tests/test_document_indexing.py::test_shingle_similarity_stays_high_for_single_line_date_change PASSED [ 42%]
+tests/test_document_indexing.py::test_shingle_similarity_drops_for_real_content_change PASSED [ 42%]
+tests/test_document_indexing.py::test_effectively_unchanged_uses_shingle_similarity_for_near_duplicate PASSED [ 42%]
+tests/test_document_indexing.py::test_content_shingle_set_falls_back_to_lines_for_short_text PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_url_document_prefers_html_title_and_strips_auth_forms PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_url_document_fallback_uses_visible_text_not_raw_html PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_extracts_docx_text_and_tables PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_uses_query_filename_when_metadata_title_empty PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_sniffs_docx_for_broad_binary_mime PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_extracts_pptx_slides_and_tables PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_sniffs_pptx_for_broad_binary_mime PASSED [ 43%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_accepts_pptx_with_legacy_powerpoint_mime PASSED [ 44%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_rejects_legacy_ppt PASSED [ 44%]
+tests/test_document_pipeline.py::test_extract_binary_url_document_returns_empty_content_for_image_only_pdf PASSED [ 44%]
+tests/test_document_pipeline.py::test_build_document_payload_strips_nul_chars_from_text_fields PASSED [ 44%]
+tests/test_document_pipeline.py::test_detect_binary_document_kind_uses_mime_before_url_path PASSED [ 44%]
+tests/test_document_pipeline.py::test_general_spider_allows_word_pdf_and_pptx_links PASSED [ 44%]
+tests/test_document_pipeline.py::test_general_spider_follows_redirects_but_handles_error_statuses PASSED [ 44%]
+tests/test_document_shingles.py::test_normalize_words_lowercases_and_keeps_alphanum PASSED [ 44%]
+tests/test_document_shingles.py::test_normalize_words_empty PASSED       [ 45%]
+tests/test_document_shingles.py::test_compute_trigram_hashes_requires_at_least_3_words PASSED [ 45%]
+tests/test_document_shingles.py::test_compute_trigram_hashes_produces_hashes_for_3_words PASSED [ 45%]
+tests/test_document_shingles.py::test_compute_trigram_hashes_signed_64bit PASSED [ 45%]
+tests/test_document_shingles.py::test_compute_trigram_hashes_identical_texts_produce_same_set PASSED [ 45%]
+tests/test_document_shingles.py::test_compute_trigram_hashes_different_texts_produce_different_sets PASSED [ 45%]
+tests/test_document_shingles.py::test_compute_trigram_hashes_count_equals_n_minus_2 PASSED [ 45%]
+tests/test_document_shingles.py::test_extract_content_blocks_splits_on_headers PASSED [ 45%]
+tests/test_document_shingles.py::test_extract_content_blocks_drops_short_blocks PASSED [ 46%]
+tests/test_document_shingles.py::test_extract_content_blocks_keeps_blocks_with_3_or_more_words PASSED [ 46%]
+tests/test_document_shingles.py::test_extract_content_blocks_handles_empty_text PASSED [ 46%]
+tests/test_document_shingles.py::test_extract_content_blocks_no_headers PASSED [ 46%]
+tests/test_document_shingles.py::test_is_boilerplate_block_false_when_no_boilerplate_hashes PASSED [ 46%]
+tests/test_document_shingles.py::test_is_boilerplate_block_true_when_all_hashes_are_boilerplate PASSED [ 46%]
+tests/test_document_shingles.py::test_is_boilerplate_block_false_for_unique_content PASSED [ 46%]
+tests/test_document_shingles.py::test_is_boilerplate_block_false_for_short_block PASSED [ 46%]
+tests/test_document_shingles.py::test_is_boilerplate_block_threshold_50_percent PASSED [ 47%]
+tests/test_document_shingles.py::test_chunk_document_text_skips_boilerplate_blocks PASSED [ 47%]
+tests/test_document_shingles.py::test_chunk_document_text_no_filter_when_hashes_empty PASSED [ 47%]
+tests/test_document_shingles.py::test_rebuild_boilerplate_for_source_counts_shingles PASSED [ 47%]
+tests/test_document_shingles.py::test_update_page_shingles_replaces_single_page_rows PASSED [ 47%]
+tests/test_embedder_chunking_limits.py::test_chunk_text_respects_token_limit_and_overlap PASSED [ 47%]
+tests/test_embedder_chunking_limits.py::test_chunk_text_splits_long_token PASSED [ 47%]
+tests/test_embedder_chunking_limits.py::test_chunk_text_caps_overlap_when_overlap_exceeds_chunk_size PASSED [ 47%]
+tests/test_embedder_chunking_limits.py::test_chunk_text_uses_token_overlap_not_word_overlap PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_split_text_block_for_chunking_breaks_large_block PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_chunk_document_normalizes_full_html_document PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_chunk_document_drops_html_ui_config_json_lines PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_chunk_document_keeps_plain_text_json_examples PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_chunk_document_does_not_treat_inline_html_mention_as_document PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_validate_chunk_data_rejects_embedder_oversize PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_mark_page_embedder_failed_sets_status_and_cleans_chunks PASSED [ 48%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_rolls_back_after_boilerplate_load PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_marks_oversize_document_too_big PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_sizes_full_html_by_visible_text PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_uses_metadata_only_for_vendor_asset PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_uses_metadata_only_for_giant_csv PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_detects_large_statistical_dump_without_csv_hint PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_keeps_article_with_few_delimited_lines_full_text PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_uses_metadata_only_for_large_downloadable_document PASSED [ 49%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_keeps_large_raw_downloadable_document_full_text PASSED [ 50%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_uses_metadata_only_for_empty_visible_html PASSED [ 50%]
+tests/test_embedder_chunking_limits.py::test_materialize_page_chunks_skips_empty_visible_redirect_page PASSED [ 50%]
+tests/test_embedder_chunking_limits.py::test_fetch_page_context_keeps_transaction_open_for_index_lock PASSED [ 50%]
+tests/test_embedder_chunking_limits.py::test_fetch_page_context_marks_old_oversize_error_too_big PASSED [ 50%]
+tests/test_embedder_chunking_limits.py::test_fetch_page_context_allows_old_too_big_when_visible_html_fits PASSED [ 50%]
+tests/test_embedder_parallelism.py::test_pending_chunk_task_target_respects_batch_and_cap PASSED [ 50%]
+tests/test_embedder_parallelism.py::test_run_pending_chunk_batch_stops_at_batch_limit PASSED [ 50%]
+tests/test_embedder_parallelism.py::test_apply_embedding_to_matching_kb_chunks_updates_by_hash_and_normalized_text PASSED [ 50%]
+tests/test_embedder_parallelism.py::test_ensure_pending_chunk_workers_schedules_only_missing_tasks PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_schedule_ensure_pending_chunks_deduplicates PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_schedule_ensure_pending_chunks_skips_when_already_scheduled PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_schedule_index_document_deduplicates PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_schedule_index_document_skips_duplicate PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_index_page_inner_skips_when_document_lock_is_busy PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_index_page_inner_skips_current_chunks_and_reschedules_pending PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_index_page_inner_materializes_when_chunks_are_stale PASSED [ 51%]
+tests/test_embedder_parallelism.py::test_make_embed_vectors_sends_one_batch_request PASSED [ 52%]
+tests/test_embedder_parallelism.py::test_process_pending_chunk_batch_embeds_duplicate_text_once PASSED [ 52%]
+tests/test_embedder_parallelism.py::test_make_embed_vector_uses_batch_service PASSED [ 52%]
+tests/test_error_templates.py::test_error_templates_render_contact_link_on_separate_line PASSED [ 52%]
+tests/test_frontend_i18n_admin.py::test_frontend_healthcheck_redirects_to_project_view PASSED [ 52%]
+tests/test_frontend_i18n_admin.py::test_frontend_widget_js_renders_with_widget_path PASSED [ 52%]
+tests/test_frontend_i18n_admin.py::test_frontend_widget_js_returns_neutral_script_when_disabled PASSED [ 52%]
+tests/test_frontend_i18n_admin.py::test_frontend_widget_js_caches_missing_widget_state PASSED [ 52%]
+tests/test_frontend_i18n_admin.py::test_frontend_widget_js_caches_disabled_db_state PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_demo_page_lists_widget_codes PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_widget_triggers_resolve_returns_empty_for_disabled_source PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_widget_triggers_resolve_returns_empty_when_rules_do_not_match PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_widget_triggers_resolve_signs_page_id_for_page_triggers PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_widget_triggers_resolve_uses_empty_default_title_for_untitled_page PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_widget_triggers_resolve_discovers_matching_unknown_page PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_widget_triggers_resolve_skips_discovery_when_config_disabled PASSED [ 53%]
+tests/test_frontend_i18n_admin.py::test_widget_triggers_resolve_handles_concurrent_discovery_conflict PASSED [ 54%]
+tests/test_frontend_i18n_admin.py::test_admin_event_list_pagination PASSED [ 54%]
+tests/test_frontend_i18n_admin.py::test_admin_user_list_builds_context PASSED [ 54%]
+tests/test_frontend_i18n_admin.py::test_get_api_client_sources_returns_lightweight_rows PASSED [ 54%]
+tests/test_guardrails_modules.py::test_check_input_guardrails_blocks_russian_pii PASSED [ 54%]
+tests/test_guardrails_modules.py::test_check_output_guardrails_can_be_disabled PASSED [ 54%]
+tests/test_guardrails_modules.py::test_mask_russian_pii_without_patterns_returns_original PASSED [ 54%]
+tests/test_guardrails_modules.py::test_mask_russian_pii_uses_presidio_for_russian_patterns PASSED [ 54%]
+tests/test_guardrails_modules.py::test_mask_russian_pii_keeps_original_when_presidio_finds_nothing PASSED [ 55%]
+tests/test_guardrails_modules.py::test_detect_russian_pii_reasons_passport_format PASSED [ 55%]
+tests/test_guardrails_modules.py::test_extract_tripwire_details_normalizes_values PASSED [ 55%]
+tests/test_guardrails_modules.py::test_get_guardrails_client_disabled PASSED [ 55%]
+tests/test_guardrails_modules.py::test_get_guardrails_client_init_failure PASSED [ 55%]
+tests/test_guardrails_modules.py::test_openai_guardrails_pipeline_uses_selected_model PASSED [ 55%]
+tests/test_guardrails_modules.py::test_custom_prompt_check_allows_widget_knowledge_domain PASSED [ 55%]
+tests/test_llm_cache.py::test_cache_candidate_payload_uses_strict_rag_conditions PASSED [ 55%]
+tests/test_llm_cache.py::test_record_chat_answer_cache_candidate_builds_upsert_statement PASSED [ 56%]
+tests/test_logged_in_site_smoke.py::test_public_entry_pages_do_not_return_500 PASSED [ 56%]
+tests/test_logged_in_site_smoke.py::test_logged_in_site_pages_do_not_return_500 FAILED [ 56%]
+tests/test_logging_utils.py::test_log_json_outputs_expandable_fields PASSED [ 56%]
+tests/test_logging_utils.py::test_log_formatter_includes_context_request_id PASSED [ 56%]
+tests/test_logging_utils.py::test_plain_log_formatter_outputs_text_with_extra_fields PASSED [ 56%]
+tests/test_logging_utils.py::test_log_formatters_escape_newlines_in_untrusted_fields PASSED [ 56%]
+tests/test_logging_utils.py::test_configure_logging_uses_text_formatter_by_default PASSED [ 56%]
+tests/test_logging_utils.py::test_configure_logging_uses_ini_and_switches_formatter PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_meta_middleware_and_handle_error PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_error_middleware_http_exception PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_error_middleware_logs_forbidden PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_debug_access_control_header_middleware_sets_cors_headers PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_security_headers_middleware_sets_browser_headers PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_security_headers_middleware_does_not_disable_static_cache PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_security_headers_allow_public_widget_iframe PASSED [ 57%]
+tests/test_middlewares_auth_user.py::test_public_widget_cors_allows_trigger_resolution_for_any_origin PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_public_widget_cors_handles_trigger_preflight_for_any_origin PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_local_password_forms_enforce_asvs_length_bounds PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_flash_and_force_https_middlewares PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_auth_middleware_sets_user PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_auth_middleware_invalidates_idle_user_session PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_auth_middleware_invalidates_expired_auth_session PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_auth_middleware_invalidates_missing_login_timestamp_when_ttl_enabled PASSED [ 58%]
+tests/test_middlewares_auth_user.py::test_auth_middleware_invalidates_inactive_user_session PASSED [ 59%]
+tests/test_middlewares_auth_user.py::test_login_and_logout PASSED        [ 59%]
+tests/test_middlewares_auth_user.py::test_sessions_action_revoke_other_requires_signed_csrf PASSED [ 59%]
+tests/test_middlewares_auth_user.py::test_sessions_action_revoke_other_keeps_current_session PASSED [ 59%]
+tests/test_middlewares_auth_user.py::test_login_ldap_rejects_inactive_existing_user PASSED [ 59%]
+tests/test_middlewares_auth_user.py::test_login_ldap_rejects_existing_local_user PASSED [ 59%]
+tests/test_middlewares_auth_user.py::test_authenticate_ldap_escapes_search_filter_email PASSED [ 59%]
+tests/test_middlewares_auth_user.py::test_authenticate_ldap_requires_configured_group[member_of0-True] PASSED [ 59%]
+tests/test_middlewares_auth_user.py::test_authenticate_ldap_requires_configured_group[member_of1-False] PASSED [ 60%]
+tests/test_middlewares_auth_user.py::test_get_middlewares_uses_configured_session_max_age PASSED [ 60%]
+tests/test_middlewares_auth_user.py::test_get_middlewares_uses_configured_cors_origins PASSED [ 60%]
+tests/test_middlewares_auth_user.py::test_notify_ws_sends_pending_messages PASSED [ 60%]
+tests/test_middlewares_auth_user.py::test_notify_ws_ignores_pending_redis_failure PASSED [ 60%]
+tests/test_middlewares_auth_user.py::test_login_wrong_password_adds_delay PASSED [ 60%]
+tests/test_middlewares_auth_user.py::test_login_wrong_password_sets_lockout_after_failure_limit PASSED [ 60%]
+tests/test_middlewares_auth_user.py::test_login_redis_lock_blocks_parallel_checks PASSED [ 60%]
+tests/test_migration_schema.py::test_database_is_at_alembic_head PASSED  [ 60%]
+tests/test_migration_schema.py::test_database_contains_all_model_columns PASSED [ 61%]
+tests/test_network_timeouts.py::test_network_requests_have_explicit_timeouts PASSED [ 61%]
+tests/test_network_timeouts.py::test_gigachat_does_not_define_provider_specific_timeout_settings PASSED [ 61%]
+tests/test_projects_actions_extended.py::test_queue_source_crawl_from_ui_reapplies_rules_before_crawl PASSED [ 61%]
+tests/test_projects_actions_extended.py::test_load_llm_cache_context_keeps_entries_loaded_for_template PASSED [ 61%]
+tests/test_projects_actions_extended.py::test_project_action_rejects_missing_csrf PASSED [ 61%]
+tests/test_projects_actions_extended.py::test_project_action_user_create_respects_disabled_config PASSED [ 61%]
+tests/test_projects_actions_extended.py::test_project_action_revoke_user_sessions PASSED [ 61%]
+tests/test_projects_actions_extended.py::test_project_action_revoke_all_user_sessions PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_project_files_create_rejects_missing_csrf PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_project_files_create_accepts_form_csrf PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_file_document_save_rejects_missing_csrf PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_file_document_delete_accepts_form_csrf PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_project_action_ignore_document_toggle PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_project_action_delete_document PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_project_action_delete_file_not_found PASSED [ 62%]
+tests/test_projects_actions_extended.py::test_project_action_unknown_action PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_action_delete_source_success PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_action_background_actions PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_triggers_generate_htmx_queues_task PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_integration_create_requires_form_csrf PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_integration_add_uses_initial_welcome_message PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_widget_edit_saves_footer_text PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_widget_edit_invalid_post_returns_context_without_commit PASSED [ 63%]
+tests/test_projects_actions_extended.py::test_project_action_widget_reset_code_generates_new_code PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_action_widget_reset_secret_generates_new_secret PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_action_widget_disable_updates_state_cache PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_action_widget_enable_updates_state_cache PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_action_widget_delete_returns_plain_action_response PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_action_llm_cache_disable_enable_delete PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_action_llm_cache_clear PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_triggers_requires_signed_csrf PASSED [ 64%]
+tests/test_projects_actions_extended.py::test_project_triggers_rejects_bad_csrf_signature PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_action_api_client_reset_secret_uses_signed_header PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_action_crawl_source_runs_sitemap_discovery_chain PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_action_crawl_source_does_not_enqueue_blocked_source PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_action_refresh_page PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_action_refresh_page_rejects_non_source_page PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_action_delete_file_success PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_documents_csv_serializes_rows PASSED [ 65%]
+tests/test_projects_actions_extended.py::test_project_documents_csv_marks_excluded_as_ignored PASSED [ 66%]
+tests/test_projects_actions_extended.py::test_project_documents_csv_neutralizes_formula_cells PASSED [ 66%]
+tests/test_projects_actions_extended.py::test_project_files_json_serializes_rows PASSED [ 66%]
+tests/test_projects_forms_views_more.py::test_source_add_normalizes_url_to_origin PASSED [ 66%]
+tests/test_projects_forms_views_more.py::test_source_add_exposes_enable_triggers_checkbox PASSED [ 66%]
+tests/test_projects_forms_views_more.py::test_widget_pinned_messages_field_keeps_three_messages PASSED [ 66%]
+tests/test_projects_forms_views_more.py::test_widget_pinned_messages_field_rejects_bad_color PASSED [ 66%]
+tests/test_projects_forms_views_more.py::test_widget_pinned_messages_field_sanitizes_rich_text PASSED [ 66%]
+tests/test_projects_forms_views_more.py::test_widget_pinned_messages_field_rejects_long_text PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_footer_text_from_form_sanitizes_rich_text PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_footer_text_allows_empty_string PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_error_message_from_form_sanitizes_rich_text PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_error_message_requires_text PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_error_message_rejects_long_text PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_text_defaults_match_creation_contract PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_welcome_messages_field_sanitizes_many_rich_text_items PASSED [ 67%]
+tests/test_projects_forms_views_more.py::test_widget_welcome_messages_field_falls_back_to_default PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_widget_message_field_lists_use_defaults_for_empty_model_values PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_widget_welcome_messages_field_rejects_long_text PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_widget_waiting_messages_field_keeps_text_items PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_widget_waiting_messages_field_falls_back_to_default PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_widget_waiting_messages_field_rejects_long_text PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_project_source_settings_not_found PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_project_source_settings_post_site_rules PASSED [ 68%]
+tests/test_projects_forms_views_more.py::test_project_edit_sources_add_source_includes_default_ignored_params PASSED [ 69%]
+tests/test_projects_forms_views_more.py::test_project_edit_sources_add_source_persists_blocked_without_enqueue PASSED [ 69%]
+tests/test_projects_forms_views_more.py::test_delete_source_rule_removes_rule_and_commits PASSED [ 69%]
+tests/test_projects_views_and_chats.py::test_chats_list_returns_active_chats PASSED [ 69%]
+tests/test_projects_views_and_chats.py::test_history_list_builds_pagination_and_filters PASSED [ 69%]
+tests/test_projects_views_and_chats.py::test_history_list_uses_legacy_fingerprint_param_as_search PASSED [ 69%]
+tests/test_projects_views_and_chats.py::test_history_chat_user_label_prefers_passed_widget_user PASSED [ 69%]
+tests/test_projects_views_and_chats.py::test_history_first_message_preview_normalizes_and_truncates PASSED [ 69%]
+tests/test_projects_views_and_chats.py::test_history_detail_masks_pii_and_maps_guardrail_labels PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_history_detail_uses_used_chunks_snapshot_and_marks_deleted PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_history_detail_404_when_chat_missing PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_history_detail_template_renders_vote_icons_without_feedback_text PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_history_detail_template_renders_chat_error_like_widget PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_history_detail_infers_selected_suggestion_from_next_user_message PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_default_suggestions_prompt_requires_three_new_next_steps PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_message_suggested_actions_requires_three_actions_for_initial_chat_state PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_widget_edit_template_renders_pinned_message_color_options PASSED [ 70%]
+tests/test_projects_views_and_chats.py::test_widget_edit_template_shows_enable_action_when_disabled PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_widget_integration_add_form_uses_initial_welcome_message PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_widget_integration_table_shows_enabled_state PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_active_chats_open_history_detail_instead_of_chat_page PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_history_list_rows_keep_open_in_new_tab_link_behavior PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_public_chat_template_exposes_widget_accessibility_contracts PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_chat_suggested_actions_stack_vertically PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_widget_loader_template_exposes_dialog_and_iframe_accessibility PASSED [ 71%]
+tests/test_projects_views_and_chats.py::test_signed_widget_user_info_accepts_valid_payload PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_signed_widget_user_info_rejects_modified_payload PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_demo_page_exposes_system_message_controls PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_demo_page_exposes_reset_chat_button PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_demo_page_system_messages_do_not_require_trigger_page PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_frontend_chat_citation_buttons_are_accessible PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_history_detail_template_escapes_stored_chat_html PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_render_history_markdown_keeps_safe_subset_and_rejects_unsafe_links PASSED [ 72%]
+tests/test_projects_views_and_chats.py::test_document_pipeline_steps_returns_error_description PASSED [ 73%]
+tests/test_projects_views_and_chats.py::test_document_pipeline_steps_returns_embedder_error_description PASSED [ 73%]
+tests/test_projects_views_and_chats.py::test_document_uniqueness_percent_uses_boilerplate_overlap PASSED [ 73%]
+tests/test_projects_views_and_chats.py::test_document_stats_summary_includes_requested_metrics PASSED [ 73%]
+tests/test_projects_views_and_chats.py::test_document_link_groups_split_mutual_incoming_and_outgoing PASSED [ 73%]
+tests/test_projects_views_and_chats.py::test_document_links_graph_builds_nodes_and_bidirectional_edges PASSED [ 73%]
+tests/test_projects_views_heavy.py::test_document_content_template_renders_structure_items PASSED [ 73%]
+tests/test_projects_views_heavy.py::test_frontend_status_groups_match_backend_excluded_errors PASSED [ 73%]
+tests/test_projects_views_heavy.py::test_document_content_preview_truncates_at_word_boundary PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_document_content_template_renders_chunk_overlap_without_indent_gaps PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_document_content_template_renders_expand_button_for_truncated_content PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_document_content_template_hides_expand_button_for_ignored_content PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_document_content_template_renders_compact_summary PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_document_content_template_renders_duplicate_primary_document_link PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_document_content_template_renders_document_links_widget PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_sources_template_hides_pause_badge_in_name_column PASSED [ 74%]
+tests/test_projects_views_heavy.py::test_files_template_uses_common_toolbar_controls PASSED [ 75%]
+tests/test_projects_views_heavy.py::test_document_detail_template_uses_document_title_in_header PASSED [ 75%]
+tests/test_projects_views_heavy.py::test_project_stats_aggregates PASSED [ 75%]
+tests/test_projects_views_heavy.py::test_project_document_content_rest_rejects_non_integer_offset PASSED [ 75%]
+tests/test_projects_views_heavy.py::test_project_document_content_rest_allows_duplicate_content PASSED [ 75%]
+tests/test_projects_views_heavy.py::test_project_edit_sources_keeps_active_sources_first PASSED [ 75%]
+tests/test_projects_views_heavy.py::test_project_documents_csv_and_files_json PASSED [ 75%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_field_weights_all_positive PASSED [ 75%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_overlap_weight_positive PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_kind_bonus_text_positive PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_kind_bonus_file_summary_positive_and_below_text PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_kind_bonus_summary_positive PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_table_mode_bonus_positive PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_zero_overlap_penalty_positive PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_query_echo_penalty_positive PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_header_text_weight_gte_entity_terms PASSED [ 76%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_section_path_between_header_and_entity PASSED [ 77%]
+tests/test_retrieval_ctx.py::TestRetrievalConfig::test_title_weight_positive PASSED [ 77%]
+tests/test_retrieval_ctx.py::TestSystemConstants::test_vector_max_dist_is_068 PASSED [ 77%]
+tests/test_retrieval_ctx.py::TestSystemConstants::test_rerank_limit_is_48 PASSED [ 77%]
+tests/test_retrieval_ctx.py::TestSystemConstants::test_rrf_k_unchanged PASSED [ 77%]
+tests/test_retrieval_ctx.py::test_queryprofile_filters_generic_stop_terms PASSED [ 77%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_score_formula_single_ranking PASSED [ 77%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_score_increases_with_multiple_rankings PASSED [ 77%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_dedup_by_key_content PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_distinct_snippets_kept_separately PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_empty_text_skipped PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_whitespace_only_skipped PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_higher_rank_gives_lower_score PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_retrieval_origins_single_source PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_retrieval_origins_two_sources PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_retrieval_origins_none_for_missing_src PASSED [ 78%]
+tests/test_retrieval_ctx.py::TestReciprocal_rank_fusion::test_result_sorted_by_score_descending PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_fallback_returns_top_candidates_without_model PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_empty_input_returns_empty PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_text_kind_bonus_applied PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_section_summary_kind_bonus_applied PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_zero_overlap_penalty_for_summary PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_zero_overlap_penalty_not_applied_to_text_kind PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_overlap_bonus_scales_with_match_count PASSED [ 79%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_header_text_match_boosts_score PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_title_match_lifts_expected_document_above_query_echo PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_query_echo_section_summary_is_penalized PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_section_path_match_boosts_score PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_entity_terms_match_boosts_score PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_table_mode_bonus_for_table_kind PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_file_summary_kind_bonus_for_metadata_document PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_content_dedup_removes_same_section PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_content_dedup_keeps_different_sections PASSED [ 80%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_per_source_cap_limits_results PASSED [ 81%]
+tests/test_retrieval_ctx.py::TestCrossrerank::test_output_sorted_by_rerank_score_descending PASSED [ 81%]
+tests/test_retrieval_ctx.py::TestQualityScenarios::test_scenario[jinja_templates_vs_irrelevant_summary] 
+  [jinja_templates_vs_irrelevant_summary]  MRR=1.000  P@1=1.000  NDCG@3=1.000
+    #1 ✓ score=1.0000  kind=text  title='Jinja Documentation'
+    #2 ✗ score=0.4300  kind=section_summary  title='Вектор ИИ'
+PASSED [ 81%]
+tests/test_retrieval_ctx.py::TestQualityScenarios::test_scenario[zero_overlap_penalty_summary_vs_text] 
+  [zero_overlap_penalty_summary_vs_text]  MRR=1.000  P@1=1.000  NDCG@3=1.000
+    #1 ✓ score=1.0000  kind=text  title='Python docs'
+    #2 ✗ score=0.4300  kind=section_summary  title='Other'
+PASSED [ 81%]
+tests/test_retrieval_ctx.py::TestQualityScenarios::test_scenario[multi_term_advantage] 
+  [multi_term_advantage]  MRR=1.000  P@1=1.000  NDCG@3=1.000
+    #1 ✓ score=1.0000  kind=text  title='asyncio docs'
+    #2 ✗ score=0.9200  kind=text  title='Async intro'
+PASSED [ 81%]
+tests/test_retrieval_ctx.py::TestQualityScenarios::test_scenario[header_boost_lifts_relevant] 
+  [header_boost_lifts_relevant]  MRR=1.000  P@1=1.000  NDCG@3=1.000
+    #1 ✓ score=0.8500  kind=text  title='PG docs'
+    #2 ✗ score=0.6200  kind=text  title='Other'
+PASSED [ 81%]
+tests/test_retrieval_ctx.py::TestQualityScenarios::test_scenario[table_mode_prefers_table_kind] 
+  [table_mode_prefers_table_kind]  MRR=1.000  P@1=1.000  NDCG@3=1.000
+    #1 ✓ score=0.7800  kind=table  title='Price list'
+    #2 ✗ score=0.7000  kind=text  title='Docs'
+PASSED [ 81%]
+tests/test_retrieval_ctx.py::test_score_breakdown_snapshot 
+  ── Score breakdown (base=0.0) ──────────────────────────────────
+  Case                                             Score
+  ──────────────────────────────────────────────────────
+  text, both terms in text                        0.2800
+  text, one term in header                        0.4300
+  section_summary, one term overlap               0.1300
+  section_summary, zero overlap (PENALISED)      -0.0700
+  table, terms in entity_terms                    0.3600
+
+  Field weights  : {'title': 0.14, 'header_text': 0.15, 'section_path': 0.12, 'entity_terms': 0.1}
+  Overlap weight : 0.08 × min(n, 4)
+  Kind bonuses   : {'text': 0.12, 'file_summary': 0.08, 'section_summary': 0.05, 'summary': 0.05}
+  Table mode     : {'table': 0.2, 'table_rows': 0.2}
+  Zero-overlap Δ : -0.12 (summary/section_summary only)
+  VECTOR_MAX_DIST: 0.68
+  RERANK_LIMIT   : 48
+PASSED        [ 81%]
+tests/test_routes_middlewares.py::test_meta_and_handle_error PASSED      [ 82%]
+tests/test_routes_middlewares.py::test_error_middleware_paths PASSED     [ 82%]
+tests/test_routes_middlewares.py::test_reject_trace_middleware_blocks_trace PASSED [ 82%]
+tests/test_routes_middlewares.py::test_debug_access_control_header_middleware PASSED [ 82%]
+tests/test_routes_middlewares.py::test_request_id_middleware_reuses_header PASSED [ 82%]
+tests/test_routes_middlewares.py::test_request_id_middleware_generates_invalid_missing_header PASSED [ 82%]
+tests/test_routes_middlewares.py::test_db_session_middleware PASSED      [ 82%]
+tests/test_routes_middlewares.py::test_auth_flash_and_force_https PASSED [ 82%]
+tests/test_routes_middlewares.py::test_get_middlewares_and_routes PASSED [ 83%]
+tests/test_routes_middlewares.py::test_health_handlers PASSED            [ 83%]
+tests/test_routes_middlewares.py::test_health_ready_returns_503_without_embedding_service PASSED [ 83%]
+tests/test_routes_middlewares.py::test_health_ready_returns_503_for_invalid_llm_model PASSED [ 83%]
+tests/test_routes_middlewares.py::test_health_ready_returns_503_for_database_and_redis_failures PASSED [ 83%]
+tests/test_routes_middlewares.py::test_error_base_template_defines_home_link PASSED [ 83%]
+tests/test_routes_security.py::test_public_static_routes_do_not_follow_symlinks_or_mount_data PASSED [ 83%]
+tests/test_routes_security.py::test_chat_page_route_is_widget_only PASSED [ 83%]
+tests/test_search_fields.py::test_normalize_uri_slug_keeps_searchable_url_parts PASSED [ 84%]
+tests/test_search_fields.py::test_entity_terms_to_text_skips_empty_terms PASSED [ 84%]
+tests/test_source_blocking.py::test_check_source_blocking_marks_dns_failure PASSED [ 84%]
+tests/test_source_blocking.py::test_check_source_blocking_marks_robots_disallow PASSED [ 84%]
+tests/test_source_blocking.py::test_check_source_blocking_can_skip_robots_txt PASSED [ 84%]
+tests/test_source_blocking.py::test_check_source_blocking_marks_external_redirect PASSED [ 84%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[127.0.0.1] PASSED [ 84%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[10.0.0.10] PASSED [ 84%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[172.16.0.10] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[192.168.0.10] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[169.254.169.254] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[255.255.255.255] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[8.8.8.0] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[8.8.8.255] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[::1] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[fe80::1] PASSED [ 85%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[fc00::1] PASSED [ 86%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[ff02::1] PASSED [ 86%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_private_or_special_addresses[::] PASSED [ 86%]
+tests/test_source_blocking.py::test_check_source_blocking_rejects_same_domain_redirect_to_private_address PASSED [ 86%]
+tests/test_source_blocking.py::test_apply_source_blocking_result_sets_fields PASSED [ 86%]
+tests/test_source_config.py::TestCrawlerRule::test_round_trip PASSED     [ 86%]
+tests/test_source_config.py::TestCrawlerRule::test_all_valid_types[xpath] PASSED [ 86%]
+tests/test_source_config.py::TestCrawlerRule::test_all_valid_types[css] PASSED [ 86%]
+tests/test_source_config.py::TestCrawlerRule::test_all_valid_types[param] PASSED [ 87%]
+tests/test_source_config.py::TestCrawlerRule::test_all_valid_types[regex] PASSED [ 87%]
+tests/test_source_config.py::TestCrawlerRule::test_to_dict_keys PASSED   [ 87%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_empty_none PASSED [ 87%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_empty_dict PASSED [ 87%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_reads_known_fields PASSED [ 87%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_parses_rules PASSED [ 87%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_parses_trigger_rules PASSED [ 87%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_skips_rules_with_empty_value PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_skips_rules_with_missing_type PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_ignores_unknown_keys PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_falls_back_to_defaults_on_null_values PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigFromDict::test_preserves_zero_delay PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigToDict::test_no_rules_key_when_empty PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigToDict::test_rules_key_present_when_nonempty PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigToDict::test_trigger_rules_key_present_when_nonempty PASSED [ 88%]
+tests/test_source_config.py::TestSourceConfigToDict::test_no_sitemaps PASSED [ 89%]
+tests/test_source_config.py::TestSourceConfigToDict::test_no_user_agent_in_dict PASSED [ 89%]
+tests/test_source_config.py::TestSourceConfigToDict::test_known_keys_only PASSED [ 89%]
+tests/test_source_config.py::TestSourceConfigToDict::test_round_trip PASSED [ 89%]
+tests/test_source_config.py::TestSourceConfigToDict::test_json_serialisable PASSED [ 89%]
+tests/test_source_config.py::TestSourceModelConfig::test_getter_returns_source_config PASSED [ 89%]
+tests/test_source_config.py::TestSourceModelConfig::test_setter_stores_dict PASSED [ 89%]
+tests/test_source_config.py::TestSourceModelConfig::test_getter_reads_stored_dict PASSED [ 89%]
+tests/test_source_config.py::TestSourceModelConfig::test_old_s3_keys_ignored PASSED [ 90%]
+tests/test_source_config.py::TestSourceModelConfig::test_old_gdrive_keys_ignored PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestNextReindexAt::test_returns_none_for_manual PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestNextReindexAt::test_returns_none_for_empty PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestNextReindexAt::test_returns_datetime_for_valid_cron PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestNextReindexAt::test_returns_none_for_invalid_cron PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestSourceSettingsView::test_template_references_only_existing_form_fields PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestSourceSettingsView::test_get_returns_all_required_template_vars PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestSourceSettingsView::test_get_source_not_found_raises_404 PASSED [ 90%]
+tests/test_source_settings_and_pause.py::TestSourceSettingsView::test_get_paused_source_includes_is_paused_true PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestPauseResumeActions::test_pause_source_sets_is_paused_true PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestPauseResumeActions::test_resume_source_sets_is_paused_false PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestPauseResumeActions::test_pause_source_htmx_returns_toggle_partial PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestPauseResumeActions::test_resume_source_htmx_returns_toggle_partial PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestPauseResumeActions::test_pause_nonexistent_source_raises_404 PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestPauseResumeActions::test_resume_nonexistent_source_raises_404 PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestCrawlerSkipsPausedSources::test_crawl_source_task_skips_paused_source PASSED [ 91%]
+tests/test_source_settings_and_pause.py::TestCrawlerSkipsPausedSources::test_crawl_source_task_proceeds_when_not_paused PASSED [ 92%]
+tests/test_source_settings_and_pause.py::TestCrawlerSkipsPausedSources::test_crawl_source_task_skips_blocked_source PASSED [ 92%]
+tests/test_triggers.py::test_render_triggers_substitutes_title_and_dedupes PASSED [ 92%]
+tests/test_triggers.py::test_canonical_page_url_drops_fragment_and_trailing_slash PASSED [ 92%]
+tests/test_triggers.py::test_parse_generated_trigger_texts_accepts_object_and_limits_words PASSED [ 92%]
+tests/test_triggers.py::test_trigger_prompt_hash_is_stable PASSED        [ 92%]
+tests/test_triggers.py::test_trigger_rules_match_url_uses_source_regex_rules PASSED [ 92%]
+tests/test_triggers.py::test_trigger_rules_match_url_rejects_other_source_domains PASSED [ 92%]
+tests/test_triggers.py::test_source_trigger_rules_match_url_requires_enabled_source PASSED [ 93%]
+tests/test_triggers.py::test_trigger_rule_url_part_uses_path_and_query_inside_source_domain PASSED [ 93%]
+tests/test_triggers.py::test_validate_trigger_pattern_rejects_expensive_or_negative_constructs PASSED [ 93%]
+tests/test_triggers.py::test_trigger_pattern_matches_url_accepts_simple_numeric_product_rule PASSED [ 93%]
+tests/test_triggers.py::test_request_trigger_generation_passes_gigachat_ssl_setting PASSED [ 93%]
+tests/test_triggers.py::test_generate_trigger_texts_uses_aux_model_instead_of_chat_model PASSED [ 93%]
+tests/test_user_retention.py::test_lifecycle_preserves_records_revokes_sessions_and_audits PASSED [ 93%]
+tests/test_user_retention.py::test_database_prevents_erasure_and_restoration[TRUNCATE users CASCADE] PASSED [ 93%]
+tests/test_user_retention.py::test_database_prevents_erasure_and_restoration[DELETE FROM users WHERE id=1] PASSED [ 94%]
+tests/test_user_retention.py::test_database_prevents_erasure_and_restoration[DELETE FROM users WHERE id=2] PASSED [ 94%]
+tests/test_user_retention.py::test_database_prevents_erasure_and_restoration[UPDATE users SET blocked_at=NULL WHERE id=2] PASSED [ 94%]
+tests/test_user_retention.py::test_database_prevents_erasure_and_restoration[UPDATE users SET is_active=true WHERE id=2] PASSED [ 94%]
+tests/test_user_retention.py::test_database_prevents_erasure_and_restoration[UPDATE users SET password='new' WHERE id=2] PASSED [ 94%]
+tests/test_user_retention.py::test_database_prevents_erasure_and_restoration[UPDATE users SET email='reuse@example.com' WHERE id=2] PASSED [ 94%]
+tests/test_user_retention.py::test_inactive_is_distinct_and_admin_guard PASSED [ 94%]
+tests/test_user_retention.py::test_finish_login_rechecks_status_after_credentials PASSED [ 94%]
+tests/test_user_retention.py::test_login_routes_reject_permanently_blocked_user[False] PASSED [ 95%]
+tests/test_user_retention.py::test_login_routes_reject_permanently_blocked_user[True] PASSED [ 95%]
+tests/test_user_retention.py::test_block_only_accepts_post PASSED        [ 95%]
+tests/test_user_retention.py::test_protected_mutation_rechecks_actor_after_middleware PASSED [ 95%]
+tests/test_user_retention.py::test_open_notification_socket_closes_after_block PASSED [ 95%]
+tests/test_user_retention.py::test_removed_user_url_is_unroutable_without_redirect[GET] PASSED [ 95%]
+tests/test_user_retention.py::test_removed_user_url_is_unroutable_without_redirect[POST] PASSED [ 95%]
+tests/test_user_retention.py::test_removed_user_url_is_unroutable_without_redirect[DELETE] PASSED [ 95%]
+tests/test_user_retention.py::test_concurrent_blocks_keep_an_active_administrator PASSED [ 96%]
+tests/test_user_retention.py::test_block_waits_for_an_already_authorized_write PASSED [ 96%]
+tests/test_utils_and_infra.py::test_document_types_guess_and_labels PASSED [ 96%]
+tests/test_utils_and_infra.py::test_json_response_uses_msgspec_compatible_body PASSED [ 96%]
+tests/test_utils_and_infra.py::test_yaml_load_converts_bool_like_strings PASSED [ 96%]
+tests/test_utils_and_infra.py::test_ai_providers_and_resolve PASSED      [ 96%]
+tests/test_utils_and_infra.py::test_metrics_record_and_handler PASSED    [ 96%]
+tests/test_utils_and_infra.py::test_utils_json_to_str_and_meta PASSED    [ 96%]
+tests/test_utils_and_infra.py::test_flash_admin_event_login_required_and_make_url PASSED [ 97%]
+tests/test_utils_and_infra.py::test_protect_and_paginator PASSED         [ 97%]
+tests/test_utils_and_settings.py::test_flash_and_admin_event PASSED      [ 97%]
+tests/test_utils_and_settings.py::test_client_ip_ignores_forwarded_headers_from_untrusted_peer PASSED [ 97%]
+tests/test_utils_and_settings.py::test_client_ip_accepts_forwarded_headers_from_trusted_proxy PASSED [ 97%]
+tests/test_utils_and_settings.py::test_client_ip_ignores_invalid_forwarded_header_from_trusted_proxy PASSED [ 97%]
+tests/test_utils_and_settings.py::test_login_required_redirects_when_unauthorized PASSED [ 97%]
+tests/test_utils_and_settings.py::test_make_full_url_and_meta_decorator PASSED [ 97%]
+tests/test_utils_and_settings.py::test_validate_source_page_url_accepts_only_http_urls PASSED [ 98%]
+tests/test_utils_and_settings.py::test_merge_chat_meta_stores_validated_source_page_url PASSED [ 98%]
+tests/test_utils_and_settings.py::test_merge_chat_meta_does_not_trust_forwarded_ip_from_untrusted_peer PASSED [ 98%]
+tests/test_utils_and_settings.py::test_to_str PASSED                     [ 98%]
+tests/test_utils_and_settings.py::test_ai_provider_functions PASSED      [ 98%]
+tests/test_utils_and_settings.py::test_settings_yaml_load_and_validation PASSED [ 98%]
+tests/test_utils_and_settings.py::test_settings_env_overrides_use_lowercase_internal_keys PASSED [ 98%]
+tests/test_utils_and_settings.py::test_settings_production_rejects_default_security_keys PASSED [ 98%]
+tests/test_utils_and_settings.py::test_settings_production_rejects_placeholder_security_keys PASSED [ 99%]
+tests/test_utils_and_settings.py::test_settings_rejects_invalid_typed_env_override PASSED [ 99%]
+tests/test_utils_and_settings.py::test_settings_rejects_invalid_embedding_service_timeout PASSED [ 99%]
+tests/test_utils_and_settings.py::test_settings_stage_allows_default_security_keys PASSED [ 99%]
+tests/test_utils_and_settings.py::test_settings_production_accepts_overridden_security_keys PASSED [ 99%]
+tests/test_utils_and_settings.py::test_metrics_helpers PASSED            [ 99%]
+tests/test_utils_and_settings.py::test_raw_content_limit_comes_from_config PASSED [ 99%]
+tests/test_utils_and_settings.py::test_raw_content_payload_stores_within_configured_limit PASSED [ 99%]
+tests/test_utils_and_settings.py::test_crawler_queue_collector_uses_broker_db_and_default_and_embeddings_queues PASSED [100%]<unknown>:1: DeprecationWarning: invalid escape sequence '\d'
+/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/shield.py:1: DeprecationWarning: invalid escape sequence '\d'
+  """
+<unknown>:1: DeprecationWarning: invalid escape sequence '\d'
+/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/shield.py:1: DeprecationWarning: invalid escape sequence '\d'
+  """
+<unknown>:1: DeprecationWarning: invalid escape sequence '\d'
+/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/shield.py:1: DeprecationWarning: invalid escape sequence '\d'
+  """
+<unknown>:1: DeprecationWarning: invalid escape sequence '\d'
+<unknown>:1: DeprecationWarning: invalid escape sequence '\d'
+<unknown>:1: DeprecationWarning: invalid escape sequence '\d'
+/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/shield.py:1: DeprecationWarning: invalid escape sequence '\d'
+  """
+
+
+=================================== FAILURES ===================================
+_________________ test_logged_in_site_pages_do_not_return_500 __________________
+tests/test_logged_in_site_smoke.py:392: in test_logged_in_site_pages_do_not_return_500
+    assert failures == [], "\n\n".join(failures)
+E   AssertionError: public_widget_chat /chat/widget/loadtest -> 500
+E     <!doctype html>
+E     <html lang="ru">
+E     <head>
+E       <meta charset="utf-8">
+E       <meta http-equiv="X-UA-Compatible" content="IE=edge">
+E       <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+E       <title>Ошибка 500 — vchat</title>
+E       
+E         
+E       <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png">
+E       <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon/favicon-32x32.png">
+E       <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon/favicon-16x16.png">
+E       <link rel="icon" type="image/png" href="/static/favicon.ico">
+E       <link href="/static/assets/app.css?v=1783493969" rel="stylesheet" type="text/css">
+E     
+E       
+E       <script>
+E         try {
+E           const config = JSON.parse(localStorage.getItem("CONF"));
+E           if (config && config.theme && config.theme !== "system") {
+E             document.documentElement.setAttribute("data-theme", config.theme);
+E           }
+E         } catch (e) {}
+E       </script>
+E     
+E     </head>
+E     <body >
+E     <div class="h-screen w-full overflow-
+E   assert ['public_widg...ll overflow-'] == []
+E     
+E     Left contains one more item: 'public_widget_chat /chat/widget/loadtest -> 500\n<!doctype html>\n<html lang="ru">\n<head>\n  <meta charset="utf-8">\...", config.theme);\n      }\n    } catch (e) {}\n  </script>\n\n</head>\n<body >\n<div class="h-screen w-full overflow-'
+E     
+E     Full diff:
+E     - []
+E     + [
+E     +     'public_widget_chat /chat/widget/loadtest -> 500\n'...
+E     
+E     ...Full output truncated (35 lines hidden), use '-vv' to show
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-11-02T14:40:53.284000+00:00", "level": "WARNING", "logger": "vchat.app", "message": "cookie_domain must be set in production"}
+{"timestamp": "2026-11-02T14:40:53.515969+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /demo HTTP/1.1\" 200 14876 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /demo HTTP/1.1", "response_status": 200, "response_size": 14876, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.567138+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /sessions/; rolling back", "request_id": "46e264edfd324c5b9cbcbcd13b508c2e"}
+{"timestamp": "2026-11-02T14:40:53.571667+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /sessions/ HTTP/1.1\" 200 15262 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /sessions/ HTTP/1.1", "response_status": 200, "response_size": 15262, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.598405+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /users; rolling back", "request_id": "b9026826c7db151560b6d98b2f70933f"}
+{"timestamp": "2026-11-02T14:40:53.600231+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /users HTTP/1.1\" 200 16081 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /users HTTP/1.1", "response_status": 200, "response_size": 16081, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.654392+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /api-clients; rolling back", "request_id": "71e37a36394eb40dc37349f91796f1a6"}
+{"timestamp": "2026-11-02T14:40:53.656115+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /api-clients HTTP/1.1\" 200 18190 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /api-clients HTTP/1.1", "response_status": 200, "response_size": 18190, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.687786+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /events; rolling back", "request_id": "7294ae6a983e2f7a41420436dfd564d1"}
+{"timestamp": "2026-11-02T14:40:53.690437+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /events HTTP/1.1\" 200 12128 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /events HTTP/1.1", "response_status": 200, "response_size": 12128, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.775110+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /; rolling back", "request_id": "69351b105d0c993e450eb451085e8fe7"}
+{"timestamp": "2026-11-02T14:40:53.776289+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET / HTTP/1.1\" 200 25494 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET / HTTP/1.1", "response_status": 200, "response_size": 25494, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.794365+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /page; rolling back", "request_id": "68147fd00902f3d56d1caf49a2798c4b"}
+{"timestamp": "2026-11-02T14:40:53.796436+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /page HTTP/1.1\" 200 19096 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /page HTTP/1.1", "response_status": 200, "response_size": 19096, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.824219+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /documents/csv; rolling back", "request_id": "99c59be8e6d4c6514346433e59b02447"}
+{"timestamp": "2026-11-02T14:40:53.826849+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /documents/csv HTTP/1.1\" 200 4602 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /documents/csv HTTP/1.1", "response_status": 200, "response_size": 4602, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.854137+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /files/json; rolling back", "request_id": "52c45aab3c5798c837ef3294a2f4ee7f"}
+{"timestamp": "2026-11-02T14:40:53.857122+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /files/json HTTP/1.1\" 200 732 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /files/json HTTP/1.1", "response_status": 200, "response_size": 732, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:53.924788+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /source; rolling back", "request_id": "d3095731c75c1abf8e534282be53d46a"}
+{"timestamp": "2026-11-02T14:40:53.927482+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /source HTTP/1.1\" 200 22162 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /source HTTP/1.1", "response_status": 200, "response_size": 22162, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.032291+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /source/2; rolling back", "request_id": "1d21eb3f775cafa3823da269a5fc1055"}
+{"timestamp": "2026-11-02T14:40:54.034073+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:53 +0200] \"GET /source/2 HTTP/1.1\" 200 25810 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:53 +0200]", "first_request_line": "GET /source/2 HTTP/1.1", "response_status": 200, "response_size": 25810, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.059601+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /source/2/sitemaps; rolling back", "request_id": "162499f9e63f021add6ac8c707a372a6"}
+{"timestamp": "2026-11-02T14:40:54.061538+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /source/2/sitemaps HTTP/1.1\" 200 1832 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /source/2/sitemaps HTTP/1.1", "response_status": 200, "response_size": 1832, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.178580+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /page/2; rolling back", "request_id": "b7fa5bd20f9be5c5840adc9a00b59d19"}
+{"timestamp": "2026-11-02T14:40:54.180539+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /page/2 HTTP/1.1\" 200 26176 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /page/2 HTTP/1.1", "response_status": 200, "response_size": 26176, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.206650+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /page/2/content; rolling back", "request_id": "701b3e742643a8175d395892cfaf8a7d"}
+{"timestamp": "2026-11-02T14:40:54.208213+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /page/2/content HTTP/1.1\" 200 14492 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /page/2/content HTTP/1.1", "response_status": 200, "response_size": 14492, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.226250+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /page/2/content/rest; rolling back", "request_id": "79f8a3610e424e3458c5dce931bc164d"}
+{"timestamp": "2026-11-02T14:40:54.227817+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /page/2/content/rest HTTP/1.1\" 200 779 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /page/2/content/rest HTTP/1.1", "response_status": 200, "response_size": 779, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.259291+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /stats; rolling back", "request_id": "21fa7fb15ac40b632869033bf5042102"}
+{"timestamp": "2026-11-02T14:40:54.260356+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /stats HTTP/1.1\" 200 25501 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /stats HTTP/1.1", "response_status": 200, "response_size": 25501, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.284593+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /files; rolling back", "request_id": "07b857aaef9effcc24c99d1e3f5e3a87"}
+{"timestamp": "2026-11-02T14:40:54.287448+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /files HTTP/1.1\" 200 16108 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /files HTTP/1.1", "response_status": 200, "response_size": 16108, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.333668+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /triggers HTTP/1.1\" 200 25072 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /triggers HTTP/1.1", "response_status": 200, "response_size": 25072, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.389060+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /llm-cache; rolling back", "request_id": "2ffc8ee5761e8ca1e9a6be15bca979b4"}
+{"timestamp": "2026-11-02T14:40:54.391248+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /llm-cache HTTP/1.1\" 200 113586 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /llm-cache HTTP/1.1", "response_status": 200, "response_size": 113586, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.409320+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /triggers/count HTTP/1.1\" 200 755 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /triggers/count HTTP/1.1", "response_status": 200, "response_size": 755, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.427262+00:00", "level": "WARNING", "logger": "vchat.middlewares", "message": "Not Found (GET /file/2)", "request_id": "7012bf8cc02bf2445eb9263d325ad6b7"}
+{"timestamp": "2026-11-02T14:40:54.431891+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /file/2 HTTP/1.1\" 404 2901 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /file/2 HTTP/1.1", "response_status": 404, "response_size": 2901, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.483893+00:00", "level": "INFO", "logger": "vchat.middlewares", "message": "Server Error", "request_id": "69ecaf60779303d0c1626780523678ea", "exception": "Traceback (most recent call last):\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py\", line 105, in error_middleware\n    return await handler(request)\n           ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_session/__init__.py\", line 191, in factory\n    response = await handler(request)\n               ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py\", line 75, in meta_middleware\n    return await handler(request)\n           ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py\", line 226, in db_session_middleware\n    response = await handler(request)\n               ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py\", line 328, in auth_middleware\n    return await handler(request)\n           ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py\", line 368, in flash_middleware\n    return await handler(request)\n           ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py\", line 373, in force_https_location_middleware\n    response = await handler(request)\n               ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py\", line 264, in context_processors_middleware\n    return await handler(request)\n           ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/utils.py\", line 262, in wrapped\n    return await func(*args)\n           ^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py\", line 244, in wrapped\n    response = render_template(\n               ^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py\", line 176, in render_template\n    response.text = render_string(template_name, request, context, app_key=app_key)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py\", line 139, in render_string\n    return template.render(context)\n           ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/environment.py\", line 1295, in render\n    self.environment.handle_exception()\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/environment.py\", line 942, in handle_exception\n    raise rewrite_traceback_stack(source=source)\n  File \"/Users/xen/Dev/sber/vchat-loadtest/vchat/templates/chat/chat.html\", line 964, in top-level template code\n    const welcomeMessage = {{ widget.welcome_messages|first|tojson|safe }};\n    ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/filters.py\", line 1721, in do_tojson\n    return htmlsafe_json_dumps(value, dumps=dumps, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/utils.py\", line 669, in htmlsafe_json_dumps\n    dumps(obj, **kwargs)\n  File \"/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/__init__.py\", line 238, in dumps\n    **kw).encode(obj)\n          ^^^^^^^^^^^\n  File \"/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/encoder.py\", line 200, in encode\n    chunks = self.iterencode(o, _one_shot=True)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/encoder.py\", line 258, in iterencode\n    return _iterencode(o, 0)\n           ^^^^^^^^^^^^^^^^^\n  File \"/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/encoder.py\", line 180, in default\n    raise TypeError(f'Object of type {o.__class__.__name__} '\nTypeError: Object of type Undefined is not JSON serializable"}
+{"timestamp": "2026-11-02T14:40:54.495617+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /chat/widget/loadtest HTTP/1.1\" 500 2890 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /chat/widget/loadtest HTTP/1.1", "response_status": 500, "response_size": 2890, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.529587+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /integration; rolling back", "request_id": "2e3b15c27a4516174d23fb3cf14ce66d"}
+{"timestamp": "2026-11-02T14:40:54.531944+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /integration HTTP/1.1\" 200 14643 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /integration HTTP/1.1", "response_status": 200, "response_size": 14643, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.591595+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /integration/2; rolling back", "request_id": "776f2bda5e2da08ec3f631eb53083877"}
+{"timestamp": "2026-11-02T14:40:54.594753+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /integration/2 HTTP/1.1\" 200 63353 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /integration/2 HTTP/1.1", "response_status": 200, "response_size": 63353, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.617648+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /chats HTTP/1.1\" 200 11584 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /chats HTTP/1.1", "response_status": 200, "response_size": 11584, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.661487+00:00", "level": "ERROR", "logger": "vchat.middlewares", "message": "DB transaction left open while rendering GET /history; rolling back", "request_id": "93f74547a2b982a809fff5627bb3147f"}
+{"timestamp": "2026-11-02T14:40:54.664623+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /history HTTP/1.1\" 200 59327 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /history HTTP/1.1", "response_status": 200, "response_size": 59327, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.679609+00:00", "level": "WARNING", "logger": "vchat.middlewares", "message": "Not Found (GET /history/fd22a6e6-9e9c-44d1-ab8e-90581a0b1c82)", "request_id": "8da9889de1a6310347f5239203c3e0f5"}
+{"timestamp": "2026-11-02T14:40:54.680471+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /history/fd22a6e6-9e9c-44d1-ab8e-90581a0b1c82 HTTP/1.1\" 404 2939 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /history/fd22a6e6-9e9c-44d1-ab8e-90581a0b1c82 HTTP/1.1", "response_status": 404, "response_size": 2939, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+{"timestamp": "2026-11-02T14:40:54.714432+00:00", "level": "INFO", "logger": "aiohttp.access", "message": "127.0.0.1 [02/Nov/2026:16:40:54 +0200] \"GET /static/favicon.ico HTTP/1.1\" 200 798 \"-\" \"Python/3.11 aiohttp/3.13.5\"", "remote_address": "127.0.0.1", "request_start_time": "[02/Nov/2026:16:40:54 +0200]", "first_request_line": "GET /static/favicon.ico HTTP/1.1", "response_status": 200, "response_size": 798, "request_header": {"Referer": "-", "User-Agent": "Python/3.11 aiohttp/3.13.5"}}
+------------------------------ Captured log call -------------------------------
+WARNING  vchat.app:app.py:47 cookie_domain must be set in production
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /demo HTTP/1.1" 200 14876 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /sessions/; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /sessions/ HTTP/1.1" 200 15262 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /users; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /users HTTP/1.1" 200 16081 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /api-clients; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /api-clients HTTP/1.1" 200 18190 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /events; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /events HTTP/1.1" 200 12128 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET / HTTP/1.1" 200 25494 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /page; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /page HTTP/1.1" 200 19096 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /documents/csv; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /documents/csv HTTP/1.1" 200 4602 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /files/json; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /files/json HTTP/1.1" 200 732 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /source; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /source HTTP/1.1" 200 22162 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /source/2; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:53 +0200] "GET /source/2 HTTP/1.1" 200 25810 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /source/2/sitemaps; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /source/2/sitemaps HTTP/1.1" 200 1832 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /page/2; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /page/2 HTTP/1.1" 200 26176 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /page/2/content; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /page/2/content HTTP/1.1" 200 14492 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /page/2/content/rest; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /page/2/content/rest HTTP/1.1" 200 779 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /stats; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /stats HTTP/1.1" 200 25501 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /files; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /files HTTP/1.1" 200 16108 "-" "Python/3.11 aiohttp/3.13.5"
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /triggers HTTP/1.1" 200 25072 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /llm-cache; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /llm-cache HTTP/1.1" 200 113586 "-" "Python/3.11 aiohttp/3.13.5"
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /triggers/count HTTP/1.1" 200 755 "-" "Python/3.11 aiohttp/3.13.5"
+WARNING  vchat.middlewares:__init__.py:114 Not Found (GET /file/2)
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /file/2 HTTP/1.1" 404 2901 "-" "Python/3.11 aiohttp/3.13.5"
+INFO     vchat.middlewares:__init__.py:124 Server Error
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py", line 105, in error_middleware
+    return await handler(request)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_session/__init__.py", line 191, in factory
+    response = await handler(request)
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py", line 75, in meta_middleware
+    return await handler(request)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py", line 226, in db_session_middleware
+    response = await handler(request)
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py", line 328, in auth_middleware
+    return await handler(request)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py", line 368, in flash_middleware
+    return await handler(request)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/middlewares/__init__.py", line 373, in force_https_location_middleware
+    response = await handler(request)
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py", line 264, in context_processors_middleware
+    return await handler(request)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/utils.py", line 262, in wrapped
+    return await func(*args)
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py", line 244, in wrapped
+    response = render_template(
+               ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py", line 176, in render_template
+    response.text = render_string(template_name, request, context, app_key=app_key)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/aiohttp_jinja2/__init__.py", line 139, in render_string
+    return template.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/environment.py", line 1295, in render
+    self.environment.handle_exception()
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/environment.py", line 942, in handle_exception
+    raise rewrite_traceback_stack(source=source)
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/templates/chat/chat.html", line 964, in top-level template code
+    const welcomeMessage = {{ widget.welcome_messages|first|tojson|safe }};
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/filters.py", line 1721, in do_tojson
+    return htmlsafe_json_dumps(value, dumps=dumps, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat/venv/lib/python3.11/site-packages/jinja2/utils.py", line 669, in htmlsafe_json_dumps
+    dumps(obj, **kwargs)
+  File "/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/__init__.py", line 238, in dumps
+    **kw).encode(obj)
+          ^^^^^^^^^^^
+  File "/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/encoder.py", line 200, in encode
+    chunks = self.iterencode(o, _one_shot=True)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/encoder.py", line 258, in iterencode
+    return _iterencode(o, 0)
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/json/encoder.py", line 180, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type Undefined is not JSON serializable
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /chat/widget/loadtest HTTP/1.1" 500 2890 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /integration; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /integration HTTP/1.1" 200 14643 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /integration/2; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /integration/2 HTTP/1.1" 200 63353 "-" "Python/3.11 aiohttp/3.13.5"
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /chats HTTP/1.1" 200 11584 "-" "Python/3.11 aiohttp/3.13.5"
+ERROR    vchat.middlewares:__init__.py:228 DB transaction left open while rendering GET /history; rolling back
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /history HTTP/1.1" 200 59327 "-" "Python/3.11 aiohttp/3.13.5"
+WARNING  vchat.middlewares:__init__.py:114 Not Found (GET /history/fd22a6e6-9e9c-44d1-ab8e-90581a0b1c82)
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /history/fd22a6e6-9e9c-44d1-ab8e-90581a0b1c82 HTTP/1.1" 404 2939 "-" "Python/3.11 aiohttp/3.13.5"
+INFO     aiohttp.access:web_log.py:232 127.0.0.1 [02/Nov/2026:16:40:54 +0200] "GET /static/favicon.ico HTTP/1.1" 200 798 "-" "Python/3.11 aiohttp/3.13.5"
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.11.11-final-0 _______________
+
+Name                                Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------
+jobs/celery.py                         42      3    93%   17, 69, 87
+jobs/crawler/crawler_runner.py         40      3    92%   16, 37-40
+jobs/crawler/document_pipeline.py     516    108    79%   106-109, 111-112, 132, 192-201, 203-212, 221-258, 302-306, 308-312, 353, 362, 367, 378, 382, 399, 410, 412, 456, 459, 478, 488, 495, 517, 538-540, 548, 610, 623, 662, 666, 687-688, 690-691, 707, 735, 742-751, 753-768, 770-774, 808, 811-817
+jobs/crawler/logging.py                14      3    79%   17-22
+jobs/crawler/pipelines.py             486    107    78%   84, 88, 131-139, 141, 154, 192, 211, 215, 221-222, 279, 303, 321-338, 341-342, 350-354, 360, 362, 366-367, 391-402, 406-418, 454-455, 462-467, 496-515, 518-529, 548-564, 586-587, 600, 632, 638-639, 645-660, 699-702, 727, 747, 751, 756-761, 765-767, 796-798, 836, 841, 899-900, 910, 945-950
+jobs/crawler/seed_urls.py              50      3    94%   104-106
+jobs/crawler/source_blocking.py       106     22    79%   49-52, 63, 87-96, 121-122, 125, 131, 181-182, 199, 212
+jobs/crawler/source_settings.py        28     10    64%   49-65
+jobs/crawler/spiders/general.py       240     55    77%   49, 52, 87, 92, 99, 111, 137, 140, 145-149, 153, 187, 193, 200, 215-222, 243-244, 283-286, 324-326, 333-338, 353-356, 364-384, 399
+jobs/crawler/tasks.py                1136    314    72%   212, 253, 256, 271, 287, 309, 320, 383-384, 399-400, 427-437, 507, 522, 561, 581-589, 593-597, 601-610, 630, 654, 747, 754, 772-776, 782, 798, 844-845, 848-849, 864-868, 872, 901-932, 943, 951-956, 962-970, 1119-1122, 1143-1165, 1187-1194, 1210, 1288, 1315-1324, 1350, 1358, 1382-1414, 1419-1440, 1445-1447, 1452-1467, 1489-1490, 1499-1503, 1519-1523, 1543-1544, 1560-1565, 1579-1584, 1595-1600, 1611-1632, 1637, 1639, 1681, 1737, 1776-1777, 1797, 1808, 1858, 1870, 1884-1885, 1891, 1893, 1908, 1912, 1918-1919, 1939-1955, 1972-1990, 1998-2013, 2024, 2031, 2038-2039, 2055-2062, 2070, 2073-2089, 2102, 2146-2147, 2164-2165, 2178, 2182-2185, 2200-2204, 2207-2210, 2213-2216, 2219-2222, 2225-2228, 2242-2246, 2248-2287, 2292, 2294, 2315-2325, 2337-2349, 2402-2412, 2421-2439, 2448
+jobs/crawler/url_rules.py              65      7    89%   22, 24, 26, 31-32, 63, 87
+jobs/db.py                             10      1    90%   19
+jobs/documents/types.py                59     10    83%   199-207, 213, 218, 220
+jobs/embedder/chunking.py             308    101    67%   52-54, 76, 137-138, 170, 179-186, 190-213, 252, 259, 267-268, 287, 296-300, 308-321, 383-408, 441-509, 586
+jobs/embedder/client.py                43     32    26%   16, 20-44, 52-70, 76-83
+jobs/embedder/model.py                 10      3    70%   6, 8, 11
+jobs/embedder/queue.py                 36     10    72%   13, 25, 50-53, 83-84, 117, 121, 130
+jobs/embedder/tasks.py                182     92    49%   29, 35, 52, 76-97, 101-193, 220, 228-230, 234, 254, 259-261, 279, 296-307, 309, 352-388
+jobs/embedder/tokenizer.py             18     10    44%   9-10, 20-27, 36, 40-41
+jobs/indexing/documents.py             65      9    86%   44, 71, 73, 77, 89, 91, 95, 101, 110
+jobs/indexing/search_fields.py         20      2    90%   13, 19
+jobs/triggers/generation.py            45      4    91%   28, 40-41, 53
+jobs/triggers/tasks.py                 31     16    48%   19, 37-52
+vchat/app.py                           65      8    88%   71, 81-87, 90-92
+vchat/logging.py                       81     15    81%   33, 36, 75, 91, 128-144
+vchat/middlewares/__init__.py         215      9    96%   94-98, 100, 116, 344, 440
+vchat/middlewares/cors.py              72      6    92%   276, 280-281, 288, 312-313
+vchat/middlewares/https.py             16      1    94%   62
+vchat/middlewares/shield.py            53      3    94%   84-85, 204
+vchat/models/base.py                   28      1    96%   21
+vchat/models/data.py                  245      7    97%   322, 326-330, 334, 339
+vchat/settings.py                     214     20    91%   167, 194, 196, 239-240, 246-249, 253-254, 267-272, 275-284
+vchat/utils.py                        318     26    92%   44, 55, 76, 85, 105, 126, 182, 237, 240, 254, 278, 309, 323-330, 444, 450, 458, 476-477, 480, 489
+vchat/views/admin/views.py             56     13    77%   36-37, 46, 112-137
+vchat/views/api/views.py              201     10    95%   57, 90, 247, 261, 388, 406-409, 411
+vchat/views/auth/forms.py              25      2    92%   43-44
+vchat/views/auth/views.py             259     76    71%   111-125, 140, 142, 171-173, 176, 198-202, 209, 243-250, 258-262, 267-270, 307, 323-325, 335-342, 349-357, 369-381, 434, 471-552
+vchat/views/chat/ai.py                390    142    64%   32, 34, 41-42, 49-56, 60, 65, 87, 90, 92, 105-106, 134, 157-159, 168, 172, 217, 225, 229, 234, 236, 261, 264-266, 272-273, 277, 281, 285, 293, 304, 307-325, 335-383, 395, 397, 420, 428-439, 499, 534-570, 587, 595, 599, 615, 622, 629, 641-643, 647-699, 703, 751-754
+vchat/views/chat/ctx.py               522     43    92%   193, 236, 249-250, 262, 268-270, 279, 288, 307, 327, 402, 449-465, 469, 477-484, 595, 863-864, 878, 889, 892, 1011, 1015, 1074, 1077, 1104, 1111, 1139, 1141, 1143, 1145, 1254
+vchat/views/chat/guardrails.py        161     18    89%   201, 237, 261-262, 265, 268, 271, 274, 336, 373, 396, 418-425
+vchat/views/chat/meta.py               51      8    84%   17, 19, 28, 30, 32, 36, 38, 51
+vchat/views/chat/sources.py            58     41    29%   19-23, 37, 55-111
+vchat/views/chat/views.py             873    182    79%   114-115, 135, 259, 278, 287, 300-354, 426, 433, 435, 447, 486, 495, 592, 607, 651-652, 654-660, 678-682, 716-721, 725-730, 746, 758-763, 783-788, 806-807, 831, 834, 836, 862-928, 1041, 1056-1057, 1061-1062, 1067-1068, 1071-1078, 1090, 1097-1098, 1101, 1110-1111, 1117-1128, 1371, 1405, 1427-1429, 1434, 1517, 1521, 1524, 1579, 1589-1594, 1612-1613, 1640-1673, 1717-1718, 1789-1790, 1836-1859, 1921, 1965-1976, 1988, 1998-2000, 2008-2013, 2048, 2063-2064, 2076, 2080-2081, 2085, 2107-2108, 2113-2114, 2129-2130, 2136-2138, 2143, 2156-2157, 2178-2181, 2185, 2190, 2214
+vchat/views/frontend.py               133     17    87%   38, 43-47, 57, 61, 66, 86, 116, 120, 188, 207, 211, 241, 308
+vchat/views/health.py                 102     20    80%   67-68, 75-85, 95-96, 99, 105, 129, 142, 149
+vchat/views/metrics.py                137     15    89%   110, 117, 294-295, 311-312, 334-337, 346-351
+vchat/views/projects/chats.py         396     47    88%   76-77, 99, 113, 135-136, 138, 146, 159, 180, 183-184, 186, 196, 199-200, 202, 283-284, 286, 304-307, 314, 317-320, 327, 330, 335-349, 667-668
+vchat/views/projects/forms.py         105      5    95%   297-301
+vchat/views/projects/views.py        1436    438    69%   188-229, 241, 249, 261, 300-315, 327-329, 339, 347, 351, 391, 458, 488, 492, 500, 502, 507, 588, 612, 630, 675-710, 715, 718-719, 721, 742-747, 765-786, 806-807, 830, 852-855, 870-871, 935-1052, 1056-1060, 1062-1078, 1088, 1170, 1174, 1233, 1237-1238, 1246, 1256-1267, 1340-1378, 1388-1395, 1421-1466, 1476-1477, 1482-1494, 1572, 1688, 1768-1770, 1834-1849, 1874-1928, 1936, 1942-1963, 1975, 2017, 2026, 2050-2107, 2129, 2137, 2144, 2176, 2216-2229, 2239-2265, 2273, 2314, 2335, 2352, 2374, 2389, 2401, 2406, 2413, 2435, 2446, 2457, 2475-2488, 2563, 2567-2568, 2572, 2589-2623, 2630-2651, 2658-2680, 2712, 2958, 2974, 3049, 3069, 3076, 3146-3147, 3181, 3191-3194, 3226, 3228, 3230, 3232, 3234, 3236, 3238, 3247, 3250-3251, 3253, 3256, 3258, 3267, 3270, 3272, 3276, 3279, 3298-3304, 3318-3343, 3357-3369, 3392, 3407, 3448, 3470, 3482-3517
+vchat/views/triggers/rules.py         138     37    73%   46, 61, 89-93, 103, 106, 109, 123-142, 149, 163, 169, 176, 178, 196, 209-226
+-----------------------------------------------------------------
+TOTAL                               10354   2135    79%
+
+31 files skipped due to complete coverage.
+Coverage HTML written to dir htmlcov
+Coverage XML written to file coverage.xml
+=========================== short test summary info ============================
+FAILED tests/test_logged_in_site_smoke.py::test_logged_in_site_pages_do_not_return_500
+============ 1 failed, 807 passed, 2 skipped, 4 warnings in 22.91s =============
+make: *** [test] Error 1
