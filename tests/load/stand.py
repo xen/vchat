@@ -156,6 +156,33 @@ async def instrumented_app(events: Path):
         setattr(ctx, name, record)
     app = await create_app()
 
+    async def observe():
+        from vchat.db import engine
+
+        previous = time.monotonic()
+        while True:
+            await asyncio.sleep(0.5)
+            now = time.monotonic()
+            write_event(
+                events,
+                "runtime_sample",
+                active=active,
+                eventloop_lag_seconds=max(0, now - previous - 0.5),
+                db_checkedout=engine.pool.checkedout(),
+                db_pool_size=engine.pool.size(),
+                db_overflow=engine.pool.overflow(),
+            )
+            previous = now
+
+    async def measurement_context(app):
+        del app
+        task = asyncio.create_task(observe())
+        yield
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    app.cleanup_ctx.append(measurement_context)
+
     async def stats(request):
         del request
         return web.json_response({"active": active, "peak": peak})
