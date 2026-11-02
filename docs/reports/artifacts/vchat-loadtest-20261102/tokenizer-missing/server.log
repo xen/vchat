@@ -1,0 +1,2247 @@
+WARNING:vchat.views.chat.ctx:Request embedding waited 4.494s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 4.683s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 4.850s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 4.919s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 5.005s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 5.173s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 5.274s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 5.468s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 5.645s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 5.866s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 6.092s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 6.312s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 6.520s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 6.678s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 6.851s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 7.110s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 7.265s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 7.491s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 8.201s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 8.508s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 8.733s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding waited 18.622s in local queue
+ERROR:vchat.chat:Chat request failed: request_id=a52cc42ec53dc6a3a866902ce51383c7
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=6f5ced49de25a583e4b8dbbd7348c7f3
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=6293007b22f096eb2b85c30ab44e67c4
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=54f0533b2e4d2eea3b96ef235d4c42de
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=23785880eb176d7e8b60d2ac6e8b71fd
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=1b0227d813121519e3c94ac72ed47597
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.895s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.031s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=207d48757f0e7f3ae0beb2a2155b677e
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.056s
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.052s
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.048s
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.045s
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.044s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=bdcfdb73cffd5fe6aa021b97a7f222bd
+WARNING:vchat.chat:Request embedding queue timeout: request_id=fd58d89ffad8871defba6f481771a710
+WARNING:vchat.chat:Request embedding queue timeout: request_id=44a02039a0de25b7569a262a29ccb075
+WARNING:vchat.chat:Request embedding queue timeout: request_id=83554c8203feaf66708d4865cc5228d8
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.045s
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.040s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=f0f360750f2baf5efc2070aacb25e3f3
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.033s
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.027s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=4bda22abcb89cefc3bffb99387eaf305
+WARNING:vchat.chat:Request embedding queue timeout: request_id=ee00cac6761c332f390a5395c31c4db0
+WARNING:vchat.chat:Request embedding queue timeout: request_id=1af4421202cba233a7c855434597912f
+WARNING:vchat.chat:Request embedding queue timeout: request_id=768c3c9bebf53f86f14c8ed4044dff5f
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=30bc1dedf7f3a7cd2139f1a34cdd8a5a
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.955s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=8361e776e21daa1b48d15c016dde6f27
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.003s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=707127344fda821572aed84daba00124
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=16d48bf6d7a5ffc576c50148adf811ea
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=5b036b541cb986bc8c0a491ad71f37ab
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.000s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=f524e59cee4d0e1ecc16b20f375bab38
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.003s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=c04dc1b647c225f94d81a279e8c943a1
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=8be5209d0f652323c89697ddd207f824
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.990s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.005s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=e9458f2fc629c1ad1b0c1ba0eabf9eb2
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=6cfe7df96053f2ed25015b01146a7e9b
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=fff10a6fbfa9cd092732f2d14252a581
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.000s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=d811e76f01e1fef7617ff39e63f20871
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.005s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=9e9b680dcaa01183070206ac4e2d9c3a
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.000s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=7e52256a6d0694f79e6c32a84edac451
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.998s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=cfa38c8ed9f90114c6d73f4198d3e94b
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=98843c0679cdbfe89d193bddc46fdfda
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=6192ea00fe7f78b824769e7c35b3548a
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=4117e86c98472e737c2f1cda8eeeddbb
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=33c30000eb56d0aa67cec3a5dd9f0eec
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.039s
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.032s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=555c0954ba9b7e2134eef2db8bb5587a
+WARNING:vchat.chat:Request embedding queue timeout: request_id=74ab0045550a687abb32c446b2844ef4
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=91b968058852667e04aa0a26bb50a137
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=5d75d9a8e2ff480052f54b4fa1296620
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.003s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=df2fadcad9ab37b3e9042585e97bed26
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=861fff6a81a5e7c1215ffa44c7f6c141
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=8ccba8642608ce9856adf20cbbf40af6
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.996s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=f1924c061842af37899911ed72706d17
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=79987b880d2be206713db9874511aa79
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=10f511d3d515e0101e475958d3b99c26
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.010s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=d3fdcafd91069219a7d06c3071a830bc
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=24835b80c0a8e2e9e5b6b8e6ee033f19
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=6fb82ca4f087a88c85d321f97d2be0e4
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=da18ceb0824abf362d633b20118889dd
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.983s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=53697a0ce128c6b0182315f30e7f2f30
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=5e25769a83b0c8e446df32469bd3917c
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=4e7c275bf58e51dbaf5c06d76b562e97
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.000s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=05683dfd837188cfe728d7b224248fdc
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=e3d413034e3e4498c668fbfe152a1ac5
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.991s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=552ca8a700efffa161ad5ae6f1182a83
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=8747c2c3de78e94e769c4a1c49fcbf67
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=f04225a836568ebb46d2be479d7c3e33
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=b77696a2088fd6e016f0ee675dd2e020
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=47d95662f19bd1930651e121abb05cce
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.003s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=468be83de56e1bf3f108963eb5e69132
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=48d9fa7358907055162f97cef95f0219
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=88fb048fbce1927232542c9ddaa94a8e
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=a8cbf289f807145db2691b895bd153b9
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=4fbba46cfb3f1c30e64f4adf8f13b07f
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.005s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=7e20f25e667f3f18389cc8ac9fdf6a35
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=9ec77dc2c4034f38d88cfe7896f2cc6c
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.000s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=fe1670311cb0bf562e9f4fb6db698dd4
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=7990cb0a5e157da1793df6ec8b743d57
+WARNING:vchat.views.chat.ctx:Request embedding waited 19.994s in local queue
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=b0d4fdf7fc79a973e1c161add7eaf8ae
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.002s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=8b3e150b0501631426a91bb7028d8908
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=824e67ce2427b3017e049b162849a48b
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.001s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=feecb8d799edde15696be75606389131
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.006s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=4d47cba95baf58bf4f761954793e8f8a
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.008s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=ad47e6d86dc574dab193686759931fb2
+WARNING:vchat.views.chat.ctx:Request embedding queue timeout after 20.019s
+WARNING:vchat.chat:Request embedding queue timeout: request_id=0283dfdc0b5430ea9033ca61a159f783
+ERROR:vchat.chat:Chat request failed: request_id=0ca81f4f42638db1beec07c7239074ec
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=e03136d3ed1a0a386102e103f6a6ee30
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=eac10c3504c600a9b8fc18e394bc15a5
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=4fbec2eabdae75d7b80767be4af13462
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=5bdd972ca09b232378195c85e7a8c662
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=081cd2ffcd962c58dd8ccbb2b8bf5cc5
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=f36dcfe26ef2a1527df3f42c9b0cd942
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=d874c314eac9ab1e717ea69cb9a58751
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=a8806643cf193c4c196ed8f2d55f0a2b
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=0e5a52a40c85cfff6ba83b23dad23234
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=958befae681f43f8df5e42eb144fae38
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=9be66412d2ca93306d06a08bfef54e4a
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=37caafb3aae180cb1d12795333b90266
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=55745845b3a41140e26df072419afdb6
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=2092e5a8f94ff84299174bb2667382b2
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=05890185bfc2f14795c9bf5985ada0f5
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=57ef76ae4220dc62576431696b1981d9
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=6f928a8df2869fd00442853d20db2ed9
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=3e299ce5048f2aa0439e9c16aec7c233
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=50f3228300e85cf1644a80975432def2
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=8addb882d0900bb52193ea8bb3383d03
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=0e795928c7512ea756f0a1bb9664097a
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=0c45d6b6c67a4305412e317f49a1590b
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=3d302dcfd2849face84da7910ffea4a5
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+ERROR:vchat.chat:Chat request failed: request_id=75d5fb2c5f736b2a7fbf458853ed751d
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1866, in handle_chat_message
+    context_result = await retrieve_chat_context(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/views.py", line 1381, in retrieve_chat_context
+    return await get_context(**context_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1263, in get_context
+    context_snippets = select_context_snippets(snippets, provider=provider, model=model)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ctx.py", line 1105, in select_context_snippets
+    clean_tokens = provider.token_count(clean, model=model)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/vchat/views/chat/ai.py", line 432, in token_count
+    enc = tiktoken.get_encoding(tokenizer_name)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/registry.py", line 86, in get_encoding
+    enc = Encoding(**constructor())
+                     ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken_ext/openai_public.py", line 76, in cl100k_base
+    mergeable_ranks = load_tiktoken_bpe(
+                      ^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 162, in load_tiktoken_bpe
+    contents = read_file_cached(tiktoken_bpe_file, expected_hash)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 67, in read_file_cached
+    contents = read_file(blobpath)
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/tiktoken/load.py", line 17, in read_file
+    resp = requests.get(blobpath)
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 592, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/sessions.py", line 706, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/requests/adapters.py", line 645, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 759, in connect
+    self.sock = sock = self._new_conn()
+                       ^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 33, in connect
+    check(sock, address)
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/common.py", line 28, in check
+    raise RuntimeError(
+RuntimeError: Load test prohibits external connection: ('57.150.192.193', 443)
+/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '

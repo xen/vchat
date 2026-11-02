@@ -1,0 +1,24 @@
+Traceback (most recent call last):
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/aiohttp/web_urldispatcher.py", line 568, in __init__
+    directory = Path(directory).expanduser().resolve(strict=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/pathlib.py", line 993, in resolve
+    s = os.path.realpath(self, strict=strict)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen posixpath>", line 416, in realpath
+  File "<frozen posixpath>", line 451, in _joinrealpath
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/xen/Dev/sber/vchat-loadtest/frontend/dist'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/xen/Dev/sber/vchat-loadtest/tests/load/stand.py", line 179, in <module>
+    web.run_app(
+  File "/Users/xen/Dev/sber/vchat-loadtest/venv/lib/python3.11/site-packages/aiohttp/web.py", line 517, in run_app
+    loop.run_until_complete(main_task)
+  File "/Users/xen/.local/share/uv/python/cpython-3.11.11-macos-aarch64-none/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+ValueError: '/Users/xen/Dev/sber/vchat-loadtest/frontend/dist/assets' does not exist
