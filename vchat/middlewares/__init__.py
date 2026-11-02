@@ -274,6 +274,7 @@ async def auth_middleware(
             .where(
                 User.id == user_id,
                 User.is_active.is_(True),
+                User.blocked_at.is_(None),
                 UserSession.session_id == session_id,
                 UserSession.revoked_at.is_(None),
             )

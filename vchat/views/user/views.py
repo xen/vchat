@@ -4,9 +4,12 @@ import logging
 
 from typing import Any
 
+import sqlalchemy as sa
 from aiohttp import web
 from redis.exceptions import RedisError
 
+from vchat.db import async_session_factory
+from vchat.models import User, UserSession
 from vchat.settings import REDIS_KEY
 from vchat.utils import login_required
 
@@ -49,6 +52,27 @@ async def _forward_notifications(
             await pubsub.close()
 
 
+async def _watch_session(ws: web.WebSocketResponse, request: web.Request) -> None:
+    try:
+        while not ws.closed:
+            await asyncio.sleep(1)
+            async with async_session_factory() as db:
+                active = await db.scalar(
+                    sa.select(UserSession.id)
+                    .join(User, User.id == UserSession.user_id)
+                    .where(
+                        UserSession.id == request["auth_user_session_id"],
+                        UserSession.revoked_at.is_(None),
+                        User.is_active.is_(True),
+                        User.blocked_at.is_(None),
+                    )
+                )
+            if active is None:
+                return
+    finally:
+        await ws.close(code=1008, message=b"Session revoked")
+
+
 @login_required()
 async def notify_ws(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse()
@@ -71,6 +95,7 @@ async def notify_ws(request: web.Request) -> web.WebSocketResponse:
             await ws.send_str(payload)
 
     forward_task = asyncio.create_task(_forward_notifications(ws, request))
+    session_task = asyncio.create_task(_watch_session(ws, request))
     try:
         async for message in ws:
             if message.type in (
@@ -81,8 +106,13 @@ async def notify_ws(request: web.Request) -> web.WebSocketResponse:
                 break
     finally:
         forward_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, RedisError):
-            await forward_task
-        await ws.close()
+        session_task.cancel()
+        try:
+            with contextlib.suppress(asyncio.CancelledError, RedisError):
+                await forward_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await session_task
+        finally:
+            await ws.close()
 
     return ws

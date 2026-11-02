@@ -11,13 +11,19 @@ str_2 = Annotated[str, 2]
 
 class User(Base, Created, Updated):
     __tablename__ = "users"
-    __table_args__ = (sa.Index("ix_users_email", "email", unique=True),)
+    __table_args__ = (
+        sa.Index("ix_users_email", "email", unique=True),
+        sa.CheckConstraint(
+            "blocked_at IS NULL OR NOT is_active", name="ck_users_blocked_inactive"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str]
     name: Mapped[str]
     password: Mapped[str | None]
     is_active: Mapped[bool] = mapped_column(default=False)
+    blocked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     is_ldap: Mapped[bool] = mapped_column(default=False)
 
 

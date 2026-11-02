@@ -48,7 +48,9 @@
                 <div class="text-base-content/70">{{ user.email }}</div>
               </td>
               <td>
-                {% if user.is_active %}
+                {% if user.blocked_at %}
+                  <span class="badge badge-error">{{ 'Заблокирован навсегда' }}</span>
+                {% elif user.is_active %}
                   <span class="badge badge-success">{{ 'Активен' }}</span>
                 {% else %}
                   <span class="badge badge-warning">{{ 'Не активен' }}</span>
@@ -56,6 +58,7 @@
               </td>
               <td>
                 <div class="inline-flex items-center gap-2">
+                  {% if not user.blocked_at %}
                   <button
                     class="btn btn-xs btn-ghost"
                     hx-get="{{ url('actions', action='user_password', item_id=user.id) }}"
@@ -64,6 +67,7 @@
                   >
                     {{ 'Сменить пароль' }}
                   </button>
+                  {% endif %}
                   <button
                     class="btn btn-xs btn-warning btn-outline"
                     hx-post="{{ url('actions', action='user_revoke_sessions', item_id=user.id) }}"
@@ -73,14 +77,15 @@
                     {{ 'Сессии' }}
                   </button>
                   <button
+                    type="button"
                     class="btn btn-xs btn-error btn-outline"
-                    hx-post="{{ url('actions', action='user_delete', item_id=user.id) }}"
+                    hx-post="{{ url('actions', action='user_block_permanently', item_id=user.id) }}"
                     hx-swap="none"
-                    hx-confirm="{{ 'Удалить пользователя?' }}"
-                    {% if user.id == current_user_id or total_users <= 1 %}disabled{% endif %}
-                    title="{% if user.id == current_user_id %}{{ 'Нельзя удалить себя' }}{% elif total_users <= 1 %}{{ 'Нельзя удалить последнего пользователя' }}{% endif %}"
+                    hx-confirm="{{ 'Заблокировать пользователя навсегда? Вход и восстановление будут невозможны. Запись и история сохранятся.' }}"
+                    {% if user.blocked_at or user.id == current_user_id %}disabled{% endif %}
+                    title="{% if user.blocked_at %}{{ 'Блокировка необратима' }}{% elif user.id == current_user_id %}{{ 'Нельзя заблокировать себя' }}{% endif %}"
                   >
-                    {{ 'Удалить' }}
+                    {{ 'Заблокировать навсегда' }}
                   </button>
                 </div>
               </td>
