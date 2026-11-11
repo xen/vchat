@@ -13,6 +13,7 @@ from vchat.app import create_app
 from vchat.db import async_session_factory
 from vchat.logging import configure_logging
 from vchat.models import User
+from vchat.password_quality import WEAK_PASSWORD_MESSAGE, is_predictable_password
 from vchat.settings import cfg
 
 logger = logging.getLogger()
@@ -85,6 +86,13 @@ async def create_user() -> int:
     password = getpass.getpass("Password: ")
     if password != getpass.getpass("Confirm password: "):
         print("Passwords do not match")
+        return 1
+
+    if not 12 <= len(password) <= 128 or not password.strip():
+        print("Password must contain 12 to 128 characters and cannot be blank")
+        return 1
+    if is_predictable_password(password):
+        print(WEAK_PASSWORD_MESSAGE)
         return 1
 
     async with async_session_factory() as db:

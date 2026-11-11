@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-import logging
 
 import pytest
 from aiohttp import web
 from multidict import MultiDict
 from yarl import URL
 
-from vchat.settings import REDIS_KEY, SIGNER_KEY
 import vchat.middlewares as mdw
+from vchat.password_quality import WEAK_PASSWORD_MESSAGE
+from vchat.settings import REDIS_KEY, SIGNER_KEY
 from vchat.views.admin import forms as admin_forms
 from vchat.views.auth import forms as auth_forms
 from vchat.views.auth import views as auth_views
@@ -241,8 +242,8 @@ def test_local_password_forms_enforce_asvs_length_bounds() -> None:
         MultiDict(
             {
                 "current_password": "short",
-                "password": "long-enough-password",
-                "confirm": "long-enough-password",
+                "password": "Ландыш маяк облако кедр",
+                "confirm": "Ландыш маяк облако кедр",
             }
         ),
         meta={"csrf": False},
@@ -268,11 +269,48 @@ def test_local_password_forms_enforce_asvs_length_bounds() -> None:
     )
     assert not add_form.validate()
 
+    strong_max_length = "Ландыш маяк облако кедр".ljust(128, "!")
+    assert len(strong_max_length) == 128
     edit_form = admin_forms.UserPasswordEdit(
-        MultiDict({"password": long_password, "confirm": long_password}),
+        MultiDict({"password": strong_max_length, "confirm": strong_max_length}),
         meta={"csrf": False},
     )
     assert edit_form.validate()
+
+
+@pytest.mark.parametrize(
+    "form_class",
+    [admin_forms.UserAdd, admin_forms.UserPasswordEdit, auth_forms.PasswordChange],
+)
+@pytest.mark.parametrize(
+    ("password", "accepted"),
+    [
+        ("aaaaaaaaaaaa", False),
+        ("abcdabcdabcd", False),
+        ("abcdefghijkl", False),
+        ("123456789012", False),
+        ("P@ssw0rd2026!", False),
+        ("ПарольПароль!", False),
+        ("qwertyuiop12!", False),
+        ("Ландыш маяк облако кедр", True),
+    ],
+)
+def test_new_local_password_quality(form_class, password: str, accepted: bool) -> None:
+    form = form_class(
+        MultiDict(
+            {
+                "email": "user@example.com",
+                "current_password": "short",
+                "password": password,
+                "confirm": password,
+            }
+        ),
+        meta={"csrf": False},
+    )
+
+    assert form.validate() is accepted
+    if not accepted:
+        assert form.errors == {"password": [WEAK_PASSWORD_MESSAGE]}
 
 
 @pytest.mark.asyncio

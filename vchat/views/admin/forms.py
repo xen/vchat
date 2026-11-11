@@ -3,6 +3,7 @@ from datetime import timedelta
 from wtforms import Form, PasswordField, StringField, validators
 from wtforms.csrf.session import SessionCSRF
 
+from vchat.password_quality import validate_password_quality
 from vchat.settings import cfg
 
 
@@ -33,6 +34,7 @@ class UserAdd(AdminCSRFBase):
                 message="Длина от 12 до 128 символов",
             ),
             validators.DataRequired(message="Обязательное поле"),
+            validate_password_quality,
         ],
         render_kw={"placeholder": "Пароль"},
     )
@@ -49,6 +51,7 @@ class UserPasswordEdit(AdminCSRFBase):
             ),
             validators.EqualTo("confirm", message="Пароли должны совпадать"),
             validators.DataRequired(message="Обязательное поле"),
+            validate_password_quality,
         ],
         render_kw={"placeholder": "Новый пароль"},
     )
